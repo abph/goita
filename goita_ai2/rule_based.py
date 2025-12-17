@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from collections import Counter
 import copy
 
-from ..state import POINTS  # 基本点（9=50, ... ,1=10）
+from goita_ai2.state import POINTS  # 基本点（9=50, ... ,1=10）
 
 Action = Tuple[str, Optional[str], Optional[str]]  # (action_type, block, attack)
 TARGET_X = ("2", "3", "4", "5")  # 「かかり」対象（4枚駒）

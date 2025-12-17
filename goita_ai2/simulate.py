@@ -4,8 +4,9 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple, List, Any, Union
 import random
 
-from .state import GoitaState
-from .utils import create_random_hands
+from goita_ai2.state import GoitaState
+from goita_ai2.utils import create_random_hands
+
 
 Action = Tuple[str, Optional[str], Optional[str]]  # (action_type, block, attack)
 
