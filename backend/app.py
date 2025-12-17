@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+# あなたのプロジェクト構成（goita_ai2/ が同階層にある前提）
 from goita_ai2.state import GoitaState
-from goita_ai2.utils import create_random_hands
-from goita_ai2.agents.rule_based import RuleBasedAgent
+from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
+from goita_ai2.utils import create_random_hands
 
 
-app = FastAPI(title="Goita FastAPI MVP (board_public + receive_hidden + reveal_hands)")
+app = FastAPI(title="Goita FastAPI (Render-ready)")
 
+# Render上でGoogle Sites埋め込み等を考えるならCORSは広めでOK（本番で絞りたければ後で調整）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,6 +28,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ====== frontend 配信（RenderでURL直打ちしたときに画面が出る） ======
+BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクト直下（backend/ の1つ上）
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+# frontend 配下のファイル（index.html含む）を /static で配信（任意だが便利）
+# 例：/static/index.html でも開ける
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+@app.get("/")
+def serve_index():
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=500, detail="frontend/index.html not found")
+    return FileResponse(index_path)
+
+
+# ====== ゲーム管理 ======
 HUMAN_SEAT = "A"
 CPU_SEATS = ["B", "C", "D"]
 ALL_SEATS = ["A", "B", "C", "D"]
@@ -107,9 +130,13 @@ def _push_first_empty(slots: List[Optional[str]], value: Optional[str]) -> Optio
     return len(slots) - 1
 
 
-def _update_board_snapshot(board: Dict[str, Dict[str, Any]], player: str,
-                          action: Tuple[str, Optional[str], Optional[str]],
-                          *, hidden_receive: bool = False) -> None:
+def _update_board_snapshot(
+    board: Dict[str, Dict[str, Any]],
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+    *,
+    hidden_receive: bool = False,
+) -> None:
     t, b, a = action
     if player not in board:
         return
@@ -128,15 +155,20 @@ def _update_board_snapshot(board: Dict[str, Dict[str, Any]], player: str,
 
 
 def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_type: str, before_len: int) -> bool:
+    # face_down_hidden の増分で「伏せ」を検出
     if action_type not in ("receive", "attack_after_block"):
         return False
     return len(state.face_down_hidden[player]) > before_len
 
 
-def _state_public_view(state: GoitaState, *, viewer: str,
-                      log: List[str],
-                      board_public: Dict[str, Dict[str, Any]],
-                      reveal_hands: bool = False) -> Dict[str, Any]:
+def _state_public_view(
+    state: GoitaState,
+    *,
+    viewer: str,
+    log: List[str],
+    board_public: Dict[str, Dict[str, Any]],
+    reveal_hands: bool = False,
+) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
         if reveal_hands or p == viewer:
@@ -203,8 +235,8 @@ def get_legal_actions(game_id: str):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    state: GoitaState = game["state"]
 
+    state: GoitaState = game["state"]
     if state.finished or state.turn != HUMAN_SEAT:
         return []
     return _actions_to_json(state.legal_actions(HUMAN_SEAT))
@@ -267,7 +299,6 @@ def step(game_id: str, req: StepRequest):
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-    # stepの返却は通常（手札は非公開）でOK。公開したい場合はフロントが /state?reveal_hands=1 を呼ぶ
     return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
 
 

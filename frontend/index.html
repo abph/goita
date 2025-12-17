@@ -73,10 +73,12 @@
   </div>
 
 <script>
-const API = "http://localhost:8000";
+// ★重要：Renderでもローカルでも動くように相対パスにする
+// fetch(`${API}/games`) -> "/games"
+const API = "";
+
 let gid = null;
 let showAllHands = false;
-let lastState = null;
 
 function key(col,row){ return `${col},${row}`; }
 
@@ -91,7 +93,7 @@ function pieceToLabel(v){
   return PIECE_LABEL[v] ?? v;
 }
 
-// ====== 受け/攻めスロット（確定版） ======
+// ====== 受け/攻めスロット（あなたの指定配置） ======
 const SLOTS = {
   A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
   C: { receive:[[7,3],[6,3],[5,3],[4,3]], attack:[[7,2],[6,2],[5,2],[4,2]] },
@@ -155,7 +157,6 @@ function renderBoard(state){
         const val=document.createElement("div");
         val.className="val";
 
-        // showAllHands=true のときは /state?reveal_hands=1 により配列が返る
         if(hand.p==="A" || showAllHands){
           const arr = state.hands?.[hand.p];
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
@@ -195,7 +196,7 @@ function renderBoard(state){
   }
 }
 
-// ====== 合法手描画（復活） ======
+// ====== 合法手描画 ======
 async function renderActions(){
   const actionsDiv = document.getElementById("actions");
   actionsDiv.innerHTML = "";
@@ -234,10 +235,8 @@ async function newGame(){
 async function refresh(){
   if(!gid) return;
 
-  // showAllHands のときだけ reveal_hands=1
   const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
   const state = await (await fetch(url)).json();
-  lastState = state;
 
   document.getElementById("turn").textContent = state.turn;
   document.getElementById("phase").textContent = state.phase;
