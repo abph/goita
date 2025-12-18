@@ -6,7 +6,7 @@
   <style>
     body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
     .row { display: flex; gap: 16px; align-items: flex-start; }
-    .panel { width: 380px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+    .panel { width: 420px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
 
     .board {
@@ -33,9 +33,15 @@
     .hand { border: 2px solid #4a90e2; background: #ffffff; }
     .hand .val { font-size: 18px; font-weight: 900; }
 
+    .hand.clickable { cursor: pointer; }
+    .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
+    .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
+
     button { margin: 4px 4px 4px 0; }
     pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 480px; overflow:auto; }
     .meta { font-size: 13px; line-height: 1.5; }
+    .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 8px 0; }
+    .small { font-size: 12px; color: #555; }
   </style>
 </head>
 <body>
@@ -61,10 +67,13 @@
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
 
-      <hr/>
+      <div class="hint" id="handHint">手札をクリックして駒を出します。</div>
 
-      <div><b>合法手（人間A）</b></div>
-      <div id="actions"></div>
+      <details>
+        <summary>（デバッグ用）合法手ボタンを表示</summary>
+        <div class="small">手札クリックがうまくいかない時の保険です。</div>
+        <div id="actions"></div>
+      </details>
 
       <hr/>
       <div><b>ログ</b></div>
@@ -77,6 +86,12 @@ const API = "";
 
 let gid = null;
 let showAllHands = false;
+
+// 最新の状態と合法手（手札クリックで使う）
+let latestState = null;
+let latestLegal = [];
+// 2段階選択（attack_after_block）用
+let pending = null; // { need: "attack"|"block", fixedPiece: "8", fixedRole:"block"|"attack", candidates:[actions...] }
 
 function key(col,row){ return `${col},${row}`; }
 
@@ -91,10 +106,14 @@ function pieceToLabel(v){
   return PIECE_LABEL[v] ?? v;
 }
 
-// ====== ★追加：手札を 1→9 に並べ替える ======
+// ====== 手札を 1→9 に並べ替える ======
 function sortHandNumeric(handArr){
   if(!Array.isArray(handArr)) return handArr;
   return [...handArr].sort((a,b)=>parseInt(a,10)-parseInt(b,10));
+}
+
+function setHint(msg){
+  document.getElementById("handHint").textContent = msg;
 }
 
 // ====== 受け/攻めスロット ======
@@ -138,6 +157,89 @@ function toggleAllHands(){
   refresh();
 }
 
+// ====== 手札クリック処理 ======
+async function onHandPieceClick(piece){
+  if(!gid || !latestState) return;
+
+  if(latestState.finished){
+    setHint("この局は終了しています。新規ゲームを開始してください。");
+    return;
+  }
+  if(latestState.turn !== "A"){
+    setHint(`いまは ${latestState.turn} の手番です。`);
+    return;
+  }
+
+  // 2段階選択中の場合
+  if(pending){
+    const matched = pending.candidates.filter(a => {
+      if(pending.need === "attack") return a.attack === piece;
+      if(pending.need === "block") return a.block === piece;
+      return false;
+    });
+
+    if(matched.length === 1){
+      await submitAction(matched[0]);
+      pending = null;
+      await refresh();
+      return;
+    }else if(matched.length > 1){
+      // 念のため（通常は起きにくい）
+      setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。");
+      return;
+    }else{
+      setHint(`その駒は選べません。${pending.need === "attack" ? "攻め" : "受け"}の駒をもう一度選んでください。`);
+      return;
+    }
+  }
+
+  // 通常：クリックした駒が合法手のどれに対応するかを探す
+  const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
+
+  if(candidates.length === 0){
+    setHint("その駒は今は出せません（合法手にありません）。");
+    return;
+  }
+
+  // 1つだけなら即実行
+  if(candidates.length === 1){
+    await submitAction(candidates[0]);
+    await refresh();
+    return;
+  }
+
+  // 複数候補：attack_after_block（2枚選択）が絡んでいる可能性が高い
+  const aab = candidates.filter(a => a.action_type === "attack_after_block");
+
+  // クリックした駒が block に一致する候補があるなら、次は attack を選ばせる
+  const asBlock = aab.filter(a => a.block === piece);
+  if(asBlock.length >= 1){
+    pending = { need: "attack", fixedPiece: piece, fixedRole: "block", candidates: asBlock };
+    setHint(`伏せ（受け）に ${pieceToLabel(piece)} を選びました。次に「攻め」の駒をクリックしてください。`);
+    return;
+  }
+
+  // クリックした駒が attack に一致する候補があるなら、次は block を選ばせる
+  const asAttack = aab.filter(a => a.attack === piece);
+  if(asAttack.length >= 1){
+    pending = { need: "block", fixedPiece: piece, fixedRole: "attack", candidates: asAttack };
+    setHint(`攻めに ${pieceToLabel(piece)} を選びました。次に「伏せ（受け）」の駒をクリックしてください。`);
+    return;
+  }
+
+  // receive と attack が同じ駒で複数候補になっている等
+  setHint("この駒は複数の出し方があり、確定できません。デバッグ用ボタンから選んでください。");
+}
+
+// ====== API送信 ======
+async function submitAction(actionObj){
+  await fetch(`${API}/games/${gid}/step`, {
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({action: actionObj})
+  });
+}
+
 // ====== 盤面描画 ======
 function renderBoard(state){
   const board=document.getElementById("board");
@@ -152,7 +254,7 @@ function renderBoard(state){
 
       const k=key(col,row);
 
-      // 手札
+      // 手札セル
       const hand=HAND_MAP.get(k);
       if(hand){
         div.classList.add("hand");
@@ -163,9 +265,20 @@ function renderBoard(state){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
+
           val.textContent = card ? pieceToLabel(card) : "□";
+
+          // ★Aの手札はクリック可能（自分の手番のみ）
+          if(hand.p==="A" && state.turn==="A" && !state.finished && card){
+            div.classList.add("clickable");
+            div.onclick = () => onHandPieceClick(card);
+          }else{
+            div.onclick = null;
+          }
+
         }else{
           val.textContent="□";
+          div.onclick = null;
         }
 
         div.appendChild(val);
@@ -173,7 +286,7 @@ function renderBoard(state){
         continue;
       }
 
-      // 受け/攻め
+      // 受け/攻めスロット
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
@@ -199,14 +312,13 @@ function renderBoard(state){
   }
 }
 
-// ====== 合法手 ======
+// ====== デバッグ用：合法手ボタン表示 ======
 async function renderActions(){
   const actionsDiv = document.getElementById("actions");
   actionsDiv.innerHTML = "";
   if (!gid) return;
 
-  const acts = await (await fetch(`${API}/games/${gid}/legal_actions`)).json();
-  acts.forEach(a => {
+  latestLegal.forEach(a => {
     const t = a.action_type;
     const b = a.block ? pieceToLabel(a.block) : "";
     const at = a.attack ? pieceToLabel(a.attack) : "";
@@ -215,11 +327,8 @@ async function renderActions(){
     const btn = document.createElement("button");
     btn.textContent = label;
     btn.onclick = async () => {
-      await fetch(`${API}/games/${gid}/step`, {
-        method:"POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({action: a})
-      });
+      pending = null;
+      await submitAction(a);
       await refresh();
     };
     actionsDiv.appendChild(btn);
@@ -231,7 +340,15 @@ async function newGame(){
   const j=await r.json();
   gid=j.game_id;
   document.getElementById("gid").textContent=gid;
+  pending = null;
+  setHint("手札をクリックして駒を出します。");
   await refresh();
+}
+
+async function fetchLegal(){
+  if(!gid) return [];
+  const acts = await (await fetch(`${API}/games/${gid}/legal_actions`)).json();
+  return Array.isArray(acts) ? acts : [];
 }
 
 async function refresh(){
@@ -239,6 +356,7 @@ async function refresh(){
 
   const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
   const state = await (await fetch(url)).json();
+  latestState = state;
 
   document.getElementById("turn").textContent = state.turn;
   document.getElementById("phase").textContent = state.phase;
@@ -247,6 +365,29 @@ async function refresh(){
     state.current_attack ? pieceToLabel(state.current_attack) : "";
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
+
+  // 合法手を更新（手札クリックがこれを参照）
+  latestLegal = await fetchLegal();
+
+  // ヒント更新
+  if(state.finished){
+    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
+    pending = null;
+  }else if(state.turn !== "A"){
+    setHint(`いまは ${state.turn} の手番です。待ってください。`);
+    pending = null;
+  }else if(pending){
+    // pending中の表示は維持
+  }else{
+    // phaseに応じてざっくり案内
+    if(state.phase === "receive"){
+      setHint("受けの駒を、手札からクリックしてください。");
+    }else if(state.phase === "attack"){
+      setHint("攻めの駒を、手札からクリックしてください。");
+    }else{
+      setHint("手札をクリックして駒を出します。");
+    }
+  }
 
   renderBoard(state);
   await renderActions();
