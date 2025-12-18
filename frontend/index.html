@@ -38,41 +38,29 @@
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
 
-    /* ★追加：今は使えない手札（うす暗い灰色） */
-    .hand.disabled {
-      background: #f0f0f0;
-      border-color: #bbb;
-      color: #999;
-      cursor: not-allowed;
-    }
-    .hand.disabled .val { color: #999; }
-
     /* 攻め（attack）マスを薄い青に */
     .slot.attack {
       background: #eef6ff;   /* とても薄い青 */
     }
 
-    /* ===== ★追加：current_attack 強調（方法①） ===== */
+    
+    /* ===== current_attack 強調 ===== */
     .slot.current-attack {
       background: #cfe8ff;      /* 少し濃い青 */
       border-color: #2b78d6;
+      animation: pulse 1.5s infinite;
     }
     .slot.current-attack .val {
       color: #0b3c7a;
       font-size: 22px;
     }
 
-    /* ===== ★追加：やさしい点滅（方法②） ===== */
     @keyframes pulse {
       0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.6); }
       70%  { box-shadow: 0 0 0 10px rgba(43,120,214,0); }
       100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
     }
-    .slot.current-attack {
-      animation: pulse 1.5s infinite;
-    }
-
-    /* PASSセル */
+/* PASSセル */
     .pass {
       border: 3px solid #e74c3c;
       background: #fff2f2;
@@ -355,24 +343,6 @@ function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
 
-  // ★ Aが今「使える駒」の集合（pending中は pending を優先）
-  const usablePiecesA = new Set();
-  if(state.turn === "A" && !state.finished){
-    if(pending && Array.isArray(pending.candidates)){
-      // 2段階選択中：次に必要な種類（attack / block）の候補だけ使える扱い
-      pending.candidates.forEach(a => {
-        if(pending.need === "attack" && a.attack) usablePiecesA.add(a.attack);
-        if(pending.need === "block" && a.block) usablePiecesA.add(a.block);
-      });
-    }else if(Array.isArray(latestLegal)){
-      // 通常：合法手に出てくる block/attack のいずれかが含まれていれば「使える」
-      latestLegal.forEach(a => {
-        if(a.block) usablePiecesA.add(a.block);
-        if(a.attack) usablePiecesA.add(a.attack);
-      });
-    }
-  }
-
   for(let row=1;row<=10;row++){
     for(let col=1;col<=10;col++){
       const div=document.createElement("div");
@@ -410,15 +380,9 @@ function renderBoard(state){
 
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          // Aの手札は、合法手にない駒を灰色＆クリック不可にする
           if(hand.p==="A" && state.turn==="A" && !state.finished && card){
-            if(usablePiecesA.has(card)){
-              div.classList.add("clickable");
-              div.onclick = () => onHandPieceClick(card);
-            }else{
-              div.classList.add("disabled");
-              div.onclick = null;
-            }
+            div.classList.add("clickable");
+            div.onclick = () => onHandPieceClick(card);
           }else{
             div.onclick = null;
           }
@@ -443,16 +407,27 @@ function renderBoard(state){
 
         const kindKey = slot.kind==="R"?"receive":"attack";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+        // ★ current_attack は「最新の攻め1枚」だけ光らせる（同じ駒が複数並んでも最新のみ）
+        if (slot.kind === "A" && state.current_attack && state.attacker) {
+          const atkP = state.attacker;
 
-        // ★追加：current_attack と一致する攻めマスを強調（方法①＋②）
-        if(
-          slot.kind === "A" &&
-          state.current_attack &&
-          piece &&
-          piece === state.current_attack
-        ){
-          div.classList.add("current-attack");
+          // attacker の攻め配列から「最後に置かれた index」を取得
+          const atkArr = state.board_public?.[atkP]?.attack || [];
+          let lastIdx = -1;
+          for (let i = atkArr.length - 1; i >= 0; i--) {
+            if (atkArr[i] != null) { lastIdx = i; break; }
+          }
+
+          // attacker かつ 最新 index のマスだけを強調
+          if (
+            slot.p === atkP &&
+            slot.idx === lastIdx &&
+            piece === state.current_attack
+          ) {
+            div.classList.add("current-attack");
+          }
         }
+
 
         if(piece){
           if(kindKey==="receive"){
