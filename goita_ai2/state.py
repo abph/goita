@@ -154,6 +154,9 @@ class GoitaState:
         self.finished = True
         self.winner = player
 
+        # ★デバッグ：Renderのログに出す
+        print("[FINISH_DEBUG]", "player=", player, "attack=", attack, "attack_history_last10=", self.attack_history.get(player, [])[-10:])
+
         score, team = self.calculate_score(player, attack)
         self.team_score[team] += score
 
