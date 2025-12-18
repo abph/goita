@@ -5,8 +5,8 @@
   <title>ごいた 10×10盤面</title>
   <style>
     body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
-    .row { display: flex; gap: 16px; align-items: flex-start; }
-    .panel { width: 420px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+    h1 { margin-bottom: 12px; }
+
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
 
     .board {
@@ -15,6 +15,7 @@
       grid-template-rows: repeat(10, 58px);
       gap: 6px;
       user-select: none;
+      margin: 0 auto;
     }
     .cell {
       border: 1px solid #e6e6e6;
@@ -37,7 +38,7 @@
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
 
-    /* ★追加：PASSセル */
+    /* PASSセル */
     .pass {
       border: 3px solid #e74c3c;
       background: #fff2f2;
@@ -48,47 +49,94 @@
     .pass:hover { background: #ffe7e7; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    button { margin: 4px 4px 4px 0; }
-    pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 480px; overflow:auto; }
-    .meta { font-size: 13px; line-height: 1.5; }
-    .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 8px 0; }
+    /* 下部UI */
+    .ui {
+      margin-top: 14px;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 6px 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .meta b { display: inline-block; }
+
+    .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    button { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    button:hover { background: #f6f6f6; }
+
+    .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 10px 0; }
     .small { font-size: 12px; color: #555; }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .card {
+      border: 1px solid #e6e6e6;
+      border-radius: 12px;
+      padding: 10px;
+      background: #fafafa;
+      min-height: 120px;
+    }
+
+    pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 420px; overflow:auto; margin: 0; }
+
+    /* スマホ等で縦に */
+    @media (max-width: 980px){
+      .bottom-grid { grid-template-columns: 1fr; }
+      .board { transform: scale(0.92); transform-origin: top center; }
+    }
   </style>
 </head>
 <body>
   <h1>ごいた 10×10盤面</h1>
 
-  <div class="row">
-    <div class="board-wrap">
-      <div id="board" class="board"></div>
+  <div class="board-wrap">
+    <div id="board" class="board"></div>
+  </div>
+
+  <div class="ui">
+    <div class="meta">
+      <b>game_id</b><span id="gid">-</span>
+      <b>turn</b><span id="turn">-</span>
+      <b>phase</b><span id="phase">-</span>
+      <b>attacker</b><span id="attacker">-</span>
+      <b>current_attack</b><span id="current_attack">-</span>
     </div>
 
-    <div class="panel">
-      <div class="meta">
-        <div><b>game_id:</b> <span id="gid">-</span></div>
-        <div><b>turn:</b> <span id="turn">-</span></div>
-        <div><b>phase:</b> <span id="phase">-</span></div>
-        <div><b>attacker:</b> <span id="attacker">-</span></div>
-        <div><b>current_attack:</b> <span id="current_attack">-</span></div>
-      </div>
-
-      <hr/>
-
+    <div class="btns">
       <button onclick="newGame()">新規ゲーム</button>
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
+      <span class="small">（PASS：盤面の 8列目9行目）</span>
+    </div>
 
-      <div class="hint" id="handHint">手札をクリックして駒を出します。PASSは盤面の(8列目9行目)です。</div>
+    <div class="hint" id="handHint">手札をクリックして駒を出します。</div>
 
-      <details>
-        <summary>（デバッグ用）合法手ボタンを表示</summary>
-        <div class="small">手札クリックがうまくいかない時の保険です。</div>
-        <div id="actions"></div>
-      </details>
+    <div class="bottom-grid">
+      <div class="card">
+        <details>
+          <summary><b>（デバッグ用）合法手</b></summary>
+          <div class="small">手札クリックがうまくいかない時の保険です。</div>
+          <div id="actions" style="margin-top:8px;"></div>
+        </details>
+      </div>
 
-      <hr/>
-      <div><b>ログ</b></div>
-      <pre id="log"></pre>
+      <div class="card">
+        <div><b>ログ</b></div>
+        <pre id="log" style="margin-top:8px;"></pre>
+      </div>
     </div>
   </div>
 
@@ -204,25 +252,20 @@ async function onHandPieceClick(piece){
     }
   }
 
-  // 通常：クリックした駒が合法手のどれに対応するかを探す
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-
   if(candidates.length === 0){
     setHint("その駒は今は出せません（合法手にありません）。");
     return;
   }
 
-  // 1つだけなら即実行
   if(candidates.length === 1){
     await submitAction(candidates[0]);
     await refresh();
     return;
   }
 
-  // 複数候補：attack_after_block（2枚選択）が絡んでいる可能性が高い
   const aab = candidates.filter(a => a.action_type === "attack_after_block");
 
-  // クリックした駒が block に一致する候補があるなら、次は attack を選ばせる
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
     pending = { need: "attack", fixedPiece: piece, fixedRole: "block", candidates: asBlock };
@@ -230,7 +273,6 @@ async function onHandPieceClick(piece){
     return;
   }
 
-  // クリックした駒が attack に一致する候補があるなら、次は block を選ばせる
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
     pending = { need: "block", fixedPiece: piece, fixedRole: "attack", candidates: asAttack };
@@ -241,7 +283,7 @@ async function onHandPieceClick(piece){
   setHint("この駒は複数の出し方があり、確定できません。デバッグ用ボタンから選んでください。");
 }
 
-// ====== PASS処理（★追加） ======
+// ====== PASS処理 ======
 async function onPassClick(){
   if(!gid || !latestState) return;
 
@@ -286,7 +328,7 @@ function renderBoard(state){
       div.style.gridColumn=col;
       div.style.gridRow=row;
 
-      // ★ PASSセル：8列目9行目
+      // PASSセル：8列目9行目
       if(col===8 && row===9){
         div.classList.add("pass");
         div.textContent = "PASS";
@@ -316,7 +358,6 @@ function renderBoard(state){
 
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          // Aの手札はクリック可能（自分の手番のみ）
           if(hand.p==="A" && state.turn==="A" && !state.finished && card){
             div.classList.add("clickable");
             div.onclick = () => onHandPieceClick(card);
@@ -389,7 +430,7 @@ async function newGame(){
   gid=j.game_id;
   document.getElementById("gid").textContent=gid;
   pending = null;
-  setHint("手札をクリックして駒を出します。PASSは盤面の(8列目9行目)です。");
+  setHint("手札をクリックして駒を出します。");
   await refresh();
 }
 
@@ -408,7 +449,7 @@ async function refresh(){
 
   document.getElementById("turn").textContent = state.turn;
   document.getElementById("phase").textContent = state.phase;
-  document.getElementById("attacker").textContent = state.attacker;
+  document.getElementById("attacker").textContent = state.attacker || "";
   document.getElementById("current_attack").textContent =
     state.current_attack ? pieceToLabel(state.current_attack) : "";
 
@@ -425,14 +466,14 @@ async function refresh(){
     setHint(`いまは ${state.turn} の手番です。待ってください。`);
     pending = null;
   }else if(pending){
-    // pending中の表示は維持
+    // pending中は維持
   }else{
     if(state.phase === "receive"){
-      setHint("受けの駒を、手札からクリックしてください。PASSは(8列目9行目)です。");
+      setHint("受けの駒を、手札からクリックしてください。（PASS：8列目9行目）");
     }else if(state.phase === "attack"){
-      setHint("攻めの駒を、手札からクリックしてください。PASSは(8列目9行目)です。");
+      setHint("攻めの駒を、手札からクリックしてください。（PASS：8列目9行目）");
     }else{
-      setHint("手札をクリックして駒を出します。PASSは(8列目9行目)です。");
+      setHint("手札をクリックして駒を出します。（PASS：8列目9行目）");
     }
   }
 
