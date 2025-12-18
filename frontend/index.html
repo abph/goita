@@ -23,96 +23,336 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      font-size: 12px;
       position: relative;
     }
 
-    .slot { border: 2px solid #999; background: #fff; }
+    .slot { border: 2px solid #999; background: #fff; font-weight: 600; }
     .slot .val { font-size: 18px; font-weight: 800; }
 
-    .hand { border: 2px solid #4a90e2; background: #fff; }
+    .hand { border: 2px solid #4a90e2; background: #ffffff; }
     .hand .val { font-size: 18px; font-weight: 900; }
 
     .hand.clickable { cursor: pointer; }
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
+    .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
 
-    /* ★ パスボタン用 */
+    /* ★追加：PASSセル */
     .pass {
-      background: #fff3f3;
       border: 3px solid #e74c3c;
+      background: #fff2f2;
       cursor: pointer;
       font-weight: 900;
-      color: #e74c3c;
+      letter-spacing: 0.5px;
     }
-    .pass:hover { background: #ffecec; }
+    .pass:hover { background: #ffe7e7; }
+    .pass.disabled { opacity: 0.35; cursor: default; }
 
+    button { margin: 4px 4px 4px 0; }
     pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 480px; overflow:auto; }
+    .meta { font-size: 13px; line-height: 1.5; }
+    .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 8px 0; }
+    .small { font-size: 12px; color: #555; }
   </style>
 </head>
 <body>
-<h1>ごいた 10×10盤面</h1>
+  <h1>ごいた 10×10盤面</h1>
 
-<div class="row">
-  <div class="board-wrap">
-    <div id="board" class="board"></div>
-  </div>
+  <div class="row">
+    <div class="board-wrap">
+      <div id="board" class="board"></div>
+    </div>
 
-  <div class="panel">
-    <button onclick="newGame()">新規ゲーム</button>
-    <pre id="log"></pre>
+    <div class="panel">
+      <div class="meta">
+        <div><b>game_id:</b> <span id="gid">-</span></div>
+        <div><b>turn:</b> <span id="turn">-</span></div>
+        <div><b>phase:</b> <span id="phase">-</span></div>
+        <div><b>attacker:</b> <span id="attacker">-</span></div>
+        <div><b>current_attack:</b> <span id="current_attack">-</span></div>
+      </div>
+
+      <hr/>
+
+      <button onclick="newGame()">新規ゲーム</button>
+      <button onclick="refresh()">更新</button>
+      <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
+
+      <div class="hint" id="handHint">手札をクリックして駒を出します。PASSは盤面の(8列目9行目)です。</div>
+
+      <details>
+        <summary>（デバッグ用）合法手ボタンを表示</summary>
+        <div class="small">手札クリックがうまくいかない時の保険です。</div>
+        <div id="actions"></div>
+      </details>
+
+      <hr/>
+      <div><b>ログ</b></div>
+      <pre id="log"></pre>
+    </div>
   </div>
-</div>
 
 <script>
 const API = "";
+
 let gid = null;
+let showAllHands = false;
+
+// 最新の状態と合法手（手札クリックで使う）
 let latestState = null;
 let latestLegal = [];
 
-/* ===== 駒表示 ===== */
-const PIECE_LABEL = {
-  "9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"
-};
-function pieceToLabel(v){ return PIECE_LABEL[v] ?? v; }
+// 2段階選択（attack_after_block）用
+let pending = null; // { need: "attack"|"block", fixedPiece: "8", fixedRole:"block"|"attack", candidates:[actions...] }
 
-/* ===== パス処理 ===== */
-async function onPassClick(){
-  if(!gid) return;
-  const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){
-    alert("今はパスできません");
+function key(col,row){ return `${col},${row}`; }
+
+// ====== 駒表示変換 ======
+const PIECE_LABEL = {
+  "9": "王","8": "玉","7": "飛","6": "角",
+  "5": "金","4": "銀","3": "馬","2": "香","1": "し",
+};
+function pieceToLabel(v){
+  if (!v) return "";
+  if (v === "■" || v === "□") return v;
+  return PIECE_LABEL[v] ?? v;
+}
+
+// ====== 手札を 1→9 に並べ替える ======
+function sortHandNumeric(handArr){
+  if(!Array.isArray(handArr)) return handArr;
+  return [...handArr].sort((a,b)=>parseInt(a,10)-parseInt(b,10));
+}
+
+function setHint(msg){
+  document.getElementById("handHint").textContent = msg;
+}
+
+// ====== 受け/攻めスロット ======
+const SLOTS = {
+  A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
+  C: { receive:[[7,3],[6,3],[5,3],[4,3]], attack:[[7,2],[6,2],[5,2],[4,2]] },
+  B: { receive:[[8,7],[8,6],[8,5],[8,4]], attack:[[9,7],[9,6],[9,5],[9,4]] },
+  D: { receive:[[3,4],[3,5],[3,6],[3,7]], attack:[[2,4],[2,5],[2,6],[2,7]] },
+};
+
+const HAND_POS = {
+  A: [[2,10],[3,10],[4,10],[5,10],[6,10],[7,10],[8,10],[9,10]],
+  C: [[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1]],
+  B: [[10,2],[10,3],[10,4],[10,5],[10,6],[10,7],[10,8],[10,9]],
+  D: [[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9]],
+};
+
+function buildSlotMap(){
+  const m=new Map();
+  for(const p of ["A","B","C","D"]){
+    SLOTS[p].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p,kind:"R",idx:i}));
+    SLOTS[p].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p,kind:"A",idx:i}));
+  }
+  return m;
+}
+const SLOT_MAP = buildSlotMap();
+
+function buildHandMap(){
+  const m=new Map();
+  for(const p of ["A","B","C","D"]){
+    HAND_POS[p].forEach((c,i)=>m.set(key(c[0],c[1]),{p,idx:i}));
+  }
+  return m;
+}
+const HAND_MAP = buildHandMap();
+
+function toggleAllHands(){
+  showAllHands = !showAllHands;
+  document.getElementById("toggleHandsBtn").textContent =
+    showAllHands ? "手札表示を戻す" : "みんなの手札を公開";
+  refresh();
+}
+
+// ====== 手札クリック処理 ======
+async function onHandPieceClick(piece){
+  if(!gid || !latestState) return;
+
+  if(latestState.finished){
+    setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  await fetch(`${API}/games/${gid}/step`,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({action:pass})
-  });
+  if(latestState.turn !== "A"){
+    setHint(`いまは ${latestState.turn} の手番です。`);
+    return;
+  }
+
+  // 2段階選択中の場合
+  if(pending){
+    const matched = pending.candidates.filter(a => {
+      if(pending.need === "attack") return a.attack === piece;
+      if(pending.need === "block") return a.block === piece;
+      return false;
+    });
+
+    if(matched.length === 1){
+      await submitAction(matched[0]);
+      pending = null;
+      await refresh();
+      return;
+    }else if(matched.length > 1){
+      setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。");
+      return;
+    }else{
+      setHint(`その駒は選べません。${pending.need === "attack" ? "攻め" : "受け"}の駒をもう一度選んでください。`);
+      return;
+    }
+  }
+
+  // 通常：クリックした駒が合法手のどれに対応するかを探す
+  const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
+
+  if(candidates.length === 0){
+    setHint("その駒は今は出せません（合法手にありません）。");
+    return;
+  }
+
+  // 1つだけなら即実行
+  if(candidates.length === 1){
+    await submitAction(candidates[0]);
+    await refresh();
+    return;
+  }
+
+  // 複数候補：attack_after_block（2枚選択）が絡んでいる可能性が高い
+  const aab = candidates.filter(a => a.action_type === "attack_after_block");
+
+  // クリックした駒が block に一致する候補があるなら、次は attack を選ばせる
+  const asBlock = aab.filter(a => a.block === piece);
+  if(asBlock.length >= 1){
+    pending = { need: "attack", fixedPiece: piece, fixedRole: "block", candidates: asBlock };
+    setHint(`伏せ（受け）に ${pieceToLabel(piece)} を選びました。次に「攻め」の駒をクリックしてください。`);
+    return;
+  }
+
+  // クリックした駒が attack に一致する候補があるなら、次は block を選ばせる
+  const asAttack = aab.filter(a => a.attack === piece);
+  if(asAttack.length >= 1){
+    pending = { need: "block", fixedPiece: piece, fixedRole: "attack", candidates: asAttack };
+    setHint(`攻めに ${pieceToLabel(piece)} を選びました。次に「伏せ（受け）」の駒をクリックしてください。`);
+    return;
+  }
+
+  setHint("この駒は複数の出し方があり、確定できません。デバッグ用ボタンから選んでください。");
+}
+
+// ====== PASS処理（★追加） ======
+async function onPassClick(){
+  if(!gid || !latestState) return;
+
+  if(latestState.finished){
+    setHint("この局は終了しています。新規ゲームを開始してください。");
+    return;
+  }
+  if(latestState.turn !== "A"){
+    setHint(`いまは ${latestState.turn} の手番です。`);
+    return;
+  }
+
+  const pass = latestLegal.find(a => a.action_type === "pass");
+  if(!pass){
+    setHint("今はパスできません（合法手にpassがありません）。");
+    return;
+  }
+
+  pending = null;
+  await submitAction(pass);
   await refresh();
 }
 
-/* ===== 盤面描画 ===== */
+// ====== API送信 ======
+async function submitAction(actionObj){
+  await fetch(`${API}/games/${gid}/step`, {
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({action: actionObj})
+  });
+}
+
+// ====== 盤面描画 ======
 function renderBoard(state){
-  const board = document.getElementById("board");
-  board.innerHTML = "";
+  const board=document.getElementById("board");
+  board.innerHTML="";
 
-  for(let row=1; row<=10; row++){
-    for(let col=1; col<=10; col++){
-      const div = document.createElement("div");
-      div.className = "cell";
-      div.style.gridColumn = col;
-      div.style.gridRow = row;
+  for(let row=1;row<=10;row++){
+    for(let col=1;col<=10;col++){
+      const div=document.createElement("div");
+      div.className="cell";
+      div.style.gridColumn=col;
+      div.style.gridRow=row;
 
-      /* ★ プレイヤーA パスボタン (8,9) */
+      // ★ PASSセル：8列目9行目
       if(col===8 && row===9){
         div.classList.add("pass");
         div.textContent = "PASS";
-        if(state.turn==="A" && !state.finished){
+        if(state.turn==="A" && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
           div.onclick = onPassClick;
         }else{
-          div.style.opacity = 0.4;
+          div.classList.add("disabled");
+          div.onclick = null;
         }
         board.appendChild(div);
         continue;
+      }
+
+      const k=key(col,row);
+
+      // 手札セル
+      const hand=HAND_MAP.get(k);
+      if(hand){
+        div.classList.add("hand");
+        const val=document.createElement("div");
+        val.className="val";
+
+        if(hand.p==="A" || showAllHands){
+          const raw = state.hands?.[hand.p];
+          const arr = sortHandNumeric(raw);
+          const card = Array.isArray(arr) ? arr[hand.idx] : null;
+
+          val.textContent = card ? pieceToLabel(card) : "□";
+
+          // Aの手札はクリック可能（自分の手番のみ）
+          if(hand.p==="A" && state.turn==="A" && !state.finished && card){
+            div.classList.add("clickable");
+            div.onclick = () => onHandPieceClick(card);
+          }else{
+            div.onclick = null;
+          }
+
+        }else{
+          val.textContent="□";
+          div.onclick = null;
+        }
+
+        div.appendChild(val);
+        board.appendChild(div);
+        continue;
+      }
+
+      // 受け/攻めスロット
+      const slot=SLOT_MAP.get(k);
+      if(slot){
+        div.classList.add("slot");
+        const val=document.createElement("div");
+        val.className="val";
+
+        const kindKey = slot.kind==="R"?"receive":"attack";
+        const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+
+        if(piece){
+          if(kindKey==="receive"){
+            const hidden=state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+            val.textContent = hidden ? "■" : pieceToLabel(piece);
+          }else{
+            val.textContent = pieceToLabel(piece);
+          }
+        }
+        div.appendChild(val);
       }
 
       board.appendChild(div);
@@ -120,21 +360,84 @@ function renderBoard(state){
   }
 }
 
-/* ===== 更新 ===== */
-async function refresh(){
-  if(!gid) return;
-  const s = await (await fetch(`${API}/games/${gid}/state`)).json();
-  latestState = s;
-  latestLegal = await (await fetch(`${API}/games/${gid}/legal_actions`)).json();
-  document.getElementById("log").textContent = (s.log||[]).join("\n");
-  renderBoard(s);
+// ====== デバッグ用：合法手ボタン表示 ======
+async function renderActions(){
+  const actionsDiv = document.getElementById("actions");
+  actionsDiv.innerHTML = "";
+  if (!gid) return;
+
+  latestLegal.forEach(a => {
+    const t = a.action_type;
+    const b = a.block ? pieceToLabel(a.block) : "";
+    const at = a.attack ? pieceToLabel(a.attack) : "";
+    const label = `${t} ${b} ${at}`.trim();
+
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.onclick = async () => {
+      pending = null;
+      await submitAction(a);
+      await refresh();
+    };
+    actionsDiv.appendChild(btn);
+  });
 }
 
 async function newGame(){
-  const r = await fetch(`${API}/games`,{method:"POST"});
-  const j = await r.json();
-  gid = j.game_id;
+  const r=await fetch(`${API}/games`,{method:"POST"});
+  const j=await r.json();
+  gid=j.game_id;
+  document.getElementById("gid").textContent=gid;
+  pending = null;
+  setHint("手札をクリックして駒を出します。PASSは盤面の(8列目9行目)です。");
   await refresh();
+}
+
+async function fetchLegal(){
+  if(!gid) return [];
+  const acts = await (await fetch(`${API}/games/${gid}/legal_actions`)).json();
+  return Array.isArray(acts) ? acts : [];
+}
+
+async function refresh(){
+  if(!gid) return;
+
+  const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
+  const state = await (await fetch(url)).json();
+  latestState = state;
+
+  document.getElementById("turn").textContent = state.turn;
+  document.getElementById("phase").textContent = state.phase;
+  document.getElementById("attacker").textContent = state.attacker;
+  document.getElementById("current_attack").textContent =
+    state.current_attack ? pieceToLabel(state.current_attack) : "";
+
+  document.getElementById("log").textContent = (state.log||[]).join("\n");
+
+  // 合法手を更新（手札クリック＆PASSが参照）
+  latestLegal = await fetchLegal();
+
+  // ヒント更新
+  if(state.finished){
+    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
+    pending = null;
+  }else if(state.turn !== "A"){
+    setHint(`いまは ${state.turn} の手番です。待ってください。`);
+    pending = null;
+  }else if(pending){
+    // pending中の表示は維持
+  }else{
+    if(state.phase === "receive"){
+      setHint("受けの駒を、手札からクリックしてください。PASSは(8列目9行目)です。");
+    }else if(state.phase === "attack"){
+      setHint("攻めの駒を、手札からクリックしてください。PASSは(8列目9行目)です。");
+    }else{
+      setHint("手札をクリックして駒を出します。PASSは(8列目9行目)です。");
+    }
+  }
+
+  renderBoard(state);
+  await renderActions();
 }
 </script>
 </body>
