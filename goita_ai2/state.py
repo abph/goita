@@ -34,13 +34,6 @@ class GoitaState:
             "D": list(hands["D"]),
         }
 
-        # 「初期手札で両王持ちだったか（8と9を両方持っていたか）」
-        # ※8/9の攻め可否判定で「現在の手札」ではなくこのフラグを参照する
-        self.had_both_kings: Dict[str, bool] = {
-            p: (("8" in self.hands[p]) and ("9" in self.hands[p]))
-            for p in self.hands.keys()
-        }
-
         # 伏せ札（中身は内部でのみ使用、後でobservation側で隠す）
         self.face_down_hidden: Dict[str, List[str]] = {
             "A": [],
@@ -48,6 +41,9 @@ class GoitaState:
             "C": [],
             "D": [],
         }
+
+        # 各プレイヤーが「攻めとして出した駒」の履歴（得点計算で王玉上がり等に使用）
+        self.attack_history: Dict[str, List[str]] = {"A": [], "B": [], "C": [], "D": []}
 
         # 現在場に出ている攻めの駒（なければ None）
         self.current_attack: Optional[str] = None
@@ -176,6 +172,7 @@ class GoitaState:
             raise ValueError(f"{player} cannot attack with {attack} in this state")
 
         hand.remove(attack)
+        self.attack_history[player].append(attack)
 
         self.current_attack = attack
         self.attacker = player
@@ -214,6 +211,7 @@ class GoitaState:
 
         # 攻め
         hand.remove(attack)
+        self.attack_history[player].append(attack)
         self.current_attack = attack
         self.attacker = player
         self.turn = self.next_player(player)
@@ -241,7 +239,7 @@ class GoitaState:
             return True
 
         if attack in ("8", "9"):
-            both_kings = self.had_both_kings.get(player, False)
+            both_kings = ("8" in hand) and ("9" in hand)
             already_king_used = (self.king_block_used > 0)
             # 伏せなし攻めでは「最後の一手条件」は使わない
             return both_kings or already_king_used
@@ -267,7 +265,7 @@ class GoitaState:
             return True
 
         if attack in ("8", "9"):
-            both_kings = self.had_both_kings.get(player, False)
+            both_kings = ("8" in hand) and ("9" in hand)
             already_king_used = (self.king_block_used > 0)
             # この手で上がる（残り2枚で block+attack を使い切る）
             last_finish = (len(hand) == 2)
@@ -284,7 +282,14 @@ class GoitaState:
         上がり時の得点計算（基本点＋ダブル）。
         戻り値: (score, team)  例: (60, "AC")
         """
+        # 基本点
         base = POINTS[attack]
+
+        # 王玉上がり（最後の2手の攻めが 8 と 9）
+        # 例：7枚目に王(9)、8枚目に玉(8) で上がり → base=100
+        hist = self.attack_history.get(player, [])
+        if len(hist) >= 2 and set(hist[-2:]) == {"8", "9"}:
+            base = 100
 
         # ダブル判定：
         # ・最後に伏せた駒(last_block)が上がった駒(attack)と同じ
