@@ -52,6 +52,26 @@
       background: #eef6ff;   /* とても薄い青 */
     }
 
+    /* ===== ★追加：current_attack 強調（方法①） ===== */
+    .slot.current-attack {
+      background: #cfe8ff;      /* 少し濃い青 */
+      border-color: #2b78d6;
+    }
+    .slot.current-attack .val {
+      color: #0b3c7a;
+      font-size: 22px;
+    }
+
+    /* ===== ★追加：やさしい点滅（方法②） ===== */
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.6); }
+      70%  { box-shadow: 0 0 0 10px rgba(43,120,214,0); }
+      100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
+    }
+    .slot.current-attack {
+      animation: pulse 1.5s infinite;
+    }
+
     /* PASSセル */
     .pass {
       border: 3px solid #e74c3c;
@@ -423,6 +443,16 @@ function renderBoard(state){
 
         const kindKey = slot.kind==="R"?"receive":"attack";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+
+        // ★追加：current_attack と一致する攻めマスを強調（方法①＋②）
+        if(
+          slot.kind === "A" &&
+          state.current_attack &&
+          piece &&
+          piece === state.current_attack
+        ){
+          div.classList.add("current-attack");
+        }
 
         if(piece){
           if(kindKey==="receive"){
