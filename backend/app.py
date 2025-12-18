@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,16 +17,22 @@ from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
 
+def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
+    """handの要素型が int/str 混在でも state 側が扱いやすいように str に正規化する。"""
+    return {p: [str(x) for x in hands[p]] for p in ALL_SEATS}
+
 
 def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
     """create_random_hands() を使って配牌しつつ、
     どのプレイヤーにも '1'(し) が5枚以上配られないようにする。
+    ※ hand要素が int の場合でも確実に判定できるように str に正規化してから数える。
     """
-    last_hands: Dict[str, List[str]] = {}
+    last_hands: Dict[str, List[str]] = {p: [] for p in ALL_SEATS}
     for _ in range(max_retry):
-        hands = create_random_hands_no_five_shi()
+        raw = create_random_hands()
+        hands = _normalize_hands(raw)
         last_hands = hands
-        if all(hands[p].count("1") <= 4 for p in ALL_SEATS):
+        if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
     return last_hands
 
@@ -209,7 +214,7 @@ def _state_public_view(
 
 @app.post("/games")
 def create_game(dealer: str = "A"):
-    hands = create_random_hands()
+    hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
 
     agents: Dict[str, RuleBasedAgent] = {
