@@ -42,8 +42,8 @@ class GoitaState:
             "D": [],
         }
 
-        # 各プレイヤーが「攻めとして出した駒」の履歴（得点計算で王玉上がり等に使用）
-        self.attack_history: Dict[str, List[str]] = {"A": [], "B": [], "C": [], "D": []}
+        # 各プレイヤーが「攻めとして出した駒」の履歴（王玉上がり判定などで使用）
+        self.attack_history: Dict[str, List[str]] = {p: [] for p in hands.keys()}
 
         # 現在場に出ている攻めの駒（なければ None）
         self.current_attack: Optional[str] = None
@@ -153,9 +153,6 @@ class GoitaState:
         """上がり時の共通処理。"""
         self.finished = True
         self.winner = player
-
-        # ★デバッグ：Renderのログに出す
-        print("[FINISH_DEBUG]", "player=", player, "attack=", attack, "attack_history_last10=", self.attack_history.get(player, [])[-10:])
 
         score, team = self.calculate_score(player, attack)
         self.team_score[team] += score
@@ -285,13 +282,11 @@ class GoitaState:
         上がり時の得点計算（基本点＋ダブル）。
         戻り値: (score, team)  例: (60, "AC")
         """
-        # 基本点
         base = POINTS[attack]
 
-        # 王玉上がり（最後の2手の攻めが 8 と 9）
-        # 例：7枚目に王(9)、8枚目に玉(8) で上がり → base=100
+        # 王玉上がり：最後の2回の「攻め」が王(9)と玉(8)なら基本点を100にする
         hist = self.attack_history.get(player, [])
-        if len(hist) >= 2 and set(hist[-2:]) == {"8", "9"}:
+        if len(hist) >= 2 and set(hist[-2:]) == {\"8\", \"9\"}:
             base = 100
 
         # ダブル判定：
