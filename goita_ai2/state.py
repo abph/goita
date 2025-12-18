@@ -42,9 +42,6 @@ class GoitaState:
             "D": [],
         }
 
-        # 各プレイヤーが「攻めとして出した駒」の履歴（王玉上がり判定などで使用）
-        self.attack_history: Dict[str, List[str]] = {p: [] for p in hands.keys()}
-
         # 現在場に出ている攻めの駒（なければ None）
         self.current_attack: Optional[str] = None
 
@@ -172,7 +169,6 @@ class GoitaState:
             raise ValueError(f"{player} cannot attack with {attack} in this state")
 
         hand.remove(attack)
-        self.attack_history[player].append(attack)
 
         self.current_attack = attack
         self.attacker = player
@@ -211,7 +207,6 @@ class GoitaState:
 
         # 攻め
         hand.remove(attack)
-        self.attack_history[player].append(attack)
         self.current_attack = attack
         self.attacker = player
         self.turn = self.next_player(player)
@@ -284,11 +279,13 @@ class GoitaState:
         """
         base = POINTS[attack]
 
-        # 王玉上がり：最後の2回の「攻め」が王(9)と玉(8)なら基本点を100にする
-        hist = self.attack_history.get(player, [])
-        if len(hist) >= 2 and set(hist[-2:]) == {"8", "9"}:
-            base = 100
 
+        # 王玉上がり（直前の伏せ＋最後の攻め が 8/9 の組）
+        # 例：7枚目が伏せで8、8枚目が9（攻め） → 100
+        #     7枚目が伏せで9、8枚目が8（攻め） → 100
+        hidden = self.face_down_hidden.get(player, [])
+        if hidden and set([hidden[-1], attack]) == {"8", "9"}:
+            base = 100
         # ダブル判定：
         # ・最後に伏せた駒(last_block)が上がった駒(attack)と同じ
         # ・それを伏せたのが上がったプレイヤー
