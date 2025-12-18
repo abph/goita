@@ -34,6 +34,15 @@ class GoitaState:
             "D": list(hands["D"]),
         }
 
+
+        # 「両王持ち」フラグ：配牌時点で 8(玉) と 9(王) を両方持っていたか
+        # いったん両方持っていれば、その後どちらかを使って片方だけになっても
+        # もう片方の 8/9 を攻めに使える扱いにする（期待挙動の修正）。
+        self.had_both_kings: Dict[str, bool] = {
+            p: (("8" in self.hands[p]) and ("9" in self.hands[p]))
+            for p in ("A", "B", "C", "D")
+        }
+
         # 伏せ札（中身は内部でのみ使用、後でobservation側で隠す）
         self.face_down_hidden: Dict[str, List[str]] = {
             "A": [],
@@ -234,11 +243,12 @@ class GoitaState:
             return True
 
         if attack in ("8", "9"):
-            both_kings = ("8" in hand) and ("9" in hand)
+            both_kings = self.had_both_kings.get(player, False)
             already_king_used = (self.king_block_used > 0)
             # 伏せなし攻めでは「最後の一手条件」は使わない
-            return both_kings or already_king_used
-
+            last_finish = (len(hand) == 1)
+            # 伏せなし攻めでも「最後の一手」は許可する（8枚目に8/9が出せない問題の修正）
+            return both_kings or already_king_used or last_finish
         return False
 
     def _can_attack_with_block(self, player: str, block: str, attack: str) -> bool:
@@ -260,7 +270,7 @@ class GoitaState:
             return True
 
         if attack in ("8", "9"):
-            both_kings = ("8" in hand) and ("9" in hand)
+            both_kings = self.had_both_kings.get(player, False)
             already_king_used = (self.king_block_used > 0)
             # この手で上がる（残り2枚で block+attack を使い切る）
             last_finish = (len(hand) == 2)
