@@ -38,7 +38,17 @@
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
 
-    /* 攻め（attack）マスを薄い青に */
+    
+
+    /* ★追加：今は使えない手札（うす暗い灰色） */
+    .hand.disabled {
+      background: #f0f0f0;
+      border-color: #bbb;
+      color: #999;
+      cursor: not-allowed;
+    }
+    .hand.disabled .val { color: #999; }
+/* 攻め（attack）マスを薄い青に */
     .slot.attack {
       background: #eef6ff;   /* とても薄い青 */
     }
@@ -343,6 +353,24 @@ function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
 
+  // ★ Aが今「使える駒」の集合（pending中は pending を優先）
+  const usablePiecesA = new Set();
+  if(state.turn === "A" && !state.finished){
+    if(pending && Array.isArray(pending.candidates)){
+      // 2段階選択中：次に必要な種類（attack / block）の候補だけ使える扱い
+      pending.candidates.forEach(a => {
+        if(pending.need === "attack" && a.attack) usablePiecesA.add(a.attack);
+        if(pending.need === "block" && a.block) usablePiecesA.add(a.block);
+      });
+    }else if(Array.isArray(latestLegal)){
+      // 通常：合法手に出てくる block/attack のいずれかが含まれていれば「使える」
+      latestLegal.forEach(a => {
+        if(a.block) usablePiecesA.add(a.block);
+        if(a.attack) usablePiecesA.add(a.attack);
+      });
+    }
+  }
+
   for(let row=1;row<=10;row++){
     for(let col=1;col<=10;col++){
       const div=document.createElement("div");
@@ -381,13 +409,17 @@ function renderBoard(state){
           val.textContent = card ? pieceToLabel(card) : "□";
 
           if(hand.p==="A" && state.turn==="A" && !state.finished && card){
-            div.classList.add("clickable");
-            div.onclick = () => onHandPieceClick(card);
+            if(usablePiecesA.has(card)){
+              div.classList.add("clickable");
+              div.onclick = () => onHandPieceClick(card);
+            }else{
+              div.classList.add("disabled");
+              div.onclick = null;
+            }
           }else{
             div.onclick = null;
           }
-
-        }else{
+}else{
           val.textContent="□";
           div.onclick = null;
         }
