@@ -38,6 +38,11 @@
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
 
+    /* 攻め（attack）マスを薄い青に */
+    .slot.attack {
+      background: #eef6ff;   /* とても薄い青 */
+    }
+
     /* PASSセル */
     .pass {
       border: 3px solid #e74c3c;
@@ -379,6 +384,7 @@ function renderBoard(state){
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
+        if(slot.kind === "A") div.classList.add("attack");
         const val=document.createElement("div");
         val.className="val";
 
