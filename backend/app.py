@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,6 +16,21 @@ from goita_ai2.state import GoitaState
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
+
+
+
+def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
+    """create_random_hands() を使って配牌しつつ、
+    どのプレイヤーにも '1'(し) が5枚以上配られないようにする。
+    """
+    last_hands: Dict[str, List[str]] = {}
+    for _ in range(max_retry):
+        hands = create_random_hands_no_five_shi()
+        last_hands = hands
+        if all(hands[p].count("1") <= 4 for p in ALL_SEATS):
+            return hands
+    return last_hands
+
 
 
 app = FastAPI(title="Goita FastAPI (Render-ready)")
