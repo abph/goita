@@ -286,7 +286,7 @@ class GoitaState:
 
         # 王玉上がり：最後の2回の「攻め」が王(9)と玉(8)なら基本点を100にする
         hist = self.attack_history.get(player, [])
-        if len(hist) >= 2 and set(hist[-2:]) == {\"8\", \"9\"}:
+        if len(hist) >= 2 and set(hist[-2:]) == {"8", "9"}:
             base = 100
 
         # ダブル判定：
