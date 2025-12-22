@@ -1,4 +1,3 @@
-# goita_ai2/agents/rule_based.py
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -309,25 +308,133 @@ class RuleBasedAgent:
 
         return score
 
+    # ----------------------------
+    # 受け戦略のための補助（今回追加）
+    # ----------------------------
+    def _hand_strength01(self, state, player: str) -> float:
+        """
+        手札の強さを 0〜1 に正規化した指標（大雑把でOK）。
+        - 2-5の占有を強く評価
+        - 6/7の2枚を評価
+        - 1(し)が多いのは微減点
+        """
+        hand = state.hands[player]
+        c = Counter(hand)
+
+        raw = 0.0
+        for x in ("2", "3", "4", "5"):
+            raw += {4: 3.0, 3: 2.0, 2: 1.0}.get(c.get(x, 0), 0.0)
+
+        for x in ("6", "7"):
+            if c.get(x, 0) >= 2:
+                raw += 1.2
+
+        raw -= 0.15 * max(0, c.get("1", 0) - 2)
+
+        # だいたい 0〜1 に収める（上限は粗くてOK）
+        return max(0.0, min(1.0, raw / 7.0))
+
+    def _ally_block_penalty(self, hs01: float) -> float:
+        """
+        味方の攻めを止めることへのペナルティ。
+        手札が弱いほど「味方を通す」価値が高い。
+        """
+        if hs01 < 0.45:   # 弱い
+            return 600.0
+        if hs01 < 0.65:   # 普通
+            return 300.0
+        return 120.0      # 強い
+
+    def _scarce_receive(self, state, player: str) -> bool:
+        """
+        「受けられる駒が少ない」= いまの攻めを同駒で受ける手段が乏しい。
+        ※8/9万能受けはここでは含めない（温存したいので最後の手段扱い）。
+        """
+        atk = state.current_attack
+        if atk is None:
+            return False
+        if atk in ("1", "2", "3", "4", "5", "6", "7"):
+            return state.hands[player].count(atk) <= 1
+        return False
+
+    def _best_attack_score_after_receive(self, s, player: str) -> float:
+        """
+        受けた後の自分の攻めの最大スコア（=受けで主導権を取る価値）。
+        """
+        try:
+            actions = s.legal_actions(player)
+        except Exception:
+            return -1e18
+
+        has_non_king = any(
+            (t in ("attack", "attack_after_block")) and (a is not None) and (a not in ("8", "9"))
+            for (t, _b, a) in actions
+        )
+
+        best = -1e18
+        for (t, b, a) in actions:
+            if t not in ("attack", "attack_after_block"):
+                continue
+            best = max(
+                best,
+                self._score_attack_phase(
+                    s, player, t, b, a,
+                    has_non_king_attack_option=has_non_king,
+                )
+            )
+        return best
+
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
+        # pass
         if action_type == "pass":
             return 0.0
 
+        # receive
         if action_type != "receive" or block is None:
             return -1e18
 
-        # ★ここも player で判定
+        # ★ここも player で判定：受け→次の攻めで上がりが見えるなら最優先
         bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
         if bonus > 0:
             return 1e9
 
-        if state.attacker is not None:
-            if self._same_team(state.attacker, player):
-                return -100.0
+        hs = self._hand_strength01(state, player)
 
-        if block in ("8", "9"):
-            return 1.0
-        return 5.0
+        # 味方の攻めを止めるのは原則NG（手札が弱いほどNGを強める）
+        ally_pen = 0.0
+        if state.attacker is not None and self._same_team(state.attacker, player):
+            ally_pen = self._ally_block_penalty(hs)
+
+            # 例外：手札が強いのに、受けられる駒が少ない局面は
+            # 「今逃すと攻め権を取りにくい」ので止めても受けを許す
+            if hs >= 0.65 and self._scarce_receive(state, player):
+                ally_pen *= 0.25
+
+        # 受け札のコスト（温存重視：弱い手札ほど強く効かせる）
+        cost = 0.0
+        if block in ("2", "3", "4", "5"):
+            cost += 35.0
+        elif block in ("6", "7"):
+            cost += 25.0
+        elif block in ("8", "9"):
+            cost += 45.0
+        elif block == "1":
+            cost += 5.0
+
+        if hs < 0.45:
+            cost *= 1.35  # 弱い→温存重視
+        elif hs >= 0.65:
+            cost *= 0.75  # 強い→攻め権重視
+
+        # 受けた後の「攻めの強さ」を評価に入れる
+        try:
+            s = self._apply_action_on_copy(state, player, ("receive", block, None))
+        except Exception:
+            return -1e18
+        future_attack = self._best_attack_score_after_receive(s, player)
+
+        # 合成：係数0.08は「攻め評価のスケールが大きい」前提の控えめ係数
+        return 0.08 * future_attack - cost - ally_pen
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         # ★席が混ざったら即気づけるようにする
