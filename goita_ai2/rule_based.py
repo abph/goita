@@ -28,6 +28,10 @@ class RuleBasedAgent:
         # ② 9・8（王・玉）の使いどころ：攻めで出すのを遅らせる
         self.KING_ATTACK_PENALTY = 300.0        # 代替攻めがあるなら 8/9 攻めを強く避ける
 
+        # ★今回追加：最初の「敵の攻め」に対する受け方針（強手札なら即受け、弱手札なら1回だけスルー）
+        self.FIRST_ENEMY_RECEIVE_BONUS = 500.0   # 強手札：最初の敵攻めは受けを強く後押し
+        self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札：最初の敵攻めは1回だけパスを強く後押し
+
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
         if self.me is None:
@@ -94,7 +98,37 @@ class RuleBasedAgent:
             init_count_all=cnt_all,
             ally=self._ally_of(self.me),
             ally_axis_pending=ally_axis_pending,
+
+            # ★今回追加：最初の「敵の攻め」に遭遇したか／スルー済みか
+            first_enemy_attack_seen=False,
+            first_enemy_attack_skipped=False,
         )
+
+    def _strong_initial_hand(self, state) -> bool:
+        """
+        初期手札が強いかどうか（ユーザー指定の定義）
+          - 2-5 のどれか4枚
+          - 6/7 のどちらか2枚
+          - 2-5 のどれか3枚
+        """
+        tr = self._track.get(id(state))
+        if tr is None:
+            return False
+
+        c_x = tr["my_init_count"]     # 2-5の枚数
+        c_all = tr["init_count_all"]  # 全駒の枚数（初期手札）
+
+        for x in ("2", "3", "4", "5"):
+            if c_x.get(x, 0) == 4:
+                return True
+        for x in ("6", "7"):
+            if c_all.get(x, 0) == 2:
+                return True
+        for x in ("2", "3", "4", "5"):
+            if c_x.get(x, 0) == 3:
+                return True
+
+        return False
 
     # ----------------------------
     # ③ 上がり読み（1手先だけ）
@@ -310,24 +344,62 @@ class RuleBasedAgent:
         return score
 
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
+        """
+        受け戦略（今回のシンプル版）
+          - 強手札なら：最初の「敵の攻め」は受けを強く推奨
+          - 弱手札なら：最初の「敵の攻め」は1回だけスルー（パス）を強く推奨
+          - 味方の攻めは基本止めない（既存 -100 を維持）
+          - 受け→次攻めで1手上がりが見えるなら最優先
+        """
+        # まず、既存のベーススコア
         if action_type == "pass":
-            return 0.0
+            base = 0.0
+        else:
+            if action_type != "receive" or block is None:
+                return -1e18
 
-        if action_type != "receive" or block is None:
-            return -1e18
+            # ★ここも player で判定
+            bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
+            if bonus > 0:
+                return 1e9
 
-        # ★ここも player で判定
-        bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
-        if bonus > 0:
-            return 1e9
-
-        if state.attacker is not None:
-            if self._same_team(state.attacker, player):
+            # 味方の攻めは止めない（強ペナルティ）
+            if state.attacker is not None and self._same_team(state.attacker, player):
                 return -100.0
 
-        if block in ("8", "9"):
-            return 1.0
-        return 5.0
+            # 受け駒の大雑把な好み（既存維持）
+            base = 1.0 if block in ("8", "9") else 5.0
+
+        # ★ここから「最初の敵の攻め」だけ特別ルール
+        tr = self._track.get(id(state))
+        if tr is None:
+            return base
+
+        enemy_attack_turn = (
+            state.phase == "receive" and
+            state.current_attack is not None and
+            state.attacker is not None and
+            (not self._same_team(state.attacker, player))
+        )
+
+        if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
+            strong = self._strong_initial_hand(state)
+
+            if strong:
+                # 強手札：最初の敵攻めは即受け（パスを避ける）
+                if action_type == "pass":
+                    base -= self.FIRST_ENEMY_RECEIVE_BONUS
+                else:
+                    base += self.FIRST_ENEMY_RECEIVE_BONUS
+            else:
+                # 弱手札：最初の敵攻めは1回だけスルーしたい
+                if not tr["first_enemy_attack_skipped"]:
+                    if action_type == "pass":
+                        base += self.FIRST_ENEMY_PASS_BONUS
+                    else:
+                        base -= self.FIRST_ENEMY_PASS_BONUS
+
+        return base
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         # ★席が混ざったら即気づけるようにする
@@ -361,5 +433,19 @@ class RuleBasedAgent:
             if score > best_score:
                 best_score = score
                 best_action = (t, block, attack)
+
+        # ★「最初の敵の攻め」遭遇フラグを、選択結果で確定更新
+        tr = self._track.get(id(state))
+        if tr is not None:
+            enemy_attack_turn = (
+                state.phase == "receive" and
+                state.current_attack is not None and
+                state.attacker is not None and
+                (not self._same_team(state.attacker, player))
+            )
+            if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
+                tr["first_enemy_attack_seen"] = True
+                if best_action[0] == "pass":
+                    tr["first_enemy_attack_skipped"] = True
 
         return best_action
