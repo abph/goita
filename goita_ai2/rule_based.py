@@ -3,21 +3,26 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 from collections import Counter
-import copy
 import os
-import csv
-from pathlib import Path
+import copy
 
-from goita_ai2.state import POINTS  # 基本点（9=50, ... ,1=10）
+from goita_ai2.rule_based import POINTS  # 基本点（9=50, ... ,1=10）
 
 Action = Tuple[str, Optional[str], Optional[str]]  # (action_type, block, attack)
 TARGET_X = ("2", "3", "4", "5")  # 「かかり」対象（4枚駒）
 
 
 class RuleBasedAgent:
-    def __init__(self, name: str = "RuleBased", heuristic_csv_path: Optional[str] = None):
+    def __init__(self, name: str = "RuleBased", debug=None):
         self.name = name
         self.me: Optional[str] = None
+
+        # Debug logging (receive-phase). Set debug=True or env GOITA_DEBUG=1
+        if debug is None:
+            debug = os.getenv("GOITA_DEBUG", "0") == "1"
+        self.debug = bool(debug)
+        self._debug_print_limit = int(os.getenv("GOITA_DEBUG_LIMIT", "200"))
+        self._debug_print_count = 0
 
         # 対局(state)ごとのトラッカー
         self._track: Dict[int, dict] = {}
@@ -30,18 +35,6 @@ class RuleBasedAgent:
 
         # ② 9・8（王・玉）の使いどころ：攻めで出すのを遅らせる
         self.KING_ATTACK_PENALTY = 300.0        # 代替攻めがあるなら 8/9 攻めを強く避ける
-
-        # 受け判断用ヒューリスティック表（hand_key -> score）
-        self._heuristic_csv_path: Optional[str] = heuristic_csv_path
-        self._hand_score_table: Optional[Dict[str, int]] = None
-        # CSV分布に基づく tier 閾値（10%,25%,75%,90%）
-        self.RECV_T10 = 241
-        self.RECV_T25 = 269
-        self.RECV_T75 = 354
-        self.RECV_T90 = 404
-        # CSVスコアの想定レンジ（正規化用）
-        self.RECV_MIN = 191
-        self.RECV_MAX = 667
 
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
@@ -61,6 +54,22 @@ class RuleBasedAgent:
 
     def _ally_of(self, me: str) -> str:
         return "C" if me == "A" else "A" if me == "C" else "D" if me == "B" else "B"
+
+
+    # ----------------------------
+    # Debug helpers
+    # ----------------------------
+    def _hand_key(self, state, player: str) -> str:
+        """手札8枚を昇順に並べて連結したキー（例: 22226789）"""
+        return "".join(sorted(state.hands[player]))
+
+    def _dprint(self, msg: str) -> None:
+        if not getattr(self, "debug", False):
+            return
+        if getattr(self, "_debug_print_count", 0) >= getattr(self, "_debug_print_limit", 200):
+            return
+        self._debug_print_count += 1
+        print(msg)
 
     def _get_initial_hand(self, state, player: str) -> List[str]:
         sid = id(state)
@@ -184,6 +193,11 @@ class RuleBasedAgent:
             return
 
         self._ensure_trackers(state)
+        # Debug: show legal actions and scoring in receive phase
+        if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
+            hk = self._hand_key(state, player)
+            self._dprint("[RB][RECEIVE] turn=%s attacker=%s current_attack=%s hand=%s" % (state.turn, state.attacker, state.current_attack, hk))
+            self._dprint("[RB][RECEIVE] actions=%s" % (actions,))
         tr = self._track.get(id(state))
         if tr is None:
             return
@@ -324,166 +338,25 @@ class RuleBasedAgent:
 
         return score
 
-
-    # ----------------------------
-    # 受け判断：手札ヒューリスティック（CSV）
-    # ----------------------------
-    def _hand_key(self, state, player: str) -> str:
-        """手札8枚を昇順に並べて連結したキー（例: '22226789'）。"""
-        hand = state.hands[player]
-        return "".join(sorted(hand))
-
-    def _load_hand_score_table(self) -> None:
-        """CSVを読み込み、hand_key -> score の辞書を構築（遅延ロード）。"""
-        if self._hand_score_table is not None:
-            return
-
-        path_candidates = []
-        if self._heuristic_csv_path:
-            path_candidates.append(Path(self._heuristic_csv_path))
-        # よくある配置（実行ディレクトリ / 同梱ファイル / /mnt/data）
-        path_candidates.extend([
-            Path("ヒューリスティック得点_no5pawns.csv"),
-            Path(__file__).resolve().parent.parent / "ヒューリスティック得点_no5pawns.csv",
-            Path("/mnt/data/ヒューリスティック得点_no5pawns.csv"),
-        ])
-
-        csv_path = None
-        for p in path_candidates:
-            try:
-                if p.exists():
-                    csv_path = p
-                    break
-            except Exception:
-                continue
-
-        table: Dict[str, int] = {}
-        if csv_path is not None:
-            try:
-                with csv_path.open("r", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        hk = (row.get("hand") or "").strip()
-                        sc = row.get("score")
-                        if not hk or sc is None:
-                            continue
-                        try:
-                            table[hk] = int(sc)
-                        except Exception:
-                            continue
-            except Exception:
-                table = {}
-
-        self._hand_score_table = table
-
-    def _hand_heuristic_score(self, state, player: str) -> int:
-        """手札ヒューリスティック得点（表にない場合は中央値相当を返す）。"""
-        self._load_hand_score_table()
-        hk = self._hand_key(state, player)
-        if self._hand_score_table and hk in self._hand_score_table:
-            return self._hand_score_table[hk]
-        # 表に無いケースは中央値付近（保守的）
-        return 309
-
-    def _recv_norm01(self, score: int) -> float:
-        denom = float(self.RECV_MAX - self.RECV_MIN)
-        if denom <= 0:
-            return 0.5
-        x = (float(score) - float(self.RECV_MIN)) / denom
-        return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
-
-    def _recv_tier(self, score: int) -> str:
-        """score帯を5段階で返す。"""
-        if score <= self.RECV_T10:
-            return "ULTRA_WEAK"
-        if score <= self.RECV_T25:
-            return "WEAK"
-        if score <= self.RECV_T75:
-            return "NORMAL"
-        if score <= self.RECV_T90:
-            return "STRONG"
-        return "ULTRA_STRONG"
-
-    def _scarce_receive_condition(self, state, player: str, score: int) -> bool:
-        """例外：手札が強いのに、自然受け（同駒受け）が薄い。"""
-        if score < self.RECV_T75 + 1:  # STRONG以上（>=355）
-            return False
-        atk = state.current_attack
-        if atk is None:
-            return False
-        if atk not in ("1", "2", "3", "4", "5", "6", "7"):
-            return False
-        return state.hands[player].count(atk) <= 1
-
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
-        # ----------------------------
-        # 受けフェーズ：score（手札強さ）に応じて「受け寄り / パス寄り」を切り替える
-        # ----------------------------
-        score = self._hand_heuristic_score(state, player)
-        norm = self._recv_norm01(score)
-        tier = self._recv_tier(score)
-
         if action_type == "pass":
-            # 低スコアほどパスを選びやすくする（味方の攻めを通し、様子を見る）
-            s = 0.0
-            # パス基準点（弱いほど+、強いほど-）
-            s += (0.5 - norm) * 120.0
-
-            # 味方が攻めているなら、より強くパス寄り
-            if state.attacker is not None and self._same_team(state.attacker, player):
-                s += 80.0
-
-            return s
+            return 0.0
 
         if action_type != "receive" or block is None:
             return -1e18
 
-        # R0: 受け→次の攻めで上がれるなら最優先
-        bonus = self._win_after_receive_bonus(state, player, ("receive", block, None))
+        # ★ここも player で判定
+        bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
         if bonus > 0:
             return 1e9
 
-        # 受け基準点（強いほど+）
-        s = 0.0
-        s += (norm - 0.5) * 120.0
+        if state.attacker is not None:
+            if self._same_team(state.attacker, player):
+                return -100.0
 
-        # 味方の攻めを止めるペナルティ（弱いほど重い）
-        if state.attacker is not None and self._same_team(state.attacker, player):
-            ally_pen = (1.0 - norm) * 600.0 + 40.0  # ULTRA_WEAK で最大級
-            # 例外：強い×自然受けが薄い → 受けて攻め権を取りに行く
-            if self._scarce_receive_condition(state, player, score):
-                ally_pen *= 0.25
-            s -= ally_pen
-
-        # 出す駒コスト（温存したい駒ほど重い）
         if block in ("8", "9"):
-            cost = 60.0
-            # 同駒で受けられるのに 8/9 を使うのは基本避ける
-            atk = state.current_attack
-            if atk is not None and atk in state.hands[player]:
-                cost += 60.0
-        elif block in ("2", "3", "4", "5"):
-            cost = 40.0
-        elif block in ("6", "7"):
-            cost = 25.0
-        elif block == "1":
-            cost = 5.0
-        else:
-            cost = 20.0
-
-        # 低スコアほど温存重視なのでコストを強く効かせる
-        if tier == "ULTRA_WEAK":
-            cost *= 1.35
-        elif tier == "WEAK":
-            cost *= 1.20
-        elif tier == "STRONG":
-            cost *= 0.90
-        elif tier == "ULTRA_STRONG":
-            cost *= 0.80
-
-        s -= cost
-
-        return s
+            return 1.0
+        return 5.0
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         # ★席が混ざったら即気づけるようにする
@@ -513,9 +386,14 @@ class RuleBasedAgent:
                 )
             else:
                 score = self._score_receive_phase(state, player, t, block)
+            if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
+                self._dprint("[RB][RECEIVE] cand=%s score=%.3f" % ((t, block, attack), score))
 
             if score > best_score:
                 best_score = score
                 best_action = (t, block, attack)
+
+        if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
+            self._dprint("[RB][RECEIVE] chosen=%s best_score=%.3f" % (best_action, best_score))
 
         return best_action
