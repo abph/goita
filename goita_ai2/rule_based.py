@@ -9,6 +9,7 @@ from goita_ai2.state import POINTS  # 基本点（9=50, ... ,1=10）
 
 Action = Tuple[str, Optional[str], Optional[str]]  # (action_type, block, attack)
 TARGET_X = ("2", "3", "4", "5")  # 「かかり」対象（4枚駒）
+TARGET_LAST1 = ("2", "3", "4", "5", "6", "7")      # ★残り1枚狙い対象
 
 
 class RuleBasedAgent:
@@ -31,6 +32,10 @@ class RuleBasedAgent:
         # ★最初の「敵の攻め」に対する受け方針
         self.FIRST_ENEMY_RECEIVE_BONUS = 500.0   # 強手札：最初の敵攻めは受けを強く後押し
         self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札 or 8/9受け：最初の敵攻めは1回だけパスを強く後押し
+
+        # ★追加：残り1枚（2-7）を自分が握っているなら攻めで出す
+        #   - かかりSTRONG(+120) より下、占有率(3枚=+55) より上くらい
+        self.LAST_ONE_BONUS = 65.0
 
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
@@ -70,7 +75,7 @@ class RuleBasedAgent:
         cnt_all = Counter(init_hand)
 
         kakari = {x: "UNCERTAIN" for x in TARGET_X}   # "UNCERTAIN" / "STRONG" / "DEAD"
-        enemy_revealed = {x: False for x in TARGET_X} # 相手がXを公開した
+        enemy_revealed = {x: False for x in TARGET_X} # 相手がXを公開した（bool）
         miss = {x: 0 for x in TARGET_X}               # 味方の最初の攻め機会で外した回数
         supported = {x: False for x in TARGET_X}      # 味方がXで攻めた（強証拠）
 
@@ -81,6 +86,9 @@ class RuleBasedAgent:
 
         # ★味方の直近X攻め（かかりごたえ）
         ally_axis_pending: Optional[str] = None
+
+        # ★公開情報として見えた駒の枚数（受けで表／攻めで表）
+        public_seen_counts = {str(i): 0 for i in range(1, 10)}
 
         # 自分が4枚(100%)なら最初からSTRONG
         for x in TARGET_X:
@@ -102,6 +110,9 @@ class RuleBasedAgent:
             # ★最初の「敵の攻め」に遭遇したか／スルー済みか
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
+
+            # ★追加：公開済み枚数
+            public_seen_counts=public_seen_counts,
         )
 
     def _strong_initial_hand(self, state) -> bool:
@@ -129,6 +140,31 @@ class RuleBasedAgent:
                 return True
 
         return False
+
+    # ★追加：公開情報的に「残り1枚」を自分が握っているなら加点
+    def _last_one_remaining_bonus(self, state, player: str, attack: Optional[str]) -> float:
+        if attack is None or attack not in TARGET_LAST1:
+            return 0.0
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return 0.0
+
+        # 自分の現在手札にその駒が無いなら対象外
+        if attack not in state.hands[player]:
+            return 0.0
+
+        # 総枚数（初期配分）
+        total = 4 if attack in ("2", "3", "4", "5") else 2
+
+        seen = tr["public_seen_counts"].get(attack, 0)
+
+        # 公開済みが total-1（=残り1枚が未公開）で、その未公開が自分手札にある
+        # → 公開情報的に「残り1枚を自分が握っている」と判断できる
+        if seen == total - 1:
+            return self.LAST_ONE_BONUS
+
+        return 0.0
 
     # ----------------------------
     # ③ 上がり読み（1手先だけ）
@@ -210,13 +246,21 @@ class RuleBasedAgent:
         action_type, block, attack = action
         ally = tr["ally"]
 
+        # ★公開済み枚数カウント（受けは block が表）
         if action_type == "receive" and block is not None:
+            if block in tr["public_seen_counts"]:
+                tr["public_seen_counts"][block] += 1
+
             if (not self._same_team(player, self.me)) and block in TARGET_X:
                 tr["enemy_revealed"][block] = True
             if self._same_team(player, self.me) and block in TARGET_X:
                 tr["pending_ally_received"][player] = block
 
+        # ★攻めで表に出た駒カウント（attack は表）
         if action_type in ("attack", "attack_after_block") and attack is not None:
+            if attack in tr["public_seen_counts"]:
+                tr["public_seen_counts"][attack] += 1
+
             if (not self._same_team(player, self.me)) and attack in TARGET_X:
                 tr["enemy_revealed"][attack] = True
 
@@ -321,6 +365,9 @@ class RuleBasedAgent:
             ax = tr.get("ally_axis_pending")
             if ax in TARGET_X and attack == ax:
                 score += 90.0
+
+        # ★追加：盤面（公開情報）上「残り1枚」を自分が握っているなら、それを攻めで出す
+        score += self._last_one_remaining_bonus(state, player, attack)
 
         score += self._occupancy_priority_bonus(state, attack)
 
