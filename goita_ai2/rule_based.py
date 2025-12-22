@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 from collections import Counter
-import os
 import copy
 
 from goita_ai2.state import POINTS  # 基本点（9=50, ... ,1=10）
@@ -13,16 +12,9 @@ TARGET_X = ("2", "3", "4", "5")  # 「かかり」対象（4枚駒）
 
 
 class RuleBasedAgent:
-    def __init__(self, name: str = "RuleBased", debug=None):
+    def __init__(self, name: str = "RuleBased"):
         self.name = name
         self.me: Optional[str] = None
-
-        # Debug logging (receive-phase). Set debug=True or env GOITA_DEBUG=1
-        if debug is None:
-            debug = os.getenv("GOITA_DEBUG", "0") == "1"
-        self.debug = bool(debug)
-        self._debug_print_limit = int(os.getenv("GOITA_DEBUG_LIMIT", "200"))
-        self._debug_print_count = 0
 
         # 対局(state)ごとのトラッカー
         self._track: Dict[int, dict] = {}
@@ -54,22 +46,6 @@ class RuleBasedAgent:
 
     def _ally_of(self, me: str) -> str:
         return "C" if me == "A" else "A" if me == "C" else "D" if me == "B" else "B"
-
-
-    # ----------------------------
-    # Debug helpers
-    # ----------------------------
-    def _hand_key(self, state, player: str) -> str:
-        """手札8枚を昇順に並べて連結したキー（例: 22226789）"""
-        return "".join(sorted(state.hands[player]))
-
-    def _dprint(self, msg: str) -> None:
-        if not getattr(self, "debug", False):
-            return
-        if getattr(self, "_debug_print_count", 0) >= getattr(self, "_debug_print_limit", 200):
-            return
-        self._debug_print_count += 1
-        print(msg)
 
     def _get_initial_hand(self, state, player: str) -> List[str]:
         sid = id(state)
@@ -193,11 +169,6 @@ class RuleBasedAgent:
             return
 
         self._ensure_trackers(state)
-        # Debug: show legal actions and scoring in receive phase
-        if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
-            hk = self._hand_key(state, player)
-            self._dprint("[RB][RECEIVE] turn=%s attacker=%s current_attack=%s hand=%s" % (state.turn, state.attacker, state.current_attack, hk))
-            self._dprint("[RB][RECEIVE] actions=%s" % (actions,))
         tr = self._track.get(id(state))
         if tr is None:
             return
@@ -386,14 +357,9 @@ class RuleBasedAgent:
                 )
             else:
                 score = self._score_receive_phase(state, player, t, block)
-            if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
-                self._dprint("[RB][RECEIVE] cand=%s score=%.3f" % ((t, block, attack), score))
 
             if score > best_score:
                 best_score = score
                 best_action = (t, block, attack)
-
-        if getattr(self, 'debug', False) and state.phase == "receive" and player == self.me:
-            self._dprint("[RB][RECEIVE] chosen=%s best_score=%.3f" % (best_action, best_score))
 
         return best_action
