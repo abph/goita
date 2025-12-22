@@ -28,9 +28,9 @@ class RuleBasedAgent:
         # ② 9・8（王・玉）の使いどころ：攻めで出すのを遅らせる
         self.KING_ATTACK_PENALTY = 300.0        # 代替攻めがあるなら 8/9 攻めを強く避ける
 
-        # ★今回追加：最初の「敵の攻め」に対する受け方針（強手札なら即受け、弱手札なら1回だけスルー）
+        # ★最初の「敵の攻め」に対する受け方針
         self.FIRST_ENEMY_RECEIVE_BONUS = 500.0   # 強手札：最初の敵攻めは受けを強く後押し
-        self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札：最初の敵攻めは1回だけパスを強く後押し
+        self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札 or 8/9受け：最初の敵攻めは1回だけパスを強く後押し
 
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
@@ -99,7 +99,7 @@ class RuleBasedAgent:
             ally=self._ally_of(self.me),
             ally_axis_pending=ally_axis_pending,
 
-            # ★今回追加：最初の「敵の攻め」に遭遇したか／スルー済みか
+            # ★最初の「敵の攻め」に遭遇したか／スルー済みか
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
         )
@@ -345,9 +345,9 @@ class RuleBasedAgent:
 
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
         """
-        受け戦略（今回のシンプル版）
-          - 強手札なら：最初の「敵の攻め」は受けを強く推奨
-          - 弱手札なら：最初の「敵の攻め」は1回だけスルー（パス）を強く推奨
+        受け戦略（今回のシンプル版 + 条件追加）
+          - 初期手札が強い かつ 8/9受けでない：最初の「敵の攻め」は受けを強く推奨
+          - 初期手札が強くない OR 8/9で受ける場合：最初の「敵の攻め」は1回だけスルー（パス）を強く推奨
           - 味方の攻めは基本止めない（既存 -100 を維持）
           - 受け→次攻めで1手上がりが見えるなら最優先
         """
@@ -384,20 +384,23 @@ class RuleBasedAgent:
 
         if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
             strong = self._strong_initial_hand(state)
+            # ★追加条件：8/9で受ける場合も「スルー側」に寄せる
+            receiving_with_king = (action_type == "receive" and block in ("8", "9"))
+            prefer_skip_once = (not strong) or receiving_with_king
 
-            if strong:
-                # 強手札：最初の敵攻めは即受け（パスを避ける）
-                if action_type == "pass":
-                    base -= self.FIRST_ENEMY_RECEIVE_BONUS
-                else:
-                    base += self.FIRST_ENEMY_RECEIVE_BONUS
-            else:
-                # 弱手札：最初の敵攻めは1回だけスルーしたい
+            if prefer_skip_once:
+                # 弱手札 or 8/9受け：最初の敵攻めは1回だけスルーしたい
                 if not tr["first_enemy_attack_skipped"]:
                     if action_type == "pass":
                         base += self.FIRST_ENEMY_PASS_BONUS
                     else:
                         base -= self.FIRST_ENEMY_PASS_BONUS
+            else:
+                # 強手札（かつ 8/9受けでない）：最初の敵攻めは即受け（パスを避ける）
+                if action_type == "pass":
+                    base -= self.FIRST_ENEMY_RECEIVE_BONUS
+                else:
+                    base += self.FIRST_ENEMY_RECEIVE_BONUS
 
         return base
 
