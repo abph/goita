@@ -17,47 +17,35 @@ class RuleBasedAgent:
         self.name = name
         self.me: Optional[str] = None
 
-        # 対局(state)ごとのトラッカー
         self._track: Dict[int, dict] = {}
-        # 初期手札（占有率用）
         self._initial_hands_by_state_id: Dict[int, Dict[str, List[str]]] = {}
 
-        # ③ 上がり読み（1手先だけ）
-        self.WIN_NOW_BONUS = 10_000.0            # この手で上がり
-        self.WIN_AFTER_RECEIVE_BONUS = 9_000.0  # 受け→次の攻めで1手上がり
+        self.WIN_NOW_BONUS = 10_000.0
+        self.WIN_AFTER_RECEIVE_BONUS = 9_000.0
 
-        # ② 9・8（王・玉）の使いどころ：攻めで出すのを遅らせる
-        self.KING_ATTACK_PENALTY = 300.0        # 代替攻めがあるなら 8/9 攻めを強く避ける
+        self.KING_ATTACK_PENALTY = 300.0
 
-        # ★最初の「敵の攻め」に対する受け方針
-        self.FIRST_ENEMY_RECEIVE_BONUS = 500.0   # 強手札：最初の敵攻めは受けを強く後押し
-        self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札 or 8/9受け：最初の敵攻めは1回だけパスを強く後押し
+        self.FIRST_ENEMY_RECEIVE_BONUS = 500.0
+        self.FIRST_ENEMY_PASS_BONUS = 500.0
 
-        # ★追加：残り1枚（2-7）を自分が握っているなら攻めで出す
         self.LAST_ONE_BONUS = 65.0
-
-        # ★追加：「最初の敵攻めが し(1)」専用の強制度（既存±500より強くする）
         self.FIRST_ENEMY_SHI_FORCE = 800.0
 
-        # ★追加：攻めの戦略（王・玉の順番）
-        # 初期手札で王(9)と玉(8)の両方を持っているなら、
-        #  2枚目の攻めで 9 or 8、3枚目の攻めで 残りの 8/9 を優先する（可能な限り）
         self.KING_GYOKU_FORCE_ORDER = True
-
-        # ★NEW：汎用ルール
-        # 3枚目の攻めで、8/9が攻めとして出せるなら必ず出す（優先は 8→9）
         self.FORCE_KING_GYOKU_ON_THIRD_ATTACK = True
 
-    # ★追加：席を固定する（最初に1回）
+        # ★NEW：3枚目8/9強制よりも優先する「確定で通る攻め」があればそっち
+        self.PREFER_UNRECEIVABLE_ON_THIRD_ATTACK = True
+
+        # ★NEW：残り2枚で8/9が含まれるなら、8/9は最後まで温存（即上がりは例外）
+        self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT = True
+
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
         elif self.me != player:
             raise ValueError(f"{self.name}: already bound to {self.me}, cannot bind to {player}")
 
-    # ----------------------------
-    # 基本ユーティリティ
-    # ----------------------------
     def _same_team(self, p1: str, p2: str) -> bool:
         return (
             (p1 in ("A", "C") and p2 in ("A", "C")) or
@@ -85,23 +73,17 @@ class RuleBasedAgent:
         init_hand = self._get_initial_hand(state, self.me)
         cnt_all = Counter(init_hand)
 
-        kakari = {x: "UNCERTAIN" for x in TARGET_X}   # "UNCERTAIN" / "STRONG" / "DEAD"
-        enemy_revealed = {x: False for x in TARGET_X} # 相手がXを公開した（bool）
-        miss = {x: 0 for x in TARGET_X}               # 味方の最初の攻め機会で外した回数
-        supported = {x: False for x in TARGET_X}      # 味方がXで攻めた（強証拠）
+        kakari = {x: "UNCERTAIN" for x in TARGET_X}
+        enemy_revealed = {x: False for x in TARGET_X}
+        miss = {x: 0 for x in TARGET_X}
+        supported = {x: False for x in TARGET_X}
 
-        pending_axis: Optional[str] = None            # 自分がX軸を提示した
+        pending_axis: Optional[str] = None
         pending_ally_received = {"A": None, "B": None, "C": None, "D": None}
-
         my_init_count = {x: cnt_all.get(x, 0) for x in TARGET_X}
-
-        # ★味方の直近X攻め（かかりごたえ）
         ally_axis_pending: Optional[str] = None
-
-        # ★公開情報として見えた駒の枚数（受けで表／攻めで表）
         public_seen_counts = {str(i): 0 for i in range(1, 10)}
 
-        # 自分が4枚(100%)なら最初からSTRONG
         for x in TARGET_X:
             if my_init_count[x] == 4:
                 kakari[x] = "STRONG"
@@ -117,36 +99,24 @@ class RuleBasedAgent:
             init_count_all=cnt_all,
             ally=self._ally_of(self.me),
             ally_axis_pending=ally_axis_pending,
-
-            # ★最初の「敵の攻め」に遭遇したか／スルー済みか
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
-
-            # ★追加：公開済み枚数
             public_seen_counts=public_seen_counts,
 
-            # ★追加：自分の攻め回数（agentが選択した攻めの回数。on_public_actionに依存しない）
+            # ★自分の攻め回数（agentが選択した攻め回数）
             my_attack_count=0,
 
-            # ★追加：王(9)・玉(8)の「2枚目→3枚目」プラン（初期に両方持ちのときだけ）
+            # ★初期に8/9両方持ちのときだけ2→3枚目プランON
             kg_plan_active=(("9" in init_hand) and ("8" in init_hand)),
             kg_second=None,
         )
 
     def _strong_initial_hand(self, state) -> bool:
-        """
-        初期手札が強いかどうか（ユーザー指定の定義）
-          - 2-5 のどれか4枚
-          - 6/7 のどちらか2枚
-          - 2-5 のどれか3枚
-        """
         tr = self._track.get(id(state))
         if tr is None:
             return False
-
-        c_x = tr["my_init_count"]     # 2-5の枚数
-        c_all = tr["init_count_all"]  # 全駒の枚数（初期手札）
-
+        c_x = tr["my_init_count"]
+        c_all = tr["init_count_all"]
         for x in ("2", "3", "4", "5"):
             if c_x.get(x, 0) == 4:
                 return True
@@ -156,38 +126,23 @@ class RuleBasedAgent:
         for x in ("2", "3", "4", "5"):
             if c_x.get(x, 0) == 3:
                 return True
-
         return False
 
-    # ★追加：公開情報的に「残り1枚」を自分が握っているなら加点
     def _last_one_remaining_bonus(self, state, player: str, attack: Optional[str]) -> float:
         if attack is None or attack not in TARGET_LAST1:
             return 0.0
-
         tr = self._track.get(id(state))
         if tr is None:
             return 0.0
-
-        # 自分の現在手札にその駒が無いなら対象外
         if attack not in state.hands[player]:
             return 0.0
-
-        # 総枚数（初期配分）
         total = 4 if attack in ("2", "3", "4", "5") else 2
         seen = tr["public_seen_counts"].get(attack, 0)
+        return self.LAST_ONE_BONUS if seen == total - 1 else 0.0
 
-        if seen == total - 1:
-            return self.LAST_ONE_BONUS
-        return 0.0
-
-    # ----------------------------
-    # ③ 上がり読み（1手先だけ）
-    # ----------------------------
     def _apply_action_on_copy(self, state, player: str, action: Action):
-        """stateをdeepcopyして action を1回だけ適用したstateを返す。"""
         s = copy.deepcopy(state)
         t, block, attack = action
-
         if t == "pass":
             s.apply_pass(player)
         elif t == "receive":
@@ -204,11 +159,9 @@ class RuleBasedAgent:
             s.apply_attack_after_block(player, block, attack)
         else:
             raise ValueError(f"unknown action type: {t}")
-
         return s
 
     def _win_now_bonus(self, state, player: str, action: Action) -> float:
-        """この手で上がれるなら超加点。"""
         try:
             s = self._apply_action_on_copy(state, player, action)
         except Exception:
@@ -216,21 +169,17 @@ class RuleBasedAgent:
         return self.WIN_NOW_BONUS if (s.finished and s.winner == player) else 0.0
 
     def _win_after_receive_bonus(self, state, player: str, action: Action) -> float:
-        """受けたあと、次の自分の攻めで1手上がりできるなら加点。"""
         t, block, _ = action
         if t != "receive" or block is None:
             return 0.0
-
         try:
             s = self._apply_action_on_copy(state, player, action)
         except Exception:
             return 0.0
-
         try:
             next_actions = s.legal_actions(player)
         except Exception:
             return 0.0
-
         for (nt, nb, na) in next_actions:
             if nt not in ("attack", "attack_after_block"):
                 continue
@@ -240,16 +189,11 @@ class RuleBasedAgent:
                 continue
             if s2.finished and s2.winner == player:
                 return self.WIN_AFTER_RECEIVE_BONUS
-
         return 0.0
 
-    # ----------------------------
-    # 公開情報イベント（simulate.py から呼ぶ）
-    # ----------------------------
     def on_public_action(self, state, player: str, action: Action) -> None:
         if self.me is None:
             return
-
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
         if tr is None:
@@ -261,7 +205,6 @@ class RuleBasedAgent:
         if action_type == "receive" and block is not None:
             if block in tr["public_seen_counts"]:
                 tr["public_seen_counts"][block] += 1
-
             if (not self._same_team(player, self.me)) and block in TARGET_X:
                 tr["enemy_revealed"][block] = True
             if self._same_team(player, self.me) and block in TARGET_X:
@@ -270,26 +213,20 @@ class RuleBasedAgent:
         if action_type in ("attack", "attack_after_block") and attack is not None:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
-
             if (not self._same_team(player, self.me)) and attack in TARGET_X:
                 tr["enemy_revealed"][attack] = True
-
             if player == self.me and attack in TARGET_X:
                 tr["pending_axis"] = attack
-
             if player == ally and attack in TARGET_X:
                 tr["ally_axis_pending"] = attack
-
             if player == self.me and tr.get("ally_axis_pending") == attack:
                 tr["ally_axis_pending"] = None
-
             if player == ally:
                 pend_recv = tr["pending_ally_received"].get(player)
                 if pend_recv in TARGET_X:
                     if attack != pend_recv:
                         tr["miss"][pend_recv] += 1
                     tr["pending_ally_received"][player] = None
-
             if player == ally and tr["pending_axis"] in TARGET_X:
                 x = tr["pending_axis"]
                 if attack == x:
@@ -301,15 +238,12 @@ class RuleBasedAgent:
         for x in TARGET_X:
             if tr["kakari"][x] in ("STRONG", "DEAD"):
                 continue
-
             if tr["supported"][x]:
                 tr["kakari"][x] = "STRONG"
                 continue
-
             if tr["my_init_count"][x] == 3 and tr["enemy_revealed"][x]:
                 tr["kakari"][x] = "STRONG"
                 continue
-
             if not tr["enemy_revealed"][x]:
                 threshold = 1 if tr["my_init_count"][x] == 2 else 2 if tr["my_init_count"][x] == 3 else 999
                 if tr["miss"][x] >= threshold:
@@ -321,7 +255,6 @@ class RuleBasedAgent:
         tr = self._track.get(id(state))
         if tr is None:
             return 0.0
-
         st = tr["kakari"].get(attack, "UNCERTAIN")
         if st == "STRONG":
             return 120.0
@@ -335,10 +268,8 @@ class RuleBasedAgent:
         tr = self._track.get(id(state))
         if tr is None:
             return 0.0
-
         c_x = tr["my_init_count"]
         c_all = tr["init_count_all"]
-
         if attack in ("2", "3", "4", "5") and c_x.get(attack, 0) == 4:
             return 80.0
         if attack in ("6", "7") and c_all.get(attack, 0) == 2:
@@ -367,7 +298,6 @@ class RuleBasedAgent:
             return -1e18
 
         score = 0.0
-
         score += self._kakari_score(state, attack)
 
         tr = self._track.get(id(state))
@@ -379,11 +309,9 @@ class RuleBasedAgent:
         score += self._last_one_remaining_bonus(state, player, attack)
         score += self._occupancy_priority_bonus(state, attack)
 
-        if state.attacker is None and state.current_attack is None:
-            if attack == "1":
-                score -= 100.0
+        if state.attacker is None and state.current_attack is None and attack == "1":
+            score -= 100.0
 
-        # 王・玉(9/8)は「攻め」で温存（ただし select_action 側の“強制”が優先）
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY
 
@@ -402,14 +330,11 @@ class RuleBasedAgent:
         else:
             if action_type != "receive" or block is None:
                 return -1e18
-
             bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
             if bonus > 0:
                 return 1e9
-
             if state.attacker is not None and self._same_team(state.attacker, player):
                 return -100.0
-
             base = 1.0 if block in ("8", "9") else 5.0
 
         tr = self._track.get(id(state))
@@ -417,10 +342,10 @@ class RuleBasedAgent:
             return base
 
         enemy_attack_turn = (
-            state.phase == "receive" and
-            state.current_attack is not None and
-            state.attacker is not None and
-            (not self._same_team(state.attacker, player))
+            state.phase == "receive"
+            and state.current_attack is not None
+            and state.attacker is not None
+            and (not self._same_team(state.attacker, player))
         )
 
         if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
@@ -434,25 +359,14 @@ class RuleBasedAgent:
                     return -1e18
 
                 if ones >= 2:
-                    if action_type == "pass":
-                        base -= self.FIRST_ENEMY_SHI_FORCE
-                    else:
-                        base += self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE
-                    return base
+                    return base + (self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE)
 
                 if ones == 1:
                     if strong:
-                        if action_type == "pass":
-                            base -= self.FIRST_ENEMY_SHI_FORCE
-                        else:
-                            base += self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE
-                        return base
+                        return base + (self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE)
                     else:
                         if not tr["first_enemy_attack_skipped"]:
-                            if action_type == "pass":
-                                base += self.FIRST_ENEMY_SHI_FORCE
-                            else:
-                                base -= self.FIRST_ENEMY_SHI_FORCE
+                            return base + (self.FIRST_ENEMY_SHI_FORCE if action_type == "pass" else -self.FIRST_ENEMY_SHI_FORCE)
                         return base
 
             strong = self._strong_initial_hand(state)
@@ -461,17 +375,38 @@ class RuleBasedAgent:
 
             if prefer_skip_once:
                 if not tr["first_enemy_attack_skipped"]:
-                    if action_type == "pass":
-                        base += self.FIRST_ENEMY_PASS_BONUS
-                    else:
-                        base -= self.FIRST_ENEMY_PASS_BONUS
+                    base += self.FIRST_ENEMY_PASS_BONUS if action_type == "pass" else -self.FIRST_ENEMY_PASS_BONUS
             else:
-                if action_type == "pass":
-                    base -= self.FIRST_ENEMY_RECEIVE_BONUS
-                else:
-                    base += self.FIRST_ENEMY_RECEIVE_BONUS
+                base += -self.FIRST_ENEMY_RECEIVE_BONUS if action_type == "pass" else self.FIRST_ENEMY_RECEIVE_BONUS
 
         return base
+
+    # ★NEW：次プレイヤーがその駒で受けられない（=次プレイヤーの手札にその駒が無い）攻めを選ぶ
+    def _best_unreceivable_attack_action(self, state, player: str, attack_actions: List[Action]) -> Optional[Action]:
+        defender = state.next_player(player)
+        cands: List[Action] = []
+        for act in attack_actions:
+            _, _, a = act
+            if a is None:
+                continue
+            if a in state.hands[defender]:
+                continue  # 受けられる可能性がある
+            cands.append(act)
+
+        if not cands:
+            return None
+
+        # 優先：8/9は温存したいので除外できるなら除外（ただし候補がそれしか無いなら許す）
+        non_king = [x for x in cands if x[2] not in ("8", "9")]
+        pool = non_king if non_king else cands
+
+        # スコア：手札に同種が多いほど良い / 点が高いほど良い
+        # （ここはシンプルに決め打ち）
+        def key(act: Action):
+            a = act[2]
+            return (state.hands[player].count(a), POINTS.get(a, 0))
+
+        return sorted(pool, key=key, reverse=True)[0]
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         if self.me is None:
@@ -490,7 +425,7 @@ class RuleBasedAgent:
             for (t, _b, a) in actions
         )
 
-        # 0) この手で上がれるなら最優先（王玉プランよりも優先）
+        # 0) この手で上がれるなら最優先
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
             if t in ("attack", "attack_after_block"):
@@ -510,18 +445,35 @@ class RuleBasedAgent:
 
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
 
-        # 1) ★王(9)・玉(8)の「2枚目→3枚目」優先を “強制” （初期に両方持ちの時）
-        if tr is not None and tr.get("kg_plan_active") and self.KING_GYOKU_FORCE_ORDER:
-            next_attack_no = int(tr.get("my_attack_count", 0)) + 1  # 次に出す攻めが何枚目か
+        # ★B：残り2枚で8/9が含まれるなら、8/9は最後まで温存（今は出さない）
+        if tr is not None and self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT and attack_actions:
+            # 攻めに出す局面の「自分の残り手札枚数」で判定（攻め直前の手札）
+            if len(state.hands[player]) == 2 and any(x in state.hands[player] for x in ("8", "9")):
+                # 8/9以外の攻めが合法なら、それを優先して選ばせる（※即上がりは上で処理済）
+                non_king_attack_actions = [act for act in attack_actions if act[2] not in ("8", "9")]
+                if non_king_attack_actions:
+                    # 通常評価で非8/9から選ぶ
+                    best = non_king_attack_actions[0]
+                    best_score = -1e18
+                    for (t, b, a) in non_king_attack_actions:
+                        sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
+                        if sc > best_score:
+                            best_score = sc
+                            best = (t, b, a)
+                    chosen = best
+                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    return chosen
+                # 非8/9が無いなら仕方ない（8/9を出すしかない）→下へ
 
+        # 1) 初期に両方持ち：2枚目→3枚目の強制
+        if tr is not None and tr.get("kg_plan_active") and self.KING_GYOKU_FORCE_ORDER:
+            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if attack_actions and next_attack_no in (2, 3):
                 hand = state.hands[player]
                 has9 = "9" in hand
                 has8 = "8" in hand
-
                 if has8 or has9:
                     if next_attack_no == 2:
-                        # 2枚目：まず 9（王）→ 8（玉）
                         for p in ["9", "8"]:
                             if p == "9" and not has9:
                                 continue
@@ -537,12 +489,7 @@ class RuleBasedAgent:
 
                     if next_attack_no == 3:
                         second = tr.get("kg_second")
-                        want = None
-                        if second == "9":
-                            want = "8"
-                        elif second == "8":
-                            want = "9"
-
+                        want = "8" if second == "9" else "9" if second == "8" else None
                         if want is not None:
                             for act in attack_actions:
                                 if act[2] == want:
@@ -550,31 +497,41 @@ class RuleBasedAgent:
                                     tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                                     tr["kg_plan_active"] = False
                                     return chosen
-                        else:
-                            # 2枚目で8/9が出せていないなら、3枚目で出せる方（9→8）
-                            for p in ["9", "8"]:
-                                for act in attack_actions:
-                                    if act[2] == p:
-                                        chosen = act
-                                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                        tr["kg_plan_active"] = False
-                                        return chosen
+                        for p in ["9", "8"]:
+                            for act in attack_actions:
+                                if act[2] == p:
+                                    chosen = act
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    tr["kg_plan_active"] = False
+                                    return chosen
 
-        # 2) ★NEW：汎用ルール「3枚目の攻めで 8/9 が出せるなら必ず出す（8→9）」
+        # ★A：3枚目の攻めで8/9を出せる局面でも「確定で通る非8/9」があるならそっち
+        if tr is not None and self.PREFER_UNRECEIVABLE_ON_THIRD_ATTACK and attack_actions:
+            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
+            if next_attack_no == 3:
+                # 3枚目で 8/9 も出せる状況か？
+                has_king_attack = any(act[2] in ("8", "9") for act in attack_actions)
+                if has_king_attack:
+                    unrecv = self._best_unreceivable_attack_action(state, player, attack_actions)
+                    if unrecv is not None and unrecv[2] not in ("8", "9"):
+                        chosen = unrecv
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return chosen
+
+        # 2) 汎用：3枚目の攻めで8/9が出せるなら必ず出す（8→9）
         if tr is not None and self.FORCE_KING_GYOKU_ON_THIRD_ATTACK and attack_actions:
             next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if next_attack_no == 3:
-                for p in ["8", "9"]:  # ★優先：玉(8)→王(9)
+                for p in ["8", "9"]:
                     for act in attack_actions:
                         if act[2] == p:
                             chosen = act
                             tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                            # kg_plan_active だった場合もここで3枚目を消化したので終了扱いにしておく
                             if tr.get("kg_plan_active"):
                                 tr["kg_plan_active"] = False
                             return chosen
 
-        # 3) 通常のスコアリングで選ぶ
+        # 3) 通常スコアリング
         best_action = actions[0]
         best_score = -1e18
 
@@ -591,20 +548,18 @@ class RuleBasedAgent:
                 best_score = score
                 best_action = (t, block, attack)
 
-        # 「最初の敵の攻め」遭遇フラグの更新
         if tr is not None:
             enemy_attack_turn = (
-                state.phase == "receive" and
-                state.current_attack is not None and
-                state.attacker is not None and
-                (not self._same_team(state.attacker, player))
+                state.phase == "receive"
+                and state.current_attack is not None
+                and state.attacker is not None
+                and (not self._same_team(state.attacker, player))
             )
             if enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)):
                 tr["first_enemy_attack_seen"] = True
                 if best_action[0] == "pass":
                     tr["first_enemy_attack_skipped"] = True
 
-            # ★内部カウント更新（on_public_actionに依存しない）
             if best_action[0] in ("attack", "attack_after_block"):
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best_action[2] in ("8", "9") and tr.get("kg_second") is None:
