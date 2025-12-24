@@ -9,7 +9,7 @@ from goita_ai2.state import POINTS  # 基本点（9=50, ... ,1=10）
 
 Action = Tuple[str, Optional[str], Optional[str]]  # (action_type, block, attack)
 TARGET_X = ("2", "3", "4", "5")  # 「かかり」対象（4枚駒）
-TARGET_LAST1 = ("2", "3", "4", "5", "6", "7")      # ★残り1枚狙い対象
+TARGET_LAST1 = ("2", "3", "4", "5", "6", "7")      # 残り1枚狙い対象
 
 
 class RuleBasedAgent:
@@ -29,25 +29,24 @@ class RuleBasedAgent:
         # ② 9・8（王・玉）の使いどころ：攻めで出すのを遅らせる
         self.KING_ATTACK_PENALTY = 300.0        # 代替攻めがあるなら 8/9 攻めを強く避ける
 
-        # ★最初の「敵の攻め」に対する受け方針
+        # 最初の「敵の攻め」に対する受け方針
         self.FIRST_ENEMY_RECEIVE_BONUS = 500.0   # 強手札：最初の敵攻めは受けを強く後押し
         self.FIRST_ENEMY_PASS_BONUS = 500.0      # 弱手札 or 8/9受け：最初の敵攻めは1回だけパスを強く後押し
 
-        # ★追加：残り1枚（2-7）を自分が握っているなら攻めで出す
-        #   - かかりSTRONG(+120) より下、占有率(3枚=+55) より上くらい
+        # 残り1枚（2-7）を自分が握っているなら攻めで出す
         self.LAST_ONE_BONUS = 65.0
 
-        # ★追加：「最初の敵攻めが し(1)」専用の強制度（既存±500より強くする）
+        # 「最初の敵攻めが し(1)」専用の強制度（既存±500より強くする）
         self.FIRST_ENEMY_SHI_FORCE = 800.0
 
-        # ★追加：攻めの戦略（王・玉の順番）
-        # 両方持っていて、まだ一度も使っていないなら：
-        #   - 自分の2枚目の攻め：王(9)
-        #   - 1順後（=自分の3枚目の攻め）：玉(8)
-        self.KING_SECOND_ATTACK_BONUS = 650.0
-        self.GYOKU_THIRD_ATTACK_BONUS = 650.0
+        # 攻めの戦略（王・玉の順番）
+        # 初期手札で 8 と 9 を両方持っているなら：
+        #   - 自分の2枚目の攻め：8 or 9 を強く優先（どちらでもOK）
+        #   - 自分の3枚目の攻め：2枚目に出していない方（残りの8/9）を強く優先
+        self.KING_SECOND_ATTACK_BONUS = 1000.0
+        self.GYOKU_THIRD_ATTACK_BONUS = 1000.0
 
-    # ★追加：席を固定する（最初に1回）
+    # 席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -94,16 +93,19 @@ class RuleBasedAgent:
 
         my_init_count = {x: cnt_all.get(x, 0) for x in TARGET_X}
 
-        # ★味方の直近X攻め（かかりごたえ）
+        # 味方の直近X攻め（かかりごたえ）
         ally_axis_pending: Optional[str] = None
 
-        # ★公開情報として見えた駒の枚数（受けで表／攻めで表）
+        # 公開情報として見えた駒の枚数（受けで表／攻めで表）
         public_seen_counts = {str(i): 0 for i in range(1, 10)}
 
         # 自分が4枚(100%)なら最初からSTRONG
         for x in TARGET_X:
             if my_init_count[x] == 4:
                 kakari[x] = "STRONG"
+
+        # ★王玉プラン：初期手札で8/9を両方持っているか
+        has_king_gyoku_at_start = (cnt_all.get("9", 0) >= 1) and (cnt_all.get("8", 0) >= 1)
 
         self._track[sid] = dict(
             kakari=kakari,
@@ -117,19 +119,25 @@ class RuleBasedAgent:
             ally=self._ally_of(self.me),
             ally_axis_pending=ally_axis_pending,
 
-            # ★最初の「敵の攻め」に遭遇したか／スルー済みか
+            # 最初の「敵の攻め」に遭遇したか／スルー済みか
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
 
-            # ★追加：公開済み枚数
+            # 公開済み枚数
             public_seen_counts=public_seen_counts,
 
-            # ★追加：各プレイヤーの「攻め回数」（attack / attack_after_block の回数）
+            # 各プレイヤーの「攻め回数」（attack / attack_after_block の回数）
             attack_count={p: 0 for p in ("A", "B", "C", "D")},
-            # ★追加：王(9)/玉(8)を“使った（公開した）”か（攻め・受けどちらでも）
+            # 王(9)/玉(8)を“使った（公開した）”か（攻め・受けどちらでも）
             king_used={p: False for p in ("A", "B", "C", "D")},
             gyoku_used={p: False for p in ("A", "B", "C", "D")},
+
+            # ★追加：王玉プランの状態
+            king_gyoku_plan_active={p: False for p in ("A", "B", "C", "D")},
+            king_gyoku_first_attack={p: None for p in ("A", "B", "C", "D")},  # 2枚目で出したのが "8" or "9"
         )
+        # 自分の分だけプランON（他席も将来的に必要なら on_public_action で更新）
+        self._track[sid]["king_gyoku_plan_active"][self.me] = bool(has_king_gyoku_at_start)
 
     def _strong_initial_hand(self, state) -> bool:
         """
@@ -157,7 +165,7 @@ class RuleBasedAgent:
 
         return False
 
-    # ★追加：公開情報的に「残り1枚」を自分が握っているなら加点
+    # 公開情報的に「残り1枚」を自分が握っているなら加点
     def _last_one_remaining_bonus(self, state, player: str, attack: Optional[str]) -> float:
         if attack is None or attack not in TARGET_LAST1:
             return 0.0
@@ -172,17 +180,13 @@ class RuleBasedAgent:
 
         # 総枚数（初期配分）
         total = 4 if attack in ("2", "3", "4", "5") else 2
-
         seen = tr["public_seen_counts"].get(attack, 0)
 
-        # 公開済みが total-1（=残り1枚が未公開）で、その未公開が自分手札にある
-        # → 公開情報的に「残り1枚を自分が握っている」と判断できる
         if seen == total - 1:
             return self.LAST_ONE_BONUS
-
         return 0.0
 
-    # ★追加：王(9)/玉(8)の「2枚目=王、3枚目=玉」ボーナス
+    # ★王(9)/玉(8)の「2枚目=どちらか、3枚目=残り」ボーナス
     def _king_gyoku_timed_attack_bonus(self, state, player: str, attack: Optional[str]) -> float:
         if attack not in ("9", "8"):
             return 0.0
@@ -191,22 +195,36 @@ class RuleBasedAgent:
         if tr is None:
             return 0.0
 
-        # 両方持っている
+        if not tr["king_gyoku_plan_active"].get(player, False):
+            return 0.0
+
         hand = state.hands[player]
         if ("9" not in hand) or ("8" not in hand):
+            # 両方持っていないなら、プラン継続不能（安全側でOFF）
+            tr["king_gyoku_plan_active"][player] = False
             return 0.0
 
-        # まだ使っていない（攻め/受けで公開していない）
-        if tr["king_used"].get(player, False) or tr["gyoku_used"].get(player, False):
-            return 0.0
+        atk_cnt = tr["attack_count"].get(player, 0)  # これまでの攻め回数
+        first = tr["king_gyoku_first_attack"].get(player)  # 2枚目で出した方
 
-        atk_cnt = tr["attack_count"].get(player, 0)
-        # atk_cnt==1 → 次の攻めが2枚目
-        # atk_cnt==2 → 次の攻めが3枚目
-        if atk_cnt == 1 and attack == "9":
+        # 2枚目の攻め（=次に出すと2枚目） → atk_cnt==1 のとき
+        if atk_cnt == 1:
+            # 2枚目は 8/9 どちらでもOK：出せるなら強く押す
             return self.KING_SECOND_ATTACK_BONUS
-        if atk_cnt == 2 and attack == "8":
-            return self.GYOKU_THIRD_ATTACK_BONUS
+
+        # 3枚目の攻め（=次に出すと3枚目） → atk_cnt==2 のとき
+        if atk_cnt == 2:
+            if first in ("8", "9"):
+                # 2枚目に出したのと“逆”を優先
+                other = "8" if first == "9" else "9"
+                return self.GYOKU_THIRD_ATTACK_BONUS if attack == other else -self.GYOKU_THIRD_ATTACK_BONUS
+            else:
+                # 2枚目で8/9を出せていない（first=None）なら、3枚目でも8/9を出せる方を押す
+                return self.GYOKU_THIRD_ATTACK_BONUS
+
+        # 3枚目以降はプラン終了
+        if atk_cnt >= 3:
+            tr["king_gyoku_plan_active"][player] = False
 
         return 0.0
 
@@ -290,7 +308,7 @@ class RuleBasedAgent:
         action_type, block, attack = action
         ally = tr["ally"]
 
-        # ★公開済み枚数カウント（受けは block が表）
+        # 公開済み枚数カウント（受けは block が表）
         if action_type == "receive" and block is not None:
             if block in tr["public_seen_counts"]:
                 tr["public_seen_counts"][block] += 1
@@ -300,25 +318,36 @@ class RuleBasedAgent:
             if self._same_team(player, self.me) and block in TARGET_X:
                 tr["pending_ally_received"][player] = block
 
-            # ★王(9)/玉(8)を受けで公開した
+            # 王(9)/玉(8)を受けで公開した
             if block == "9":
                 tr["king_used"][player] = True
             elif block == "8":
                 tr["gyoku_used"][player] = True
 
-        # ★攻めで表に出た駒カウント（attack は表）
+        # 攻めで表に出た駒カウント（attack は表）
         if action_type in ("attack", "attack_after_block") and attack is not None:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
 
-            # ★攻め回数をカウント（「2枚目」「3枚目」判定用）
+            # 攻め回数をカウント（「2枚目」「3枚目」判定用）
             tr["attack_count"][player] += 1
 
-            # ★王(9)/玉(8)を攻めで公開した
+            # 王(9)/玉(8)を攻めで公開した
             if attack == "9":
                 tr["king_used"][player] = True
             elif attack == "8":
                 tr["gyoku_used"][player] = True
+
+            # ★王玉プラン：2枚目の攻めで8/9を出したなら、first を確定する
+            #   attack_count は「この攻めを反映した後」の値なので、
+            #   2枚目の攻めを出した直後は attack_count==2 になる
+            if attack in ("8", "9") and tr["king_gyoku_plan_active"].get(player, False):
+                if tr["attack_count"][player] == 2 and tr["king_gyoku_first_attack"].get(player) is None:
+                    tr["king_gyoku_first_attack"][player] = attack
+
+                # 3枚目まで終わったらプラン終了
+                if tr["attack_count"][player] >= 3:
+                    tr["king_gyoku_plan_active"][player] = False
 
             if (not self._same_team(player, self.me)) and attack in TARGET_X:
                 tr["enemy_revealed"][attack] = True
@@ -425,19 +454,20 @@ class RuleBasedAgent:
             if ax in TARGET_X and attack == ax:
                 score += 90.0
 
-        # ★追加：王(9)→玉(8)の指定タイミング攻め（2枚目=王、3枚目=玉）
+        # ★王玉の「2枚目=どちらか、3枚目=残り」優先
         score += self._king_gyoku_timed_attack_bonus(state, player, attack)
 
-        # ★追加：盤面（公開情報）上「残り1枚」を自分が握っているなら、それを攻めで出す
+        # 公開情報的な「残り1枚」なら加点
         score += self._last_one_remaining_bonus(state, player, attack)
 
         score += self._occupancy_priority_bonus(state, attack)
 
+        # 親初手の「し(1)」攻め回避
         if state.attacker is None and state.current_attack is None:
             if attack == "1":
                 score -= 100.0
 
-        # ② 王・玉(9/8)は「攻め」で温存（ただし上がりは別枠で最優先）
+        # 王・玉(9/8)は「攻め」で温存（ただしボーナスが強いので 2/3枚目方針は勝つ）
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY
 
@@ -447,7 +477,6 @@ class RuleBasedAgent:
             penalty_table = {"9": 10, "8": 10, "7": 8, "6": 8, "5": 6, "4": 6, "3": 4, "2": 4, "1": 1}
             score -= float(penalty_table.get(block, 0))
 
-        # ★ここを「self.me」ではなく必ず player で判定（席混線に強くする）
         score += self._win_now_bonus(state, player, (action_type, block, attack))
 
         return score
@@ -455,14 +484,6 @@ class RuleBasedAgent:
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
         """
         受け戦略（今回のシンプル版 + 条件追加 + 「最初の敵攻めがし(1)」特別ルール）
-          - 最初の敵攻めが「し(1)」:
-              * 自分の「1」が2枚以上 → すぐ「1」で受ける
-              * 自分の「1」が1枚      → 初期手札が強ければすぐ受ける／弱ければ1回だけスルー
-          - それ以外:
-              * 初期手札が強い かつ 8/9受けでない：最初の敵攻めは受け推奨
-              * 初期手札が強くない OR 8/9で受ける：最初の敵攻めは1回だけスルー推奨
-          - 味方の攻めは基本止めない（-100）
-          - 受け→次攻めで1手上がりが見えるなら最優先
         """
         # まず、既存のベーススコア
         if action_type == "pass":
@@ -471,19 +492,15 @@ class RuleBasedAgent:
             if action_type != "receive" or block is None:
                 return -1e18
 
-            # ★ここも player で判定
             bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
             if bonus > 0:
                 return 1e9
 
-            # 味方の攻めは止めない（強ペナルティ）
             if state.attacker is not None and self._same_team(state.attacker, player):
                 return -100.0
 
-            # 受け駒の大雑把な好み（既存維持）
             base = 1.0 if block in ("8", "9") else 5.0
 
-        # ★ここから「最初の敵の攻め」だけ特別ルール
         tr = self._track.get(id(state))
         if tr is None:
             return base
@@ -496,20 +513,17 @@ class RuleBasedAgent:
         )
 
         if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
-            # ---- ★追加：最初の敵攻めが「し(1)」のとき ----
+            # 最初の敵攻めが「し(1)」のとき
             if state.current_attack == "1":
                 ones = state.hands[player].count("1")
                 strong = self._strong_initial_hand(state)
 
                 is_receive_1 = (action_type == "receive" and block == "1")
                 is_receive_not1 = (action_type == "receive" and block != "1")
-
-                # 受けるなら block は "1" しか合法にならないはずなので、念のため強く罰する
                 if is_receive_not1:
                     return -1e18
 
                 if ones >= 2:
-                    # 1が2枚以上：即受け（passを強く避ける）
                     if action_type == "pass":
                         base -= self.FIRST_ENEMY_SHI_FORCE
                     else:
@@ -518,14 +532,12 @@ class RuleBasedAgent:
 
                 if ones == 1:
                     if strong:
-                        # 1が1枚でも強手札：即受け
                         if action_type == "pass":
                             base -= self.FIRST_ENEMY_SHI_FORCE
                         else:
                             base += self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE
                         return base
                     else:
-                        # 弱手札：一度だけスルー（passを強く推奨）
                         if not tr["first_enemy_attack_skipped"]:
                             if action_type == "pass":
                                 base += self.FIRST_ENEMY_SHI_FORCE
@@ -533,24 +545,19 @@ class RuleBasedAgent:
                                 base -= self.FIRST_ENEMY_SHI_FORCE
                         return base
 
-                # ones == 0：受け自体が基本できない（合法手はpass中心）ので通常へ
-                # （ここでreturnしない）
-            # ---- ここまで「し(1)」特別 ----
+                # ones==0 は通常へ
 
             strong = self._strong_initial_hand(state)
-            # ★追加条件：8/9で受ける場合も「スルー側」に寄せる
             receiving_with_king = (action_type == "receive" and block in ("8", "9"))
             prefer_skip_once = (not strong) or receiving_with_king
 
             if prefer_skip_once:
-                # 弱手札 or 8/9受け：最初の敵攻めは1回だけスルーしたい
                 if not tr["first_enemy_attack_skipped"]:
                     if action_type == "pass":
                         base += self.FIRST_ENEMY_PASS_BONUS
                     else:
                         base -= self.FIRST_ENEMY_PASS_BONUS
             else:
-                # 強手札（かつ 8/9受けでない）：最初の敵攻めは即受け（パスを避ける）
                 if action_type == "pass":
                     base -= self.FIRST_ENEMY_RECEIVE_BONUS
                 else:
@@ -559,7 +566,6 @@ class RuleBasedAgent:
         return base
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
-        # ★席が混ざったら即気づけるようにする
         if self.me is None:
             self.me = player
         elif self.me != player:
@@ -591,7 +597,7 @@ class RuleBasedAgent:
                 best_score = score
                 best_action = (t, block, attack)
 
-        # ★「最初の敵の攻め」遭遇フラグを、選択結果で確定更新
+        # 「最初の敵の攻め」遭遇フラグを、選択結果で確定更新
         tr = self._track.get(id(state))
         if tr is not None:
             enemy_attack_turn = (
