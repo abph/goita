@@ -40,6 +40,13 @@ class RuleBasedAgent:
         # ★追加：「最初の敵攻めが し(1)」専用の強制度（既存±500より強くする）
         self.FIRST_ENEMY_SHI_FORCE = 800.0
 
+        # ★追加：攻めの戦略（王・玉の順番）
+        # 両方持っていて、まだ一度も使っていないなら：
+        #   - 自分の2枚目の攻め：王(9)
+        #   - 1順後（=自分の3枚目の攻め）：玉(8)
+        self.KING_SECOND_ATTACK_BONUS = 650.0
+        self.GYOKU_THIRD_ATTACK_BONUS = 650.0
+
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
         if self.me is None:
@@ -116,6 +123,12 @@ class RuleBasedAgent:
 
             # ★追加：公開済み枚数
             public_seen_counts=public_seen_counts,
+
+            # ★追加：各プレイヤーの「攻め回数」（attack / attack_after_block の回数）
+            attack_count={p: 0 for p in ("A", "B", "C", "D")},
+            # ★追加：王(9)/玉(8)を“使った（公開した）”か（攻め・受けどちらでも）
+            king_used={p: False for p in ("A", "B", "C", "D")},
+            gyoku_used={p: False for p in ("A", "B", "C", "D")},
         )
 
     def _strong_initial_hand(self, state) -> bool:
@@ -166,6 +179,34 @@ class RuleBasedAgent:
         # → 公開情報的に「残り1枚を自分が握っている」と判断できる
         if seen == total - 1:
             return self.LAST_ONE_BONUS
+
+        return 0.0
+
+    # ★追加：王(9)/玉(8)の「2枚目=王、3枚目=玉」ボーナス
+    def _king_gyoku_timed_attack_bonus(self, state, player: str, attack: Optional[str]) -> float:
+        if attack not in ("9", "8"):
+            return 0.0
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return 0.0
+
+        # 両方持っている
+        hand = state.hands[player]
+        if ("9" not in hand) or ("8" not in hand):
+            return 0.0
+
+        # まだ使っていない（攻め/受けで公開していない）
+        if tr["king_used"].get(player, False) or tr["gyoku_used"].get(player, False):
+            return 0.0
+
+        atk_cnt = tr["attack_count"].get(player, 0)
+        # atk_cnt==1 → 次の攻めが2枚目
+        # atk_cnt==2 → 次の攻めが3枚目
+        if atk_cnt == 1 and attack == "9":
+            return self.KING_SECOND_ATTACK_BONUS
+        if atk_cnt == 2 and attack == "8":
+            return self.GYOKU_THIRD_ATTACK_BONUS
 
         return 0.0
 
@@ -259,10 +300,25 @@ class RuleBasedAgent:
             if self._same_team(player, self.me) and block in TARGET_X:
                 tr["pending_ally_received"][player] = block
 
+            # ★王(9)/玉(8)を受けで公開した
+            if block == "9":
+                tr["king_used"][player] = True
+            elif block == "8":
+                tr["gyoku_used"][player] = True
+
         # ★攻めで表に出た駒カウント（attack は表）
         if action_type in ("attack", "attack_after_block") and attack is not None:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
+
+            # ★攻め回数をカウント（「2枚目」「3枚目」判定用）
+            tr["attack_count"][player] += 1
+
+            # ★王(9)/玉(8)を攻めで公開した
+            if attack == "9":
+                tr["king_used"][player] = True
+            elif attack == "8":
+                tr["gyoku_used"][player] = True
 
             if (not self._same_team(player, self.me)) and attack in TARGET_X:
                 tr["enemy_revealed"][attack] = True
@@ -368,6 +424,9 @@ class RuleBasedAgent:
             ax = tr.get("ally_axis_pending")
             if ax in TARGET_X and attack == ax:
                 score += 90.0
+
+        # ★追加：王(9)→玉(8)の指定タイミング攻め（2枚目=王、3枚目=玉）
+        score += self._king_gyoku_timed_attack_bonus(state, player, attack)
 
         # ★追加：盤面（公開情報）上「残り1枚」を自分が握っているなら、それを攻めで出す
         score += self._last_one_remaining_bonus(state, player, attack)
