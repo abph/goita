@@ -37,6 +37,9 @@ class RuleBasedAgent:
         #   - かかりSTRONG(+120) より下、占有率(3枚=+55) より上くらい
         self.LAST_ONE_BONUS = 65.0
 
+        # ★追加：「最初の敵攻めが し(1)」専用の強制度（既存±500より強くする）
+        self.FIRST_ENEMY_SHI_FORCE = 800.0
+
     # ★追加：席を固定する（最初に1回）
     def bind_player(self, player: str) -> None:
         if self.me is None:
@@ -392,10 +395,14 @@ class RuleBasedAgent:
 
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
         """
-        受け戦略（今回のシンプル版 + 条件追加）
-          - 初期手札が強い かつ 8/9受けでない：最初の「敵の攻め」は受けを強く推奨
-          - 初期手札が強くない OR 8/9で受ける場合：最初の「敵の攻め」は1回だけスルー（パス）を強く推奨
-          - 味方の攻めは基本止めない（既存 -100 を維持）
+        受け戦略（今回のシンプル版 + 条件追加 + 「最初の敵攻めがし(1)」特別ルール）
+          - 最初の敵攻めが「し(1)」:
+              * 自分の「1」が2枚以上 → すぐ「1」で受ける
+              * 自分の「1」が1枚      → 初期手札が強ければすぐ受ける／弱ければ1回だけスルー
+          - それ以外:
+              * 初期手札が強い かつ 8/9受けでない：最初の敵攻めは受け推奨
+              * 初期手札が強くない OR 8/9で受ける：最初の敵攻めは1回だけスルー推奨
+          - 味方の攻めは基本止めない（-100）
           - 受け→次攻めで1手上がりが見えるなら最優先
         """
         # まず、既存のベーススコア
@@ -430,6 +437,47 @@ class RuleBasedAgent:
         )
 
         if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
+            # ---- ★追加：最初の敵攻めが「し(1)」のとき ----
+            if state.current_attack == "1":
+                ones = state.hands[player].count("1")
+                strong = self._strong_initial_hand(state)
+
+                is_receive_1 = (action_type == "receive" and block == "1")
+                is_receive_not1 = (action_type == "receive" and block != "1")
+
+                # 受けるなら block は "1" しか合法にならないはずなので、念のため強く罰する
+                if is_receive_not1:
+                    return -1e18
+
+                if ones >= 2:
+                    # 1が2枚以上：即受け（passを強く避ける）
+                    if action_type == "pass":
+                        base -= self.FIRST_ENEMY_SHI_FORCE
+                    else:
+                        base += self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE
+                    return base
+
+                if ones == 1:
+                    if strong:
+                        # 1が1枚でも強手札：即受け
+                        if action_type == "pass":
+                            base -= self.FIRST_ENEMY_SHI_FORCE
+                        else:
+                            base += self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE
+                        return base
+                    else:
+                        # 弱手札：一度だけスルー（passを強く推奨）
+                        if not tr["first_enemy_attack_skipped"]:
+                            if action_type == "pass":
+                                base += self.FIRST_ENEMY_SHI_FORCE
+                            else:
+                                base -= self.FIRST_ENEMY_SHI_FORCE
+                        return base
+
+                # ones == 0：受け自体が基本できない（合法手はpass中心）ので通常へ
+                # （ここでreturnしない）
+            # ---- ここまで「し(1)」特別 ----
+
             strong = self._strong_initial_hand(state)
             # ★追加条件：8/9で受ける場合も「スルー側」に寄せる
             receiving_with_king = (action_type == "receive" and block in ("8", "9"))
