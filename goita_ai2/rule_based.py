@@ -381,16 +381,39 @@ class RuleBasedAgent:
 
         return base
 
-    # ★NEW：次プレイヤーがその駒で受けられない（=次プレイヤーの手札にその駒が無い）攻めを選ぶ
+
+    # ★NEW：次プレイヤー（次の受け手）がその攻めを「何でも受けられない」= 確定で通る攻めを選ぶ
+    # 注意：受け手は同種の駒だけでなく、王/玉(9/8)でも（攻めが1/2以外なら）受けられるため、
+    #       「同種を持っていない = 確定」とはならない。
+    def _defender_can_receive_attack(self, defender_hand: List[str], attack: str) -> bool:
+        """defender_hand が attack を何かしらで受けられるなら True"""
+        # 同種で受けられる
+        if attack in defender_hand:
+            return True
+        # 王/玉(9/8)は 1/2 以外を受けられる（state.py の受け条件に合わせる）
+        if attack not in ("1", "2") and ("8" in defender_hand or "9" in defender_hand):
+            return True
+        return False
+
+    def _next_player(self, state, player: str) -> str:
+        """state.next_player の実装差（staticmethod/classmethod/instance method）を吸収して次手番を返す。"""
+        try:
+            return state.next_player(player)  # type: ignore[attr-defined]
+        except TypeError:
+            return type(state).next_player(player)  # type: ignore[attr-defined]
+
     def _best_unreceivable_attack_action(self, state, player: str, attack_actions: List[Action]) -> Optional[Action]:
-        defender = state.next_player(player)
+        """次の受け手が“何でも受けられない”攻め（=確定で通る）を選ぶ。なければ None。"""
+        defender = self._next_player(state, player)
+        defender_hand = state.hands[defender]
+
         cands: List[Action] = []
         for act in attack_actions:
-            _, _, a = act
+            a = act[2]
             if a is None:
                 continue
-            if a in state.hands[defender]:
-                continue  # 受けられる可能性がある
+            if self._defender_can_receive_attack(defender_hand, a):
+                continue  # 受けられるので「確定で通る」ではない
             cands.append(act)
 
         if not cands:
@@ -400,8 +423,7 @@ class RuleBasedAgent:
         non_king = [x for x in cands if x[2] not in ("8", "9")]
         pool = non_king if non_king else cands
 
-        # スコア：手札に同種が多いほど良い / 点が高いほど良い
-        # （ここはシンプルに決め打ち）
+        # スコア：手札に同種が多いほど良い / 点が高いほど良い（シンプル決め打ち）
         def key(act: Action):
             a = act[2]
             return (state.hands[player].count(a), POINTS.get(a, 0))
