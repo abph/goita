@@ -114,6 +114,33 @@ def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[
     return [pid, t, ""]
 
 
+def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
+    """棋譜の見やすさのために
+    - pass 行を削除
+    - 同一プレイヤーの連続した「受け→攻め」を 1 行に結合する
+      例: ["1","玉",""] + ["1","","香"] => ["1","玉","香"]
+    """
+    out: List[List[str]] = []
+    for row in moves:
+        if not row or len(row) < 3:
+            continue
+        pid, b, a = str(row[0]), str(row[1]), str(row[2])
+
+        # pass は出力しない
+        if b == "パス" or b.lower() == "pass":
+            continue
+
+        if out:
+            lp, lb, la = out[-1]
+            # 同じプレイヤーで、前が受けのみ・今が攻めのみ → 結合
+            if lp == pid and la == "" and lb != "" and b == "" and a != "":
+                out[-1] = [lp, lb, a]
+                continue
+
+        out.append([pid, b, a])
+    return out
+
+
 GAMES: Dict[str, Dict[str, Any]] = {}
 
 
@@ -381,7 +408,7 @@ def get_kifu_yaml(game_id: str):
 
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
-    moves: List[List[str]] = game.get("kifu_moves", [])
+    moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
     # プレイヤー名（必要なら後でUI化できます）
     p0, p1, p2, p3 = "プレイヤーA", "プレイヤーB", "プレイヤーC", "プレイヤーD"
@@ -435,7 +462,7 @@ def get_kifu_json(game_id: str):
 
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
-    moves: List[List[str]] = game.get("kifu_moves", [])
+    moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
     state: GoitaState = game["state"]
     ts = getattr(state, "team_score", None)

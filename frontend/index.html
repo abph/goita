@@ -197,7 +197,7 @@ async function downloadKifu(){
     // ファイル名：game_idの先頭を使って短く
     const shortId = String(gid).slice(0, 8);
     a.href = url;
-    a.download = `goita_kifu_${shortId}.yml`;
+    a.download = `goita_kifu_${shortId}.yaml`;
     document.body.appendChild(a);
     a.click();
     a.remove();
