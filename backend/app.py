@@ -477,10 +477,7 @@ def get_kifu_json(game_id: str):
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
     state: GoitaState = game["state"]
-    ts = getattr(state, "team_score", None)
     score = [0, 0]
-    if isinstance(ts, dict):
-        score = [int(ts.get("AC", 0)), int(ts.get("BD", 0))]
 
     return {
         "version": "1.0",
