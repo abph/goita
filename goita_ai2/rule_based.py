@@ -403,11 +403,11 @@ class RuleBasedAgent:
             return type(state).next_player(player)  # type: ignore[attr-defined]
 
     def _defenders_after(self, state, player: str) -> List[str]:
-    """player の次から順に、他3人（受け手候補）を並べて返す。"""
-    p1 = self._next_player(state, player)
-    p2 = self._next_player(state, p1)
-    p3 = self._next_player(state, p2)
-    return [p1, p2, p3]
+        """player の次から順に、他3人（受け手候補）を並べて返す。"""
+        p1 = self._next_player(state, player)
+        p2 = self._next_player(state, p1)
+        p3 = self._next_player(state, p2)
+        return [p1, p2, p3]
 
 def _best_unreceivable_attack_action(self, state, player: str, attack_actions: List[Action]) -> Optional[Action]:
     """
