@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -70,6 +70,49 @@ def serve_index():
 HUMAN_SEAT = "A"
 CPU_SEATS = ["B", "C", "D"]
 ALL_SEATS = ["A", "B", "C", "D"]
+
+
+# ====== 棋譜（kifu）出力用 ======
+PIECE_KANJI: Dict[str, str] = {
+    "9": "王",
+    "8": "玉",
+    "7": "飛",
+    "6": "角",
+    "5": "金",
+    "4": "銀",
+    "3": "馬",
+    "2": "香",
+    "1": "し",
+}
+PLAYER_IDX: Dict[str, str] = {"A": "0", "B": "1", "C": "2", "D": "3"}
+
+
+def _hand_to_kifu_string(hand: List[Any]) -> str:
+    # 手札の順は配牌時の並びをそのまま採用（必要ならここで並べ替えも可能）
+    return "".join(PIECE_KANJI.get(str(x), str(x)) for x in hand)
+
+
+def _piece_to_kifu(v: Optional[str]) -> str:
+    if v is None:
+        return ""
+    v = str(v)
+    return PIECE_KANJI.get(v, v)
+
+
+def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> List[str]:
+    """あなたの例に合わせて ["pid","block","attack"] 形式に変換する"""
+    t, b, a = action
+    pid = PLAYER_IDX[player]
+    if t == "pass":
+        return [pid, "パス", ""]
+    if t == "receive":
+        return [pid, _piece_to_kifu(b), ""]
+    if t == "attack":
+        return [pid, "", _piece_to_kifu(a)]
+    if t == "attack_after_block":
+        return [pid, _piece_to_kifu(b), _piece_to_kifu(a)]
+    return [pid, t, ""]
+
 
 GAMES: Dict[str, Dict[str, Any]] = {}
 
@@ -231,6 +274,9 @@ def create_game(dealer: str = "A"):
         "agents": agents,
         "log": [f"Game start. dealer={dealer}, human={HUMAN_SEAT}"],
         "board": _new_board_snapshot(),
+            "init_hands": hands,
+        "dealer": dealer,
+        "kifu_moves": [],  # List[List[str]]
     }
     return {"game_id": gid, "human_seat": HUMAN_SEAT, "dealer": dealer}
 
@@ -292,6 +338,7 @@ def step(game_id: str, req: StepRequest):
     _update_board_snapshot(board, HUMAN_SEAT, action, hidden_receive=hidden_receive)
 
     log.append(_format_action(HUMAN_SEAT, action) + (" (hidden)" if hidden_receive else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(HUMAN_SEAT, action))
     _notify_public(agents, state, HUMAN_SEAT, action)
 
     safety = 0
@@ -315,12 +362,107 @@ def step(game_id: str, req: StepRequest):
         _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive)
 
         log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive else ""))
+        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
         _notify_public(agents, state, p, cpu_action)
 
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
     return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
+
+
+
+@app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
+def get_kifu_yaml(game_id: str):
+    """棋譜を YAML 形式で返す"""
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
+    dealer: str = game.get("dealer", "A")
+    moves: List[List[str]] = game.get("kifu_moves", [])
+
+    # プレイヤー名（必要なら後でUI化できます）
+    p0, p1, p2, p3 = "プレイヤーA", "プレイヤーB", "プレイヤーC", "プレイヤーD"
+
+    # スコア（team_score があれば使う）
+    state: GoitaState = game["state"]
+    ts = getattr(state, "team_score", None)
+    score = [0, 0]
+    if isinstance(ts, dict):
+        score = [int(ts.get("AC", 0)), int(ts.get("BD", 0))]
+
+    h = {
+        "p0": _hand_to_kifu_string(init_hands.get("A", [])),
+        "p1": _hand_to_kifu_string(init_hands.get("B", [])),
+        "p2": _hand_to_kifu_string(init_hands.get("C", [])),
+        "p3": _hand_to_kifu_string(init_hands.get("D", [])),
+    }
+
+    uchidashi = int(PLAYER_IDX.get(dealer, "0"))
+
+    # YAML を手書き生成（依存ライブラリ不要）
+    lines: List[str] = []
+    lines.append("version: 1.0")
+    lines.append(f'p0: "{p0}"')
+    lines.append(f'p1: "{p1}"')
+    lines.append(f'p2: "{p2}"')
+    lines.append(f'p3: "{p3}"')
+    lines.append("log:")
+    lines.append(" - hand:")
+    lines.append(f'     p0: "{h["p0"]}"')
+    lines.append(f'     p1: "{h["p1"]}"')
+    lines.append(f'     p2: "{h["p2"]}"')
+    lines.append(f'     p3: "{h["p3"]}"')
+    lines.append(f"   uchidashi: {uchidashi}")
+    lines.append(f"   score: [{score[0]},{score[1]}]")
+    lines.append("   game:")
+    for row in moves:
+        a = str(row[0]).replace('"', '\"')
+        b = str(row[1]).replace('"', '\"')
+        c = str(row[2]).replace('"', '\"')
+        lines.append(f'    - ["{a}","{b}","{c}"]')
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/games/{game_id}/kifu.json")
+def get_kifu_json(game_id: str):
+    """棋譜を JSON 形式で返す（デバッグ/拡張用）"""
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
+    dealer: str = game.get("dealer", "A")
+    moves: List[List[str]] = game.get("kifu_moves", [])
+
+    state: GoitaState = game["state"]
+    ts = getattr(state, "team_score", None)
+    score = [0, 0]
+    if isinstance(ts, dict):
+        score = [int(ts.get("AC", 0)), int(ts.get("BD", 0))]
+
+    return {
+        "version": "1.0",
+        "p0": "プレイヤーA",
+        "p1": "プレイヤーB",
+        "p2": "プレイヤーC",
+        "p3": "プレイヤーD",
+        "log": [
+            {
+                "hand": {
+                    "p0": _hand_to_kifu_string(init_hands.get("A", [])),
+                    "p1": _hand_to_kifu_string(init_hands.get("B", [])),
+                    "p2": _hand_to_kifu_string(init_hands.get("C", [])),
+                    "p3": _hand_to_kifu_string(init_hands.get("D", [])),
+                },
+                "uchidashi": int(PLAYER_IDX.get(dealer, "0")),
+                "score": score,
+                "game": moves,
+            }
+        ],
+    }
 
 
 @app.delete("/games/{game_id}")

@@ -151,6 +151,7 @@
       <button onclick="newGame()">新規ゲーム</button>
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
+      <button onclick="downloadKifu()">棋譜をダウンロード</button>
       <span class="small">（PASS：盤面の 8列目9行目）</span>
     </div>
 
@@ -174,6 +175,38 @@
 
 <script>
 const API = "";
+
+async function downloadKifu(){
+  if(!gid){
+    alert("先に「新規ゲーム」を開始してください。");
+    return;
+  }
+  try{
+    // /kifu は YAML テキストを返す想定
+    const res = await fetch(`${API}/games/${gid}/kifu`);
+    if(!res.ok){
+      const t = await res.text();
+      alert(`棋譜取得に失敗しました: ${res.status}\n${t}`);
+      return;
+    }
+    const text = await res.text();
+    const blob = new Blob([text], {type: "text/yaml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    // ファイル名：game_idの先頭を使って短く
+    const shortId = String(gid).slice(0, 8);
+    a.href = url;
+    a.download = `goita_kifu_${shortId}.yml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    console.error(e);
+    alert("棋譜ダウンロード中にエラーが発生しました。コンソールも確認してください。");
+  }
+}
 
 let gid = null;
 let showAllHands = false;
