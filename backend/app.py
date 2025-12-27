@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import copy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -267,6 +268,17 @@ def _state_public_view(
         else:
             hands_view[p] = {"count": len(state.hands[p])}
 
+
+    # みんなの手札を公開するときは、場の伏せ駒（receive_hidden）も公開する
+    if reveal_hands:
+        board_view = copy.deepcopy(board_public)
+        for p in ALL_SEATS:
+            rh = board_view.get(p, {}).get("receive_hidden")
+            if isinstance(rh, list):
+                board_view[p]["receive_hidden"] = [False for _ in rh]
+    else:
+        board_view = board_public
+
     return {
         "turn": state.turn,
         "phase": state.phase,
@@ -275,7 +287,7 @@ def _state_public_view(
         "hands": hands_view,
         "team_score": getattr(state, "team_score", None),
         "scores": _build_scores(state),
-        "board_public": board_public,
+        "board_public": board_view,
         "log": (log or [])[-200:],
         "finished": state.finished,
         "winner": state.winner,
