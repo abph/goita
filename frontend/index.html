@@ -140,6 +140,11 @@
 
   <div class="ui">
     <div class="meta">
+      <b>あなたの席</b><span><select id="seatSel"><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></span>
+      <b>名前</b><span><input id="nameInput" placeholder="任意" style="width:220px;padding:4px 6px;border:1px solid #ccc;border-radius:8px;"></span>
+      <b>token</b><span id="tokenView">-</span>
+      <b>admin_token</b><span id="adminView">-</span>
+
       <b>game_id</b><span id="gid">-</span>
       <b>turn</b><span id="turn">-</span>
       <b>phase</b><span id="phase">-</span>
@@ -149,6 +154,8 @@
 
     <div class="btns">
       <button onclick="newGame()">新規ゲーム</button>
+      <button onclick="joinGame()">参加（席を確保）</button>
+      <button onclick="passNow()" id="passBtn">PASS</button>
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
       <button onclick="downloadKifu()">棋譜をダウンロード</button>
@@ -209,7 +216,11 @@ async function downloadKifu(){
 }
 
 let gid = null;
+let mySeat = "A";
+let myToken = null;
+let adminToken = null;
 let showAllHands = false;
+let pollTimer = null;
 
 // 最新の状態と合法手（手札クリックで使う）
 let latestState = null;
@@ -290,7 +301,7 @@ async function onHandPieceClick(piece){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== "A"){
+  if(latestState.turn !== mySeat){
     setHint(`いまは ${latestState.turn} の手番です。`);
     return;
   }
@@ -356,7 +367,7 @@ async function onPassClick(){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== "A"){
+  if(latestState.turn !== mySeat){
     setHint(`いまは ${latestState.turn} の手番です。`);
     return;
   }
@@ -377,7 +388,7 @@ async function submitAction(actionObj){
   await fetch(`${API}/games/${gid}/step`, {
     method:"POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({action: actionObj})
+    body: JSON.stringify({seat: mySeat, token: myToken, action: actionObj})
   });
 }
 
@@ -387,19 +398,19 @@ function renderBoard(state){
   board.innerHTML="";
 
   // ★ Aが今「使える駒」の集合（pending中は pending を優先）
-  const usablePiecesA = new Set();
-  if(state.turn === "A" && !state.finished){
+  const usablePiecesMe = new Set();
+  if(state.turn === mySeat && !state.finished){
     if(pending && Array.isArray(pending.candidates)){
       // 2段階選択中：次に必要な種類（attack / block）の候補だけ使える扱い
       pending.candidates.forEach(a => {
-        if(pending.need === "attack" && a.attack) usablePiecesA.add(a.attack);
-        if(pending.need === "block" && a.block) usablePiecesA.add(a.block);
+        if(pending.need === "attack" && a.attack) usablePiecesMe.add(a.attack);
+        if(pending.need === "block" && a.block) usablePiecesMe.add(a.block);
       });
     }else if(Array.isArray(latestLegal)){
       // 通常：合法手に出てくる block/attack のいずれかが含まれていれば「使える」
       latestLegal.forEach(a => {
-        if(a.block) usablePiecesA.add(a.block);
-        if(a.attack) usablePiecesA.add(a.attack);
+        if(a.block) usablePiecesMe.add(a.block);
+        if(a.attack) usablePiecesMe.add(a.attack);
       });
     }
   }
@@ -415,7 +426,7 @@ function renderBoard(state){
       if(col===8 && row===9){
         div.classList.add("pass");
         div.textContent = "PASS";
-        if(state.turn==="A" && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
+        if(false){
           div.onclick = onPassClick;
         }else{
           div.classList.add("disabled");
@@ -434,15 +445,15 @@ function renderBoard(state){
         const val=document.createElement("div");
         val.className="val";
 
-        if(hand.p==="A" || showAllHands){
+        if(hand.p===mySeat || showAllHands){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
 
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          if(hand.p==="A" && state.turn==="A" && !state.finished && card){
-            if(usablePiecesA.has(card)){
+          if(hand.p===mySeat && state.turn===mySeat && !state.finished && card){
+            if(usablePiecesMe.has(card)){
               div.classList.add("clickable");
               div.onclick = () => onHandPieceClick(card);
             }else{
@@ -534,12 +545,77 @@ async function renderActions(){
 }
 
 async function newGame(){
-  const r=await fetch(`${API}/games`,{method:"POST"});
-  const j=await r.json();
-  gid=j.game_id;
-  document.getElementById("gid").textContent=gid;
+  mySeat = document.getElementById("seatSel").value;
+  const body = { dealer: "A", human_seats: ["A","B","C","D"], allow_reveal: true };
+  const r = await fetch(`${API}/games`,{
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  gid = j.game_id;
+  adminToken = j.admin_token;
+  myToken = null;
+
+  document.getElementById("gid").textContent = gid;
+  document.getElementById("adminView").textContent = adminToken || "-";
+  document.getElementById("tokenView").textContent = "-";
+
   pending = null;
-  setHint("手札をクリックして駒を出します。");
+  setHint("ゲームを作成しました。つづいて『参加（席を確保）』を押してください。");
+  stopPolling();
+}
+
+function startPolling(){
+  stopPolling();
+  pollTimer = setInterval(()=>{ refresh(); }, 5000);
+}
+function stopPolling(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function joinGame(){
+  if(!gid){
+    alert("先に新規ゲームを作成するか、game_id を共有してもらってください。");
+    return;
+  }
+  mySeat = document.getElementById("seatSel").value;
+  const name = document.getElementById("nameInput").value || null;
+
+  const r = await fetch(`${API}/games/${gid}/join`,{
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({seat: mySeat, name})
+  });
+  const j = await r.json();
+  if(!r.ok){
+    alert(`参加に失敗しました: ${r.status}\n${JSON.stringify(j)}`);
+    return;
+  }
+  myToken = j.token;
+  document.getElementById("tokenView").textContent = myToken;
+  setHint(`参加しました（席 ${mySeat}）。5秒ごとに更新します。`);
+  await refresh();
+  startPolling();
+}
+
+async function passNow(){
+  if(!gid || !myToken || !latestState) return;
+  if(latestState.finished){
+    setHint("この局は終了しています。");
+    return;
+  }
+  if(latestState.turn !== mySeat){
+    setHint(`いまは ${latestState.turn} の手番です。`);
+    return;
+  }
+  const pass = latestLegal.find(a => a.action_type === "pass");
+  if(!pass){
+    setHint("今はパスできません。");
+    return;
+  }
+  pending = null;
+  await submitAction(pass);
   await refresh();
 }
 
@@ -552,7 +628,15 @@ async function fetchLegal(){
 async function refresh(){
   if(!gid) return;
 
-  const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
+  if(!myToken){
+    setHint("先に『参加（席を確保）』で token を取得してください。");
+    return;
+  }
+
+  let url = `${API}/games/${gid}/state?seat=${encodeURIComponent(mySeat)}&token=${encodeURIComponent(myToken||"")}`;
+  if(showAllHands){
+    url += `&reveal_hands=1` + (adminToken ? `&admin=${encodeURIComponent(adminToken)}` : ``);
+  }
   const state = await (await fetch(url)).json();
   latestState = state;
 
@@ -566,6 +650,13 @@ async function refresh(){
 
   // 合法手を更新（手札クリック＆PASSが参照）
   latestLegal = await fetchLegal();
+
+  // PASSボタン有効/無効
+  const passBtn = document.getElementById("passBtn");
+  if(passBtn){
+    const canPass = (state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass"));
+    passBtn.disabled = !canPass;
+  }
 
   // ヒント更新
   if(state.finished){
