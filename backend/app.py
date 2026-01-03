@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 import copy
-import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -69,8 +68,9 @@ def serve_index():
 
 
 # ====== ゲーム管理 ======
+HUMAN_SEAT = "A"
+CPU_SEATS = ["B", "C", "D"]
 ALL_SEATS = ["A", "B", "C", "D"]
-MAIN_GAME_ID = "main"
 
 
 # ====== 棋譜（kifu）出力用 ======
@@ -155,25 +155,6 @@ class ActionModel(BaseModel):
 
 
 class StepRequest(BaseModel):
-    action: ActionModel
-
-
-class CreateGameRequest(BaseModel):
-    dealer: str = "A"
-    # 人間席（最大4人）。未指定なら全員人間。
-    human_seats: List[str] = Field(default_factory=lambda: ["A","B","C","D"])
-    # デバッグ用：全手札公開を管理者のみ許可（admin_token 必須）
-    allow_reveal: bool = True
-
-
-class JoinRequest(BaseModel):
-    seat: str
-    name: Optional[str] = None
-
-
-class MultiStepRequest(BaseModel):
-    seat: str
-    token: str
     action: ActionModel
 
 
@@ -313,201 +294,122 @@ def _state_public_view(
     }
 
 
-def _init_single_table_game(dealer: str = "A") -> None:
-    """常設1卓（tokenなし）のゲームを初期化する。"""
-    dealer = dealer.upper()
-    if dealer not in ALL_SEATS:
-        dealer = "A"
-
+@app.post("/games")
+def create_game(dealer: str = "A"):
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
 
-    # 常設1卓では全員人間（CPU無し）を前提
-    agents: Dict[str, Optional[RuleBasedAgent]] = {s: None for s in ALL_SEATS}
+    agents: Dict[str, RuleBasedAgent] = {
+        "B": RuleBasedAgent(name="CPU-B"),
+        "C": RuleBasedAgent(name="CPU-C"),
+        "D": RuleBasedAgent(name="CPU-D"),
+    }
+    for seat, ag in agents.items():
+        ag.bind_player(seat)
 
-    GAMES[MAIN_GAME_ID] = {
+    gid = str(uuid.uuid4())
+    GAMES[gid] = {
         "state": state,
         "agents": agents,
-        "human_seats": ["A","B","C","D"],
-        "log": [f"Game start. dealer={dealer} (single-table)"],
+        "log": [f"Game start. dealer={dealer}, human={HUMAN_SEAT}"],
         "board": _new_board_snapshot(),
-        "init_hands": hands,
+            "init_hands": hands,
         "dealer": dealer,
-        "kifu_moves": [],
-        "lock": threading.Lock(),
+        "kifu_moves": [],  # List[List[str]]
     }
+    return {"game_id": gid, "human_seat": HUMAN_SEAT, "dealer": dealer}
 
-
-# 起動時に常設卓を用意
-if MAIN_GAME_ID not in GAMES:
-    _init_single_table_game("A")
-
-@app.post("/games")
-def create_game(req: CreateGameRequest):
-    """互換のため残す。呼ぶと常設卓（main）をリセットする。"""
-    _init_single_table_game(req.dealer)
-    return {"game_id": MAIN_GAME_ID, "dealer": req.dealer.upper(), "human_seats": ["A","B","C","D"]}
-
-@app.post("/games/{game_id}/reset")
-def reset_game(game_id: str, dealer: str = "A"):
-    if game_id != MAIN_GAME_ID:
-        raise HTTPException(status_code=400, detail="only main can be reset")
-    _init_single_table_game(dealer)
-    return {"ok": True, "game_id": MAIN_GAME_ID, "dealer": dealer.upper()}
-
-
-    seat = req.seat.upper()
-    if seat not in ALL_SEATS:
-        raise HTTPException(status_code=400, detail="seat must be A/B/C/D")
-
-    if seat not in game.get("human_seats", []):
-        raise HTTPException(status_code=400, detail="this seat is not a human seat")
-
-    if seat in game.get("seat_token", {}):
-        raise HTTPException(status_code=409, detail="seat already taken")
-
-    token = str(uuid.uuid4())
-    game["seat_token"][seat] = token
-    if req.name:
-        game["seat_name"][seat] = req.name
-
-    game.setdefault("log", []).append(f"[JOIN] seat={seat}, name={game['seat_name'][seat]}")
-    return {"game_id": game_id, "seat": seat, "token": token, "name": game["seat_name"][seat]}
 
 @app.get("/games/{game_id}/state")
-def get_state(game_id: str, seat: str, reveal_hands: int = 0):
+def get_state(game_id: str, reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
 
-    seat = seat.upper()
-    if seat not in ALL_SEATS:
-        raise HTTPException(status_code=400, detail="seat must be A/B/C/D")
-
     state: GoitaState = game["state"]
-    view = _state_public_view(
+    return _state_public_view(
         state,
-        viewer=seat,
+        viewer=HUMAN_SEAT,
         log=game.get("log", []),
         board_public=game.get("board", _new_board_snapshot()),
         reveal_hands=bool(reveal_hands),
     )
-    view["you_are"] = {"seat": seat}
-    return view
 
 
 @app.get("/games/{game_id}/legal_actions")
-def get_legal_actions(game_id: str, seat: str):
+def get_legal_actions(game_id: str):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
 
-    seat = seat.upper()
-    if seat not in ALL_SEATS:
-        raise HTTPException(status_code=400, detail="seat must be A/B/C/D")
-
     state: GoitaState = game["state"]
-    if state.finished or state.turn != seat:
+    if state.finished or state.turn != HUMAN_SEAT:
         return []
-    return _actions_to_json(state.legal_actions(seat))
+    return _actions_to_json(state.legal_actions(HUMAN_SEAT))
 
 
 @app.post("/games/{game_id}/step")
 def step(game_id: str, req: StepRequest):
-    """常設1卓：token無し。player（座席）は action から取得。"""
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
 
+    state: GoitaState = game["state"]
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+
+    if state.finished:
+        return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
+
+    if state.turn != HUMAN_SEAT:
+        raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn})")
+
     action = req.action.to_tuple()
-    seat = action[1] if len(action) > 1 else None
-    if seat not in ALL_SEATS:
-        raise HTTPException(status_code=400, detail="invalid seat in action")
 
-    lock = game.get("lock") or threading.Lock()
-    with lock:
-        state: GoitaState = game["state"]
-        agents: Dict[str, Optional[RuleBasedAgent]] = game.get("agents", {})
-        log: List[str] = game.setdefault("log", [])
-        board = game.setdefault("board", _new_board_snapshot())
+    before_fd = len(state.face_down_hidden[HUMAN_SEAT])
+    try:
+        _apply_action(state, HUMAN_SEAT, action)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid action: {e}")
 
-        if state.finished:
-            return {"ok": True, "state": _state_public_view(state, viewer=seat, log=log, board_public=board)}
+    hidden_receive = _is_hidden_receive_by_state_delta(state, HUMAN_SEAT, action[0], before_fd)
+    _update_board_snapshot(board, HUMAN_SEAT, action, hidden_receive=hidden_receive)
 
-        if state.turn != seat:
-            raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn})")
+    log.append(_format_action(HUMAN_SEAT, action) + (" (hidden)" if hidden_receive else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(HUMAN_SEAT, action))
+    _notify_public(agents, state, HUMAN_SEAT, action)
 
-        before_fd = len(state.face_down_hidden[seat])
-        try:
-            _apply_action(state, seat, action)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"invalid action: {e}")
+    safety = 0
+    while (not state.finished) and state.turn != HUMAN_SEAT:
+        safety += 1
+        if safety > 2000:
+            raise HTTPException(status_code=500, detail="safety stop: too many cpu steps")
 
-        hidden_receive = _is_hidden_receive_by_state_delta(state, seat, action[0], before_fd)
-        _update_board_snapshot(board, seat, action, hidden_receive=hidden_receive)
+        p = state.turn
+        acts = state.legal_actions(p)
+        if not acts:
+            log.append(f"{p}: no legal actions (stop)")
+            break
 
-        log.append(_format_action(seat, action) + (" (hidden)" if hidden_receive else ""))
-        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(seat, action))
-        _notify_public({k: v for k, v in agents.items() if v is not None}, state, seat, action)
+        cpu_action = agents[p].select_action(state, p, acts)
 
-        if state.finished:
-            log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
+        before_fd = len(state.face_down_hidden[p])
+        _apply_action(state, p, cpu_action)
 
-        return {"ok": True, "state": _state_public_view(state, viewer=seat, log=log, board_public=board)}
+        hidden_receive = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd)
+        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive)
 
-        if state.turn != seat:
-            raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn})")
+        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive else ""))
+        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
+        _notify_public(agents, state, p, cpu_action)
 
-        action = req.action.to_tuple()
+    if state.finished:
+        log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-        before_fd = len(state.face_down_hidden[seat])
-        try:
-            _apply_action(state, seat, action)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"invalid action: {e}")
+    return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
 
-        hidden_receive = _is_hidden_receive_by_state_delta(state, seat, action[0], before_fd)
-        _update_board_snapshot(board, seat, action, hidden_receive=hidden_receive)
 
-        log.append(_format_action(seat, action) + (" (hidden)" if hidden_receive else ""))
-        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(seat, action))
-        _notify_public({k: v for k, v in agents.items() if v is not None}, state, seat, action)
-
-        # CPU席を自動で進める（次の手番が人間になるまで）
-        safety = 0
-        while not state.finished:
-            p = state.turn
-            if p in game.get("human_seats", []):
-                break
-
-            ag = agents.get(p)
-            if ag is None:
-                break
-
-            safety += 1
-            if safety > 2000:
-                raise HTTPException(status_code=500, detail="safety stop: too many cpu steps")
-
-            acts = state.legal_actions(p)
-            if not acts:
-                log.append(f"{p}: no legal actions (stop)")
-                break
-
-            cpu_action = ag.select_action(state, p, acts)
-            before_fd = len(state.face_down_hidden[p])
-            _apply_action(state, p, cpu_action)
-
-            hidden_receive = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd)
-            _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive)
-
-            log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive else ""))
-            game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
-            _notify_public({k: v for k, v in agents.items() if v is not None}, state, p, cpu_action)
-
-        if state.finished:
-            log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
-
-        return {"ok": True, "state": _state_public_view(state, viewer=seat, log=log, board_public=board)}
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
 def get_kifu_yaml(game_id: str):

@@ -140,7 +140,7 @@
 
   <div class="ui">
     <div class="meta">
-      <b>あなたの席</b><span><select id="seatSel"><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></span><b>game_id</b><span id="gid">-</span>
+      <b>game_id</b><span id="gid">-</span>
       <b>turn</b><span id="turn">-</span>
       <b>phase</b><span id="phase">-</span>
       <b>attacker</b><span id="attacker">-</span>
@@ -149,7 +149,6 @@
 
     <div class="btns">
       <button onclick="newGame()">新規ゲーム</button>
-            <button onclick="passNow()" id="passBtn">PASS</button>
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
       <button onclick="downloadKifu()">棋譜をダウンロード</button>
@@ -209,10 +208,8 @@ async function downloadKifu(){
   }
 }
 
-let gid = "main";
-let mySeat = "A";
+let gid = null;
 let showAllHands = false;
-let pollTimer = null;
 
 // 最新の状態と合法手（手札クリックで使う）
 let latestState = null;
@@ -293,7 +290,7 @@ async function onHandPieceClick(piece){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== mySeat){
+  if(latestState.turn !== "A"){
     setHint(`いまは ${latestState.turn} の手番です。`);
     return;
   }
@@ -359,7 +356,7 @@ async function onPassClick(){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== mySeat){
+  if(latestState.turn !== "A"){
     setHint(`いまは ${latestState.turn} の手番です。`);
     return;
   }
@@ -390,19 +387,19 @@ function renderBoard(state){
   board.innerHTML="";
 
   // ★ Aが今「使える駒」の集合（pending中は pending を優先）
-  const usablePiecesMe = new Set();
-  if(state.turn === mySeat && !state.finished){
+  const usablePiecesA = new Set();
+  if(state.turn === "A" && !state.finished){
     if(pending && Array.isArray(pending.candidates)){
       // 2段階選択中：次に必要な種類（attack / block）の候補だけ使える扱い
       pending.candidates.forEach(a => {
-        if(pending.need === "attack" && a.attack) usablePiecesMe.add(a.attack);
-        if(pending.need === "block" && a.block) usablePiecesMe.add(a.block);
+        if(pending.need === "attack" && a.attack) usablePiecesA.add(a.attack);
+        if(pending.need === "block" && a.block) usablePiecesA.add(a.block);
       });
     }else if(Array.isArray(latestLegal)){
       // 通常：合法手に出てくる block/attack のいずれかが含まれていれば「使える」
       latestLegal.forEach(a => {
-        if(a.block) usablePiecesMe.add(a.block);
-        if(a.attack) usablePiecesMe.add(a.attack);
+        if(a.block) usablePiecesA.add(a.block);
+        if(a.attack) usablePiecesA.add(a.attack);
       });
     }
   }
@@ -418,7 +415,7 @@ function renderBoard(state){
       if(col===8 && row===9){
         div.classList.add("pass");
         div.textContent = "PASS";
-        if(false){
+        if(state.turn==="A" && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
           div.onclick = onPassClick;
         }else{
           div.classList.add("disabled");
@@ -437,15 +434,15 @@ function renderBoard(state){
         const val=document.createElement("div");
         val.className="val";
 
-        if(hand.p===mySeat || showAllHands){
+        if(hand.p==="A" || showAllHands){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
 
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          if(hand.p===mySeat && state.turn===mySeat && !state.finished && card){
-            if(usablePiecesMe.has(card)){
+          if(hand.p==="A" && state.turn==="A" && !state.finished && card){
+            if(usablePiecesA.has(card)){
               div.classList.add("clickable");
               div.onclick = () => onHandPieceClick(card);
             }else{
@@ -537,40 +534,12 @@ async function renderActions(){
 }
 
 async function newGame(){
-  // 常設卓をリセット（全員が同じ卓を参照します）
-  mySeat = document.getElementById("seatSel").value;
-  await fetch(`${API}/games/${gid}/reset?dealer=A`, {method:"POST"});
+  const r=await fetch(`${API}/games`,{method:"POST"});
+  const j=await r.json();
+  gid=j.game_id;
+  document.getElementById("gid").textContent=gid;
   pending = null;
-  setHint("新しい局を開始しました。5秒ごとに更新します。");
-  await refresh();
-  startPolling();
-}
-
-function startPolling(){
-  stopPolling();
-  pollTimer = setInterval(()=>{ refresh(); }, 5000);
-}
-function stopPolling(){
-  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
-}
-
-async function passNow(){
-  if(!gid || !latestState) return;
-  if(latestState.finished){
-    setHint("この局は終了しています。");
-    return;
-  }
-  if(latestState.turn !== mySeat){
-    setHint(`いまは ${latestState.turn} の手番です。`);
-    return;
-  }
-  const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){
-    setHint("今はパスできません。");
-    return;
-  }
-  pending = null;
-  await submitAction(pass);
+  setHint("手札をクリックして駒を出します。");
   await refresh();
 }
 
@@ -583,8 +552,7 @@ async function fetchLegal(){
 async function refresh(){
   if(!gid) return;
 
-  let url = `${API}/games/${gid}/state?seat=${encodeURIComponent(mySeat)}`;
-  if(showAllHands){ url += `&reveal_hands=1`; }
+  const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
   const state = await (await fetch(url)).json();
   latestState = state;
 
@@ -598,13 +566,6 @@ async function refresh(){
 
   // 合法手を更新（手札クリック＆PASSが参照）
   latestLegal = await fetchLegal();
-
-  // PASSボタン有効/無効
-  const passBtn = document.getElementById("passBtn");
-  if(passBtn){
-    const canPass = (state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass"));
-    passBtn.disabled = !canPass;
-  }
 
   // ヒント更新
   if(state.finished){
@@ -628,26 +589,6 @@ async function refresh(){
   renderBoard(state);
   await renderActions();
 }
-function initSingleTable(){
-  const saved = localStorage.getItem("goita_seat");
-  if(saved){
-    mySeat = saved;
-    const sel = document.getElementById("seatSel");
-    if(sel) sel.value = saved;
-  }
-  const sel = document.getElementById("seatSel");
-  if(sel){
-    sel.addEventListener("change", ()=>{
-      mySeat = sel.value;
-      localStorage.setItem("goita_seat", mySeat);
-      refresh();
-    });
-  }
-  refresh();
-  startPolling();
-}
-window.addEventListener("load", initSingleTable);
-
 </script>
 </body>
 </html>
