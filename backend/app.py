@@ -375,7 +375,7 @@ def reset_game(game_id: str, dealer: str = "A"):
     return {"game_id": game_id, "seat": seat, "token": token, "name": game["seat_name"][seat]}
 
 @app.get("/games/{game_id}/state")
-def get_state(game_id: str, seat: str):
+def get_state(game_id: str, seat: str, reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -390,7 +390,7 @@ def get_state(game_id: str, seat: str):
         viewer=seat,
         log=game.get("log", []),
         board_public=game.get("board", _new_board_snapshot()),
-        reveal_hands=False,
+        reveal_hands=bool(reveal_hands),
     )
     view["you_are"] = {"seat": seat}
     return view

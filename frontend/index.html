@@ -584,6 +584,7 @@ async function refresh(){
   if(!gid) return;
 
   let url = `${API}/games/${gid}/state?seat=${encodeURIComponent(mySeat)}`;
+  if(showAllHands){ url += `&reveal_hands=1`; }
   if(showAllHands){
     url += `&reveal_hands=1` + (adminToken ? `&admin=${encodeURIComponent(adminToken)}` : ``);
   }
