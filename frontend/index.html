@@ -585,9 +585,6 @@ async function refresh(){
 
   let url = `${API}/games/${gid}/state?seat=${encodeURIComponent(mySeat)}`;
   if(showAllHands){ url += `&reveal_hands=1`; }
-  if(showAllHands){
-    url += `&reveal_hands=1` + (adminToken ? `&admin=${encodeURIComponent(adminToken)}` : ``);
-  }
   const state = await (await fetch(url)).json();
   latestState = state;
 
