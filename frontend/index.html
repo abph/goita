@@ -73,13 +73,20 @@
     .pass:hover { background: #ffe7e7; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    /* ===== 座席ラベル ===== */
+    /* ===== 盤面ラベル ===== */
     .seat-label{
       border: 2px solid #333;
       background: #fff;
       font-weight: 900;
       font-size: 22px;
       letter-spacing: 1px;
+    }
+    .turn-label{
+      border: 2px solid #333;
+      background: #fff;
+      font-weight: 900;
+      font-size: 16px;
+      letter-spacing: 0px;
     }
 
     .ui { margin-top: 14px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; background: #fff; }
@@ -161,7 +168,7 @@ let gid = MAIN_GID;
 let mySeat = (localStorage.getItem("goita_mySeat") || "A").toUpperCase();
 if(!["A","B","C","D"].includes(mySeat)) mySeat = "A";
 
-let lastSeat = mySeat; // ★release用
+let lastSeat = mySeat; // release用
 
 let showAllHands = false;
 let latestState = null;
@@ -195,6 +202,9 @@ const SEAT_LABELS = new Map([
   ["8,2", "C"],
   ["2,3", "D"],
 ]);
+
+// ★手番表示の位置（5列目5行目）
+const TURN_LABEL_POS = { col: 5, row: 5 };
 
 function buildSlotMap(){
   const m=new Map();
@@ -356,6 +366,14 @@ function renderBoard(state){
         continue;
       }
 
+      // ★手番表示（5列目5行目）
+      if(col===TURN_LABEL_POS.col && row===TURN_LABEL_POS.row){
+        div.classList.add("turn-label");
+        div.textContent = `手番${state.turn || ""}`;
+        board.appendChild(div);
+        continue;
+      }
+
       // 座席ラベル
       const label = SEAT_LABELS.get(k);
       if(label){
@@ -497,14 +515,14 @@ window.addEventListener("load", async ()=>{
   sel.addEventListener("change", async ()=>{
     const nextSeat = sel.value;
 
-    // ★前の席を解除
+    // 前の席を解除
     await releaseSeat(lastSeat);
 
     mySeat = nextSeat;
     localStorage.setItem("goita_mySeat", mySeat);
     pending = null;
 
-    // ★新しい席をclaim
+    // 新しい席をclaim
     await claimSeat(mySeat);
 
     lastSeat = mySeat;
