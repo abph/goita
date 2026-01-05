@@ -6,120 +6,38 @@
   <style>
     body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
     h1 { margin-bottom: 12px; }
-
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
-
-    .board {
-      display: grid;
-      grid-template-columns: repeat(10, 58px);
-      grid-template-rows: repeat(10, 58px);
-      gap: 6px;
-      user-select: none;
-      margin: 0 auto;
-    }
-    .cell {
-      border: 1px solid #e6e6e6;
-      border-radius: 10px;
-      background: #fafafa;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      position: relative;
-    }
-
+    .board { display: grid; grid-template-columns: repeat(10, 58px); grid-template-rows: repeat(10, 58px); gap: 6px; user-select: none; margin: 0 auto; }
+    .cell { border: 1px solid #e6e6e6; border-radius: 10px; background: #fafafa; display: flex; align-items: center; justify-content: center; font-size: 12px; position: relative; }
     .slot { border: 2px solid #999; background: #fff; font-weight: 600; }
     .slot .val { font-size: 18px; font-weight: 800; }
-
     .hand { border: 2px solid #4a90e2; background: #ffffff; }
     .hand .val { font-size: 18px; font-weight: 900; }
-
     .hand.clickable { cursor: pointer; }
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
-
-    .hand.disabled {
-      background: #f0f0f0;
-      border-color: #bbb;
-      color: #999;
-      cursor: not-allowed;
-    }
+    .hand.disabled { background: #f0f0f0; border-color: #bbb; color: #999; cursor: not-allowed; }
     .hand.disabled .val { color: #999; }
-
     .slot.attack { background: #eef6ff; }
-
-    .slot.current-attack {
-      background: #cfe8ff;
-      border-color: #2b78d6;
-      animation: pulse 1.5s infinite;
-    }
-    .slot.current-attack .val {
-      color: #0b3c7a;
-      font-size: 22px;
-    }
-
-    @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.6); }
-      70%  { box-shadow: 0 0 0 10px rgba(43,120,214,0); }
-      100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
-    }
-
-    .pass {
-      border: 3px solid #e74c3c;
-      background: #fff2f2;
-      cursor: pointer;
-      font-weight: 900;
-      letter-spacing: 0.5px;
-    }
+    .slot.current-attack { background: #cfe8ff; border-color: #2b78d6; animation: pulse 1.5s infinite; }
+    .slot.current-attack .val { color: #0b3c7a; font-size: 22px; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(43,120,214,0.6);} 70%{ box-shadow:0 0 0 10px rgba(43,120,214,0);} 100%{ box-shadow:0 0 0 0 rgba(43,120,214,0);} }
+    .pass { border: 3px solid #e74c3c; background: #fff2f2; cursor: pointer; font-weight: 900; letter-spacing: 0.5px; }
     .pass:hover { background: #ffe7e7; }
     .pass.disabled { opacity: 0.35; cursor: default; }
-
-    .ui {
-      margin-top: 14px;
-      border: 1px solid #ddd;
-      border-radius: 12px;
-      padding: 12px;
-      background: #fff;
-    }
-
-    .meta {
-      display: grid;
-      grid-template-columns: 140px 1fr;
-      gap: 6px 10px;
-      font-size: 13px;
-      line-height: 1.5;
-      margin-bottom: 10px;
-    }
+    .ui { margin-top: 14px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; background: #fff; }
+    .meta { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
     .meta b { display: inline-block; }
-
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     button { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
     button:hover { background: #f6f6f6; }
-
+    select { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; }
     .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 10px 0; }
     .small { font-size: 12px; color: #555; }
-
-    .bottom-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 10px;
-    }
-
-    .card {
-      border: 1px solid #e6e6e6;
-      border-radius: 12px;
-      padding: 10px;
-      background: #fafafa;
-      min-height: 120px;
-    }
-
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 10px; background: #fafafa; min-height: 120px; }
     pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 420px; overflow:auto; margin: 0; }
-
-    @media (max-width: 980px){
-      .bottom-grid { grid-template-columns: 1fr; }
-      .board { transform: scale(0.92); transform-origin: top center; }
-    }
+    @media (max-width: 980px){ .bottom-grid { grid-template-columns: 1fr; } .board { transform: scale(0.92); transform-origin: top center; } }
   </style>
 </head>
 <body>
@@ -132,6 +50,17 @@
   <div class="ui">
     <div class="meta">
       <b>game_id</b><span id="gid">-</span>
+      <b>自分の席</b>
+      <span>
+        <select id="seatSelect">
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+        </select>
+        <span class="small">（この端末が操作する席）</span>
+      </span>
+
       <b>turn</b><span id="turn">-</span>
       <b>phase</b><span id="phase">-</span>
       <b>attacker</b><span id="attacker">-</span>
@@ -167,50 +96,18 @@
 <script>
 const API = "";
 
-// ★常設1卓
+// 常設1卓
 const MAIN_GID = "main";
 let gid = MAIN_GID;
 
-async function downloadKifu(){
-  if(!gid){
-    alert("game_idがありません。");
-    return;
-  }
-  try{
-    const res = await fetch(`${API}/games/${gid}/kifu`);
-    if(!res.ok){
-      const t = await res.text();
-      alert(`棋譜取得に失敗しました: ${res.status}\n${t}`);
-      return;
-    }
-    const text = await res.text();
-    const blob = new Blob([text], {type: "text/yaml;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    const shortId = String(gid).slice(0, 8);
-    a.href = url;
-    a.download = `goita_kifu_${shortId}.yaml`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }catch(e){
-    console.error(e);
-    alert("棋譜ダウンロード中にエラーが発生しました。コンソールも確認してください。");
-  }
-}
+// ★自分の席（localStorageに保存）
+let mySeat = (localStorage.getItem("goita_mySeat") || "A").toUpperCase();
+if(!["A","B","C","D"].includes(mySeat)) mySeat = "A";
 
 let showAllHands = false;
-
-// 最新の状態と合法手（手札クリックで使う）
 let latestState = null;
 let latestLegal = [];
-
-// 2段階選択（attack_after_block）用
-let pending = null; // { need: "attack"|"block", fixedPiece: "8", fixedRole:"block"|"attack", candidates:[actions...] }
-
-function key(col,row){ return `${col},${row}`; }
+let pending = null;
 
 const PIECE_LABEL = {
   "9": "王","8": "玉","7": "飛","6": "角",
@@ -221,15 +118,14 @@ function pieceToLabel(v){
   if (v === "■" || v === "□") return v;
   return PIECE_LABEL[v] ?? v;
 }
-
 function sortHandNumeric(handArr){
   if(!Array.isArray(handArr)) return handArr;
   return [...handArr].sort((a,b)=>parseInt(a,10)-parseInt(b,10));
 }
-
 function setHint(msg){
   document.getElementById("handHint").textContent = msg;
 }
+function key(col,row){ return `${col},${row}`; }
 
 const SLOTS = {
   A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
@@ -237,14 +133,12 @@ const SLOTS = {
   B: { receive:[[8,7],[8,6],[8,5],[8,4]], attack:[[9,7],[9,6],[9,5],[9,4]] },
   D: { receive:[[3,4],[3,5],[3,6],[3,7]], attack:[[2,4],[2,5],[2,6],[2,7]] },
 };
-
 const HAND_POS = {
   A: [[2,10],[3,10],[4,10],[5,10],[6,10],[7,10],[8,10],[9,10]],
   C: [[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1]],
   B: [[10,2],[10,3],[10,4],[10,5],[10,6],[10,7],[10,8],[10,9]],
   D: [[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9]],
 };
-
 function buildSlotMap(){
   const m=new Map();
   for(const p of ["A","B","C","D"]){
@@ -264,11 +158,39 @@ function buildHandMap(){
 }
 const HAND_MAP = buildHandMap();
 
+async function downloadKifu(){
+  if(!gid){ alert("game_idがありません。"); return; }
+  const res = await fetch(`${API}/games/${gid}/kifu`);
+  if(!res.ok){
+    const t = await res.text();
+    alert(`棋譜取得に失敗しました: ${res.status}\n${t}`);
+    return;
+  }
+  const text = await res.text();
+  const blob = new Blob([text], {type: "text/yaml;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `goita_kifu_${String(gid).slice(0,8)}.yaml`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function toggleAllHands(){
   showAllHands = !showAllHands;
   document.getElementById("toggleHandsBtn").textContent =
     showAllHands ? "手札表示を戻す" : "みんなの手札を公開";
   refresh();
+}
+
+async function submitAction(actionObj){
+  await fetch(`${API}/games/${gid}/step`, {
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ player: mySeat, action: actionObj })
+  });
 }
 
 async function onHandPieceClick(piece){
@@ -278,8 +200,8 @@ async function onHandPieceClick(piece){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== "A"){
-    setHint(`いまは ${latestState.turn} の手番です。`);
+  if(latestState.turn !== mySeat){
+    setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`);
     return;
   }
 
@@ -342,8 +264,8 @@ async function onPassClick(){
     setHint("この局は終了しています。新規ゲームを開始してください。");
     return;
   }
-  if(latestState.turn !== "A"){
-    setHint(`いまは ${latestState.turn} の手番です。`);
+  if(latestState.turn !== mySeat){
+    setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`);
     return;
   }
 
@@ -358,29 +280,21 @@ async function onPassClick(){
   await refresh();
 }
 
-async function submitAction(actionObj){
-  await fetch(`${API}/games/${gid}/step`, {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({action: actionObj})
-  });
-}
-
 function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
 
-  const usablePiecesA = new Set();
-  if(state.turn === "A" && !state.finished){
+  const usablePiecesMine = new Set();
+  if(state.turn === mySeat && !state.finished){
     if(pending && Array.isArray(pending.candidates)){
       pending.candidates.forEach(a => {
-        if(pending.need === "attack" && a.attack) usablePiecesA.add(a.attack);
-        if(pending.need === "block" && a.block) usablePiecesA.add(a.block);
+        if(pending.need === "attack" && a.attack) usablePiecesMine.add(a.attack);
+        if(pending.need === "block" && a.block) usablePiecesMine.add(a.block);
       });
     }else if(Array.isArray(latestLegal)){
       latestLegal.forEach(a => {
-        if(a.block) usablePiecesA.add(a.block);
-        if(a.attack) usablePiecesA.add(a.attack);
+        if(a.block) usablePiecesMine.add(a.block);
+        if(a.attack) usablePiecesMine.add(a.attack);
       });
     }
   }
@@ -395,7 +309,7 @@ function renderBoard(state){
       if(col===8 && row===9){
         div.classList.add("pass");
         div.textContent = "PASS";
-        if(state.turn==="A" && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
+        if(state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
           div.onclick = onPassClick;
         }else{
           div.classList.add("disabled");
@@ -413,15 +327,15 @@ function renderBoard(state){
         const val=document.createElement("div");
         val.className="val";
 
-        if(hand.p==="A" || showAllHands){
+        if(hand.p===mySeat || showAllHands){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
 
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          if(hand.p==="A" && state.turn==="A" && !state.finished && card){
-            if(usablePiecesA.has(card)){
+          if(hand.p===mySeat && state.turn===mySeat && !state.finished && card){
+            if(usablePiecesMine.has(card)){
               div.classList.add("clickable");
               div.onclick = () => onHandPieceClick(card);
             }else{
@@ -458,11 +372,7 @@ function renderBoard(state){
           for (let i = atkArr.length - 1; i >= 0; i--) {
             if (atkArr[i] != null) { lastIdx = i; break; }
           }
-          if (
-            slot.p === atkP &&
-            slot.idx === lastIdx &&
-            piece === state.current_attack
-          ) {
+          if (slot.p === atkP && slot.idx === lastIdx && piece === state.current_attack) {
             div.classList.add("current-attack");
           }
         }
@@ -506,7 +416,6 @@ async function renderActions(){
 }
 
 async function newGame(){
-  // main卓をリセット（gidは変わらない）
   try{
     await fetch(`${API}/games/main/reset`, { method:"POST" });
   }catch(e){
@@ -514,7 +423,6 @@ async function newGame(){
     alert("リセットに失敗しました。コンソールを確認してください。");
     return;
   }
-
   pending = null;
   showAllHands = false;
   document.getElementById("toggleHandsBtn").textContent = "みんなの手札を公開";
@@ -523,12 +431,17 @@ async function newGame(){
 }
 
 async function fetchLegal(){
-  const acts = await (await fetch(`${API}/games/${gid}/legal_actions`)).json();
+  const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}`);
+  const acts = await res.json();
   return Array.isArray(acts) ? acts : [];
 }
 
 async function refresh(){
-  const url = `${API}/games/${gid}/state` + (showAllHands ? `?reveal_hands=1` : ``);
+  const qs = new URLSearchParams();
+  qs.set("viewer", mySeat);
+  if(showAllHands) qs.set("reveal_hands", "1");
+  const url = `${API}/games/${gid}/state?` + qs.toString();
+
   const state = await (await fetch(url)).json();
   latestState = state;
 
@@ -546,11 +459,11 @@ async function refresh(){
   if(state.finished){
     setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
     pending = null;
-  }else if(state.turn !== "A"){
-    setHint(`いまは ${state.turn} の手番です。待ってください。`);
+  }else if(state.turn !== mySeat){
+    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
     pending = null;
   }else if(pending){
-    // pending中は維持
+    // 維持
   }else{
     if(state.phase === "receive"){
       setHint("受けの駒を、手札からクリックしてください。（PASS：8列目9行目）");
@@ -565,8 +478,17 @@ async function refresh(){
   await renderActions();
 }
 
-// ★アクセスしただけで main卓を表示 + 5秒ごと更新
+// 初期化
 window.addEventListener("load", async () => {
+  const sel = document.getElementById("seatSelect");
+  sel.value = mySeat;
+  sel.addEventListener("change", async () => {
+    mySeat = sel.value;
+    localStorage.setItem("goita_mySeat", mySeat);
+    pending = null;
+    await refresh();
+  });
+
   document.getElementById("gid").textContent = gid;
   await refresh();
   setInterval(refresh, 5000);

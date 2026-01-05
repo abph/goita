@@ -11,23 +11,24 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-# あなたのプロジェクト構成（goita_ai2/ が同階層にある前提）
 from goita_ai2.state import GoitaState
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
 
+# ====== ゲーム管理 ======
+ALL_SEATS = ["A", "B", "C", "D"]
+
+# ★常設1卓
+MAIN_GID = "main"
+
+
 def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
-    """handの要素型が int/str 混在でも state 側が扱いやすいように str に正規化する。"""
     return {p: [str(x) for x in hands[p]] for p in ALL_SEATS}
 
 
 def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
-    """create_random_hands() を使って配牌しつつ、
-    どのプレイヤーにも '1'(し) が5枚以上配られないようにする。
-    ※ hand要素が int の場合でも確実に判定できるように str に正規化してから数える。
-    """
     last_hands: Dict[str, List[str]] = {p: [] for p in ALL_SEATS}
     for _ in range(max_retry):
         raw = create_random_hands()
@@ -38,9 +39,15 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
     return last_hands
 
 
+def _validate_seat(s: str, *, name: str = "seat") -> str:
+    s = (s or "").strip().upper()
+    if s not in ALL_SEATS:
+        raise HTTPException(status_code=400, detail=f"invalid {name}: {s} (must be A/B/C/D)")
+    return s
+
+
 app = FastAPI(title="Goita FastAPI (Render-ready)")
 
-# Render上でGoogle Sites埋め込み等を考えるならCORSは広めでOK（本番で絞りたければ後で調整）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,11 +56,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ====== frontend 配信（RenderでURL直打ちしたときに画面が出る） ======
-BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクト直下（backend/ の1つ上）
+# ====== frontend 配信 ======
+BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
-
-# frontend 配下のファイル（index.html含む）を /static で配信（任意だが便利）
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
@@ -63,15 +68,6 @@ def serve_index():
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="frontend/index.html not found")
     return FileResponse(index_path)
-
-
-# ====== ゲーム管理 ======
-HUMAN_SEAT = "A"
-CPU_SEATS = ["B", "C", "D"]
-ALL_SEATS = ["A", "B", "C", "D"]
-
-# ★常設1卓
-MAIN_GID = "main"
 
 
 # ====== 棋譜（kifu）出力用 ======
@@ -90,7 +86,6 @@ PLAYER_IDX: Dict[str, str] = {"A": "0", "B": "1", "C": "2", "D": "3"}
 
 
 def _hand_to_kifu_string(hand: List[Any]) -> str:
-    # 手札の順は配牌時の並びをそのまま採用（必要ならここで並べ替えも可能）
     return "".join(PIECE_KANJI.get(str(x), str(x)) for x in hand)
 
 
@@ -102,7 +97,6 @@ def _piece_to_kifu(v: Optional[str]) -> str:
 
 
 def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> List[str]:
-    """あなたの例に合わせて ["pid","block","attack"] 形式に変換する"""
     t, b, a = action
     pid = PLAYER_IDX[player]
     if t == "pass":
@@ -117,24 +111,17 @@ def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[
 
 
 def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
-    """棋譜の見やすさのために
-    - pass 行を削除
-    - 同一プレイヤーの連続した「受け→攻め」を 1 行に結合する
-      例: ["1","玉",""] + ["1","","香"] => ["1","玉","香"]
-    """
     out: List[List[str]] = []
     for row in moves:
         if not row or len(row) < 3:
             continue
         pid, b, a = str(row[0]), str(row[1]), str(row[2])
 
-        # pass は出力しない
         if b == "パス" or b.lower() == "pass":
             continue
 
         if out:
             lp, lb, la = out[-1]
-            # 同じプレイヤーで、前が受けのみ・今が攻めのみ → 結合
             if lp == pid and la == "" and lb != "" and b == "" and a != "":
                 out[-1] = [lp, lb, a]
                 continue
@@ -156,6 +143,8 @@ class ActionModel(BaseModel):
 
 
 class StepRequest(BaseModel):
+    # ★どの席として操作するか（A/B/C/D）
+    player: str = Field("A", description="A/B/C/D")
     action: ActionModel
 
 
@@ -248,7 +237,6 @@ def _update_board_snapshot(
 
 
 def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_type: str, before_len: int) -> bool:
-    # face_down_hidden の増分で「伏せ」を検出
     if action_type not in ("receive", "attack_after_block"):
         return False
     return len(state.face_down_hidden[player]) > before_len
@@ -269,7 +257,6 @@ def _state_public_view(
         else:
             hands_view[p] = {"count": len(state.hands[p])}
 
-    # みんなの手札を公開するときは、場の伏せ駒（receive_hidden）も公開する
     if reveal_hands:
         board_view = copy.deepcopy(board_public)
         for p in ALL_SEATS:
@@ -295,10 +282,13 @@ def _state_public_view(
 
 
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
+    dealer = _validate_seat(dealer, name="dealer")
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
 
+    # ★全席分のCPU（人間がどの席を選んでも、残りはCPUで進行できる）
     agents: Dict[str, RuleBasedAgent] = {
+        "A": RuleBasedAgent(name="CPU-A"),
         "B": RuleBasedAgent(name="CPU-B"),
         "C": RuleBasedAgent(name="CPU-C"),
         "D": RuleBasedAgent(name="CPU-D"),
@@ -309,11 +299,11 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     return {
         "state": state,
         "agents": agents,
-        "log": [f"Game start. dealer={dealer}, human={HUMAN_SEAT}"],
+        "log": [f"Game start. dealer={dealer}, table=main"],
         "board": _new_board_snapshot(),
         "init_hands": hands,
         "dealer": dealer,
-        "kifu_moves": [],  # List[List[str]]
+        "kifu_moves": [],
     }
 
 
@@ -324,11 +314,11 @@ def _ensure_main_game(dealer: str = "A") -> None:
 
 @app.post("/games")
 def create_game(dealer: str = "A"):
-    """従来の UUID ゲーム作成（デバッグ用に残す）"""
+    """UUIDゲーム（デバッグ用）"""
     game = _create_game_obj(dealer=dealer)
     gid = str(uuid.uuid4())
     GAMES[gid] = game
-    return {"game_id": gid, "human_seat": HUMAN_SEAT, "dealer": dealer}
+    return {"game_id": gid, "dealer": dealer}
 
 
 @app.post("/games/main/reset")
@@ -339,9 +329,11 @@ def reset_main(dealer: str = "A"):
 
 
 @app.get("/games/{game_id}/state")
-def get_state(game_id: str, reveal_hands: int = 0):
+def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     if game_id == MAIN_GID:
         _ensure_main_game()
+
+    viewer = _validate_seat(viewer, name="viewer")
 
     game = GAMES.get(game_id)
     if not game:
@@ -350,7 +342,7 @@ def get_state(game_id: str, reveal_hands: int = 0):
     state: GoitaState = game["state"]
     return _state_public_view(
         state,
-        viewer=HUMAN_SEAT,
+        viewer=viewer,
         log=game.get("log", []),
         board_public=game.get("board", _new_board_snapshot()),
         reveal_hands=bool(reveal_hands),
@@ -358,24 +350,28 @@ def get_state(game_id: str, reveal_hands: int = 0):
 
 
 @app.get("/games/{game_id}/legal_actions")
-def get_legal_actions(game_id: str):
+def get_legal_actions(game_id: str, player: str = "A"):
     if game_id == MAIN_GID:
         _ensure_main_game()
+
+    player = _validate_seat(player, name="player")
 
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
 
     state: GoitaState = game["state"]
-    if state.finished or state.turn != HUMAN_SEAT:
+    if state.finished or state.turn != player:
         return []
-    return _actions_to_json(state.legal_actions(HUMAN_SEAT))
+    return _actions_to_json(state.legal_actions(player))
 
 
 @app.post("/games/{game_id}/step")
 def step(game_id: str, req: StepRequest):
     if game_id == MAIN_GID:
         _ensure_main_game()
+
+    player = _validate_seat(req.player, name="player")
 
     game = GAMES.get(game_id)
     if not game:
@@ -387,28 +383,29 @@ def step(game_id: str, req: StepRequest):
     board = game.setdefault("board", _new_board_snapshot())
 
     if state.finished:
-        return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
+        return {"ok": True, "state": _state_public_view(state, viewer=player, log=log, board_public=board)}
 
-    if state.turn != HUMAN_SEAT:
-        raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn})")
+    if state.turn != player:
+        raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
 
     action = req.action.to_tuple()
 
-    before_fd = len(state.face_down_hidden[HUMAN_SEAT])
+    before_fd = len(state.face_down_hidden[player])
     try:
-        _apply_action(state, HUMAN_SEAT, action)
+        _apply_action(state, player, action)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid action: {e}")
 
-    hidden_receive = _is_hidden_receive_by_state_delta(state, HUMAN_SEAT, action[0], before_fd)
-    _update_board_snapshot(board, HUMAN_SEAT, action, hidden_receive=hidden_receive)
+    hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
+    _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
 
-    log.append(_format_action(HUMAN_SEAT, action) + (" (hidden)" if hidden_receive else ""))
-    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(HUMAN_SEAT, action))
-    _notify_public(agents, state, HUMAN_SEAT, action)
+    log.append(_format_action(player, action) + (" (hidden)" if hidden_receive else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
+    _notify_public(agents, state, player, action)
 
+    # ★CPUを回す：次に「player(人間が選んだ席)」の番になるまで進める
     safety = 0
-    while (not state.finished) and state.turn != HUMAN_SEAT:
+    while (not state.finished) and state.turn != player:
         safety += 1
         if safety > 2000:
             raise HTTPException(status_code=500, detail="safety stop: too many cpu steps")
@@ -434,12 +431,11 @@ def step(game_id: str, req: StepRequest):
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-    return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
+    return {"ok": True, "state": _state_public_view(state, viewer=player, log=log, board_public=board)}
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
 def get_kifu_yaml(game_id: str):
-    """棋譜を YAML 形式で返す"""
     if game_id == MAIN_GID:
         _ensure_main_game()
 
@@ -493,7 +489,6 @@ def get_kifu_yaml(game_id: str):
 
 @app.get("/games/{game_id}/kifu.json")
 def get_kifu_json(game_id: str):
-    """棋譜を JSON 形式で返す（デバッグ/拡張用）"""
     if game_id == MAIN_GID:
         _ensure_main_game()
 
@@ -504,8 +499,6 @@ def get_kifu_json(game_id: str):
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
-
-    score = [0, 0]
 
     return {
         "version": "1.0",
@@ -522,7 +515,7 @@ def get_kifu_json(game_id: str):
                     "p3": _hand_to_kifu_string(init_hands.get("D", [])),
                 },
                 "uchidashi": int(PLAYER_IDX.get(dealer, "0")),
-                "score": score,
+                "score": [0, 0],
                 "game": moves,
             }
         ],
