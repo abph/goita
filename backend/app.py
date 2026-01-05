@@ -228,7 +228,8 @@ def _state_public_view(
     viewer: str,
     log: List[str],
     board_public: Dict[str, Dict[str, Any]],
-    reveal_hands: bool = False
+    reveal_hands: bool = False,
+    human_seats: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
@@ -246,7 +247,7 @@ def _state_public_view(
     else:
         board_view = board_public
 
-    return {
+    payload = {
         "turn": state.turn,
         "phase": state.phase,
         "attacker": state.attacker,
@@ -259,6 +260,9 @@ def _state_public_view(
         "finished": state.finished,
         "winner": state.winner,
     }
+    if human_seats is not None:
+        payload["human_seats"] = sorted(list(human_seats))
+    return payload
 
 
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
@@ -278,7 +282,6 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
-        # 人間席（claimされた席）
         "human_seats": set(),  # type: Set[str]
     }
 
@@ -294,7 +297,6 @@ def reset_main(dealer: str = "A"):
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
-# 席のclaim（人間席として登録）
 @app.post("/games/main/claim")
 def claim_seat(seat: str):
     _ensure_main_game()
@@ -302,6 +304,17 @@ def claim_seat(seat: str):
     game = GAMES[MAIN_GID]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.add(seat)
+    return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
+
+
+# ★追加：席の解除（人間席から外す）
+@app.post("/games/main/release")
+def release_seat(seat: str):
+    _ensure_main_game()
+    seat = _validate_seat(seat, name="seat")
+    game = GAMES[MAIN_GID]
+    hs: Set[str] = game.setdefault("human_seats", set())
+    hs.discard(seat)
     return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
 
 
@@ -315,17 +328,16 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
         raise HTTPException(status_code=404, detail="game not found")
 
     state: GoitaState = game["state"]
+    hs: Set[str] = game.get("human_seats", set())
 
-    payload = _state_public_view(
+    return _state_public_view(
         state,
         viewer=viewer,
         log=game.get("log", []),
         board_public=game.get("board", _new_board_snapshot()),
         reveal_hands=bool(reveal_hands),
+        human_seats=hs,
     )
-    hs = game.get("human_seats", set())
-    payload["human_seats"] = sorted(list(hs))
-    return payload
 
 
 @app.get("/games/{game_id}/legal_actions")
@@ -363,8 +375,7 @@ def step(game_id: str, req: StepRequest):
     human_seats.add(player)
 
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board)
-        payload["human_seats"] = sorted(list(human_seats))
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats)
         return {"ok": True, "state": payload}
 
     if state.turn != player:
@@ -400,21 +411,17 @@ def step(game_id: str, req: StepRequest):
 
         cpu_action = agents[p].select_action(state, p, acts)
 
-        before_fd = len(state.face_down_hidden[p])
         _apply_action(state, p, cpu_action)
+        _update_board_snapshot(board, p, cpu_action, hidden_receive=False)
 
-        hidden_receive = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd)
-        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive)
-
-        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive else ""))
+        log.append(_format_action(p, cpu_action))
         game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
         _notify_public(agents, state, p, cpu_action)
 
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board)
-    payload["human_seats"] = sorted(list(human_seats))
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats)
     return {"ok": True, "state": payload}
 
 
