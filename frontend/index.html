@@ -33,7 +33,7 @@
     /* 攻め枠（ベース） */
     .slot.attack { background: #eef6ff; }
 
-    /* ★攻め枠：人間は青、AIは赤 */
+    /* 攻め枠：人間は青、AIは赤 */
     .slot.attack.human { border-color: #4a90e2; background: #eef6ff; }
     .slot.attack.ai    { border-color: #e74c3c; background: #fff2f2; }
     .slot.attack.ai .val { color: #b00000; font-weight: 900; }
@@ -58,7 +58,7 @@
     .hand.disabled { background: #f0f0f0; border-color: #bbb; color: #999; cursor: not-allowed; }
     .hand.disabled .val { color: #999; }
 
-    /* ★手札枠：人間は青（既定）、AIは赤 */
+    /* 手札枠：人間は青（既定）、AIは赤 */
     .hand.human { border-color: #4a90e2; }
     .hand.ai    { border-color: #e74c3c; }
 
@@ -120,12 +120,13 @@
       <b>自分の席</b>
       <span>
         <select id="seatSelect">
+          <option value="W">観戦</option>
           <option value="A">A</option>
           <option value="B">B</option>
           <option value="C">C</option>
           <option value="D">D</option>
         </select>
-        <span class="small">（この端末が操作する席）</span>
+        <span class="small">（観戦→後からA/B/C/Dを選ぶ）</span>
       </span>
 
       <b>turn</b><span id="turn">-</span>
@@ -142,13 +143,13 @@
       <span class="small">（PASS：6列目6行目）</span>
     </div>
 
-    <div class="hint" id="handHint">手札をクリックして駒を出します。（PASS：6列目6行目）</div>
+    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）</div>
 
     <div class="bottom-grid">
       <div class="card">
         <details>
           <summary><b>（デバッグ用）合法手</b></summary>
-          <div class="small">手札クリックがうまくいかない時の保険です。</div>
+          <div class="small">観戦中は空になります。</div>
           <div id="actions" style="margin-top:8px;"></div>
         </details>
       </div>
@@ -165,10 +166,10 @@ const API = "";
 const MAIN_GID = "main";
 let gid = MAIN_GID;
 
-let mySeat = (localStorage.getItem("goita_mySeat") || "A").toUpperCase();
-if(!["A","B","C","D"].includes(mySeat)) mySeat = "A";
+const WATCH = "W";
 
-let lastSeat = mySeat; // release用
+let mySeat = WATCH;          // ★デフォルト：観戦
+let lastSeat = "A";          // ★最後にclaimしていた席（release用）
 
 let showAllHands = false;
 let latestState = null;
@@ -180,6 +181,10 @@ function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; r
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 function key(col,row){ return `${col},${row}`; }
+function isSpectator(){ return mySeat === WATCH; }
+
+// viewer はAPI上 A/B/C/D が必要なので、観戦時は A として閲覧（操作は無効）
+function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
 
 const SLOTS = {
   A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
@@ -203,7 +208,7 @@ const SEAT_LABELS = new Map([
   ["2,3", "D"],
 ]);
 
-// ★手番表示の位置（5列目5行目）
+// 手番表示の位置（5列目5行目）
 const TURN_LABEL_POS = { col: 5, row: 5 };
 
 function buildSlotMap(){
@@ -264,6 +269,10 @@ async function submitAction(actionObj){
 }
 
 async function onHandPieceClick(piece){
+  if(isSpectator()){
+    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
+    return;
+  }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -311,6 +320,10 @@ async function onHandPieceClick(piece){
 }
 
 async function onPassClick(){
+  if(isSpectator()){
+    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
+    return;
+  }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -334,7 +347,7 @@ function renderBoard(state){
   board.innerHTML="";
 
   const usable = new Set();
-  if(state.turn===mySeat && !state.finished){
+  if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
       pending.candidates.forEach(a => {
         if(pending.need==="attack" && a.attack) usable.add(a.attack);
@@ -357,7 +370,7 @@ function renderBoard(state){
       if(col===PASS_POS.col && row===PASS_POS.row){
         div.classList.add("pass");
         div.textContent="PASS";
-        if(state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
+        if(!isSpectator() && state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
           div.onclick=onPassClick;
         }else{
           div.classList.add("disabled");
@@ -366,7 +379,7 @@ function renderBoard(state){
         continue;
       }
 
-      // ★手番表示（5列目5行目）
+      // 手番表示（5列目5行目）
       if(col===TURN_LABEL_POS.col && row===TURN_LABEL_POS.row){
         div.classList.add("turn-label");
         div.textContent = `手番${state.turn || ""}`;
@@ -392,13 +405,15 @@ function renderBoard(state){
         const val=document.createElement("div");
         val.className="val";
 
-        if(hand.p===mySeat || showAllHands){
+        const canShowSeat = (!isSpectator() && hand.p===mySeat) || showAllHands;
+
+        if(canShowSeat){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
           val.textContent = card ? pieceToLabel(card) : "□";
 
-          if(hand.p===mySeat && state.turn===mySeat && !state.finished && card){
+          if(!isSpectator() && hand.p===mySeat && state.turn===mySeat && !state.finished && card){
             if(usable.has(card)){
               div.classList.add("clickable");
               div.onclick = () => onHandPieceClick(card);
@@ -449,6 +464,9 @@ function renderBoard(state){
 async function renderActions(){
   const actionsDiv = document.getElementById("actions");
   actionsDiv.innerHTML="";
+  if(isSpectator()){
+    return;
+  }
   latestLegal.forEach(a=>{
     const btn=document.createElement("button");
     const t=a.action_type;
@@ -464,11 +482,13 @@ async function newGame(){
   await fetch(`${API}/games/main/reset`, {method:"POST"});
   pending=null; showAllHands=false;
   document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
-  setHint("手札をクリックして駒を出します。（PASS：6列目6行目）");
+  setHint(isSpectator() ? "観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）"
+                        : "手札をクリックして駒を出します。（PASS：6列目6行目）");
   await refresh();
 }
 
 async function fetchLegal(){
+  if(isSpectator()) return [];
   const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}`);
   const acts = await res.json();
   return Array.isArray(acts) ? acts : [];
@@ -476,7 +496,7 @@ async function fetchLegal(){
 
 async function refresh(){
   const qs = new URLSearchParams();
-  qs.set("viewer", mySeat);
+  qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
@@ -494,6 +514,9 @@ async function refresh(){
   if(state.finished){
     setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。（PASS：6列目6行目）`);
     pending = null;
+  }else if(isSpectator()){
+    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）");
+    pending = null;
   }else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`);
     pending = null;
@@ -507,30 +530,39 @@ async function refresh(){
 
 window.addEventListener("load", async ()=>{
   const sel = document.getElementById("seatSelect");
-  sel.value = mySeat;
 
-  // 起動時に自席をclaim
-  await claimSeat(mySeat);
+  // ★アクセス直後は必ず観戦（ローカル保存を無視）
+  mySeat = WATCH;
+  sel.value = WATCH;
+
+  // 観戦ではclaimしない
+  await refresh();
 
   sel.addEventListener("change", async ()=>{
-    const nextSeat = sel.value;
+    const next = sel.value;
 
-    // 前の席を解除
-    await releaseSeat(lastSeat);
+    // いま席を持っていたなら解除
+    if(!isSpectator()){
+      await releaseSeat(lastSeat);
+    }
 
-    mySeat = nextSeat;
-    localStorage.setItem("goita_mySeat", mySeat);
     pending = null;
 
-    // 新しい席をclaim
-    await claimSeat(mySeat);
+    // 観戦へ
+    if(next === WATCH){
+      mySeat = WATCH;
+      sel.value = WATCH;
+      await refresh();
+      return;
+    }
 
+    // 席へ
+    mySeat = next;
     lastSeat = mySeat;
+    await claimSeat(mySeat);
     await refresh();
   });
 
-  document.getElementById("gid").textContent = gid;
-  await refresh();
   setInterval(refresh, 5000);
 });
 </script>
