@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 import copy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
@@ -223,8 +222,14 @@ def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_typ
     return len(state.face_down_hidden[player]) > before_len
 
 
-def _state_public_view(state: GoitaState, *, viewer: str, log: List[str],
-                      board_public: Dict[str, Dict[str, Any]], reveal_hands: bool = False) -> Dict[str, Any]:
+def _state_public_view(
+    state: GoitaState,
+    *,
+    viewer: str,
+    log: List[str],
+    board_public: Dict[str, Dict[str, Any]],
+    reveal_hands: bool = False
+) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
         if reveal_hands or p == viewer:
@@ -273,7 +278,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
-        # ★人間席（claimされた席）
+        # 人間席（claimされた席）
         "human_seats": set(),  # type: Set[str]
     }
 
@@ -289,7 +294,7 @@ def reset_main(dealer: str = "A"):
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
-# ★追加：席のclaim（人間席として登録）
+# 席のclaim（人間席として登録）
 @app.post("/games/main/claim")
 def claim_seat(seat: str):
     _ensure_main_game()
@@ -297,7 +302,6 @@ def claim_seat(seat: str):
     game = GAMES[MAIN_GID]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.add(seat)
-    # 観戦だけ端末もあり得るので、必ず4人に制限はしない（必要なら後で制限可能）
     return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
 
 
@@ -309,14 +313,19 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+
     state: GoitaState = game["state"]
-    return _state_public_view(
+
+    payload = _state_public_view(
         state,
         viewer=viewer,
         log=game.get("log", []),
         board_public=game.get("board", _new_board_snapshot()),
         reveal_hands=bool(reveal_hands),
     )
+    hs = game.get("human_seats", set())
+    payload["human_seats"] = sorted(list(hs))
+    return payload
 
 
 @app.get("/games/{game_id}/legal_actions")
@@ -350,11 +359,13 @@ def step(game_id: str, req: StepRequest):
     board = game.setdefault("board", _new_board_snapshot())
     human_seats: Set[str] = game.setdefault("human_seats", set())
 
-    # ここ重要：stepを送ってきた席は「人間席」とみなす（claim漏れ対策）
+    # stepを送ってきた席は人間席として登録（claim漏れ対策）
     human_seats.add(player)
 
     if state.finished:
-        return {"ok": True, "state": _state_public_view(state, viewer=player, log=log, board_public=board)}
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board)
+        payload["human_seats"] = sorted(list(human_seats))
+        return {"ok": True, "state": payload}
 
     if state.turn != player:
         raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
@@ -374,8 +385,7 @@ def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # ★CPUを回す条件を修正：
-    #   「次が human_seats の誰かの番」になったら止める
+    # CPUを回す：次がhuman_seatsの誰かの番になったら止める
     safety = 0
     while (not state.finished) and (state.turn not in human_seats):
         safety += 1
@@ -403,7 +413,9 @@ def step(game_id: str, req: StepRequest):
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-    return {"ok": True, "state": _state_public_view(state, viewer=player, log=log, board_public=board)}
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board)
+    payload["human_seats"] = sorted(list(human_seats))
+    return {"ok": True, "state": payload}
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
