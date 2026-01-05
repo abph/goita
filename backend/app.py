@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 import copy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Set
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +17,15 @@ from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
 
-# ====== ゲーム管理 ======
 ALL_SEATS = ["A", "B", "C", "D"]
-
-# ★常設1卓
 MAIN_GID = "main"
+
+
+def _validate_seat(s: str, *, name: str = "seat") -> str:
+    s = (s or "").strip().upper()
+    if s not in ALL_SEATS:
+        raise HTTPException(status_code=400, detail=f"invalid {name}: {s} (must be A/B/C/D)")
+    return s
 
 
 def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
@@ -37,13 +41,6 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
     return last_hands
-
-
-def _validate_seat(s: str, *, name: str = "seat") -> str:
-    s = (s or "").strip().upper()
-    if s not in ALL_SEATS:
-        raise HTTPException(status_code=400, detail=f"invalid {name}: {s} (must be A/B/C/D)")
-    return s
 
 
 app = FastAPI(title="Goita FastAPI (Render-ready)")
@@ -70,17 +67,10 @@ def serve_index():
     return FileResponse(index_path)
 
 
-# ====== 棋譜（kifu）出力用 ======
+# ====== 棋譜（kifu）用 ======
 PIECE_KANJI: Dict[str, str] = {
-    "9": "王",
-    "8": "玉",
-    "7": "飛",
-    "6": "角",
-    "5": "金",
-    "4": "銀",
-    "3": "馬",
-    "2": "香",
-    "1": "し",
+    "9": "王", "8": "玉", "7": "飛", "6": "角",
+    "5": "金", "4": "銀", "3": "馬", "2": "香", "1": "し",
 }
 PLAYER_IDX: Dict[str, str] = {"A": "0", "B": "1", "C": "2", "D": "3"}
 
@@ -143,8 +133,7 @@ class ActionModel(BaseModel):
 
 
 class StepRequest(BaseModel):
-    # ★どの席として操作するか（A/B/C/D）
-    player: str = Field("A", description="A/B/C/D")
+    player: str = Field(..., description="A/B/C/D")
     action: ActionModel
 
 
@@ -195,10 +184,7 @@ def _build_scores(state: GoitaState) -> Dict[str, Any]:
 
 
 def _new_board_snapshot() -> Dict[str, Dict[str, Any]]:
-    return {
-        p: {"receive": [None] * 4, "attack": [None] * 4, "receive_hidden": [False] * 4}
-        for p in ALL_SEATS
-    }
+    return {p: {"receive": [None]*4, "attack": [None]*4, "receive_hidden": [False]*4} for p in ALL_SEATS}
 
 
 def _push_first_empty(slots: List[Optional[str]], value: Optional[str]) -> Optional[int]:
@@ -212,17 +198,12 @@ def _push_first_empty(slots: List[Optional[str]], value: Optional[str]) -> Optio
     return len(slots) - 1
 
 
-def _update_board_snapshot(
-    board: Dict[str, Dict[str, Any]],
-    player: str,
-    action: Tuple[str, Optional[str], Optional[str]],
-    *,
-    hidden_receive: bool = False,
-) -> None:
+def _update_board_snapshot(board: Dict[str, Dict[str, Any]], player: str,
+                          action: Tuple[str, Optional[str], Optional[str]], *,
+                          hidden_receive: bool = False) -> None:
     t, b, a = action
     if player not in board:
         return
-
     if t == "receive":
         idx = _push_first_empty(board[player]["receive"], b)
         if idx is not None:
@@ -242,14 +223,8 @@ def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_typ
     return len(state.face_down_hidden[player]) > before_len
 
 
-def _state_public_view(
-    state: GoitaState,
-    *,
-    viewer: str,
-    log: List[str],
-    board_public: Dict[str, Dict[str, Any]],
-    reveal_hands: bool = False,
-) -> Dict[str, Any]:
+def _state_public_view(state: GoitaState, *, viewer: str, log: List[str],
+                      board_public: Dict[str, Dict[str, Any]], reveal_hands: bool = False) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
         if reveal_hands or p == viewer:
@@ -286,13 +261,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
 
-    # ★全席分のCPU（人間がどの席を選んでも、残りはCPUで進行できる）
-    agents: Dict[str, RuleBasedAgent] = {
-        "A": RuleBasedAgent(name="CPU-A"),
-        "B": RuleBasedAgent(name="CPU-B"),
-        "C": RuleBasedAgent(name="CPU-C"),
-        "D": RuleBasedAgent(name="CPU-D"),
-    }
+    agents: Dict[str, RuleBasedAgent] = {s: RuleBasedAgent(name=f"CPU-{s}") for s in ALL_SEATS}
     for seat, ag in agents.items():
         ag.bind_player(seat)
 
@@ -304,6 +273,8 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
+        # ★人間席（claimされた席）
+        "human_seats": set(),  # type: Set[str]
     }
 
 
@@ -312,33 +283,32 @@ def _ensure_main_game(dealer: str = "A") -> None:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
 
-@app.post("/games")
-def create_game(dealer: str = "A"):
-    """UUIDゲーム（デバッグ用）"""
-    game = _create_game_obj(dealer=dealer)
-    gid = str(uuid.uuid4())
-    GAMES[gid] = game
-    return {"game_id": gid, "dealer": dealer}
-
-
 @app.post("/games/main/reset")
 def reset_main(dealer: str = "A"):
-    """常設1卓（main）をリセット"""
     GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
+
+
+# ★追加：席のclaim（人間席として登録）
+@app.post("/games/main/claim")
+def claim_seat(seat: str):
+    _ensure_main_game()
+    seat = _validate_seat(seat, name="seat")
+    game = GAMES[MAIN_GID]
+    hs: Set[str] = game.setdefault("human_seats", set())
+    hs.add(seat)
+    # 観戦だけ端末もあり得るので、必ず4人に制限はしない（必要なら後で制限可能）
+    return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
 
 
 @app.get("/games/{game_id}/state")
 def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     if game_id == MAIN_GID:
         _ensure_main_game()
-
     viewer = _validate_seat(viewer, name="viewer")
-
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     state: GoitaState = game["state"]
     return _state_public_view(
         state,
@@ -353,9 +323,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
 def get_legal_actions(game_id: str, player: str = "A"):
     if game_id == MAIN_GID:
         _ensure_main_game()
-
     player = _validate_seat(player, name="player")
-
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -372,7 +340,6 @@ def step(game_id: str, req: StepRequest):
         _ensure_main_game()
 
     player = _validate_seat(req.player, name="player")
-
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -381,6 +348,10 @@ def step(game_id: str, req: StepRequest):
     agents: Dict[str, RuleBasedAgent] = game["agents"]
     log: List[str] = game.setdefault("log", [])
     board = game.setdefault("board", _new_board_snapshot())
+    human_seats: Set[str] = game.setdefault("human_seats", set())
+
+    # ここ重要：stepを送ってきた席は「人間席」とみなす（claim漏れ対策）
+    human_seats.add(player)
 
     if state.finished:
         return {"ok": True, "state": _state_public_view(state, viewer=player, log=log, board_public=board)}
@@ -403,9 +374,10 @@ def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # ★CPUを回す：次に「player(人間が選んだ席)」の番になるまで進める
+    # ★CPUを回す条件を修正：
+    #   「次が human_seats の誰かの番」になったら止める
     safety = 0
-    while (not state.finished) and state.turn != player:
+    while (not state.finished) and (state.turn not in human_seats):
         safety += 1
         if safety > 2000:
             raise HTTPException(status_code=500, detail="safety stop: too many cpu steps")
@@ -447,8 +419,6 @@ def get_kifu_yaml(game_id: str):
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
-    p0, p1, p2, p3 = "プレイヤーA", "プレイヤーB", "プレイヤーC", "プレイヤーD"
-
     state: GoitaState = game["state"]
     ts = getattr(state, "team_score", None)
     score = [0, 0]
@@ -461,15 +431,14 @@ def get_kifu_yaml(game_id: str):
         "p2": _hand_to_kifu_string(init_hands.get("C", [])),
         "p3": _hand_to_kifu_string(init_hands.get("D", [])),
     }
-
     uchidashi = int(PLAYER_IDX.get(dealer, "0"))
 
     lines: List[str] = []
     lines.append("version: 1.0")
-    lines.append(f'p0: "{p0}"')
-    lines.append(f'p1: "{p1}"')
-    lines.append(f'p2: "{p2}"')
-    lines.append(f'p3: "{p3}"')
+    lines.append('p0: "プレイヤーA"')
+    lines.append('p1: "プレイヤーB"')
+    lines.append('p2: "プレイヤーC"')
+    lines.append('p3: "プレイヤーD"')
     lines.append("log:")
     lines.append(" - hand:")
     lines.append(f'     p0: "{h["p0"]}"')
@@ -485,45 +454,3 @@ def get_kifu_yaml(game_id: str):
         c = str(row[2]).replace('"', '\\"')
         lines.append(f'    - ["{a}","{b}","{c}"]')
     return "\n".join(lines) + "\n"
-
-
-@app.get("/games/{game_id}/kifu.json")
-def get_kifu_json(game_id: str):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
-
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-
-    init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
-    dealer: str = game.get("dealer", "A")
-    moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
-
-    return {
-        "version": "1.0",
-        "p0": "プレイヤーA",
-        "p1": "プレイヤーB",
-        "p2": "プレイヤーC",
-        "p3": "プレイヤーD",
-        "log": [
-            {
-                "hand": {
-                    "p0": _hand_to_kifu_string(init_hands.get("A", [])),
-                    "p1": _hand_to_kifu_string(init_hands.get("B", [])),
-                    "p2": _hand_to_kifu_string(init_hands.get("C", [])),
-                    "p3": _hand_to_kifu_string(init_hands.get("D", [])),
-                },
-                "uchidashi": int(PLAYER_IDX.get(dealer, "0")),
-                "score": [0, 0],
-                "game": moves,
-            }
-        ],
-    }
-
-
-@app.delete("/games/{game_id}")
-def delete_game(game_id: str):
-    if game_id in GAMES:
-        del GAMES[game_id]
-    return {"ok": True}

@@ -15,7 +15,6 @@
     .hand .val { font-size: 18px; font-weight: 900; }
     .hand.clickable { cursor: pointer; }
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
-    .hand.selected { outline: 4px solid rgba(255,140,0,0.55); }
     .hand.disabled { background: #f0f0f0; border-color: #bbb; color: #999; cursor: not-allowed; }
     .hand.disabled .val { color: #999; }
     .slot.attack { background: #eef6ff; }
@@ -27,7 +26,6 @@
     .pass.disabled { opacity: 0.35; cursor: default; }
     .ui { margin-top: 14px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; background: #fff; }
     .meta { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
-    .meta b { display: inline-block; }
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     button { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
     button:hover { background: #f6f6f6; }
@@ -95,12 +93,9 @@
 
 <script>
 const API = "";
-
-// 常設1卓
 const MAIN_GID = "main";
 let gid = MAIN_GID;
 
-// ★自分の席（localStorageに保存）
 let mySeat = (localStorage.getItem("goita_mySeat") || "A").toUpperCase();
 if(!["A","B","C","D"].includes(mySeat)) mySeat = "A";
 
@@ -109,22 +104,10 @@ let latestState = null;
 let latestLegal = [];
 let pending = null;
 
-const PIECE_LABEL = {
-  "9": "王","8": "玉","7": "飛","6": "角",
-  "5": "金","4": "銀","3": "馬","2": "香","1": "し",
-};
-function pieceToLabel(v){
-  if (!v) return "";
-  if (v === "■" || v === "□") return v;
-  return PIECE_LABEL[v] ?? v;
-}
-function sortHandNumeric(handArr){
-  if(!Array.isArray(handArr)) return handArr;
-  return [...handArr].sort((a,b)=>parseInt(a,10)-parseInt(b,10));
-}
-function setHint(msg){
-  document.getElementById("handHint").textContent = msg;
-}
+const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
+function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
+function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
+function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 function key(col,row){ return `${col},${row}`; }
 
 const SLOTS = {
@@ -148,7 +131,6 @@ function buildSlotMap(){
   return m;
 }
 const SLOT_MAP = buildSlotMap();
-
 function buildHandMap(){
   const m=new Map();
   for(const p of ["A","B","C","D"]){
@@ -158,23 +140,23 @@ function buildHandMap(){
 }
 const HAND_MAP = buildHandMap();
 
-async function downloadKifu(){
-  if(!gid){ alert("game_idがありません。"); return; }
-  const res = await fetch(`${API}/games/${gid}/kifu`);
-  if(!res.ok){
-    const t = await res.text();
-    alert(`棋譜取得に失敗しました: ${res.status}\n${t}`);
-    return;
+async function claimSeat(seat){
+  try{
+    await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"});
+  }catch(e){
+    console.error(e);
+    // claim失敗しても観戦はできるので致命ではない
   }
+}
+
+async function downloadKifu(){
+  const res = await fetch(`${API}/games/${gid}/kifu`);
   const text = await res.text();
-  const blob = new Blob([text], {type: "text/yaml;charset=utf-8"});
+  const blob = new Blob([text], {type:"text/yaml;charset=utf-8"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `goita_kifu_${String(gid).slice(0,8)}.yaml`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}.yaml`;
+  document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
 
@@ -194,43 +176,28 @@ async function submitAction(actionObj){
 }
 
 async function onHandPieceClick(piece){
-  if(!gid || !latestState) return;
-
-  if(latestState.finished){
-    setHint("この局は終了しています。新規ゲームを開始してください。");
-    return;
-  }
-  if(latestState.turn !== mySeat){
-    setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`);
-    return;
-  }
+  if(!latestState) return;
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
 
   if(pending){
-    const matched = pending.candidates.filter(a => {
-      if(pending.need === "attack") return a.attack === piece;
-      if(pending.need === "block") return a.block === piece;
-      return false;
-    });
-
+    const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
     if(matched.length === 1){
       await submitAction(matched[0]);
       pending = null;
       await refresh();
       return;
-    }else if(matched.length > 1){
+    }
+    if(matched.length > 1){
       setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。");
       return;
-    }else{
-      setHint(`その駒は選べません。${pending.need === "attack" ? "攻め" : "受け"}の駒をもう一度選んでください。`);
-      return;
     }
+    setHint("その駒は選べません。");
+    return;
   }
 
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-  if(candidates.length === 0){
-    setHint("その駒は今は出せません（合法手にありません）。");
-    return;
-  }
+  if(candidates.length === 0){ setHint("その駒は今は出せません。"); return; }
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
@@ -239,42 +206,29 @@ async function onHandPieceClick(piece){
   }
 
   const aab = candidates.filter(a => a.action_type === "attack_after_block");
-
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
-    pending = { need: "attack", fixedPiece: piece, fixedRole: "block", candidates: asBlock };
-    setHint(`伏せ（受け）に ${pieceToLabel(piece)} を選びました。次に「攻め」の駒をクリックしてください。`);
+    pending = { need: "attack", candidates: asBlock };
+    setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
     return;
   }
-
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
-    pending = { need: "block", fixedPiece: piece, fixedRole: "attack", candidates: asAttack };
-    setHint(`攻めに ${pieceToLabel(piece)} を選びました。次に「伏せ（受け）」の駒をクリックしてください。`);
+    pending = { need: "block", candidates: asAttack };
+    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
     return;
   }
 
-  setHint("この駒は複数の出し方があり、確定できません。デバッグ用ボタンから選んでください。");
+  setHint("複数候補があり確定できません。デバッグ用ボタンから選んでください。");
 }
 
 async function onPassClick(){
-  if(!gid || !latestState) return;
-
-  if(latestState.finished){
-    setHint("この局は終了しています。新規ゲームを開始してください。");
-    return;
-  }
-  if(latestState.turn !== mySeat){
-    setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`);
-    return;
-  }
+  if(!latestState) return;
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){
-    setHint("今はパスできません（合法手にpassがありません）。");
-    return;
-  }
-
+  if(!pass){ setHint("今はパスできません。"); return; }
   pending = null;
   await submitAction(pass);
   await refresh();
@@ -284,18 +238,15 @@ function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
 
-  const usablePiecesMine = new Set();
-  if(state.turn === mySeat && !state.finished){
-    if(pending && Array.isArray(pending.candidates)){
+  const usable = new Set();
+  if(state.turn===mySeat && !state.finished){
+    if(pending && pending.candidates){
       pending.candidates.forEach(a => {
-        if(pending.need === "attack" && a.attack) usablePiecesMine.add(a.attack);
-        if(pending.need === "block" && a.block) usablePiecesMine.add(a.block);
+        if(pending.need==="attack" && a.attack) usable.add(a.attack);
+        if(pending.need==="block" && a.block) usable.add(a.block);
       });
-    }else if(Array.isArray(latestLegal)){
-      latestLegal.forEach(a => {
-        if(a.block) usablePiecesMine.add(a.block);
-        if(a.attack) usablePiecesMine.add(a.attack);
-      });
+    }else{
+      latestLegal.forEach(a => { if(a.block) usable.add(a.block); if(a.attack) usable.add(a.attack); });
     }
   }
 
@@ -303,17 +254,15 @@ function renderBoard(state){
     for(let col=1;col<=10;col++){
       const div=document.createElement("div");
       div.className="cell";
-      div.style.gridColumn=col;
-      div.style.gridRow=row;
+      div.style.gridColumn=col; div.style.gridRow=row;
 
       if(col===8 && row===9){
         div.classList.add("pass");
-        div.textContent = "PASS";
+        div.textContent="PASS";
         if(state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
-          div.onclick = onPassClick;
+          div.onclick=onPassClick;
         }else{
           div.classList.add("disabled");
-          div.onclick = null;
         }
         board.appendChild(div);
         continue;
@@ -331,23 +280,18 @@ function renderBoard(state){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
-
           val.textContent = card ? pieceToLabel(card) : "□";
 
           if(hand.p===mySeat && state.turn===mySeat && !state.finished && card){
-            if(usablePiecesMine.has(card)){
+            if(usable.has(card)){
               div.classList.add("clickable");
               div.onclick = () => onHandPieceClick(card);
             }else{
               div.classList.add("disabled");
-              div.onclick = null;
             }
-          }else{
-            div.onclick = null;
           }
         }else{
           val.textContent="□";
-          div.onclick = null;
         }
 
         div.appendChild(val);
@@ -358,28 +302,14 @@ function renderBoard(state){
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
-        if(slot.kind === "A") div.classList.add("attack");
+        if(slot.kind==="A") div.classList.add("attack");
         const val=document.createElement("div");
         val.className="val";
-
-        const kindKey = slot.kind==="R"?"receive":"attack";
+        const kindKey = slot.kind==="R" ? "receive" : "attack";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
-
-        if (slot.kind === "A" && state.current_attack && state.attacker) {
-          const atkP = state.attacker;
-          const atkArr = state.board_public?.[atkP]?.attack || [];
-          let lastIdx = -1;
-          for (let i = atkArr.length - 1; i >= 0; i--) {
-            if (atkArr[i] != null) { lastIdx = i; break; }
-          }
-          if (slot.p === atkP && slot.idx === lastIdx && piece === state.current_attack) {
-            div.classList.add("current-attack");
-          }
-        }
-
         if(piece){
           if(kindKey==="receive"){
-            const hidden=state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+            const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
             val.textContent = hidden ? "■" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
@@ -395,37 +325,22 @@ function renderBoard(state){
 
 async function renderActions(){
   const actionsDiv = document.getElementById("actions");
-  actionsDiv.innerHTML = "";
-  if (!gid) return;
-
-  latestLegal.forEach(a => {
-    const t = a.action_type;
-    const b = a.block ? pieceToLabel(a.block) : "";
-    const at = a.attack ? pieceToLabel(a.attack) : "";
-    const label = `${t} ${b} ${at}`.trim();
-
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.onclick = async () => {
-      pending = null;
-      await submitAction(a);
-      await refresh();
-    };
+  actionsDiv.innerHTML="";
+  latestLegal.forEach(a=>{
+    const btn=document.createElement("button");
+    const t=a.action_type;
+    const b=a.block ? pieceToLabel(a.block) : "";
+    const at=a.attack ? pieceToLabel(a.attack) : "";
+    btn.textContent = `${t} ${b} ${at}`.trim();
+    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); };
     actionsDiv.appendChild(btn);
   });
 }
 
 async function newGame(){
-  try{
-    await fetch(`${API}/games/main/reset`, { method:"POST" });
-  }catch(e){
-    console.error(e);
-    alert("リセットに失敗しました。コンソールを確認してください。");
-    return;
-  }
-  pending = null;
-  showAllHands = false;
-  document.getElementById("toggleHandsBtn").textContent = "みんなの手札を公開";
+  await fetch(`${API}/games/main/reset`, {method:"POST"});
+  pending=null; showAllHands=false;
+  document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
   setHint("手札をクリックして駒を出します。");
   await refresh();
 }
@@ -439,53 +354,46 @@ async function fetchLegal(){
 async function refresh(){
   const qs = new URLSearchParams();
   qs.set("viewer", mySeat);
-  if(showAllHands) qs.set("reveal_hands", "1");
-  const url = `${API}/games/${gid}/state?` + qs.toString();
+  if(showAllHands) qs.set("reveal_hands","1");
 
-  const state = await (await fetch(url)).json();
+  const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
 
   document.getElementById("gid").textContent = gid;
   document.getElementById("turn").textContent = state.turn;
   document.getElementById("phase").textContent = state.phase;
   document.getElementById("attacker").textContent = state.attacker || "";
-  document.getElementById("current_attack").textContent =
-    state.current_attack ? pieceToLabel(state.current_attack) : "";
-
+  document.getElementById("current_attack").textContent = state.current_attack ? pieceToLabel(state.current_attack) : "";
   document.getElementById("log").textContent = (state.log||[]).join("\n");
 
   latestLegal = await fetchLegal();
 
   if(state.finished){
-    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
+    setHint(`この局は終了しました（勝者: ${state.winner}）。`);
     pending = null;
   }else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
     pending = null;
-  }else if(pending){
-    // 維持
-  }else{
-    if(state.phase === "receive"){
-      setHint("受けの駒を、手札からクリックしてください。（PASS：8列目9行目）");
-    }else if(state.phase === "attack"){
-      setHint("攻めの駒を、手札からクリックしてください。（PASS：8列目9行目）");
-    }else{
-      setHint("手札をクリックして駒を出します。（PASS：8列目9行目）");
-    }
+  }else if(!pending){
+    setHint("あなたの手番です。手札をクリックしてください。（PASS：8列目9行目）");
   }
 
   renderBoard(state);
   await renderActions();
 }
 
-// 初期化
-window.addEventListener("load", async () => {
+window.addEventListener("load", async ()=>{
   const sel = document.getElementById("seatSelect");
   sel.value = mySeat;
-  sel.addEventListener("change", async () => {
+
+  // ★起動時に自席をclaim
+  await claimSeat(mySeat);
+
+  sel.addEventListener("change", async ()=>{
     mySeat = sel.value;
     localStorage.setItem("goita_mySeat", mySeat);
     pending = null;
+    await claimSeat(mySeat);
     await refresh();
   });
 
