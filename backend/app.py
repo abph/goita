@@ -38,7 +38,6 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
     return last_hands
 
 
-
 app = FastAPI(title="Goita FastAPI (Render-ready)")
 
 # Render上でGoogle Sites埋め込み等を考えるならCORSは広めでOK（本番で絞りたければ後で調整）
@@ -55,7 +54,6 @@ BASE_DIR = Path(__file__).resolve().parents[1]  # プロジェクト直下（bac
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 # frontend 配下のファイル（index.html含む）を /static で配信（任意だが便利）
-# 例：/static/index.html でも開ける
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
@@ -71,6 +69,9 @@ def serve_index():
 HUMAN_SEAT = "A"
 CPU_SEATS = ["B", "C", "D"]
 ALL_SEATS = ["A", "B", "C", "D"]
+
+# ★常設1卓
+MAIN_GID = "main"
 
 
 # ====== 棋譜（kifu）出力用 ======
@@ -268,7 +269,6 @@ def _state_public_view(
         else:
             hands_view[p] = {"count": len(state.hands[p])}
 
-
     # みんなの手札を公開するときは、場の伏せ駒（receive_hidden）も公開する
     if reveal_hands:
         board_view = copy.deepcopy(board_public)
@@ -294,8 +294,7 @@ def _state_public_view(
     }
 
 
-@app.post("/games")
-def create_game(dealer: str = "A"):
+def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
 
@@ -307,21 +306,43 @@ def create_game(dealer: str = "A"):
     for seat, ag in agents.items():
         ag.bind_player(seat)
 
-    gid = str(uuid.uuid4())
-    GAMES[gid] = {
+    return {
         "state": state,
         "agents": agents,
         "log": [f"Game start. dealer={dealer}, human={HUMAN_SEAT}"],
         "board": _new_board_snapshot(),
-            "init_hands": hands,
+        "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],  # List[List[str]]
     }
+
+
+def _ensure_main_game(dealer: str = "A") -> None:
+    if MAIN_GID not in GAMES:
+        GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+
+
+@app.post("/games")
+def create_game(dealer: str = "A"):
+    """従来の UUID ゲーム作成（デバッグ用に残す）"""
+    game = _create_game_obj(dealer=dealer)
+    gid = str(uuid.uuid4())
+    GAMES[gid] = game
     return {"game_id": gid, "human_seat": HUMAN_SEAT, "dealer": dealer}
+
+
+@app.post("/games/main/reset")
+def reset_main(dealer: str = "A"):
+    """常設1卓（main）をリセット"""
+    GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+    return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
 @app.get("/games/{game_id}/state")
 def get_state(game_id: str, reveal_hands: int = 0):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -338,6 +359,9 @@ def get_state(game_id: str, reveal_hands: int = 0):
 
 @app.get("/games/{game_id}/legal_actions")
 def get_legal_actions(game_id: str):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -350,6 +374,9 @@ def get_legal_actions(game_id: str):
 
 @app.post("/games/{game_id}/step")
 def step(game_id: str, req: StepRequest):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -410,10 +437,12 @@ def step(game_id: str, req: StepRequest):
     return {"ok": True, "state": _state_public_view(state, viewer=HUMAN_SEAT, log=log, board_public=board)}
 
 
-
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
 def get_kifu_yaml(game_id: str):
     """棋譜を YAML 形式で返す"""
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -422,10 +451,8 @@ def get_kifu_yaml(game_id: str):
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
-    # プレイヤー名（必要なら後でUI化できます）
     p0, p1, p2, p3 = "プレイヤーA", "プレイヤーB", "プレイヤーC", "プレイヤーD"
 
-    # スコア（team_score があれば使う）
     state: GoitaState = game["state"]
     ts = getattr(state, "team_score", None)
     score = [0, 0]
@@ -441,7 +468,6 @@ def get_kifu_yaml(game_id: str):
 
     uchidashi = int(PLAYER_IDX.get(dealer, "0"))
 
-    # YAML を手書き生成（依存ライブラリ不要）
     lines: List[str] = []
     lines.append("version: 1.0")
     lines.append(f'p0: "{p0}"')
@@ -458,9 +484,9 @@ def get_kifu_yaml(game_id: str):
     lines.append(f"   score: [{score[0]},{score[1]}]")
     lines.append("   game:")
     for row in moves:
-        a = str(row[0]).replace('"', '\"')
-        b = str(row[1]).replace('"', '\"')
-        c = str(row[2]).replace('"', '\"')
+        a = str(row[0]).replace('"', '\\"')
+        b = str(row[1]).replace('"', '\\"')
+        c = str(row[2]).replace('"', '\\"')
         lines.append(f'    - ["{a}","{b}","{c}"]')
     return "\n".join(lines) + "\n"
 
@@ -468,6 +494,9 @@ def get_kifu_yaml(game_id: str):
 @app.get("/games/{game_id}/kifu.json")
 def get_kifu_json(game_id: str):
     """棋譜を JSON 形式で返す（デバッグ/拡張用）"""
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -476,8 +505,6 @@ def get_kifu_json(game_id: str):
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
 
-    state: GoitaState = game["state"]
-    # 棋譜の score は「開始時点」を表すため常に [0,0]
     score = [0, 0]
 
     return {
