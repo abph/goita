@@ -73,6 +73,18 @@
       font-size: 22px;
       letter-spacing: 1px;
     }
+
+    /* ★手番の席ラベルを光らせる */
+    .seat-label.turn-highlight{
+      border-color: #2b78d6;
+      background: #e8f2ff;
+      animation: seatPulse 1.3s infinite;
+    }
+    @keyframes seatPulse{
+      0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.65); }
+      70%  { box-shadow: 0 0 0 12px rgba(43,120,214,0); }
+      100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
+    }
     .turn-label{
       border: 2px solid #333;
       background: #fff;
@@ -459,6 +471,9 @@ function renderBoard(state){
       const label = SEAT_LABELS.get(k);
       if(label){
         div.classList.add("seat-label");
+        if(label === state.turn){
+          div.classList.add("turn-highlight");
+        }
         div.textContent = label;
         board.appendChild(div);
         continue;
