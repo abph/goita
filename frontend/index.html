@@ -2,16 +2,25 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ごいた 10×10盤面</title>
   <style>
-    body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
+    body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; padding: 0 10px; }
     h1 { margin-bottom: 12px; }
+
+    :root{
+      /* 画面幅に合わせて盤面サイズを自動調整（iPhoneでも大きく表示） */
+      --gap: clamp(3px, 1.2vw, 6px);
+      /* board-wrapの左右余白(=body padding + wrap padding)をざっくり考慮してフィットさせる */
+      --cell: clamp(34px, calc((100vw - 44px - (9 * var(--gap))) / 10), 58px);
+    }
+
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
     .board {
       display: grid;
-      grid-template-columns: repeat(10, 58px);
-      grid-template-rows: repeat(10, 58px);
-      gap: 6px;
+      grid-template-columns: repeat(10, var(--cell));
+      grid-template-rows: repeat(10, var(--cell));
+      gap: var(--gap);
       user-select: none;
       margin: 0 auto;
     }
@@ -117,9 +126,18 @@
 
     @media (max-width: 980px){
       .bottom-grid { grid-template-columns: 1fr; }
-      .board { transform: scale(0.92); transform-origin: top center; }
+      .board { transform: none; }
       .name-grid{ grid-template-columns: 70px 1fr; }
     }
+
+    @media (max-width: 480px){
+      body { margin: 10px auto; padding: 0 8px; }
+      .board-wrap { padding: 8px; }
+      .ui { padding: 10px; }
+      .meta { grid-template-columns: 110px 1fr; }
+      h1 { font-size: 18px; }
+    }
+
   </style>
 </head>
 <body>
