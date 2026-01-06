@@ -183,7 +183,7 @@ def _build_scores(state: GoitaState) -> Dict[str, Any]:
 
 
 def _new_board_snapshot() -> Dict[str, Dict[str, Any]]:
-    return {p: {"receive": [None]*4, "attack": [None]*4, "receive_hidden": [False]*4} for p in ALL_SEATS}
+    return {p: {"receive": [None] * 4, "attack": [None] * 4, "receive_hidden": [False] * 4} for p in ALL_SEATS}
 
 
 def _push_first_empty(slots: List[Optional[str]], value: Optional[str]) -> Optional[int]:
@@ -197,9 +197,13 @@ def _push_first_empty(slots: List[Optional[str]], value: Optional[str]) -> Optio
     return len(slots) - 1
 
 
-def _update_board_snapshot(board: Dict[str, Dict[str, Any]], player: str,
-                          action: Tuple[str, Optional[str], Optional[str]], *,
-                          hidden_receive: bool = False) -> None:
+def _update_board_snapshot(
+    board: Dict[str, Dict[str, Any]],
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+    *,
+    hidden_receive: bool = False,
+) -> None:
     t, b, a = action
     if player not in board:
         return
@@ -411,10 +415,13 @@ def step(game_id: str, req: StepRequest):
 
         cpu_action = agents[p].select_action(state, p, acts)
 
+        # ★修正：CPU側も hidden 判定を入れる
+        before_fd_cpu = len(state.face_down_hidden[p])
         _apply_action(state, p, cpu_action)
-        _update_board_snapshot(board, p, cpu_action, hidden_receive=False)
+        hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
+        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
 
-        log.append(_format_action(p, cpu_action))
+        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
         game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
         _notify_public(agents, state, p, cpu_action)
 
