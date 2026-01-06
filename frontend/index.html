@@ -27,14 +27,10 @@
       overflow: hidden;
     }
 
-    /* ===== スロット ===== */
     .slot { border: 2px solid #999; background: #fff; font-weight: 600; }
     .slot .val { font-size: 18px; font-weight: 800; }
 
-    /* 攻め枠（ベース） */
     .slot.attack { background: #eef6ff; }
-
-    /* 攻め枠：人間は青、AIは赤 */
     .slot.attack.human { border-color: #4a90e2; background: #eef6ff; }
     .slot.attack.ai    { border-color: #e74c3c; background: #fff2f2; }
     .slot.attack.ai .val { color: #b00000; font-weight: 900; }
@@ -51,19 +47,15 @@
       100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
     }
 
-    /* ===== 手札 ===== */
-    .hand { border: 2px solid #4a90e2; background: #ffffff; } /* 既存：青枠 */
+    .hand { border: 2px solid #4a90e2; background: #ffffff; }
     .hand .val { font-size: 18px; font-weight: 900; }
     .hand.clickable { cursor: pointer; }
     .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
     .hand.disabled { background: #f0f0f0; border-color: #bbb; color: #999; cursor: not-allowed; }
     .hand.disabled .val { color: #999; }
-
-    /* 手札枠：人間は青（既定）、AIは赤 */
     .hand.human { border-color: #4a90e2; }
     .hand.ai    { border-color: #e74c3c; }
 
-    /* ===== PASS ===== */
     .pass {
       border: 3px solid #e74c3c;
       background: #fff2f2;
@@ -74,7 +66,6 @@
     .pass:hover { background: #ffe7e7; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    /* ===== 盤面ラベル ===== */
     .seat-label{
       border: 2px solid #333;
       background: #fff;
@@ -90,7 +81,7 @@
       letter-spacing: 0px;
     }
 
-    /* ★プレイヤー名表示 */
+    /* ★共有プレイヤー名（9文字/ 1行3文字×3行） */
     .name-label{
       border: 2px solid #333;
       background: #fff;
@@ -98,7 +89,7 @@
       font-size: 12px;
       line-height: 1.15;
       padding: 4px;
-      white-space: pre-line; /* 改行表示 */
+      white-space: pre-line;
       text-align: center;
     }
 
@@ -115,7 +106,6 @@
     .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 10px; background: #fafafa; min-height: 120px; }
     pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 420px; overflow:auto; margin: 0; }
 
-    /* ★名前入力UI */
     .name-grid{
       display: grid;
       grid-template-columns: 80px 1fr 80px 1fr;
@@ -160,14 +150,14 @@
       <b>current_attack</b><span id="current_attack">-</span>
     </div>
 
-    <!-- ★プレイヤー名入力 -->
+    <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid">
-      <b>A名前</b><input id="nameA" type="text" maxlength="12" placeholder="最大12文字" />
-      <b>B名前</b><input id="nameB" type="text" maxlength="12" placeholder="最大12文字" />
-      <b>C名前</b><input id="nameC" type="text" maxlength="12" placeholder="最大12文字" />
-      <b>D名前</b><input id="nameD" type="text" maxlength="12" placeholder="最大12文字" />
+      <b>A名前</b><input id="nameA" type="text" maxlength="9" placeholder="最大9文字" />
+      <b>B名前</b><input id="nameB" type="text" maxlength="9" placeholder="最大9文字" />
+      <b>C名前</b><input id="nameC" type="text" maxlength="9" placeholder="最大9文字" />
+      <b>D名前</b><input id="nameD" type="text" maxlength="9" placeholder="最大9文字" />
     </div>
-    <div class="small">（名前は新規ゲームを押すまで保持。表示は 1行4文字×3行）</div>
+    <div class="small">（共有表示。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
 
     <div class="btns" style="margin-top:10px;">
       <button onclick="newGame()">新規ゲーム（main卓リセット）</button>
@@ -201,50 +191,13 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 
 const WATCH = "W";
-
-let mySeat = WATCH;          // デフォルト：観戦
-let lastSeat = "A";          // 最後にclaimしていた席（release用）
+let mySeat = WATCH;
+let lastSeat = "A";
 
 let showAllHands = false;
 let latestState = null;
 let latestLegal = [];
 let pending = null;
-
-/** ★プレイヤー名（新規ゲームまで保持） */
-const STORAGE_KEY_NAMES = "goita_player_names_v1";
-let playerNames = loadNames();
-
-function loadNames(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY_NAMES);
-    if(!raw) return {A:"",B:"",C:"",D:""};
-    const obj = JSON.parse(raw);
-    return {A: String(obj.A||""), B: String(obj.B||""), C: String(obj.C||""), D: String(obj.D||"")};
-  }catch(e){
-    return {A:"",B:"",C:"",D:""};
-  }
-}
-function saveNames(){
-  localStorage.setItem(STORAGE_KEY_NAMES, JSON.stringify(playerNames));
-}
-function sanitizeName(s){
-  s = (s ?? "").toString();
-  // 改行は排除（表示崩れ防止）
-  s = s.replace(/\r?\n/g, "");
-  // 12文字まで
-  if(s.length > 12) s = s.slice(0,12);
-  return s;
-}
-function formatNameForBoard(s){
-  s = sanitizeName(s);
-  if(!s) return "";
-  // 1行4文字×3行
-  const lines = [];
-  for(let i=0;i<s.length && lines.length<3;i+=4){
-    lines.push(s.slice(i, i+4));
-  }
-  return lines.join("\n");
-}
 
 const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
@@ -252,9 +205,24 @@ function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort(
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
-
-// viewer はAPI上 A/B/C/D が必要なので、観戦時は A として閲覧（操作は無効）
 function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
+
+/** ★共有プレイヤー名（state.player_names を描画に使う） */
+function sanitizeName(s){
+  s = (s ?? "").toString().replace(/\r?\n/g,"").trim();
+  if(s.length > 9) s = s.slice(0,9);
+  return s;
+}
+function formatNameForBoard(s){
+  s = sanitizeName(s);
+  if(!s) return "";
+  // 1行3文字×3行
+  const lines = [];
+  for(let i=0;i<s.length && lines.length<3;i+=3){
+    lines.push(s.slice(i, i+3));
+  }
+  return lines.join("\n");
+}
 
 const SLOTS = {
   A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
@@ -269,7 +237,6 @@ const HAND_POS = {
   D: [[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9]],
 };
 
-// PASSと座席ラベル
 const PASS_POS = { col: 6, row: 6 };
 const SEAT_LABELS = new Map([
   ["3,9", "A"],
@@ -277,11 +244,8 @@ const SEAT_LABELS = new Map([
   ["8,2", "C"],
   ["2,3", "D"],
 ]);
-
-// 手番表示の位置（5列目5行目）
 const TURN_LABEL_POS = { col: 5, row: 5 };
 
-// ★プレイヤー名表示位置
 const NAME_POS = {
   A: { col: 8, row: 9 },
   B: { col: 9, row: 3 },
@@ -313,10 +277,20 @@ async function claimSeat(seat){
     await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"});
   }catch(e){ console.error(e); }
 }
-
 async function releaseSeat(seat){
   try{
     await fetch(`${API}/games/main/release?seat=${encodeURIComponent(seat)}`, {method:"POST"});
+  }catch(e){ console.error(e); }
+}
+
+async function setName(seat, name){
+  name = sanitizeName(name);
+  try{
+    await fetch(`${API}/games/${gid}/set_name`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ seat, name })
+    });
   }catch(e){ console.error(e); }
 }
 
@@ -436,6 +410,8 @@ function renderBoard(state){
     }
   }
 
+  const names = state.player_names || {A:"",B:"",C:"",D:""};
+
   for(let row=1;row<=10;row++){
     for(let col=1;col<=10;col++){
       const div=document.createElement("div");
@@ -444,7 +420,6 @@ function renderBoard(state){
 
       const k = key(col,row);
 
-      // PASS
       if(col===PASS_POS.col && row===PASS_POS.row){
         div.classList.add("pass");
         div.textContent="PASS";
@@ -457,7 +432,6 @@ function renderBoard(state){
         continue;
       }
 
-      // 手番表示（5列目5行目）
       if(col===TURN_LABEL_POS.col && row===TURN_LABEL_POS.row){
         div.classList.add("turn-label");
         div.textContent = `手番${state.turn || ""}`;
@@ -465,13 +439,13 @@ function renderBoard(state){
         continue;
       }
 
-      // ★プレイヤー名表示
+      // ★プレイヤー名表示（共有）
       let placedName = false;
       for(const s of ["A","B","C","D"]){
         const pos = NAME_POS[s];
         if(pos.col === col && pos.row === row){
           div.classList.add("name-label");
-          div.textContent = formatNameForBoard(playerNames[s] || "");
+          div.textContent = formatNameForBoard(names[s] || "");
           board.appendChild(div);
           placedName = true;
           break;
@@ -479,7 +453,6 @@ function renderBoard(state){
       }
       if(placedName) continue;
 
-      // 座席ラベル
       const label = SEAT_LABELS.get(k);
       if(label){
         div.classList.add("seat-label");
@@ -488,7 +461,6 @@ function renderBoard(state){
         continue;
       }
 
-      // 手札
       const hand=HAND_MAP.get(k);
       if(hand){
         div.classList.add("hand");
@@ -522,7 +494,6 @@ function renderBoard(state){
         continue;
       }
 
-      // 受け/攻めスロット
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
@@ -556,9 +527,8 @@ function renderBoard(state){
 async function renderActions(){
   const actionsDiv = document.getElementById("actions");
   actionsDiv.innerHTML="";
-  if(isSpectator()){
-    return;
-  }
+  if(isSpectator()) return;
+
   latestLegal.forEach(a=>{
     const btn=document.createElement("button");
     const t=a.action_type;
@@ -570,29 +540,10 @@ async function renderActions(){
   });
 }
 
-function clearNames(){
-  playerNames = {A:"",B:"",C:"",D:""};
-  saveNames();
-  const a = document.getElementById("nameA");
-  const b = document.getElementById("nameB");
-  const c = document.getElementById("nameC");
-  const d = document.getElementById("nameD");
-  if(a) a.value = "";
-  if(b) b.value = "";
-  if(c) c.value = "";
-  if(d) d.value = "";
-}
-
 async function newGame(){
   await fetch(`${API}/games/main/reset`, {method:"POST"});
   pending=null; showAllHands=false;
   document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
-
-  // ★新規ゲームで名前をクリア
-  clearNames();
-
-  setHint(isSpectator() ? "観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）"
-                        : "手札をクリックして駒を出します。（PASS：6列目6行目）");
   await refresh();
 }
 
@@ -601,6 +552,18 @@ async function fetchLegal(){
   const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}`);
   const acts = await res.json();
   return Array.isArray(acts) ? acts : [];
+}
+
+function syncNameInputsFromState(state){
+  const pn = state.player_names || {A:"",B:"",C:"",D:""};
+  const elA = document.getElementById("nameA");
+  const elB = document.getElementById("nameB");
+  const elC = document.getElementById("nameC");
+  const elD = document.getElementById("nameD");
+  if(elA && elA.value !== (pn.A||"")) elA.value = pn.A||"";
+  if(elB && elB.value !== (pn.B||"")) elB.value = pn.B||"";
+  if(elC && elC.value !== (pn.C||"")) elC.value = pn.C||"";
+  if(elD && elD.value !== (pn.D||"")) elD.value = pn.D||"";
 }
 
 async function refresh(){
@@ -617,6 +580,8 @@ async function refresh(){
   document.getElementById("attacker").textContent = state.attacker || "";
   document.getElementById("current_attack").textContent = state.current_attack ? pieceToLabel(state.current_attack) : "";
   document.getElementById("log").textContent = (state.log||[]).join("\n");
+
+  syncNameInputsFromState(state);
 
   latestLegal = await fetchLegal();
 
@@ -637,39 +602,38 @@ async function refresh(){
   await renderActions();
 }
 
+// ★入力を少しまとめて送る（連打でAPI叩きすぎ防止）
+const nameDebounce = {A:null,B:null,C:null,D:null};
+
 function bindNameInputs(){
   const elA = document.getElementById("nameA");
   const elB = document.getElementById("nameB");
   const elC = document.getElementById("nameC");
   const elD = document.getElementById("nameD");
 
-  elA.value = playerNames.A || "";
-  elB.value = playerNames.B || "";
-  elC.value = playerNames.C || "";
-  elD.value = playerNames.D || "";
+  const bind = (seat, el) => {
+    el.addEventListener("input", ()=>{
+      const v = sanitizeName(el.value);
+      if(el.value !== v) el.value = v;
 
-  const onChange = (seat, el) => {
-    playerNames[seat] = sanitizeName(el.value);
-    el.value = playerNames[seat]; // 12文字で丸めた結果を反映
-    saveNames();
-    // 盤面上の名前表示だけ更新したいので、最新stateがあれば再描画
-    if(latestState){
-      renderBoard(latestState);
-    }
+      if(nameDebounce[seat]) clearTimeout(nameDebounce[seat]);
+      nameDebounce[seat] = setTimeout(async ()=>{
+        await setName(seat, el.value);
+        await refresh(); // 全員共有なので即反映
+      }, 250);
+    });
   };
 
-  elA.addEventListener("input", ()=>onChange("A", elA));
-  elB.addEventListener("input", ()=>onChange("B", elB));
-  elC.addEventListener("input", ()=>onChange("C", elC));
-  elD.addEventListener("input", ()=>onChange("D", elD));
+  bind("A", elA);
+  bind("B", elB);
+  bind("C", elC);
+  bind("D", elD);
 }
 
 window.addEventListener("load", async ()=>{
   bindNameInputs();
 
   const sel = document.getElementById("seatSelect");
-
-  // アクセス直後は必ず観戦
   mySeat = WATCH;
   sel.value = WATCH;
 
@@ -678,14 +642,12 @@ window.addEventListener("load", async ()=>{
   sel.addEventListener("change", async ()=>{
     const next = sel.value;
 
-    // いま席を持っていたなら解除
     if(!isSpectator()){
       await releaseSeat(lastSeat);
     }
 
     pending = null;
 
-    // 観戦へ
     if(next === WATCH){
       mySeat = WATCH;
       sel.value = WATCH;
@@ -693,7 +655,6 @@ window.addEventListener("load", async ()=>{
       return;
     }
 
-    // 席へ
     mySeat = next;
     lastSeat = mySeat;
     await claimSeat(mySeat);

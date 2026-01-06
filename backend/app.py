@@ -18,6 +18,7 @@ from goita_ai2.utils import create_random_hands
 
 ALL_SEATS = ["A", "B", "C", "D"]
 MAIN_GID = "main"
+NAME_MAX_LEN = 9
 
 
 def _validate_seat(s: str, *, name: str = "seat") -> str:
@@ -40,6 +41,14 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
     return last_hands
+
+
+def _sanitize_player_name(s: str) -> str:
+    s = (s or "").strip()
+    s = s.replace("\r", "").replace("\n", "")
+    if len(s) > NAME_MAX_LEN:
+        s = s[:NAME_MAX_LEN]
+    return s
 
 
 app = FastAPI(title="Goita FastAPI (Render-ready)")
@@ -134,6 +143,11 @@ class ActionModel(BaseModel):
 class StepRequest(BaseModel):
     player: str = Field(..., description="A/B/C/D")
     action: ActionModel
+
+
+class NameRequest(BaseModel):
+    seat: str
+    name: str = ""
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -234,6 +248,7 @@ def _state_public_view(
     board_public: Dict[str, Dict[str, Any]],
     reveal_hands: bool = False,
     human_seats: Optional[Set[str]] = None,
+    player_names: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
@@ -263,6 +278,7 @@ def _state_public_view(
         "log": (log or [])[-200:],
         "finished": state.finished,
         "winner": state.winner,
+        "player_names": player_names or {p: "" for p in ALL_SEATS},
     }
     if human_seats is not None:
         payload["human_seats"] = sorted(list(human_seats))
@@ -287,6 +303,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "dealer": dealer,
         "kifu_moves": [],
         "human_seats": set(),  # type: Set[str]
+        "player_names": {p: "" for p in ALL_SEATS},  # ★共有名
     }
 
 
@@ -311,7 +328,6 @@ def claim_seat(seat: str):
     return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
 
 
-# ★追加：席の解除（人間席から外す）
 @app.post("/games/main/release")
 def release_seat(seat: str):
     _ensure_main_game()
@@ -320,6 +336,25 @@ def release_seat(seat: str):
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.discard(seat)
     return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
+
+
+# ★追加：共有名の更新
+@app.post("/games/{game_id}/set_name")
+def set_player_name(game_id: str, req: NameRequest):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    seat = _validate_seat(req.seat, name="seat")
+    name = _sanitize_player_name(req.name)
+
+    pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
+    pn[seat] = name
+
+    return {"ok": True, "game_id": game_id, "player_names": pn}
 
 
 @app.get("/games/{game_id}/state")
@@ -333,6 +368,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
 
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
+    pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
 
     return _state_public_view(
         state,
@@ -341,6 +377,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
         board_public=game.get("board", _new_board_snapshot()),
         reveal_hands=bool(reveal_hands),
         human_seats=hs,
+        player_names=pn,
     )
 
 
@@ -374,12 +411,15 @@ def step(game_id: str, req: StepRequest):
     log: List[str] = game.setdefault("log", [])
     board = game.setdefault("board", _new_board_snapshot())
     human_seats: Set[str] = game.setdefault("human_seats", set())
+    player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
 
     # stepを送ってきた席は人間席として登録（claim漏れ対策）
     human_seats.add(player)
 
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats)
+        payload = _state_public_view(
+            state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
+        )
         return {"ok": True, "state": payload}
 
     if state.turn != player:
@@ -415,7 +455,6 @@ def step(game_id: str, req: StepRequest):
 
         cpu_action = agents[p].select_action(state, p, acts)
 
-        # ★修正：CPU側も hidden 判定を入れる
         before_fd_cpu = len(state.face_down_hidden[p])
         _apply_action(state, p, cpu_action)
         hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
@@ -428,7 +467,9 @@ def step(game_id: str, req: StepRequest):
     if state.finished:
         log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
 
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats)
+    payload = _state_public_view(
+        state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
+    )
     return {"ok": True, "state": payload}
 
 
