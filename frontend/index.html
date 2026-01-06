@@ -81,7 +81,7 @@
       letter-spacing: 0px;
     }
 
-    /* 共有プレイヤー名（9文字/ 1行3文字×3行） */
+    /* ★共有プレイヤー名（9文字/ 1行3文字×3行） */
     .name-label{
       border: 2px solid #333;
       background: #fff;
@@ -106,29 +106,19 @@
     .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 10px; background: #fafafa; min-height: 120px; }
     pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 420px; overflow:auto; margin: 0; }
 
-    /* 名前入力UI */
     .name-grid{
       display: grid;
-      grid-template-columns: 60px 1fr 70px 60px 1fr 70px;
+      grid-template-columns: 80px 1fr 80px 1fr;
       gap: 8px 10px;
       align-items: center;
       margin-top: 6px;
       margin-bottom: 6px;
     }
-    .name-grid button{
-      padding: 7px 8px;
-      border-radius: 10px;
-      border: 1px solid #bbb;
-      background: #fff;
-      cursor: pointer;
-    }
-    .name-grid button:hover{ background:#f6f6f6; }
-    .name-grid button:disabled{ opacity: 0.45; cursor: default; }
 
     @media (max-width: 980px){
       .bottom-grid { grid-template-columns: 1fr; }
       .board { transform: scale(0.92); transform-origin: top center; }
-      .name-grid{ grid-template-columns: 60px 1fr 70px; }
+      .name-grid{ grid-template-columns: 70px 1fr; }
     }
   </style>
 </head>
@@ -160,21 +150,14 @@
       <b>current_attack</b><span id="current_attack">-</span>
     </div>
 
-    <!-- 共有プレイヤー名入力（「表示」押下でサーバに保存） -->
+    <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid">
-      <b>A名前</b><input id="nameA" type="text" maxlength="9" placeholder="最大9文字" />
-      <button id="btnShowA" type="button">表示</button>
-
-      <b>B名前</b><input id="nameB" type="text" maxlength="9" placeholder="最大9文字" />
-      <button id="btnShowB" type="button">表示</button>
-
-      <b>C名前</b><input id="nameC" type="text" maxlength="9" placeholder="最大9文字" />
-      <button id="btnShowC" type="button">表示</button>
-
-      <b>D名前</b><input id="nameD" type="text" maxlength="9" placeholder="最大9文字" />
-      <button id="btnShowD" type="button">表示</button>
+      <b>A名前</b><input id="nameA" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>B名前</b><input id="nameB" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>C名前</b><input id="nameC" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>D名前</b><input id="nameD" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
     </div>
-    <div class="small">（共有表示。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行。入力して「表示」を押すと反映）</div>
+    <div class="small">（共有表示。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
 
     <div class="btns" style="margin-top:10px;">
       <button onclick="newGame()">新規ゲーム（main卓リセット）</button>
@@ -224,30 +207,24 @@ function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
 function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
 
-/* 名前（9文字上限、表示は3×3） */
+/** ★共有プレイヤー名（state.player_names を描画に使う） */
 function sanitizeName(s){
   s = (s ?? "").toString().replace(/\r?\n/g,"").trim();
+  // 半角英数字以外は削除
+  s = s.replace(/[^0-9A-Za-z]/g, "");
+  // 9文字まで
   if(s.length > 9) s = s.slice(0,9);
   return s;
 }
 function formatNameForBoard(s){
   s = sanitizeName(s);
   if(!s) return "";
+  // 1行3文字×3行
   const lines = [];
   for(let i=0;i<s.length && lines.length<3;i+=3){
     lines.push(s.slice(i, i+3));
   }
   return lines.join("\n");
-}
-
-/* 共有名をサーバに保存 */
-async function setName(seat, name){
-  name = sanitizeName(name);
-  await fetch(`${API}/games/${gid}/set_name`, {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ seat, name })
-  });
 }
 
 const SLOTS = {
@@ -309,6 +286,17 @@ async function releaseSeat(seat){
   }catch(e){ console.error(e); }
 }
 
+async function setName(seat, name){
+  name = sanitizeName(name);
+  try{
+    await fetch(`${API}/games/${gid}/set_name`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ seat, name })
+    });
+  }catch(e){ console.error(e); }
+}
+
 async function downloadKifu(){
   const res = await fetch(`${API}/games/${gid}/kifu`);
   const text = await res.text();
@@ -335,9 +323,11 @@ async function submitAction(actionObj){
   });
 }
 
-/* 以降：ゲーム操作（前と同じ） */
 async function onHandPieceClick(piece){
-  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
+  if(isSpectator()){
+    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
+    return;
+  }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -385,7 +375,10 @@ async function onHandPieceClick(piece){
 }
 
 async function onPassClick(){
-  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
+  if(isSpectator()){
+    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
+    return;
+  }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -449,7 +442,7 @@ function renderBoard(state){
         continue;
       }
 
-      // プレイヤー名表示（共有）
+      // ★プレイヤー名表示（共有）
       let placedName = false;
       for(const s of ["A","B","C","D"]){
         const pos = NAME_POS[s];
@@ -564,7 +557,6 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
-/* stateの共有名を入力欄へ同期（別端末が更新したら反映） */
 function syncNameInputsFromState(state){
   const pn = state.player_names || {A:"",B:"",C:"",D:""};
   const elA = document.getElementById("nameA");
@@ -613,42 +605,36 @@ async function refresh(){
   await renderActions();
 }
 
-/* ★「表示」ボタンで送信 */
-function bindNameUI(){
+// ★入力を少しまとめて送る（連打でAPI叩きすぎ防止）
+const nameDebounce = {A:null,B:null,C:null,D:null};
+
+function bindNameInputs(){
   const elA = document.getElementById("nameA");
   const elB = document.getElementById("nameB");
   const elC = document.getElementById("nameC");
   const elD = document.getElementById("nameD");
 
-  // 入力中はsanitizeのみ（送信しない）
-  for(const el of [elA, elB, elC, elD]){
+  const bind = (seat, el) => {
     el.addEventListener("input", ()=>{
       const v = sanitizeName(el.value);
       if(el.value !== v) el.value = v;
-    });
-  }
 
-  const bindBtn = (seat, el, btnId) => {
-    const btn = document.getElementById(btnId);
-    btn.addEventListener("click", async ()=>{
-      btn.disabled = true;
-      try{
+      if(nameDebounce[seat]) clearTimeout(nameDebounce[seat]);
+      nameDebounce[seat] = setTimeout(async ()=>{
         await setName(seat, el.value);
-        await refresh();
-      } finally {
-        btn.disabled = false;
-      }
+        await refresh(); // 全員共有なので即反映
+      }, 250);
     });
   };
 
-  bindBtn("A", elA, "btnShowA");
-  bindBtn("B", elB, "btnShowB");
-  bindBtn("C", elC, "btnShowC");
-  bindBtn("D", elD, "btnShowD");
+  bind("A", elA);
+  bind("B", elB);
+  bind("C", elC);
+  bind("D", elD);
 }
 
 window.addEventListener("load", async ()=>{
-  bindNameUI();
+  bindNameInputs();
 
   const sel = document.getElementById("seatSelect");
   mySeat = WATCH;
@@ -662,6 +648,7 @@ window.addEventListener("load", async ()=>{
     if(!isSpectator()){
       await releaseSeat(lastSeat);
     }
+
     pending = null;
 
     if(next === WATCH){
