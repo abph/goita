@@ -81,6 +81,21 @@
       letter-spacing: 0px;
     }
 
+    .phase-label{
+      border: 2px solid #333;
+      background: #fff;
+      font-weight: 900;
+      font-size: 14px;
+      letter-spacing: 0px;
+    }
+    .atk-label{
+      border: 2px solid #333;
+      background: #fff;
+      font-weight: 900;
+      font-size: 14px;
+      letter-spacing: 0px;
+    }
+
     /* ★共有プレイヤー名（9文字/ 1行3文字×3行） */
     .name-label{
       border: 2px solid #333;
@@ -130,8 +145,14 @@
     @media (max-width: 980px){
       .bottom-grid { grid-template-columns: 1fr; }
       .board { transform: scale(0.92); transform-origin: top center; }
-      .name-grid{ grid-template-columns: 70px 15ch 56px; justify-content: start; }
-      .name-grid button{ width: 56px; }
+      /* スマホでは 1fr にすると3列目（表示ボタン）が右端に飛ぶので、列幅を固定して左詰め */
+      .name-grid{
+        grid-template-columns: 70px 15ch 56px;
+        justify-content: start;
+      }
+      .name-grid button{
+        width: 56px;
+      }
     }
   </style>
 </head>
@@ -144,7 +165,6 @@
 
   <div class="ui">
     <div class="meta">
-      <b>game_id</b><span id="gid">-</span>
       <b>自分の席</b>
       <span>
         <select id="seatSelect">
@@ -156,11 +176,6 @@
         </select>
         <span class="small">（観戦→後からA/B/C/Dを選ぶ）</span>
       </span>
-
-      <b>turn</b><span id="turn">-</span>
-      <b>phase</b><span id="phase">-</span>
-      <b>attacker</b><span id="attacker">-</span>
-      <b>current_attack</b><span id="current_attack">-</span>
     </div>
 
     <!-- ★共有プレイヤー名入力（サーバに保存） -->
@@ -237,6 +252,20 @@ function sanitizeName(s){
   return s;
 }
 
+
+function phaseToJa(p){
+  const m = {
+    "attack":"攻め",
+    "receive":"受け",
+    "defense":"受け",
+    "block":"受け",
+    "end":"終了",
+    "finished":"終了"
+  };
+  if(!p) return "";
+  return m[p] || p;
+}
+
 function formatNameForBoard(s){
   s = sanitizeName(s);
   if(!s) return "";
@@ -269,6 +298,8 @@ const SEAT_LABELS = new Map([
   ["2,3", "D"],
 ]);
 const TURN_LABEL_POS = { col: 5, row: 5 };
+const PHASE_LABEL_POS = { col: 6, row: 5 };
+const ATK_LABEL_POS = { col: 5, row: 6 };
 
 const NAME_POS = {
   A: { col: 8, row: 9 },
@@ -473,6 +504,22 @@ function renderBoard(state){
         continue;
       }
 
+      if(col===PHASE_LABEL_POS.col && row===PHASE_LABEL_POS.row){
+        div.classList.add("phase-label");
+        div.textContent = phaseToJa(state.phase);
+        board.appendChild(div);
+        continue;
+      }
+
+      if(col===ATK_LABEL_POS.col && row===ATK_LABEL_POS.row){
+        div.classList.add("atk-label");
+        const atk = state.attacker || "";
+        const ca = state.current_attack ? pieceToLabel(state.current_attack) : "";
+        div.textContent = (atk && ca) ? `${atk}${ca}` : "";
+        board.appendChild(div);
+        continue;
+      }
+
       // ★プレイヤー名表示（共有）
       let placedName = false;
       for(const s of ["A","B","C","D"]){
@@ -595,12 +642,6 @@ async function refresh(){
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
-
-  document.getElementById("gid").textContent = gid;
-  document.getElementById("turn").textContent = state.turn;
-  document.getElementById("phase").textContent = state.phase;
-  document.getElementById("attacker").textContent = state.attacker || "";
-  document.getElementById("current_attack").textContent = state.current_attack ? pieceToLabel(state.current_attack) : "";
   document.getElementById("log").textContent = (state.log||[]).join("\n");
 
   latestLegal = await fetchLegal();
