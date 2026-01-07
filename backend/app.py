@@ -44,16 +44,12 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
 
 
 def _sanitize_player_name(s: str) -> str:
-    s = (s or "")
-    # 改行は表示崩れ防止のため除去
-    s = s.replace("
-", "").replace("
-", "")
-    # 前後の空白は落とす（必要ならここを外してもOK）
-    s = s.strip()
-    # 9文字まで
-    if len(s) > NAME_MAX_LEN:
-        s = s[:NAME_MAX_LEN]
+    s = (s or "").strip()
+    # 改行は除去（表示崩れ防止）
+    s = s.replace("\r", "").replace("\n", "")
+    # 最大9文字
+    if len(s) > 9:
+        s = s[:9]
     return s
 
 
