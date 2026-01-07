@@ -161,6 +161,23 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
         width: 56px;
       }
     }
+  
+    /* === iPhone(小画面) 文字はみ出し対策 === */
+    @media (max-width: 430px){
+      .seat-label{ font-size: 18px; }
+      .turn-label{ font-size: 12px; }
+      .phase-label{ font-size: 11px; }
+      .atk-label{ font-size: 12px; }
+
+      /* 2文字以上でも折り返さない */
+      .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
+
+      /* 盤面の駒表示も少し縮める */
+      .slot .val{ font-size: 16px; }
+      .hand .val{ font-size: 16px; }
+      .pass{ font-size: 12px; }
+    }
+
   </style>
 </head>
 <body>
