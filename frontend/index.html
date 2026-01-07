@@ -152,16 +152,16 @@
 
     <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid">
-      <b>A名前</b><input id="nameA" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>A名前</b><input id="nameA" type="text" maxlength="9" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('A')">表示</button>
 
-      <b>B名前</b><input id="nameB" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>B名前</b><input id="nameB" type="text" maxlength="9" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('B')">表示</button>
 
-      <b>C名前</b><input id="nameC" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>C名前</b><input id="nameC" type="text" maxlength="9" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('C')">表示</button>
 
-      <b>D名前</b><input id="nameD" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>D名前</b><input id="nameD" type="text" maxlength="9" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('D')">表示</button>
     </div>
     <div class="small">（共有表示。入力後に「表示」を押すと反映。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
@@ -216,11 +216,15 @@ function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
 
 /** ★共有プレイヤー名（state.player_names を描画に使う） */
 function sanitizeName(s){
-  s = (s ?? "").toString().replace(/\r?\n/g,"").trim();
-  // 半角英数字以外は削除
-  s = s.replace(/[^0-9A-Za-z]/g, "");
+  s = (s ?? "").toString();
+  // 改行は表示崩れ防止のため除去
+  s = s.replace(/
+?
+/g, "");
   // 9文字まで
   if(s.length > 9) s = s.slice(0,9);
+  // 前後の空白は落とす（必要ならここを外してもOK）
+  s = s.trim();
   return s;
 }
 function formatNameForBoard(s){
@@ -308,10 +312,11 @@ async function applyName(seat){
   const el = document.getElementById("name" + seat);
   if(!el) return;
   const v = sanitizeName(el.value);
-  el.value = v;
   await setName(seat, v);
   // 反映確認のため更新
   await refresh();
+  // ★入力欄は残さない
+  el.value = "";
 }
 
 async function downloadKifu(){
@@ -655,7 +660,7 @@ window.addEventListener("load", async ()=>{
     await refresh();
   });
 
-  setInterval(refresh, 3000);
+  setInterval(refresh, 2000);
 });
 </script>
 </body>
