@@ -45,13 +45,16 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
 
 def _sanitize_player_name(s: str) -> str:
     s = (s or "").strip()
-    # 改行は除去（表示崩れ防止）
     s = s.replace("\r", "").replace("\n", "")
-    # 最大9文字
-    if len(s) > 9:
-        s = s[:9]
+    # 半角英数字のみ残す
+    s = "".join(
+        ch for ch in s
+        if ("0" <= ch <= "9") or ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+    )
+    # 9文字まで
+    if len(s) > NAME_MAX_LEN:
+        s = s[:NAME_MAX_LEN]
     return s
-
 
 
 app = FastAPI(title="Goita FastAPI (Render-ready)")
