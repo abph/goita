@@ -152,16 +152,16 @@
 
     <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid">
-      <b>A名前</b><input id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>A名前</b><input id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('A')">表示</button>
 
-      <b>B名前</b><input id="nameB" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>B名前</b><input id="nameB" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('B')">表示</button>
 
-      <b>C名前</b><input id="nameC" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>C名前</b><input id="nameC" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('C')">表示</button>
 
-      <b>D名前</b><input id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <b>D名前</b><input id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button type="button" onclick="applyName('D')">表示</button>
     </div>
     <div class="small">（共有表示。入力後に「表示」を押すと反映。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
@@ -575,7 +575,6 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
-
 async function refresh(){
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
@@ -610,14 +609,11 @@ async function refresh(){
   await renderActions();
 }
 
-// ★入力を少しまとめて送る（連打でAPI叩きすぎ防止）
-
 function bindNameInputs(){
   const ids = ["nameA","nameB","nameC","nameD"];
   for(const id of ids){
     const el = document.getElementById(id);
     if(!el) continue;
-    // 入力中はローカルで英数字制限だけかける（サーバ送信は「表示」ボタン）
     el.addEventListener("input", ()=>{
       const v = sanitizeName(el.value);
       if(el.value !== v) el.value = v;
