@@ -73,18 +73,6 @@
       font-size: 22px;
       letter-spacing: 1px;
     }
-
-    /* ★手番の席ラベルを光らせる */
-    .seat-label.turn-highlight{
-      border-color: #2b78d6;
-      background: #e8f2ff;
-      animation: seatPulse 1.3s infinite;
-    }
-    @keyframes seatPulse{
-      0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.65); }
-      70%  { box-shadow: 0 0 0 12px rgba(43,120,214,0); }
-      100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
-    }
     .turn-label{
       border: 2px solid #333;
       background: #fff;
@@ -120,7 +108,7 @@
 
     .name-grid{
       display: grid;
-      grid-template-columns: 80px 1fr 80px 1fr;
+      grid-template-columns: 80px 1fr 64px 80px 1fr 64px;
       gap: 8px 10px;
       align-items: center;
       margin-top: 6px;
@@ -130,7 +118,7 @@
     @media (max-width: 980px){
       .bottom-grid { grid-template-columns: 1fr; }
       .board { transform: scale(0.92); transform-origin: top center; }
-      .name-grid{ grid-template-columns: 70px 1fr; }
+      .name-grid{ grid-template-columns: 70px 1fr 64px; }
     }
   </style>
 </head>
@@ -165,11 +153,18 @@
     <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid">
       <b>A名前</b><input id="nameA" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <button type="button" onclick="applyName('A')">表示</button>
+
       <b>B名前</b><input id="nameB" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <button type="button" onclick="applyName('B')">表示</button>
+
       <b>C名前</b><input id="nameC" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <button type="button" onclick="applyName('C')">表示</button>
+
       <b>D名前</b><input id="nameD" type="text" maxlength="9" inputmode="latin" autocomplete="off" placeholder="A-Z0-9 (max9)" />
+      <button type="button" onclick="applyName('D')">表示</button>
     </div>
-    <div class="small">（共有表示。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
+    <div class="small">（共有表示。入力後に「表示」を押すと反映。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
 
     <div class="btns" style="margin-top:10px;">
       <button onclick="newGame()">新規ゲーム（main卓リセット）</button>
@@ -307,6 +302,16 @@ async function setName(seat, name){
       body: JSON.stringify({ seat, name })
     });
   }catch(e){ console.error(e); }
+}
+
+async function applyName(seat){
+  const el = document.getElementById("name" + seat);
+  if(!el) return;
+  const v = sanitizeName(el.value);
+  el.value = v;
+  await setName(seat, v);
+  // 反映確認のため更新
+  await refresh();
 }
 
 async function downloadKifu(){
@@ -471,9 +476,6 @@ function renderBoard(state){
       const label = SEAT_LABELS.get(k);
       if(label){
         div.classList.add("seat-label");
-        if(label === state.turn){
-          div.classList.add("turn-highlight");
-        }
         div.textContent = label;
         board.appendChild(div);
         continue;
@@ -572,17 +574,6 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
-function syncNameInputsFromState(state){
-  const pn = state.player_names || {A:"",B:"",C:"",D:""};
-  const elA = document.getElementById("nameA");
-  const elB = document.getElementById("nameB");
-  const elC = document.getElementById("nameC");
-  const elD = document.getElementById("nameD");
-  if(elA && elA.value !== (pn.A||"")) elA.value = pn.A||"";
-  if(elB && elB.value !== (pn.B||"")) elB.value = pn.B||"";
-  if(elC && elC.value !== (pn.C||"")) elC.value = pn.C||"";
-  if(elD && elD.value !== (pn.D||"")) elD.value = pn.D||"";
-}
 
 async function refresh(){
   const qs = new URLSearchParams();
@@ -598,8 +589,6 @@ async function refresh(){
   document.getElementById("attacker").textContent = state.attacker || "";
   document.getElementById("current_attack").textContent = state.current_attack ? pieceToLabel(state.current_attack) : "";
   document.getElementById("log").textContent = (state.log||[]).join("\n");
-
-  syncNameInputsFromState(state);
 
   latestLegal = await fetchLegal();
 
@@ -621,31 +610,18 @@ async function refresh(){
 }
 
 // ★入力を少しまとめて送る（連打でAPI叩きすぎ防止）
-const nameDebounce = {A:null,B:null,C:null,D:null};
 
 function bindNameInputs(){
-  const elA = document.getElementById("nameA");
-  const elB = document.getElementById("nameB");
-  const elC = document.getElementById("nameC");
-  const elD = document.getElementById("nameD");
-
-  const bind = (seat, el) => {
+  const ids = ["nameA","nameB","nameC","nameD"];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    // 入力中はローカルで英数字制限だけかける（サーバ送信は「表示」ボタン）
     el.addEventListener("input", ()=>{
       const v = sanitizeName(el.value);
       if(el.value !== v) el.value = v;
-
-      if(nameDebounce[seat]) clearTimeout(nameDebounce[seat]);
-      nameDebounce[seat] = setTimeout(async ()=>{
-        await setName(seat, el.value);
-        await refresh(); // 全員共有なので即反映
-      }, 250);
     });
-  };
-
-  bind("A", elA);
-  bind("B", elB);
-  bind("C", elC);
-  bind("D", elD);
+  }
 }
 
 window.addEventListener("load", async ()=>{
