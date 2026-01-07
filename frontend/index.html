@@ -224,7 +224,8 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
     <div class="small">（共有表示。入力後に「表示」を押すと反映。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
 
     <div class="btns" style="margin-top:10px;">
-      <button onclick="newGame()">新規ゲーム（main卓リセット）</button>
+      <button onclick="startNewGame()">新規ゲーム</button>
+      <button onclick="resetAll()">リセット</button>
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
       <button onclick="downloadKifu()">棋譜をダウンロード</button>
@@ -677,13 +678,62 @@ async function renderActions(){
   });
 }
 
-async function newGame(){
+async function startNewGame(){
+  // 現在の名前は保持（サーバで共有されている値を優先）
+  const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
+  const seatToKeep = mySeat; // 観戦/W or A/B/C/D
+
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
   if(dealer === "random") dealer = _chooseRandomDealer();
+
+  // いったんゲームを作り直す（サーバ側は名前/席を初期化する仕様）
   await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
+
+  // 名前を復元（入力欄は同期しない方針なので触らない）
+  for(const s of ["A","B","C","D"]){
+    const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
+    if(nm){
+      await setName(s, nm);
+    }
+  }
+
+  // 自分の席を維持（観戦ならそのまま）
+  if(seatToKeep && seatToKeep !== WATCH){
+    await claimSeat(seatToKeep);
+  }
+
   pending=null; showAllHands=false;
   document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
+  await refresh();
+}
+
+async function resetAll(){
+  // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
+  const sel = document.getElementById("dealerSelect");
+  let dealer = sel ? sel.value : "random";
+  if(dealer === "random") dealer = _chooseRandomDealer();
+
+  await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
+
+  // クライアント側の状態も初期化
+  pending = null;
+  showAllHands = false;
+  document.getElementById("toggleHandsBtn").textContent = "みんなの手札を公開";
+
+  // 観戦に戻す（席の維持をしない）
+  mySeat = WATCH;
+  lastSeat = "A";
+  const seatSel = document.getElementById("seatSelect");
+  if(seatSel) seatSel.value = WATCH;
+
+  // 名前入力欄もクリア（同期しない方針なので明示的に消す）
+  const ids = ["nameA","nameB","nameC","nameD"];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(el) el.value = "";
+  }
+
   await refresh();
 }
 
