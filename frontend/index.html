@@ -216,13 +216,14 @@ function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
 
 /** ★共有プレイヤー名（state.player_names を描画に使う） */
 function sanitizeName(s){
-  s = (s ?? "").toString().replace(/\r?\n/g,"").trim();
-  // 半角英数字以外は削除
-  s = s.replace(/[^0-9A-Za-z]/g, "");
+  s = (s ?? "").toString();
+  // 改行だけ除去
+  s = s.replace(/\r?\n/g, "");
   // 9文字まで
   if(s.length > 9) s = s.slice(0,9);
   return s;
 }
+
 function formatNameForBoard(s){
   s = sanitizeName(s);
   if(!s) return "";

@@ -45,15 +45,11 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
 
 def _sanitize_player_name(s: str) -> str:
     s = (s or "").strip()
+    # 改行は除去（盤面崩れ防止）
     s = s.replace("\r", "").replace("\n", "")
-    # 半角英数字のみ残す
-    s = "".join(
-        ch for ch in s
-        if ("0" <= ch <= "9") or ("A" <= ch <= "Z") or ("a" <= ch <= "z")
-    )
     # 9文字まで
-    if len(s) > NAME_MAX_LEN:
-        s = s[:NAME_MAX_LEN]
+    if len(s) > 9:
+        s = s[:9]
     return s
 
 
