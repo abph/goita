@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import copy
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +42,110 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
     return last_hands
+
+
+
+# ====== 手札プリセット（枚数指定） ======
+PIECE_TOTALS: Dict[str, int] = {
+    "1": 10,  # し
+    "2": 4,   # 香
+    "3": 4,   # 馬
+    "4": 4,   # 銀
+    "5": 4,   # 金
+    "6": 2,   # 角
+    "7": 2,   # 飛
+    "8": 1,   # 玉
+    "9": 1,   # 王
+}
+
+
+def build_hands_from_preset_counts(
+    preset: Dict[str, Dict[str, int]],
+    dealer: str,
+    max_retry: int = 8000,
+) -> Dict[str, List[str]]:
+    """A/B/C/D の各駒枚数（0-9の1桁）指定から配牌を作る。
+
+    仕様:
+    - 各プレイヤーの指定合計は 0〜8（不足分は残り山からランダム補充）
+    - 全体の駒枚数上限（PIECE_TOTALS）を超えない
+    - 'し'(1) は各プレイヤー最大4枚（指定+補充含む）
+    """
+    p = {seat: {k: int(v) for k, v in (preset.get(seat) or {}).items()} for seat in ALL_SEATS}
+
+    used_total = {k: 0 for k in PIECE_TOTALS}
+    for seat in ALL_SEATS:
+        seat_sum = 0
+        for k, maxn in PIECE_TOTALS.items():
+            n = int(p[seat].get(k, 0) or 0)
+            if n < 0:
+                raise ValueError("negative count")
+            if n > 9:
+                raise ValueError("count must be 0-9")
+            seat_sum += n
+            used_total[k] += n
+
+        if seat_sum > 8:
+            raise ValueError(f"{seat}: total pieces must be <= 8")
+        if int(p[seat].get("1", 0) or 0) > 4:
+            raise ValueError(f"{seat}: '1'(し) must be <= 4")
+
+    for k, maxn in PIECE_TOTALS.items():
+        if used_total[k] > maxn:
+            raise ValueError(f"total of {k} exceeds max ({used_total[k]} > {maxn})")
+
+    pool: List[str] = []
+    for k, maxn in PIECE_TOTALS.items():
+        pool.extend([k] * (maxn - used_total[k]))
+
+    for _ in range(max_retry):
+        pool2 = pool[:]
+        random.shuffle(pool2)
+
+        hands: Dict[str, List[str]] = {s: [] for s in ALL_SEATS}
+        shi_cnt: Dict[str, int] = {s: 0 for s in ALL_SEATS}
+
+        # 指定分
+        for seat in ALL_SEATS:
+            for k in sorted(PIECE_TOTALS.keys()):
+                n = int(p[seat].get(k, 0) or 0)
+                if n:
+                    hands[seat].extend([k] * n)
+                    if k == "1":
+                        shi_cnt[seat] += n
+
+        # 補充（し上限を守る）
+        ok = True
+        for seat in ALL_SEATS:
+            need = 8 - len(hands[seat])
+            if need <= 0:
+                continue
+
+            for _i in range(need):
+                found = False
+                for j in range(len(pool2)):
+                    k = pool2[j]
+                    if k == "1" and shi_cnt[seat] >= 4:
+                        continue
+                    hands[seat].append(k)
+                    if k == "1":
+                        shi_cnt[seat] += 1
+                    pool2.pop(j)
+                    found = True
+                    break
+                if not found:
+                    ok = False
+                    break
+            if not ok:
+                break
+
+        if not ok:
+            continue
+
+        if all(sum(1 for x in hands[s] if x == "1") <= 4 for s in ALL_SEATS):
+            return {s: [str(x) for x in hands[s]] for s in ALL_SEATS}
+
+    raise ValueError("failed to build hands from preset")
 
 
 def _sanitize_player_name(s: str) -> str:
@@ -150,6 +255,13 @@ class StepRequest(BaseModel):
 class NameRequest(BaseModel):
     seat: str
     name: str = ""
+
+
+class ResetConfigBody(BaseModel):
+    dealer: str = Field(default="A")
+    # 例: {"A":{"1":2,"9":1}, "B":{...}, ...}
+    preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -366,6 +478,33 @@ def reset_main(dealer: str = "A"):
     # If humans are already claimed (e.g., kept across "new game"), let CPUs play until a human turn.
     _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
+
+
+@app.post("/games/main/reset_config")
+def reset_main_config(body: ResetConfigBody):
+    dealer = _validate_seat(body.dealer, name="dealer")
+    preset = body.preset_counts or {}
+
+    if preset:
+        try:
+            hands = build_hands_from_preset_counts(preset, dealer=dealer)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        game = _create_game_obj(dealer=dealer)
+        game["state"] = GoitaState(hands=hands, dealer=dealer)
+        game["board"] = _new_board_snapshot()
+        game["log"] = [f"Game start. dealer={dealer}, table=main"]
+        game["init_hands"] = hands
+        game["dealer"] = dealer
+        game["kifu_moves"] = []
+        GAMES[MAIN_GID] = game
+    else:
+        GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+
+    _run_cpu_until_human(GAMES[MAIN_GID])
+    return {"ok": True, "game_id": MAIN_GID, "dealer": dealer, "preset": bool(preset)}
+
 
 
 @app.post("/games/main/claim")
