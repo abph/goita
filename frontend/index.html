@@ -290,6 +290,23 @@ let pending = null;
 const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
+
+function getWinnerPoints(state){
+  // backend側のフィールド名が変わっても耐えるように、候補を順に見る
+  const cand = [
+    state?.team_score,
+    state?.winner_score,
+    state?.score,
+    state?.points,
+    state?.team_points
+  ];
+  for(const v of cand){
+    if(typeof v === "number" && isFinite(v)) return v;
+    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+  }
+  return 0;
+}
+
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 
 function _extractDealerFromLog(logArr){
@@ -443,7 +460,7 @@ async function downloadKifu(){
 function toggleAllHands(){
   showAllHands = !showAllHands;
   document.getElementById("toggleHandsBtn").textContent =
-    showAllHands ? "手札表示を戻す" : "みんなの手札を公開";
+    showAllHands ? "手札表示を戻す" : "みんな手札公開";
   refresh();
 }
 
@@ -722,7 +739,7 @@ async function startNewGame(){
   }
 
   pending=null; showAllHands=false;
-  document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
+  document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
   await refresh();
     updateNameInputVisibility();
 }
@@ -738,7 +755,7 @@ async function resetAll(){
   // クライアント側の状態も初期化
   pending = null;
   showAllHands = false;
-  document.getElementById("toggleHandsBtn").textContent = "みんなの手札を公開";
+  document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
 
   // 観戦に戻す（席の維持をしない）
   mySeat = WATCH;
@@ -778,7 +795,7 @@ async function refresh(){
   latestLegal = await fetchLegal();
 
   if(state.finished){
-    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
+    setHint(`勝者:${state.winner}、${getWinnerPoints(state)}点。新規ゲームを押してください。`);
     pending = null;
   }else if(isSpectator()){
     setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
