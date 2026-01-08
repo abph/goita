@@ -147,6 +147,40 @@ def build_hands_from_preset_counts(
 
     raise ValueError("failed to build hands from preset")
 
+def _validate_preset_counts(preset: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+    """プリセットの形式・上限をチェックして正規化して返す（配牌はしない）。"""
+    p = {seat: {k: int(v) for k, v in (preset.get(seat) or {}).items()} for seat in ALL_SEATS}
+
+    used_total = {k: 0 for k in PIECE_TOTALS}
+    for seat in ALL_SEATS:
+        seat_sum = 0
+        for k, maxn in PIECE_TOTALS.items():
+            n = int(p[seat].get(k, 0) or 0)
+            if n < 0:
+                raise ValueError("negative count")
+            if n > 9:
+                raise ValueError("count must be 0-9")
+            seat_sum += n
+            used_total[k] += n
+
+        if seat_sum > 8:
+            raise ValueError(f"{seat}: total pieces must be <= 8")
+        if int(p[seat].get("1", 0) or 0) > 4:
+            raise ValueError(f"{seat}: '1'(し) must be <= 4")
+
+    for k, maxn in PIECE_TOTALS.items():
+        if used_total[k] > maxn:
+            raise ValueError(f"total of {k} exceeds max ({used_total[k]} > {maxn})")
+
+    out: Dict[str, Dict[str, int]] = {}
+    for seat in ALL_SEATS:
+        d = {k: int(v) for k, v in p[seat].items() if int(v) > 0}
+        if d:
+            out[seat] = d
+    return out
+
+
+
 
 def _sanitize_player_name(s: str) -> str:
     s = (s or "").strip()
@@ -261,6 +295,12 @@ class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     # 例: {"A":{"1":2,"9":1}, "B":{...}, ...}
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+
+class PresetSyncBody(BaseModel):
+    enabled: bool = Field(default=False)
+    # 例: {"A":{"1":2,"9":1}, "B":{...}, ...}
+    preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+
 
 
 
@@ -466,6 +506,8 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "kifu_moves": [],
         "human_seats": set(),  # type: Set[str]
         "player_names": {p: "" for p in ALL_SEATS},  # ★共有名
+        "preset_enabled": False,
+        "preset_counts": {},
     }
 
 
@@ -476,7 +518,13 @@ def _ensure_main_game(dealer: str = "A") -> None:
 
 @app.post("/games/main/reset")
 def reset_main(dealer: str = "A"):
+    prev = GAMES.get(MAIN_GID) or {}
+    prev_preset_enabled = bool(prev.get("preset_enabled", False))
+    prev_preset_counts = prev.get("preset_counts", {}) or {}
     GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+    # keep shared preset across "新規ゲーム"
+    GAMES[MAIN_GID]["preset_enabled"] = prev_preset_enabled
+    GAMES[MAIN_GID]["preset_counts"] = prev_preset_counts
     # If humans are already claimed (e.g., kept across "new game"), let CPUs play until a human turn.
     _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
@@ -486,10 +534,17 @@ def reset_main(dealer: str = "A"):
 def reset_main_config(body: ResetConfigBody):
     dealer = _validate_seat(body.dealer, name="dealer")
     preset = body.preset_counts or {}
+    # normalize for storing/sharing
+    preset_norm = {}
+    if preset:
+        try:
+            preset_norm = _validate_preset_counts(preset)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     if preset:
         try:
-            hands = build_hands_from_preset_counts(preset, dealer=dealer)
+            hands = build_hands_from_preset_counts(preset_norm, dealer=dealer)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -501,11 +556,46 @@ def reset_main_config(body: ResetConfigBody):
         game["dealer"] = dealer
         game["kifu_moves"] = []
         GAMES[MAIN_GID] = game
+        game["preset_enabled"] = True
+        game["preset_counts"] = preset_norm
     else:
+        prev = GAMES.get(MAIN_GID) or {}
+        prev_preset_enabled = bool(prev.get("preset_enabled", False))
+        prev_preset_counts = prev.get("preset_counts", {}) or {}
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+        GAMES[MAIN_GID]["preset_enabled"] = prev_preset_enabled
+        GAMES[MAIN_GID]["preset_counts"] = prev_preset_counts
 
     _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer, "preset": bool(preset)}
+
+@app.get("/games/main/preset")
+def get_main_preset():
+    _ensure_main_game()
+    game = GAMES.get(MAIN_GID)
+    return {
+        "enabled": bool(game.get("preset_enabled", False)),
+        "preset_counts": game.get("preset_counts", {}) or {},
+    }
+
+
+@app.post("/games/main/preset")
+def set_main_preset(body: PresetSyncBody):
+    _ensure_main_game()
+    game = GAMES.get(MAIN_GID)
+
+    enabled = bool(body.enabled)
+    preset = body.preset_counts or {}
+
+    try:
+        preset_norm = _validate_preset_counts(preset)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    game["preset_enabled"] = enabled
+    game["preset_counts"] = preset_norm
+    return {"ok": True, "enabled": enabled, "preset_counts": preset_norm}
+
 
 
 
@@ -660,7 +750,9 @@ def step(game_id: str, req: StepRequest):
         _notify_public(agents, state, p, cpu_action)
 
     if state.finished:
-        log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
+        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
+        if not log or log[-1] != msg:
+            log.append(msg)
 
     payload = _state_public_view(
         state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
