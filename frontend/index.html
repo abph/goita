@@ -186,7 +186,32 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       .pass{ font-size: 12px; }
     }
 
-  </style>
+  
+/* ===== 手札指定（枚数） ===== */
+.preset-grid{
+  display: grid;
+  grid-template-columns: 22px repeat(9, 34px);
+  gap: 6px 6px;
+  align-items: center;
+  justify-content: start;
+  margin-top: 8px;
+}
+.preset-grid .hdr{ font-weight: 900; text-align: center; }
+.preset-grid .seat{ font-weight: 900; }
+.preset-grid input{
+  width: 34px;
+  padding: 6px 6px;
+  text-align: center;
+}
+.preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
+.preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
+
+@media (max-width: 430px){
+  .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
+  .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } /* iOSズーム防止も兼ねる */
+}
+
+</style>
 </head>
 <body>
   <h1>ごいたAIプレイ</h1>
@@ -259,6 +284,26 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
           </div>
         </details>
 
+        <details id="presetHandsDetails" style="margin-top:10px;">
+          <summary><b>手札指定（枚数）</b></summary>
+          <div class="preset-note">
+            各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
+            さらに「し」は各プレイヤー4枚まで（5以上は不可）。
+            ※この設定は「新規ゲーム」では保持され、「リセット」で消えます。
+          </div>
+          <div class="preset-grid" id="presetGrid">
+            <div></div>
+            <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
+            <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+          </div>
+          <div class="preset-err" id="presetErr" style="display:none;"></div>
+        </details>
+
+
+
         <details style="margin-top:10px;">
           <summary><b>（デバッグ用）合法手</b></summary>
           <div class="small">観戦中は空になります。</div>
@@ -288,6 +333,9 @@ let latestLegal = [];
 let pending = null;
 
 const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
+const PRESET_TOTALS = {"1":10,"2":4,"3":4,"4":4,"5":4,"6":2,"7":2,"8":1,"9":1};
+const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
+
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
@@ -306,6 +354,122 @@ function getWinnerPoints(state){
   }
   return 0;
 }
+
+
+function presetLoad(){
+  try{
+    const raw = localStorage.getItem("goita_preset_counts");
+    if(!raw) return;
+    const obj = JSON.parse(raw);
+    document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+      const s = inp.dataset.seat;
+      const p = inp.dataset.piece;
+      const v = obj?.[s]?.[p];
+      inp.value = (v===0 || v) ? String(v).slice(0,1) : "";
+    });
+  }catch(e){}
+}
+
+function presetSave(){
+  try{ localStorage.setItem("goita_preset_counts", JSON.stringify(presetGet())); }catch(e){}
+}
+
+function presetClear(){
+  document.querySelectorAll("#presetGrid input.ph").forEach(inp=> inp.value="");
+  const err = document.getElementById("presetErr");
+  if(err){ err.style.display="none"; err.textContent=""; }
+  try{ localStorage.removeItem("goita_preset_counts"); }catch(e){}
+}
+
+function presetGet(){
+  const out = {A:{},B:{},C:{},D:{}};
+  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+    const n = parseInt(inp.value,10);
+    if(!isNaN(n) && n>0){
+      out[inp.dataset.seat][inp.dataset.piece] = n;
+    }
+  });
+  for(const s of ["A","B","C","D"]){
+    if(Object.keys(out[s]).length===0) delete out[s];
+  }
+  return out;
+}
+
+function presetValidateAndClamp(changed){
+  const errEl = document.getElementById("presetErr");
+  const all = {A:{},B:{},C:{},D:{}};
+
+  // normalize to 0-9 single digit
+  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+    let v = (inp.value ?? "").toString().replace(/\D/g,"");
+    if(v.length>1) v = v.slice(-1);
+    inp.value = v;
+    const n = v==="" ? 0 : parseInt(v,10);
+    all[inp.dataset.seat][inp.dataset.piece] = isNaN(n)?0:n;
+  });
+
+  // per-player shi <=4
+  for(const s of ["A","B","C","D"]){
+    if((all[s]["1"]||0) > 4){
+      all[s]["1"]=4;
+      const inp = document.querySelector(`#presetGrid input.ph[data-seat="${s}"][data-piece="1"]`);
+      if(inp) inp.value="4";
+    }
+  }
+
+  // per-piece totals <= max (prefer clamping the changed field)
+  const errors = [];
+  for(const p of PRESET_PIECES){
+    const maxn = PRESET_TOTALS[p];
+    let tot = 0;
+    for(const s of ["A","B","C","D"]) tot += (all[s][p]||0);
+    if(tot>maxn){
+      if(changed && changed.dataset.piece===p){
+        const s = changed.dataset.seat;
+        const other = tot - (all[s][p]||0);
+        const allow = Math.max(0, maxn - other);
+        all[s][p] = allow;
+        changed.value = allow===0 ? "" : String(allow);
+      }else{
+        errors.push(`${PIECE_LABEL[p] ?? p} の合計が上限を超えています（${tot}/${maxn}）`);
+      }
+    }
+  }
+
+  // warn if any player's total > 8
+  for(const s of ["A","B","C","D"]){
+    let sum = 0;
+    for(const p of PRESET_PIECES) sum += (all[s][p]||0);
+    if(sum>8) errors.push(`${s} の合計が8を超えています（${sum}）`);
+  }
+
+  if(errEl){
+    if(errors.length){
+      errEl.style.display="";
+      errEl.textContent = errors.join("\n");
+    }else{
+      errEl.style.display="none";
+      errEl.textContent="";
+    }
+  }
+
+  presetSave();
+}
+
+async function resetWithPreset(dealer){
+  const preset = presetGet();
+  const hasPreset = preset && Object.keys(preset).length>0;
+  if(hasPreset){
+    await fetch(`${API}/games/main/reset_config`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ dealer, preset_counts: preset })
+    });
+  }else{
+    await resetWithPreset(dealer);
+}
+}
+
 
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 
@@ -723,9 +887,8 @@ async function startNewGame(){
   if(dealer === "random") dealer = _chooseRandomDealer();
 
   // いったんゲームを作り直す（サーバ側は名前/席を初期化する仕様）
-  await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
-
-  // 名前を復元（入力欄は同期しない方針なので触らない）
+  await resetWithPreset(dealer);
+// 名前を復元（入力欄は同期しない方針なので触らない）
   for(const s of ["A","B","C","D"]){
     const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
     if(nm){
@@ -745,14 +908,14 @@ async function startNewGame(){
 }
 
 async function resetAll(){
+  presetClear();
   // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
   if(dealer === "random") dealer = _chooseRandomDealer();
 
-  await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
-
-  // クライアント側の状態も初期化
+  await resetWithPreset(dealer);
+// クライアント側の状態も初期化
   pending = null;
   showAllHands = false;
   document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
@@ -842,6 +1005,11 @@ function updateNameInputVisibility(){
 }
 
 window.addEventListener("load", async ()=>{
+  // 手札指定（枚数）
+  presetLoad();
+  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+    inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
+  });
   bindNameInputs();
 
   const sel = document.getElementById("seatSelect");
