@@ -429,62 +429,6 @@ function presetIsEnabled(){
 
 function presetSetEnabled(on){
   try{ localStorage.setItem("goita_preset_enabled", on ? "1" : "0"); }catch(e){}
-
-
-let _presetLastServerJson = null;
-let _presetSyncTimer = null;
-let _presetApplyingFromServer = false;
-
-async function presetFetchFromServer(){
-  try{
-    const r = await fetch(`${API}/games/main/preset`, {cache:"no-store"});
-    if(!r.ok) return;
-    const data = await r.json();
-    const enabled = !!data.enabled;
-    const preset = data.preset_counts || {};
-
-    _presetApplyingFromServer = true;
-    presetSetEnabled(enabled);
-
-    for(const inp of document.querySelectorAll("#presetGrid input.ph")){
-      const s = inp.dataset.seat;
-      const p = inp.dataset.piece;
-      const v = preset?.[s]?.[p];
-      inp.value = (v===0 || v) ? String(v).slice(0,1) : "";
-    }
-    _presetApplyingFromServer = false;
-
-    _presetLastServerJson = JSON.stringify({enabled, preset_counts: preset});
-  }catch(e){
-    _presetApplyingFromServer = false;
-  }
-}
-
-function presetScheduleSyncToServer(){
-  if(_presetApplyingFromServer) return;
-  if(_presetSyncTimer) clearTimeout(_presetSyncTimer);
-  _presetSyncTimer = setTimeout(()=>{ presetSyncToServer(); }, 250);
-}
-
-async function presetSyncToServer(){
-  try{
-    if(_presetApplyingFromServer) return;
-    const enabled = presetIsEnabled();
-    const payload = { enabled, preset_counts: presetGet() };
-    const json = JSON.stringify(payload);
-    if(json === _presetLastServerJson) return;
-
-    const r = await fetch(`${API}/games/main/preset`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: json
-    });
-    if(r.ok){
-      _presetLastServerJson = json;
-    }
-  }catch(e){}
-}
-
   const box = document.getElementById("presetEnabled");
   if(box) box.checked = !!on;
   const details = document.getElementById("presetHandsDetails");
@@ -603,7 +547,6 @@ function presetValidateAndClamp(changed){
   }
 
   presetSave();
-  presetScheduleSyncToServer();
 }
 
 
@@ -1078,7 +1021,6 @@ async function startNewGame(){
 async function resetAll(){
   presetClear();
   presetSetEnabled(false);
-  presetScheduleSyncToServer();
   // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
@@ -1120,7 +1062,6 @@ async function refresh(){
   if(showAllHands) qs.set("reveal_hands","1");
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
-  await presetFetchFromServer();
   latestState = state;
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
@@ -1179,10 +1120,9 @@ window.addEventListener("load", async ()=>{
   // 手札指定（枚数）
   presetLoad();
   presetSetEnabled(presetIsEnabled());
-  await presetFetchFromServer();
   const presetEnabledBox = document.getElementById("presetEnabled");
   if(presetEnabledBox){
-    presetEnabledBox.addEventListener("change", ()=>{ presetSetEnabled(presetEnabledBox.checked); presetScheduleSyncToServer(); });
+    presetEnabledBox.addEventListener("change", ()=> presetSetEnabled(presetEnabledBox.checked));
   }
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
     inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
