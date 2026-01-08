@@ -442,7 +442,9 @@ def _run_cpu_until_human(game: Dict[str, Any]) -> None:
         _notify_public(agents, state, p, cpu_action)
 
     if state.finished:
-        log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
+        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
+        if not log or log[-1] != msg:
+            log.append(msg)
 
 
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
