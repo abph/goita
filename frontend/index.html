@@ -340,9 +340,27 @@ function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; r
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
 function getWinnerPoints(state){
-  // backend側のフィールド名が変わっても耐えるように、候補を順に見る
+  const w = state?.winner;
+  if(!w) return 0;
+
+  // 1) まずは seats形式のスコアがあればそれを優先
+  //    （backendが scores: {A:..,B:..,C:..,D:..} を返している場合）
+  if(state?.scores && state.scores[w] != null){
+    const v = state.scores[w];
+    if(typeof v === "number" && isFinite(v)) return v;
+    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+  }
+
+  // 2) team_score が {AC:xx, BD:yy} の場合（こちらが本命）
+  if(state?.team_score && typeof state.team_score === "object"){
+    const team = (w === "A" || w === "C") ? "AC" : "BD";
+    const v = state.team_score[team];
+    if(typeof v === "number" && isFinite(v)) return v;
+    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+  }
+
+  // 3) フォールバック（数値が直接来る場合）
   const cand = [
-    state?.team_score,
     state?.winner_score,
     state?.score,
     state?.points,
