@@ -347,6 +347,28 @@ const WATCH = "W";
 let mySeat = WATCH;
 let lastSeat = "A";
 
+
+const SEAT_ORDER = ["A","B","C","D"];
+
+// 表示の向き：下=物理A, 右=物理B, 上=物理C, 左=物理D として
+// 「自分の席(mySeat)が常に下(物理A)に来る」ように表示を回転する
+function getPhysToSeat(){
+  const base = (!mySeat || isSpectator()) ? "A" : mySeat;
+  const s = SEAT_ORDER.indexOf(base);
+  return {
+    A: SEAT_ORDER[s],
+    B: SEAT_ORDER[(s+1)%4],
+    C: SEAT_ORDER[(s+2)%4],
+    D: SEAT_ORDER[(s+3)%4],
+  };
+}
+function getSeatToPhys(){
+  const p2s = getPhysToSeat();
+  const out = {};
+  for(const p of ["A","B","C","D"]) out[p2s[p]] = p;
+  return out;
+}
+
 let showAllHands = false;
 let latestState = null;
 let latestLegal = [];
@@ -614,12 +636,7 @@ const HAND_POS = {
 };
 
 const PASS_POS = { col: 6, row: 6 };
-const SEAT_LABELS = new Map([
-  ["3,9", "A"],
-  ["9,8", "B"],
-  ["8,2", "C"],
-  ["2,3", "D"],
-]);
+const SEAT_LABEL_POS = { A:{col:3,row:9}, B:{col:9,row:8}, C:{col:8,row:2}, D:{col:2,row:3} };
 const TURN_LABEL_POS = { col: 5, row: 5 };
 const PHASE_LABEL_POS = { col: 6, row: 5 };
 const ATK_LABEL_POS = { col: 5, row: 6 };
@@ -631,24 +648,26 @@ const NAME_POS = {
   D: { col: 2, row: 8 },
 };
 
-function buildSlotMap(){
-  const m=new Map();
-  for(const p of ["A","B","C","D"]){
-    SLOTS[p].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p,kind:"R",idx:i}));
-    SLOTS[p].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p,kind:"A",idx:i}));
-  }
-  return m;
-}
-const SLOT_MAP = buildSlotMap();
 
-function buildHandMap(){
+function buildSlotMap(physToSeat){
   const m=new Map();
-  for(const p of ["A","B","C","D"]){
-    HAND_POS[p].forEach((c,i)=>m.set(key(c[0],c[1]),{p,idx:i}));
+  for(const phys of ["A","B","C","D"]){
+    const seat = physToSeat[phys];
+    SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"R",idx:i}));
+    SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i}));
   }
   return m;
 }
-const HAND_MAP = buildHandMap();
+
+
+function buildHandMap(physToSeat){
+  const m=new Map();
+  for(const phys of ["A","B","C","D"]){
+    const seat = physToSeat[phys];
+    HAND_POS[phys].forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,idx:i}));
+  }
+  return m;
+}
 
 async function claimSeat(seat){
   try{
@@ -793,6 +812,11 @@ function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
 
+  const physToSeat = getPhysToSeat();
+  const seatToPhys = getSeatToPhys();
+  const SLOT_MAP = buildSlotMap(physToSeat);
+  const HAND_MAP = buildHandMap(physToSeat);
+
   const usable = new Set();
   if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
@@ -852,25 +876,36 @@ function renderBoard(state){
 
       // ★プレイヤー名表示（共有）
       let placedName = false;
-      for(const s of ["A","B","C","D"]){
-        const pos = NAME_POS[s];
-        if(pos.col === col && pos.row === row){
-          div.classList.add("name-label");
-          div.textContent = formatNameForBoard(names[s] || "");
-          board.appendChild(div);
-          placedName = true;
-          break;
-        }
-      }
+      
+for(const phys of ["A","B","C","D"]){
+  const pos = NAME_POS[phys];
+  if(pos.col === col && pos.row === row){
+    const seat = physToSeat[phys];
+    div.classList.add("name-label");
+    div.textContent = formatNameForBoard(names[seat] || "");
+    board.appendChild(div);
+    placedName = true;
+    break;
+  }
+}
       if(placedName) continue;
 
-      const label = SEAT_LABELS.get(k);
-      if(label){
-        div.classList.add("seat-label");
-        div.textContent = label;
-        board.appendChild(div);
-        continue;
-      }
+      
+// 席ラベル（視点回転後に表示）
+let label = null;
+for(const phys of ["A","B","C","D"]){
+  const pos = SEAT_LABEL_POS[phys];
+  if(pos && pos.col===col && pos.row===row){
+    label = physToSeat[phys];
+    break;
+  }
+}
+if(label){
+  div.classList.add("seat-label");
+  div.textContent = label;
+  board.appendChild(div);
+  continue;
+}
 
       const hand=HAND_MAP.get(k);
       if(hand){
