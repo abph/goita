@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ごいた 10×10盤面</title>
+  <title>ごいたAIプレイ</title>
   <style>
     
     :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
 body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
-    h1 { margin-bottom: 12px; }
+    h1 { margin-bottom: 12px; font-size: 28px; text-align: center; }
+    @media (max-width: 430px){
+      h1{ font-size: 16px; margin-bottom: 6px; }
+    }
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
     .board {
       display: grid;
