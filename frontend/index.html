@@ -8,7 +8,7 @@
     
     :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
 body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
-    h1 { margin-bottom: 12px; font-size: 28px; text-align: center; }
+    h1 { margin-bottom: 12px; font-size: 28px; }
     @media (max-width: 430px){
       h1{ font-size: 16px; margin-bottom: 6px; }
     }
@@ -184,7 +184,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   </style>
 </head>
 <body>
-  <h1>ごいた 10×10盤面</h1>
+  <h1>ごいたAIプレイ</h1>
 
   <div class="board-wrap">
     <div id="board" class="board"></div>
@@ -193,7 +193,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   <div class="ui">
     
 
-    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）</div>
+    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
     
 <div class="meta">
@@ -232,7 +232,6 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       <button onclick="refresh()">更新</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
       <button onclick="downloadKifu()">棋譜をダウンロード</button>
-      <span class="small">（PASS：6列目6行目）</span>
     </div>
 <div class="bottom-grid">
       <div class="card">
@@ -451,7 +450,7 @@ async function onHandPieceClick(piece){
     return;
   }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
 
   if(pending){
@@ -483,13 +482,13 @@ async function onHandPieceClick(piece){
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
     pending = { need: "attack", candidates: asBlock };
-    setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。（PASS：6列目6行目）`);
+    setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
     return;
   }
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
     pending = { need: "block", candidates: asAttack };
-    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。（PASS：6列目6行目）`);
+    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
     return;
   }
 
@@ -502,11 +501,11 @@ async function onPassClick(){
     return;
   }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){ setHint("今はパスできません。（PASS：6列目6行目）"); return; }
+  if(!pass){ setHint("今はパスできません。"); return; }
 
   pending = null;
   await submitAction(pass);
@@ -761,10 +760,10 @@ async function refresh(){
   latestLegal = await fetchLegal();
 
   if(state.finished){
-    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。（PASS：6列目6行目）`);
+    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
     pending = null;
   }else if(isSpectator()){
-    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）");
+    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
     pending = null;
   }else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`);
