@@ -287,6 +287,52 @@ def _state_public_view(
     return payload
 
 
+def _run_cpu_until_human(game: Dict[str, Any]) -> None:
+    """Advance the game automatically while it's a CPU seat's turn.
+    Stops when:
+      - game finished, or
+      - next turn is in human_seats, or
+      - there are no human seats (to avoid autoplaying the whole game).
+    """
+    state: GoitaState = game["state"]
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+    human_seats: Set[str] = game.setdefault("human_seats", set())
+
+    # If nobody is playing as human, do not autoplay (spectator-only mode).
+    if not human_seats:
+        return
+
+    safety = 0
+    while (not state.finished) and (state.turn not in human_seats):
+        safety += 1
+        if safety > 2000:
+            # avoid runaway loops
+            log.append("safety stop: too many cpu steps")
+            break
+
+        p = state.turn
+        acts = state.legal_actions(p)
+        if not acts:
+            log.append(f"{p}: no legal actions (stop)")
+            break
+
+        cpu_action = agents[p].select_action(state, p, acts)
+
+        before_fd_cpu = len(state.face_down_hidden[p])
+        _apply_action(state, p, cpu_action)
+        hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
+        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
+
+        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
+        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
+        _notify_public(agents, state, p, cpu_action)
+
+    if state.finished:
+        log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
+
+
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
     hands = create_random_hands_no_five_shi()
@@ -317,6 +363,8 @@ def _ensure_main_game(dealer: str = "A") -> None:
 @app.post("/games/main/reset")
 def reset_main(dealer: str = "A"):
     GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+    # If humans are already claimed (e.g., kept across "new game"), let CPUs play until a human turn.
+    _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
@@ -367,6 +415,10 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+
+    state: GoitaState = game["state"]
+    # If it is a CPU seat turn, advance automatically until a human turn.
+    _run_cpu_until_human(game)
 
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
