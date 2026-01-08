@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ごいた 10×10盤面</title>
+  <title>ごいたAIプレイ</title>
   <style>
     
     :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
 body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
-    h1 { margin-bottom: 12px; }
+    h1 { margin-bottom: 12px; font-size: 28px; }
+    @media (max-width: 430px){
+      h1{ font-size: 16px; margin-bottom: 6px; }
+    }
     .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
     .board {
       display: grid;
@@ -164,6 +167,11 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   
     /* === iPhone(小画面) 文字はみ出し対策 === */
     @media (max-width: 430px){
+      input[type="text"],
+      select,
+      textarea{
+        font-size: 16px;   /* ← これでズームしない */
+      }
       .seat-label{ font-size: 18px; }
       .turn-label{ font-size: 12px; }
       .phase-label{ font-size: 11px; }
@@ -178,13 +186,10 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       .pass{ font-size: 12px; }
     }
 
-  
-
-    .name-row{ display: contents; }
-</style>
+  </style>
 </head>
 <body>
-  <h1>ごいた 10×10盤面</h1>
+  <h1>ごいたAIプレイ</h1>
 
   <div class="board-wrap">
     <div id="board" class="board"></div>
@@ -193,7 +198,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   <div class="ui">
     
 
-    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）</div>
+    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
     
 <div class="meta">
@@ -206,44 +211,50 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
           <option value="C">C</option>
           <option value="D">D</option>
         </select>
-        <span class="small">（観戦→後からA/B/C/Dを選ぶ）</span>
       </span>
     </div>
 
     <!-- ★共有プレイヤー名入力（サーバに保存） -->
     <div class="name-grid" id="nameGrid">
-      <div class="name-row" data-seat="A">
-        <b>A名前</b><input id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-        <button type="button" onclick="applyName('A')">表示</button>
-      </div>
+      <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="A" data-seat="A" type="button" onclick="applyName('A')">表示</button>
 
-      <div class="name-row" data-seat="B">
-        <b>B名前</b><input id="nameB" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-        <button type="button" onclick="applyName('B')">表示</button>
-      </div>
+      <b data-seat="B">B名前</b><input data-seat="B" id="nameB" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="B" data-seat="B" type="button" onclick="applyName('B')">表示</button>
 
-      <div class="name-row" data-seat="C">
-        <b>C名前</b><input id="nameC" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-        <button type="button" onclick="applyName('C')">表示</button>
-      </div>
+      <b data-seat="C">C名前</b><input data-seat="C" id="nameC" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="C" data-seat="C" type="button" onclick="applyName('C')">表示</button>
 
-      <div class="name-row" data-seat="D">
-        <b>D名前</b><input id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-        <button type="button" onclick="applyName('D')">表示</button>
-      </div>
+      <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="D" data-seat="D" type="button" onclick="applyName('D')">表示</button>
     </div>
-<div class="small">（共有表示。入力後に「表示」を押すと反映。新規ゲームを押すと全員分クリア。表示は 1行3文字×3行）</div>
 
     <div class="btns" style="margin-top:10px;">
-      <button onclick="newGame()">新規ゲーム（main卓リセット）</button>
-      <button onclick="refresh()">更新</button>
-      <button onclick="toggleAllHands()" id="toggleHandsBtn">みんなの手札を公開</button>
-      <button onclick="downloadKifu()">棋譜をダウンロード</button>
-      <span class="small">（PASS：6列目6行目）</span>
+      <button onclick="startNewGame()">新規ゲーム</button>
+      <button onclick="resetAll()">リセット</button>
+      <button onclick="toggleAllHands()" id="toggleHandsBtn">みんな手札公開</button>
+      <button onclick="downloadKifu()">棋譜GET</button>
     </div>
 <div class="bottom-grid">
       <div class="card">
         <details>
+          <summary><b>親（dealer）設定</b></summary>
+          <div class="small" style="margin-top:6px;">
+            次の「新規ゲーム」で適用されます。random は毎回ランダムに親を選びます。
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+            <select id="dealerSelect">
+              <option value="random">random</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+            <span class="small">現在: <b id="dealerNow">-</b></span>
+          </div>
+        </details>
+
+        <details style="margin-top:10px;">
           <summary><b>（デバッグ用）合法手</b></summary>
           <div class="small">観戦中は空になります。</div>
           <div id="actions" style="margin-top:8px;"></div>
@@ -275,6 +286,19 @@ const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀"
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
+
+function _extractDealerFromLog(logArr){
+  if(!Array.isArray(logArr) || logArr.length===0) return "";
+  const s = String(logArr[0] ?? "");
+  // 例: "Game start. dealer=A, table=main"
+  const m = s.match(/dealer=([ABCD])/);
+  return m ? m[1] : "";
+}
+
+function _chooseRandomDealer(){
+  const seats = ["A","B","C","D"];
+  return seats[Math.floor(Math.random()*seats.length)];
+}
 function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
 function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
@@ -394,7 +418,11 @@ async function applyName(seat){
   await setName(seat, v);
   // 反映確認のため更新
   await refresh();
-}
+    updateNameInputVisibility();
+
+updateNameInputVisibility();
+
+  }
 
 async function downloadKifu(){
   const res = await fetch(`${API}/games/${gid}/kifu`);
@@ -428,7 +456,7 @@ async function onHandPieceClick(piece){
     return;
   }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
 
   if(pending){
@@ -437,7 +465,8 @@ async function onHandPieceClick(piece){
       await submitAction(matched[0]);
       pending = null;
       await refresh();
-      return;
+    updateNameInputVisibility();
+return;
     }
     if(matched.length > 1){
       setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。");
@@ -453,20 +482,21 @@ async function onHandPieceClick(piece){
   if(candidates.length === 1){
     await submitAction(candidates[0]);
     await refresh();
-    return;
+    updateNameInputVisibility();
+return;
   }
 
   const aab = candidates.filter(a => a.action_type === "attack_after_block");
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
     pending = { need: "attack", candidates: asBlock };
-    setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。（PASS：6列目6行目）`);
+    setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
     return;
   }
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
     pending = { need: "block", candidates: asAttack };
-    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。（PASS：6列目6行目）`);
+    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
     return;
   }
 
@@ -479,15 +509,16 @@ async function onPassClick(){
     return;
   }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。（PASS：6列目6行目）"); return; }
+  if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){ setHint("今はパスできません。（PASS：6列目6行目）"); return; }
+  if(!pass){ setHint("今はパスできません。"); return; }
 
   pending = null;
   await submitAction(pass);
   await refresh();
+    updateNameInputVisibility();
 }
 
 function seatIsHuman(state, seat){
@@ -653,16 +684,72 @@ async function renderActions(){
     const b=a.block ? pieceToLabel(a.block) : "";
     const at=a.attack ? pieceToLabel(a.attack) : "";
     btn.textContent = `${t} ${b} ${at}`.trim();
-    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); };
+    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh();
+    updateNameInputVisibility();
+};
     actionsDiv.appendChild(btn);
   });
 }
 
-async function newGame(){
-  await fetch(`${API}/games/main/reset`, {method:"POST"});
+async function startNewGame(){
+  // 現在の名前は保持（サーバで共有されている値を優先）
+  const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
+  const seatToKeep = mySeat; // 観戦/W or A/B/C/D
+
+  const sel = document.getElementById("dealerSelect");
+  let dealer = sel ? sel.value : "random";
+  if(dealer === "random") dealer = _chooseRandomDealer();
+
+  // いったんゲームを作り直す（サーバ側は名前/席を初期化する仕様）
+  await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
+
+  // 名前を復元（入力欄は同期しない方針なので触らない）
+  for(const s of ["A","B","C","D"]){
+    const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
+    if(nm){
+      await setName(s, nm);
+    }
+  }
+
+  // 自分の席を維持（観戦ならそのまま）
+  if(seatToKeep && seatToKeep !== WATCH){
+    await claimSeat(seatToKeep);
+  }
+
   pending=null; showAllHands=false;
   document.getElementById("toggleHandsBtn").textContent="みんなの手札を公開";
   await refresh();
+    updateNameInputVisibility();
+}
+
+async function resetAll(){
+  // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
+  const sel = document.getElementById("dealerSelect");
+  let dealer = sel ? sel.value : "random";
+  if(dealer === "random") dealer = _chooseRandomDealer();
+
+  await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {method:"POST"});
+
+  // クライアント側の状態も初期化
+  pending = null;
+  showAllHands = false;
+  document.getElementById("toggleHandsBtn").textContent = "みんなの手札を公開";
+
+  // 観戦に戻す（席の維持をしない）
+  mySeat = WATCH;
+  lastSeat = "A";
+  const seatSel = document.getElementById("seatSelect");
+  if(seatSel) seatSel.value = WATCH;
+
+  // 名前入力欄もクリア（同期しない方針なので明示的に消す）
+  const ids = ["nameA","nameB","nameC","nameD"];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(el) el.value = "";
+  }
+
+  await refresh();
+    updateNameInputVisibility();
 }
 
 async function fetchLegal(){
@@ -680,14 +767,16 @@ async function refresh(){
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
   document.getElementById("log").textContent = (state.log||[]).join("\n");
+  const dn = document.getElementById("dealerNow");
+  if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || "-"; }
 
   latestLegal = await fetchLegal();
 
   if(state.finished){
-    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。（PASS：6列目6行目）`);
+    setHint(`この局は終了しました（勝者: ${state.winner}）。新規ゲームを押してください。`);
     pending = null;
   }else if(isSpectator()){
-    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。（PASS：6列目6行目）");
+    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
     pending = null;
   }else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`);
@@ -698,7 +787,8 @@ async function refresh(){
 
   renderBoard(state);
   await renderActions();
-}
+updateNameInputVisibility();
+  }
 
 function bindNameInputs(){
   const ids = ["nameA","nameB","nameC","nameD"];
@@ -713,20 +803,22 @@ function bindNameInputs(){
 }
 
 
-function updateNameUI(){
+function updateNameInputVisibility(){
   const grid = document.getElementById("nameGrid");
   if(!grid) return;
-  if(isSpectator()){
-    grid.style.display = "none";
+
+  const items = grid.querySelectorAll("[data-seat]");
+  // 観戦中は全部非表示
+  if(mySeat === WATCH){
+    items.forEach(el => el.style.display = "none");
     return;
   }
-  grid.style.display = "grid";
-  for(const s of ["A","B","C","D"]){
-    const row = grid.querySelector(`.name-row[data-seat="${s}"]`);
-    if(!row) continue;
-    row.style.display = (s === mySeat) ? "contents" : "none";
-  }
+  // 自分の席だけ表示
+  items.forEach(el => {
+    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
+  });
 }
+
 window.addEventListener("load", async ()=>{
   bindNameInputs();
 
@@ -734,12 +826,9 @@ window.addEventListener("load", async ()=>{
   mySeat = WATCH;
   sel.value = WATCH;
 
-
-      updateNameUI();
-  updateNameUI();
   await refresh();
-
-  sel.addEventListener("change", async ()=>{
+    updateNameInputVisibility();
+sel.addEventListener("change", async ()=>{
     const next = sel.value;
 
     if(!isSpectator()){
@@ -752,15 +841,16 @@ window.addEventListener("load", async ()=>{
       mySeat = WATCH;
       sel.value = WATCH;
       await refresh();
-      return;
+    updateNameInputVisibility();
+return;
     }
 
     mySeat = next;
     lastSeat = mySeat;
-    updateNameUI();
     await claimSeat(mySeat);
     await refresh();
-  });
+    updateNameInputVisibility();
+});
 
   setInterval(refresh, 2000);
 });
