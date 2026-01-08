@@ -167,6 +167,11 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   
     /* === iPhone(小画面) 文字はみ出し対策 === */
     @media (max-width: 430px){
+      input[type="text"],
+      select,
+      textarea{
+        font-size: 16px;   /* ← これでズームしない */
+      }
       .seat-label{ font-size: 18px; }
       .turn-label{ font-size: 12px; }
       .phase-label{ font-size: 11px; }
