@@ -211,6 +211,25 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } /* iOSズーム防止も兼ねる */
 }
 
+
+/* 手札指定 ON/OFF */
+.preset-disabled #presetGrid,
+.preset-disabled .preset-note,
+.preset-disabled #presetErr{
+  display: none !important;
+}
+.preset-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.preset-toggle input{
+  transform: translateY(1px);
+}
+
 </style>
 </head>
 <body>
@@ -286,6 +305,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
 
         <details id="presetHandsDetails" style="margin-top:10px;">
           <summary><b>手札指定（枚数）</b></summary>
+          <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
           <div class="preset-note">
             各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
             さらに「し」は各プレイヤー4枚まで（5以上は不可）。
@@ -372,6 +392,40 @@ function getWinnerPoints(state){
   }
   return 0;
 }
+
+
+
+function presetIsEnabled(){
+  try{
+    const v = localStorage.getItem("goita_preset_enabled");
+    if(v === null) return false; // 初期OFF
+    return v === "1";
+  }catch(e){
+    return false;
+  }
+}
+
+function presetSetEnabled(on){
+  try{ localStorage.setItem("goita_preset_enabled", on ? "1" : "0"); }catch(e){}
+  const box = document.getElementById("presetEnabled");
+  if(box) box.checked = !!on;
+  const details = document.getElementById("presetHandsDetails");
+  if(details){
+    if(on) details.classList.remove("preset-disabled");
+    else details.classList.add("preset-disabled");
+  }
+}
+
+function presetHasAny(){
+  // 1つでも「1〜9」が入っていれば true
+  const inputs = document.querySelectorAll("#presetGrid input.ph");
+  for(const inp of inputs){
+    const n = parseInt(inp.value, 10);
+    if(!isNaN(n) && n > 0) return true;
+  }
+  return false;
+}
+
 
 function presetLoad(){
   try{
@@ -473,18 +527,23 @@ function presetValidateAndClamp(changed){
   presetSave();
 }
 
+
 async function resetWithPreset(dealer){
-  const preset = presetGet();
-  const hasPreset = preset && Object.keys(preset).length>0;
-  if(hasPreset){
+  const usePreset = presetIsEnabled() && presetHasAny();
+  if(usePreset){
+    const preset = presetGet();
     await fetch(`${API}/games/main/reset_config`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ dealer, preset_counts: preset })
     });
   }else{
-    await resetWithPreset(dealer);
-}
+    await fetch(`${API}/games/main/reset`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ dealer })
+    });
+  }
 }
 
 
@@ -926,6 +985,7 @@ async function startNewGame(){
 
 async function resetAll(){
   presetClear();
+  presetSetEnabled(false);
   // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
@@ -1024,6 +1084,11 @@ function updateNameInputVisibility(){
 window.addEventListener("load", async ()=>{
   // 手札指定（枚数）
   presetLoad();
+  presetSetEnabled(presetIsEnabled());
+  const presetEnabledBox = document.getElementById("presetEnabled");
+  if(presetEnabledBox){
+    presetEnabledBox.addEventListener("change", ()=> presetSetEnabled(presetEnabledBox.checked));
+  }
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
     inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
   });
