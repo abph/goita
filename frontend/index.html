@@ -191,16 +191,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
 <body>
   <h1>ごいたAIプレイ</h1>
 
-  <div class="board-wrap">
-    <div id="board" class="board"></div>
-  </div>
-
-  <div class="ui">
-    
-
-    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
-
-    
+<div class="top-controls">
 <div class="meta">
       <b>自分の席</b>
       <span>
@@ -213,9 +204,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
         </select>
       </span>
     </div>
-
-    <!-- ★共有プレイヤー名入力（サーバに保存） -->
-    <div class="name-grid" id="nameGrid">
+<div class="name-grid" id="nameGrid">
       <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button data-seat="A" data-seat="A" type="button" onclick="applyName('A')">表示</button>
 
@@ -228,6 +217,22 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
       <button data-seat="D" data-seat="D" type="button" onclick="applyName('D')">表示</button>
     </div>
+</div>
+
+  <div class="board-wrap">
+    <div id="board" class="board"></div>
+  </div>
+
+  <div class="ui">
+    
+
+    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
+
+    
+
+
+    <!-- ★共有プレイヤー名入力（サーバに保存） -->
+    
 
     <div class="btns" style="margin-top:10px;">
       <button onclick="startNewGame()">新規ゲーム</button>
