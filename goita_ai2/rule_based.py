@@ -40,6 +40,14 @@ class RuleBasedAgent:
         # ★NEW：残り2枚で8/9が含まれるなら、8/9は最後まで温存（即上がりは例外）
         self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT = True
 
+        # ===== "し"(=駒"1") 攻め戦略 =====
+        # しプラン資格：自分＋ペアの「し」合計がこの枚数以上なら、し攻めが理論上成立
+        self.SHI_PLAN_MIN_TEAM_COUNT = 6
+
+        # しプラン中の行動優先（強めに効かせる）
+        self.SHI_PLAN_ATTACK_FORCE = 2_000.0   # しで攻める（プラン中）
+        self.SHI_PLAN_RECEIVE_FORCE = 2_000.0  # しで受ける（プラン中）
+
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -73,6 +81,13 @@ class RuleBasedAgent:
         init_hand = self._get_initial_hand(state, self.me)
         cnt_all = Counter(init_hand)
 
+        ally_player = self._ally_of(self.me)
+        ally_init_hand = self._get_initial_hand(state, ally_player)
+        ally_cnt_all = Counter(ally_init_hand)
+
+        shi_team_total = int(cnt_all.get("1", 0) + ally_cnt_all.get("1", 0))
+        shi_plan_eligible = (shi_team_total >= self.SHI_PLAN_MIN_TEAM_COUNT)
+
         kakari = {x: "UNCERTAIN" for x in TARGET_X}
         enemy_revealed = {x: False for x in TARGET_X}
         miss = {x: 0 for x in TARGET_X}
@@ -97,13 +112,23 @@ class RuleBasedAgent:
             pending_ally_received=pending_ally_received,
             my_init_count=my_init_count,
             init_count_all=cnt_all,
-            ally=self._ally_of(self.me),
+            ally=ally_player,
             ally_axis_pending=ally_axis_pending,
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
             public_seen_counts=public_seen_counts,
 
-            # ★自分の攻め回数（agentが選択した攻め回数）
+            # ★自分の攻め回数
+            # ===== "し"(=1) 攻め戦略のトラッキング =====
+            shi_team_total=shi_team_total,
+            shi_plan_eligible=shi_plan_eligible,
+            shi_plan_active=False,          # 発火条件で True にする
+            shi_message_sent=False,         # 「本気でし攻め」メッセージ送信済み
+            shi_chain_attacker=None,        # 直近の「し攻め」をしたプレイヤー
+            shi_chain_passed=False,         # 直近の「し攻め」に対して誰かがパスしたか
+            shi_chain_first_passer=None,    # 最初にパスしたプレイヤー
+
+            # （agentが選択した攻め回数）
             my_attack_count=0,
 
             # ★初期に8/9両方持ちのときだけ2→3枚目プランON
@@ -201,6 +226,26 @@ class RuleBasedAgent:
 
         action_type, block, attack = action
         ally = tr["ally"]
+
+        # ===== "し"(=1) 攻め戦略：公開情報からのトラッキング =====
+        if action_type in ("attack", "attack_after_block") and attack == "1":
+            tr["shi_chain_attacker"] = player
+            tr["shi_chain_passed"] = False
+            tr["shi_chain_first_passer"] = None
+            # 味方が「し」で攻め始めたら、しプランを共有してONにする（資格がある局のみ）
+            if tr.get("shi_plan_eligible") and self._same_team(player, self.me):
+                tr["shi_plan_active"] = True
+
+            # 「しで受けて、さらにしで攻めた」= 強いメッセージ
+            if action_type == "attack_after_block" and block == "1" and tr.get("shi_plan_eligible") and self._same_team(player, self.me):
+                tr["shi_message_sent"] = True
+
+        if action_type == "pass":
+            # 直近の「し攻め」に対して誰かがパスした（=し消耗戦が効いているシグナル）
+            if state.current_attack == "1" and tr.get("shi_chain_attacker") is not None and tr["shi_chain_attacker"] != player:
+                tr["shi_chain_passed"] = True
+                if tr.get("shi_chain_first_passer") is None:
+                    tr["shi_chain_first_passer"] = player
 
         if action_type == "receive" and block is not None:
             if block in tr["public_seen_counts"]:
@@ -465,6 +510,81 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
+        # ===== "し"(=1) 攻め戦略：局中の強制判断（資格がある局のみ） =====
+        if tr is not None and tr.get("shi_plan_eligible", False):
+            ally = tr["ally"]
+
+            enemy_attack_turn = (
+                state.phase == "receive"
+                and state.current_attack is not None
+                and state.attacker is not None
+                and (not self._same_team(state.attacker, player))
+            )
+
+            # (S1) 相手チームが親の初回攻め：一度パスして「相手の伏せ」にしを消費させる
+            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)):
+                # 「初回はパス」が目的なので、相手の攻め駒が何であっても基本パス（※即上がり系は上で処理済）
+                for act in actions:
+                    if act[0] == "pass":
+                        return act
+
+            # (S2) 相手の攻めを一度見た後：しで受けてプラン発火（「伏せがし」になりやすい読み）
+            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and tr.get("first_enemy_attack_seen", False):
+                recv1 = [act for act in actions if act[0] in ("receive", "attack_after_block") and act[1] == "1"]
+                if recv1:
+                    # 受け（または受けて即攻め）で「し」を出した時点で、しプランON
+                    chosen = sorted(recv1, key=lambda a: 0 if a[0] == "receive" else 1)[0]
+                    tr["shi_plan_active"] = True
+                    if chosen[0] in ("attack", "attack_after_block"):
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    return chosen
+
+            # (S3) 連携：味方が「し」で攻め、直前の受け手がパス → 自分（ペア）の受け番
+            if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally and tr.get("shi_chain_passed", False):
+                my_shi = state.hands[player].count("1")
+
+                # し<=2：しでは攻め切れない → しで受けて、強い駒で返す（可能なら attack_after_block）
+                if my_shi <= 2:
+                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
+                    if cands:
+                        # 強い駒で返す：通常の攻めスコアで最大を選ぶ（し以外）
+                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
+                        best = cands[0]
+                        best_score = -1e18
+                        for (t, b, a) in cands:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["shi_plan_active"] = True  # 受けでしを出す＝しプラン共有
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return best
+
+                    # attack_after_block が無い場合は、とにかく「し」で受ける
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            tr["shi_plan_active"] = True
+                            return act
+
+                # し==3：そのままパス（「しで攻めることは可能」というメッセージ）
+                if my_shi == 3:
+                    for act in actions:
+                        if act[0] == "pass":
+                            return act
+
+                # し>=4：しで受けて、しで返す（強いメッセージ）
+                if my_shi >= 4:
+                    for act in actions:
+                        if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                            tr["shi_plan_active"] = True
+                            tr["shi_message_sent"] = True
+                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            return act
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            tr["shi_plan_active"] = True
+                            return act
+
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
 
         # ★B：残り2枚で8/9が含まれるなら、8/9は最後まで温存（今は出さない）
@@ -552,6 +672,38 @@ class RuleBasedAgent:
                             if tr.get("kg_plan_active"):
                                 tr["kg_plan_active"] = False
                             return chosen
+
+
+        # ===== "し"(=1) 攻め戦略：攻め番での貫徹（kg_plan_active と味方軸は優先） =====
+        if tr is not None and tr.get("shi_plan_active", False) and (not tr.get("kg_plan_active", False)) and attack_actions:
+            # (S4) 味方の2〜5軸合わせは「し」より優先
+            ax = tr.get("ally_axis_pending")
+            if ax in TARGET_X:
+                ax_cands = [act for act in attack_actions if act[2] == ax]
+                if ax_cands:
+                    chosen = ax_cands[0]
+                    best_score = -1e18
+                    for (t, b, a) in ax_cands:
+                        sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                        if sc > best_score:
+                            best_score = sc
+                            chosen = (t, b, a)
+                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    return chosen
+
+            # (S5) それ以外は、原則「し」で攻める
+            shi_cands = [act for act in attack_actions if act[2] == "1"]
+            if shi_cands:
+                chosen = shi_cands[0]
+                best_score = -1e18
+                for (t, b, a) in shi_cands:
+                    sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                    if sc > best_score:
+                        best_score = sc
+                        chosen = (t, b, a)
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                return chosen
+
 
         # 3) 通常スコアリング
         best_action = actions[0]
