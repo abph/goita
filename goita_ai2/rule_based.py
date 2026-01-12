@@ -40,6 +40,14 @@ class RuleBasedAgent:
         # ★NEW：残り2枚で8/9が含まれるなら、8/9は最後まで温存（即上がりは例外）
         self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT = True
 
+        # ===== "し"(=駒"1") 攻め戦略 =====
+        # しプラン資格：自分＋ペアの「し」合計がこの枚数以上なら、し攻めが理論上成立
+        self.SHI_PLAN_MIN_TEAM_COUNT = 6
+
+        # しプラン中の行動優先（強めに効かせる）
+        self.SHI_PLAN_ATTACK_FORCE = 2_000.0   # しで攻める（プラン中）
+        self.SHI_PLAN_RECEIVE_FORCE = 2_000.0  # しで受ける（プラン中）
+
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -73,6 +81,13 @@ class RuleBasedAgent:
         init_hand = self._get_initial_hand(state, self.me)
         cnt_all = Counter(init_hand)
 
+        ally_player = self._ally_of(self.me)
+        ally_init_hand = self._get_initial_hand(state, ally_player)
+        ally_cnt_all = Counter(ally_init_hand)
+
+        shi_team_total = int(cnt_all.get("1", 0) + ally_cnt_all.get("1", 0))
+        shi_plan_eligible = (shi_team_total >= self.SHI_PLAN_MIN_TEAM_COUNT)
+
         kakari = {x: "UNCERTAIN" for x in TARGET_X}
         enemy_revealed = {x: False for x in TARGET_X}
         miss = {x: 0 for x in TARGET_X}
@@ -97,13 +112,24 @@ class RuleBasedAgent:
             pending_ally_received=pending_ally_received,
             my_init_count=my_init_count,
             init_count_all=cnt_all,
-            ally=self._ally_of(self.me),
+            ally=ally_player,
             ally_axis_pending=ally_axis_pending,
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
             public_seen_counts=public_seen_counts,
 
-            # ★自分の攻め回数（agentが選択した攻め回数）
+            # ★自分の攻め回数
+            # ===== "し"(=1) 攻め戦略のトラッキング =====
+            shi_team_total=shi_team_total,
+            shi_plan_eligible=shi_plan_eligible,
+            shi_plan_active=False,          # 発火条件で True にする
+            shi_message_sent=False,         # 「本気でし攻め」メッセージ送信済み
+            shi_msg_sent_by_player={p: False for p in ("A","B","C","D")},  # 4しメッセージを誰が送ったか（1人1回）
+            shi_chain_attacker=None,        # 直近の「し攻め」をしたプレイヤー
+            shi_chain_passed=False,         # 直近の「し攻め」に対して誰かがパスしたか
+            shi_chain_first_passer=None,    # 最初にパスしたプレイヤー
+
+            # （agentが選択した攻め回数）
             my_attack_count=0,
 
             # ★初期に8/9両方持ちのときだけ2→3枚目プランON
@@ -202,6 +228,28 @@ class RuleBasedAgent:
         action_type, block, attack = action
         ally = tr["ally"]
 
+        # ===== "し"(=1) 攻め戦略：公開情報からのトラッキング =====
+        if action_type in ("attack", "attack_after_block") and attack == "1":
+            tr["shi_chain_attacker"] = player
+            tr["shi_chain_passed"] = False
+            tr["shi_chain_first_passer"] = None
+            # 味方が「し」で攻め始めたら、しプランを共有してONにする（資格がある局のみ）
+            if tr.get("shi_plan_eligible") and self._same_team(player, self.me):
+                tr["shi_plan_active"] = True
+
+            # 「しで受けて、さらにしで攻めた」= 強いメッセージ
+            if action_type == "attack_after_block" and block == "1" and tr.get("shi_plan_eligible") and self._same_team(player, self.me):
+                tr["shi_message_sent"] = True
+                if "shi_msg_sent_by_player" in tr:
+                    tr["shi_msg_sent_by_player"][player] = True
+
+        if action_type == "pass":
+            # 直近の「し攻め」に対して誰かがパスした（=し消耗戦が効いているシグナル）
+            if state.current_attack == "1" and tr.get("shi_chain_attacker") is not None and tr["shi_chain_attacker"] != player:
+                tr["shi_chain_passed"] = True
+                if tr.get("shi_chain_first_passer") is None:
+                    tr["shi_chain_first_passer"] = player
+
         if action_type == "receive" and block is not None:
             if block in tr["public_seen_counts"]:
                 tr["public_seen_counts"][block] += 1
@@ -285,96 +333,94 @@ class RuleBasedAgent:
         return 0.0
 
     
-    # --- SHI(= "1") / FUSE (block) strategy helpers -------------------------
-    def _reserved_attack_pieces(self, state, player: str) -> set:
-        """
-        Pieces we prefer NOT to use as block (fuse), because we likely want to attack with them.
-        This is a heuristic "reservation" set.
-        """
-        tr = self._track.get(id(state))
-        hand = state.hands[player]
-        reserved = set()
+# --- Fuse (block) strategy helpers --------------------------------------
+def _reserved_attack_pieces(self, state, player: str) -> set:
+    """
+    Pieces we prefer NOT to use as block (fuse), because we likely want to attack with them.
+    Heuristic reservation set.
+    """
+    tr = self._track.get(id(state))
+    hand = state.hands[player]
+    reserved = set()
 
-        # Always reserve kings for attack/receive flexibility
-        if "8" in hand:
-            reserved.add("8")
-        if "9" in hand:
-            reserved.add("9")
+    # Reserve kings for flexibility
+    if "8" in hand:
+        reserved.add("8")
+    if "9" in hand:
+        reserved.add("9")
 
-        # Reserve strong kakari axis pieces in hand
-        if tr is not None:
-            kakari = tr.get("kakari", {})
-            for x in ("2", "3", "4", "5"):
-                if x in hand and kakari.get(x) == "STRONG":
-                    reserved.add(x)
-
-        # Reserve 6/7 if we have a pair (they are "2枚駒" and often strong)
-        for x in ("6", "7"):
-            if hand.count(x) >= 2:
-                reserved.add(x)
-
-        # Reserve abundant axes (3+ copies) because they are good attacking candidates
+    # Reserve strong kakari axis pieces in hand
+    if tr is not None:
+        kakari = tr.get("kakari", {})
         for x in ("2", "3", "4", "5"):
-            if hand.count(x) >= 3:
+            if x in hand and kakari.get(x) == "STRONG":
                 reserved.add(x)
 
-        return reserved
+    # Reserve 6/7 if we have a pair (often strong)
+    for x in ("6", "7"):
+        if hand.count(x) >= 2:
+            reserved.add(x)
 
-    def _block_selection_bonus(self, state, player: str, block: str, attack: Optional[str]) -> float:
-        """
-        Bonus (positive) / penalty (negative) added when action_type == attack_after_block.
-        Implements fuse priority:
-          - Prefer low-point pieces as block
-          - BUT exclude 香 (we treat "2" as 香 here)
-          - AND exclude pieces we plan to attack with (heuristic reservation)
-          - If SHI plan is active, keep at least 3 SHI(="1") for attacking.
-            If SHI would still remain AND seems surplus, allow blocking with "1".
-        """
-        if block is None:
-            return 0.0
+    # Reserve abundant axes (3+ copies) since good attacking candidates
+    for x in ("2", "3", "4", "5"):
+        if hand.count(x) >= 3:
+            reserved.add(x)
 
-        hand = state.hands[player]
-        tr = self._track.get(id(state))
+    return reserved
 
-        # Never block the exact attack piece (shouldn't happen, but keep safe)
-        if attack is not None and block == attack:
-            return -1e9
+def _block_selection_bonus(self, state, player: str, block: str, attack: Optional[str]) -> float:
+    """
+    Bonus/penalty added for choosing block in attack_after_block.
 
-        # Exclude 香 ("2") from blocking as per requirement
-        if block == "2":
-            return -1e6
+    Priority:
+      1) Low-point pieces are preferred as block
+      2) BUT 香 (here treated as "2") is excluded
+      3) AND pieces we plan to attack with are avoided (heuristic reservation)
+      4) If SHI plan is active/eligible, keep >=3 of "1" for attacking.
+         If "1" is surplus beyond that, allow/prefer blocking with "1".
+    """
+    if block is None:
+        return 0.0
 
-        reserved = self._reserved_attack_pieces(state, player)
-        if block in reserved:
-            # Strongly avoid, but not infinite (so if it's the only legal, still possible)
-            return -300.0
+    hand = state.hands[player]
+    tr = self._track.get(id(state))
 
-        # SHI plan handling: "1" is SHI in this codebase context
-        shi_count = hand.count("1")
-        shi_plan_active = bool(tr.get("shi_plan_active", False)) if tr is not None else False
-        shi_plan_eligible = bool(tr.get("shi_plan_eligible", False)) if tr is not None else False
+    # Never block same as attack
+    if attack is not None and block == attack:
+        return -1e12
 
-        if block == "1" and (shi_plan_active or shi_plan_eligible):
-            # Must keep at least 3 "1" for attacking when SHI plan is in play
-            if shi_count - 1 < 3:
-                return -1e9  # effectively forbid
-            # If we have "surplus" beyond 3, prefer using it as block (your rule)
-            if shi_count - 1 >= 4:
-                return +120.0
-            # Exactly 3 left -> allow but not preferred
-            return -40.0
+    # Exclude 香 ("2") from blocking
+    if block == "2":
+        return -1e9
 
-        # Base preference: lower POINTS is better as block
-        # Convert to a bonus: lower points => higher bonus.
-        pts = float(POINTS.get(block, 0))
-        # Typical POINTS are 10..50; map to ~[+60..+20]
-        base_bonus = 60.0 - (pts / 10.0) * 10.0  # e.g., 10->50, 50->10
+    # Avoid reserved attack pieces
+    if block in self._reserved_attack_pieces(state, player):
+        return -300.0
 
-        # Small extra preference: if we have duplicates of that block, it's cheaper to hide
-        dup_bonus = 8.0 * max(0, hand.count(block) - 1)
+    # SHI handling ("1" == し)
+    shi_count = hand.count("1")
+    shi_plan_active = bool(tr.get("shi_plan_active", False)) if tr is not None else False
+    shi_plan_eligible = bool(tr.get("shi_plan_eligible", False)) if tr is not None else False
 
-        return base_bonus + dup_bonus
-    # -----------------------------------------------------------------------
+    if block == "1" and (shi_plan_active or shi_plan_eligible):
+        # Must keep at least 3 "1" for attacking
+        if shi_count - 1 < 3:
+            return -1e12
+        # If still 4+ after blocking -> surplus, prefer using it as block
+        if shi_count - 1 >= 4:
+            return +120.0
+        # Exactly 3 left -> allow but slightly discourage
+        return -40.0
+
+    # Base: lower POINTS is better
+    pts = float(POINTS.get(block, 0))
+    base_bonus = 60.0 - (pts / 10.0) * 10.0  # 10->50, 50->10
+
+    # Duplicates are cheaper to hide
+    dup_bonus = 8.0 * max(0, hand.count(block) - 1)
+
+    return base_bonus + dup_bonus
+# -----------------------------------------------------------------------
 
 def _score_attack_phase(
         self,
@@ -413,8 +459,7 @@ def _score_attack_phase(
             penalty_table = {"9": 10, "8": 10, "7": 8, "6": 8, "5": 6, "4": 6, "3": 4, "2": 4, "1": 1}
             score -= float(penalty_table.get(block, 0))
 
-
-        # ★Fuse strategy bonus/penalty (what to hide)
+        # ★Fuse strategy: what to hide as block
         if action_type == "attack_after_block" and block is not None:
             score += self._block_selection_bonus(state, player, block, attack)
 
@@ -545,20 +590,20 @@ def _score_attack_phase(
         )
 
 
-        def _best_by_score(cands: List[Action]) -> Optional[Action]:
-            if not cands:
-                return None
-            best = cands[0]
-            best_sc = -1e18
-            for (t, b, a) in cands:
-                sc = self._score_attack_phase(
-                    state, player, t, b, a,
-                    has_non_king_attack_option=has_non_king_attack_option,
-                )
-                if sc > best_sc:
-                    best_sc = sc
-                    best = (t, b, a)
-            return best
+def _best_by_score(cands: List[Action]) -> Optional[Action]:
+    if not cands:
+        return None
+    best = cands[0]
+    best_sc = -1e18
+    for (t, b, a) in cands:
+        sc = self._score_attack_phase(
+            state, player, t, b, a,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if sc > best_sc:
+            best_sc = sc
+            best = (t, b, a)
+    return best
 
         # 0) この手で上がれるなら最優先
         win_now_actions: List[Tuple[float, Action]] = []
@@ -577,6 +622,107 @@ def _score_attack_phase(
                 if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                     tr["kg_plan_active"] = False
             return chosen
+
+        # ===== "し"(=1) 攻め戦略：局中の強制判断（資格がある局のみ） =====
+        if tr is not None and tr.get("shi_plan_eligible", False):
+            ally = tr["ally"]
+
+            enemy_attack_turn = (
+                state.phase == "receive"
+                and state.current_attack is not None
+                and state.attacker is not None
+                and (not self._same_team(state.attacker, player))
+            )
+
+            # (S1) 相手チームが親の初回攻め：一度パスして「相手の伏せ」にしを消費させる
+            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)):
+                # 「初回はパス」が目的なので、相手の攻め駒が何であっても基本パス（※即上がり系は上で処理済）
+                for act in actions:
+                    if act[0] == "pass":
+                        # ★FIX: ここで即 return すると first_enemy_attack_seen が立たず、以降ずっと『初回扱い』になってパスし続ける事故が起きる。
+                        tr["first_enemy_attack_seen"] = True
+                        tr["first_enemy_attack_skipped"] = True
+                        return act
+
+            # (S2) 相手の攻めを一度見た後：しで受けてプラン発火（「伏せがし」になりやすい読み）
+            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and tr.get("first_enemy_attack_seen", False):
+                recv1 = [act for act in actions if act[0] in ("receive", "attack_after_block") and act[1] == "1"]
+                if recv1:
+                    # 受け（または受けて即攻め）で「し」を出した時点で、しプランON
+                    chosen = sorted(recv1, key=lambda a: 0 if a[0] == "receive" else 1)[0]
+                    tr["shi_plan_active"] = True
+                    if chosen[0] in ("attack", "attack_after_block"):
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    return chosen
+
+            # (S3) 連携：味方が「し」で攻め、直前の受け手がパス → 自分（ペア）の受け番
+            if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally and tr.get("shi_chain_passed", False):
+                my_shi = state.hands[player].count("1")
+
+                # し<=2：しでは攻め切れない → しで受けて、強い駒で返す（可能なら attack_after_block）
+                if my_shi <= 2:
+                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
+                    if cands:
+                        # 強い駒で返す：通常の攻めスコアで最大を選ぶ（し以外）
+                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
+                        best = cands[0]
+                        best_score = -1e18
+                        for (t, b, a) in cands:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["shi_plan_active"] = True  # 受けでしを出す＝しプラン共有
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return best
+
+                    # attack_after_block が無い場合は、とにかく「し」で受ける
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            tr["shi_plan_active"] = True
+                            return act
+
+                # し==3：そのままパス（「しで攻めることは可能」というメッセージ）
+                if my_shi == 3:
+                    for act in actions:
+                        if act[0] == "pass":
+                            return act
+
+                # し>=4：しで受けて、しで返す（強いメッセージ）
+                if my_shi >= 4:
+                    # 「4しメッセージ（しで受けてしで返す）」は“同一プレイヤーにつき1回だけ”
+                    msg_sent = bool(tr.get("shi_msg_sent_by_player", {}).get(player, False))
+
+                    if not msg_sent:
+                        for act in actions:
+                            if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                                tr["shi_plan_active"] = True
+                                tr["shi_message_sent"] = True
+                                if "shi_msg_sent_by_player" in tr:
+                                    tr["shi_msg_sent_by_player"][player] = True
+                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                return act
+
+                    # 2回目以降（または上が見つからない場合）は、しを温存するため「しで受けて他の駒で返す」を優先
+                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
+                    if cands:
+                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
+                        best = cands[0]
+                        best_score = -1e18
+                        for (t, b, a) in cands:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["shi_plan_active"] = True
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return best
+
+                    # 返しが無いなら、とにかく「し」で受ける
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            tr["shi_plan_active"] = True
+                            return act
 
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
 
@@ -665,6 +811,38 @@ def _score_attack_phase(
                         if tr.get("kg_plan_active"):
                             tr["kg_plan_active"] = False
                         return chosen
+
+
+        # ===== "し"(=1) 攻め戦略：攻め番での貫徹（kg_plan_active と味方軸は優先） =====
+        if tr is not None and tr.get("shi_plan_active", False) and (not tr.get("kg_plan_active", False)) and attack_actions:
+            # (S4) 味方の2〜5軸合わせは「し」より優先
+            ax = tr.get("ally_axis_pending")
+            if ax in TARGET_X:
+                ax_cands = [act for act in attack_actions if act[2] == ax]
+                if ax_cands:
+                    chosen = ax_cands[0]
+                    best_score = -1e18
+                    for (t, b, a) in ax_cands:
+                        sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                        if sc > best_score:
+                            best_score = sc
+                            chosen = (t, b, a)
+                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    return chosen
+
+            # (S5) それ以外は、原則「し」で攻める
+            shi_cands = [act for act in attack_actions if act[2] == "1"]
+            if shi_cands:
+                chosen = shi_cands[0]
+                best_score = -1e18
+                for (t, b, a) in shi_cands:
+                    sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                    if sc > best_score:
+                        best_score = sc
+                        chosen = (t, b, a)
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                return chosen
+
 
         # 3) 通常スコアリング
         best_action = actions[0]
