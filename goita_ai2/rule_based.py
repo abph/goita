@@ -124,7 +124,6 @@ class RuleBasedAgent:
             shi_plan_eligible=shi_plan_eligible,
             shi_plan_active=False,          # 発火条件で True にする
             shi_message_sent=False,         # 「本気でし攻め」メッセージ送信済み
-            shi_msg_sent_by_player={p: False for p in ("A","B","C","D")},  # 4しメッセージを誰が送ったか（1人1回）
             shi_chain_attacker=None,        # 直近の「し攻め」をしたプレイヤー
             shi_chain_passed=False,         # 直近の「し攻め」に対して誰かがパスしたか
             shi_chain_first_passer=None,    # 最初にパスしたプレイヤー
@@ -240,8 +239,6 @@ class RuleBasedAgent:
             # 「しで受けて、さらにしで攻めた」= 強いメッセージ
             if action_type == "attack_after_block" and block == "1" and tr.get("shi_plan_eligible") and self._same_team(player, self.me):
                 tr["shi_message_sent"] = True
-                if "shi_msg_sent_by_player" in tr:
-                    tr["shi_msg_sent_by_player"][player] = True
 
         if action_type == "pass":
             # 直近の「し攻め」に対して誰かがパスした（=し消耗戦が効いているシグナル）
@@ -332,97 +329,7 @@ class RuleBasedAgent:
             return 10.0
         return 0.0
 
-    
-# --- Fuse (block) strategy helpers --------------------------------------
-def _reserved_attack_pieces(self, state, player: str) -> set:
-    """
-    Pieces we prefer NOT to use as block (fuse), because we likely want to attack with them.
-    Heuristic reservation set.
-    """
-    tr = self._track.get(id(state))
-    hand = state.hands[player]
-    reserved = set()
-
-    # Reserve kings for flexibility
-    if "8" in hand:
-        reserved.add("8")
-    if "9" in hand:
-        reserved.add("9")
-
-    # Reserve strong kakari axis pieces in hand
-    if tr is not None:
-        kakari = tr.get("kakari", {})
-        for x in ("2", "3", "4", "5"):
-            if x in hand and kakari.get(x) == "STRONG":
-                reserved.add(x)
-
-    # Reserve 6/7 if we have a pair (often strong)
-    for x in ("6", "7"):
-        if hand.count(x) >= 2:
-            reserved.add(x)
-
-    # Reserve abundant axes (3+ copies) since good attacking candidates
-    for x in ("2", "3", "4", "5"):
-        if hand.count(x) >= 3:
-            reserved.add(x)
-
-    return reserved
-
-def _block_selection_bonus(self, state, player: str, block: str, attack: Optional[str]) -> float:
-    """
-    Bonus/penalty added for choosing block in attack_after_block.
-
-    Priority:
-      1) Low-point pieces are preferred as block
-      2) BUT 香 (here treated as "2") is excluded
-      3) AND pieces we plan to attack with are avoided (heuristic reservation)
-      4) If SHI plan is active/eligible, keep >=3 of "1" for attacking.
-         If "1" is surplus beyond that, allow/prefer blocking with "1".
-    """
-    if block is None:
-        return 0.0
-
-    hand = state.hands[player]
-    tr = self._track.get(id(state))
-
-    # Never block same as attack
-    if attack is not None and block == attack:
-        return -1e12
-
-    # Exclude 香 ("2") from blocking
-    if block == "2":
-        return -1e9
-
-    # Avoid reserved attack pieces
-    if block in self._reserved_attack_pieces(state, player):
-        return -300.0
-
-    # SHI handling ("1" == し)
-    shi_count = hand.count("1")
-    shi_plan_active = bool(tr.get("shi_plan_active", False)) if tr is not None else False
-    shi_plan_eligible = bool(tr.get("shi_plan_eligible", False)) if tr is not None else False
-
-    if block == "1" and (shi_plan_active or shi_plan_eligible):
-        # Must keep at least 3 "1" for attacking
-        if shi_count - 1 < 3:
-            return -1e12
-        # If still 4+ after blocking -> surplus, prefer using it as block
-        if shi_count - 1 >= 4:
-            return +120.0
-        # Exactly 3 left -> allow but slightly discourage
-        return -40.0
-
-    # Base: lower POINTS is better
-    pts = float(POINTS.get(block, 0))
-    base_bonus = 60.0 - (pts / 10.0) * 10.0  # 10->50, 50->10
-
-    # Duplicates are cheaper to hide
-    dup_bonus = 8.0 * max(0, hand.count(block) - 1)
-
-    return base_bonus + dup_bonus
-# -----------------------------------------------------------------------
-
-def _score_attack_phase(
+    def _score_attack_phase(
         self,
         state,
         player: str,
@@ -458,10 +365,6 @@ def _score_attack_phase(
         if action_type == "attack_after_block" and block is not None:
             penalty_table = {"9": 10, "8": 10, "7": 8, "6": 8, "5": 6, "4": 6, "3": 4, "2": 4, "1": 1}
             score -= float(penalty_table.get(block, 0))
-
-        # ★Fuse strategy: what to hide as block
-        if action_type == "attack_after_block" and block is not None:
-            score += self._block_selection_bonus(state, player, block, attack)
 
         score += self._win_now_bonus(state, player, (action_type, block, attack))
         return score
@@ -589,22 +492,6 @@ def _score_attack_phase(
             for (t, _b, a) in actions
         )
 
-
-def _best_by_score(cands: List[Action]) -> Optional[Action]:
-    if not cands:
-        return None
-    best = cands[0]
-    best_sc = -1e18
-    for (t, b, a) in cands:
-        sc = self._score_attack_phase(
-            state, player, t, b, a,
-            has_non_king_attack_option=has_non_king_attack_option,
-        )
-        if sc > best_sc:
-            best_sc = sc
-            best = (t, b, a)
-    return best
-
         # 0) この手で上がれるなら最優先
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
@@ -690,35 +577,12 @@ def _best_by_score(cands: List[Action]) -> Optional[Action]:
 
                 # し>=4：しで受けて、しで返す（強いメッセージ）
                 if my_shi >= 4:
-                    # 「4しメッセージ（しで受けてしで返す）」は“同一プレイヤーにつき1回だけ”
-                    msg_sent = bool(tr.get("shi_msg_sent_by_player", {}).get(player, False))
-
-                    if not msg_sent:
-                        for act in actions:
-                            if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
-                                tr["shi_plan_active"] = True
-                                tr["shi_message_sent"] = True
-                                if "shi_msg_sent_by_player" in tr:
-                                    tr["shi_msg_sent_by_player"][player] = True
-                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                return act
-
-                    # 2回目以降（または上が見つからない場合）は、しを温存するため「しで受けて他の駒で返す」を優先
-                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
-                    if cands:
-                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
-                        best = cands[0]
-                        best_score = -1e18
-                        for (t, b, a) in cands:
-                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
-                            if sc > best_score:
-                                best_score = sc
-                                best = (t, b, a)
-                        tr["shi_plan_active"] = True
-                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                        return best
-
-                    # 返しが無いなら、とにかく「し」で受ける
+                    for act in actions:
+                        if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                            tr["shi_plan_active"] = True
+                            tr["shi_message_sent"] = True
+                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            return act
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             tr["shi_plan_active"] = True
@@ -760,31 +624,31 @@ def _best_by_score(cands: List[Action]) -> Optional[Action]:
                                 continue
                             if p == "8" and not has8:
                                 continue
-                            cand = _best_by_score([act for act in attack_actions if act[2] == p])
-                            if cand is not None:
-                                chosen = cand
-                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                if chosen[2] in ("8", "9") and tr.get("kg_second") is None:
-                                    tr["kg_second"] = chosen[2]
-                                return chosen
+                            for act in attack_actions:
+                                if act[2] == p:
+                                    chosen = act
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    if chosen[2] in ("8", "9") and tr.get("kg_second") is None:
+                                        tr["kg_second"] = chosen[2]
+                                    return chosen
 
                     if next_attack_no == 3:
                         second = tr.get("kg_second")
                         want = "8" if second == "9" else "9" if second == "8" else None
                         if want is not None:
-                            cand = _best_by_score([act for act in attack_actions if act[2] == want])
-                            if cand is not None:
-                                chosen = cand
-                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                tr["kg_plan_active"] = False
-                                return chosen
+                            for act in attack_actions:
+                                if act[2] == want:
+                                    chosen = act
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    tr["kg_plan_active"] = False
+                                    return chosen
                         for p in ["9", "8"]:
-                            cand = _best_by_score([act for act in attack_actions if act[2] == p])
-                            if cand is not None:
-                                chosen = cand
-                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                tr["kg_plan_active"] = False
-                                return chosen
+                            for act in attack_actions:
+                                if act[2] == p:
+                                    chosen = act
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    tr["kg_plan_active"] = False
+                                    return chosen
 
         # ★A：3枚目の攻めで8/9を出せる局面でも「確定で通る非8/9」があるならそっち
         if tr is not None and self.PREFER_UNRECEIVABLE_ON_THIRD_ATTACK and attack_actions:
@@ -804,13 +668,13 @@ def _best_by_score(cands: List[Action]) -> Optional[Action]:
             next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if next_attack_no == 3:
                 for p in ["8", "9"]:
-                    cand = _best_by_score([act for act in attack_actions if act[2] == p])
-                    if cand is not None:
-                        chosen = cand
-                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                        if tr.get("kg_plan_active"):
-                            tr["kg_plan_active"] = False
-                        return chosen
+                    for act in attack_actions:
+                        if act[2] == p:
+                            chosen = act
+                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            if tr.get("kg_plan_active"):
+                                tr["kg_plan_active"] = False
+                            return chosen
 
 
         # ===== "し"(=1) 攻め戦略：攻め番での貫徹（kg_plan_active と味方軸は優先） =====
