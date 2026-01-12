@@ -124,6 +124,7 @@ class RuleBasedAgent:
             shi_plan_eligible=shi_plan_eligible,
             shi_plan_active=False,          # 発火条件で True にする
             shi_message_sent=False,         # 「本気でし攻め」メッセージ送信済み
+            shi_msg_sent_by_player={p: False for p in ("A","B","C","D")},  # 4しメッセージを誰が送ったか（1人1回）
             shi_chain_attacker=None,        # 直近の「し攻め」をしたプレイヤー
             shi_chain_passed=False,         # 直近の「し攻め」に対して誰かがパスしたか
             shi_chain_first_passer=None,    # 最初にパスしたプレイヤー
@@ -239,6 +240,8 @@ class RuleBasedAgent:
             # 「しで受けて、さらにしで攻めた」= 強いメッセージ
             if action_type == "attack_after_block" and block == "1" and tr.get("shi_plan_eligible") and self._same_team(player, self.me):
                 tr["shi_message_sent"] = True
+                if "shi_msg_sent_by_player" in tr:
+                    tr["shi_msg_sent_by_player"][player] = True
 
         if action_type == "pass":
             # 直近の「し攻め」に対して誰かがパスした（=し消耗戦が効いているシグナル）
@@ -577,12 +580,35 @@ class RuleBasedAgent:
 
                 # し>=4：しで受けて、しで返す（強いメッセージ）
                 if my_shi >= 4:
-                    for act in actions:
-                        if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
-                            tr["shi_plan_active"] = True
-                            tr["shi_message_sent"] = True
-                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                            return act
+                    # 「4しメッセージ（しで受けてしで返す）」は“同一プレイヤーにつき1回だけ”
+                    msg_sent = bool(tr.get("shi_msg_sent_by_player", {}).get(player, False))
+
+                    if not msg_sent:
+                        for act in actions:
+                            if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                                tr["shi_plan_active"] = True
+                                tr["shi_message_sent"] = True
+                                if "shi_msg_sent_by_player" in tr:
+                                    tr["shi_msg_sent_by_player"][player] = True
+                                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                return act
+
+                    # 2回目以降（または上が見つからない場合）は、しを温存するため「しで受けて他の駒で返す」を優先
+                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
+                    if cands:
+                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
+                        best = cands[0]
+                        best_score = -1e18
+                        for (t, b, a) in cands:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["shi_plan_active"] = True
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return best
+
+                    # 返しが無いなら、とにかく「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             tr["shi_plan_active"] = True
