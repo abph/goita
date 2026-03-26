@@ -114,28 +114,40 @@ def build_hands_from_preset_counts(
                     if k == "1":
                         shi_cnt[seat] += n
 
-        # 補充（し上限を守る）
+        # 補充（指定した駒は追加で配らない／し上限も守る）
         ok = True
         for seat in ALL_SEATS:
             need = 8 - len(hands[seat])
             if need <= 0:
                 continue
 
+            # この席で「指定済み」の駒種類
+            fixed_kinds = {k for k, v in p[seat].items() if int(v) > 0}
+
             for _i in range(need):
                 found = False
                 for j in range(len(pool2)):
                     k = pool2[j]
+
+                    # 指定済みの駒は、この席には追加で配らない
+                    if k in fixed_kinds:
+                        continue
+
+                    # し の上限
                     if k == "1" and shi_cnt[seat] >= 4:
                         continue
+
                     hands[seat].append(k)
                     if k == "1":
                         shi_cnt[seat] += 1
                     pool2.pop(j)
                     found = True
                     break
+
                 if not found:
                     ok = False
                     break
+
             if not ok:
                 break
 
