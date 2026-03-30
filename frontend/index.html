@@ -560,10 +560,8 @@ async function resetWithPreset(dealer){
       body: JSON.stringify({ dealer, preset_counts: preset })
     });
   }else{
-    await fetch(`${API}/games/main/reset`, {
+    await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {
       method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ dealer })
     });
   }
 }
