@@ -7,6 +7,7 @@
   <style>
     
     :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
+* , *::before, *::after { box-sizing: border-box; }
 body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
     h1 { margin-bottom: 12px; font-size: 28px; }
     @media (max-width: 430px){
@@ -155,6 +156,29 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       body { margin: 10px; }
       .board-wrap { padding: 8px; }
 .bottom-grid { grid-template-columns: 1fr; }
+      .ui,
+      .card,
+      details,
+      summary,
+      pre,
+      select {
+        max-width: 100%;
+      }
+      .bottom-grid > *{
+        min-width: 0;
+      }
+      .card{
+        min-width: 0;
+      }
+      pre{
+        width: 100%;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #dealerSelect{
+        width: 100%;
+      }
       /* スマホでは 1fr にすると3列目（表示ボタン）が右端に飛ぶので、列幅を固定して左詰め */
       .name-grid{
         grid-template-columns: 70px 15ch 56px;
