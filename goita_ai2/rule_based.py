@@ -48,6 +48,47 @@ class RuleBasedAgent:
         self.SHI_PLAN_ATTACK_FORCE = 2_000.0   # しで攻める（プラン中）
         self.SHI_PLAN_RECEIVE_FORCE = 2_000.0  # しで受ける（プラン中）
 
+        # ===== 伏せ駒（block）専用の基本評価 =====
+        # 値が高いほど「伏せやすい」、低いほど「伏せにくい」
+        self.BLOCK_BASE_SCORE = {
+            "9": -10.0,
+            "8": -10.0,
+            "7": -4.0,
+            "6": -4.0,
+            "5": -4.0,
+            "4": -4.0,
+            "3": -2.0,
+            "2": -6.0,
+            "1": -1.0,
+        }
+
+        # ルール補正値
+        self.BLOCK_RULE1_BREAK_TOP_ATTACK_PENALTY = 250.0
+        self.BLOCK_RULE1_BREAK_TOP_ATTACK_PENALTY_EARLY = 80.0
+        self.BLOCK_RULE2_KING_PRESERVE_EARLY = 30.0
+        self.BLOCK_RULE2_KING_PRESERVE_MID = 15.0
+        self.BLOCK_RULE2_KING_PRESERVE_LATE = 5.0
+        self.BLOCK_RULE3_ALLY_AXIS_PENALTY = 40.0
+        self.BLOCK_RULE3_STRONG_AXIS_PENALTY = 25.0
+        self.BLOCK_RULE4_DEAD_AXIS_BONUS = 30.0
+        self.BLOCK_RULE5_COUNT4_BONUS = 25.0
+        self.BLOCK_RULE5_COUNT3_BONUS = 15.0
+        self.BLOCK_RULE5_COUNT2_BONUS = 5.0
+        self.BLOCK_RULE6_LAST_ONE_PENALTY = 45.0
+        self.BLOCK_RULE7_SHI_ACTIVE_4PLUS = 35.0
+        self.BLOCK_RULE7_SHI_ACTIVE_3 = 20.0
+        self.BLOCK_RULE7_SHI_ACTIVE_2 = 8.0
+        self.BLOCK_RULE7_SHI_ACTIVE_1_PENALTY = 35.0
+        self.BLOCK_RULE7_SHI_NORMAL_BONUS = 5.0
+        self.BLOCK_RULE8_KEEP_TOP2_ATTACK_PENALTY = 35.0
+        self.BLOCK_RULE8_LAST_ONE_EXTRA_PENALTY = 15.0
+        self.BLOCK_RULE9_ALLY_SUPPORT_PENALTY = 15.0
+        self.BLOCK_ENEMY_SHOWN_ONCE_PENALTY = 35.0
+        self.BLOCK_ENEMY_SHOWN_MULTI_PENALTY = 50.0
+
+        # 受け専用では、block評価がパスを過剰に上回らないように少し縮小して使う
+        self.RECEIVE_BLOCK_SCORE_SCALE = 0.35
+
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -98,6 +139,7 @@ class RuleBasedAgent:
         my_init_count = {x: cnt_all.get(x, 0) for x in TARGET_X}
         ally_axis_pending: Optional[str] = None
         public_seen_counts = {str(i): 0 for i in range(1, 10)}
+        enemy_public_seen_counts = {str(i): 0 for i in range(1, 10)}
 
         for x in TARGET_X:
             if my_init_count[x] == 4:
@@ -117,6 +159,7 @@ class RuleBasedAgent:
             first_enemy_attack_seen=False,
             first_enemy_attack_skipped=False,
             public_seen_counts=public_seen_counts,
+            enemy_public_seen_counts=enemy_public_seen_counts,
 
             # ★自分の攻め回数
             # ===== "し"(=1) 攻め戦略のトラッキング =====
@@ -247,12 +290,14 @@ class RuleBasedAgent:
                 if tr.get("shi_chain_first_passer") is None:
                     tr["shi_chain_first_passer"] = player
 
-        if action_type == "receive" and block is not None:
+        if action_type in ("receive", "attack_after_block") and block is not None:
             if block in tr["public_seen_counts"]:
                 tr["public_seen_counts"][block] += 1
             if (not self._same_team(player, self.me)) and block in TARGET_X:
                 tr["enemy_revealed"][block] = True
-            if self._same_team(player, self.me) and block in TARGET_X:
+            if (not self._same_team(player, self.me)) and block in tr["enemy_public_seen_counts"]:
+                tr["enemy_public_seen_counts"][block] += 1
+            if action_type == "receive" and self._same_team(player, self.me) and block in TARGET_X:
                 tr["pending_ally_received"][player] = block
 
         if action_type in ("attack", "attack_after_block") and attack is not None:
@@ -260,6 +305,8 @@ class RuleBasedAgent:
                 tr["public_seen_counts"][attack] += 1
             if (not self._same_team(player, self.me)) and attack in TARGET_X:
                 tr["enemy_revealed"][attack] = True
+            if (not self._same_team(player, self.me)) and attack in tr["enemy_public_seen_counts"]:
+                tr["enemy_public_seen_counts"][attack] += 1
             if player == self.me and attack in TARGET_X:
                 tr["pending_axis"] = attack
             if player == ally and attack in TARGET_X:
@@ -308,6 +355,117 @@ class RuleBasedAgent:
         if tr["miss"].get(attack, 0) == 1:
             return -30.0
         return 0.0
+
+    def _attack_piece_priority_for_preserve(self, state, player: str, piece: str) -> float:
+        if piece not in state.hands[player]:
+            return -1e18
+
+        score = 0.0
+        score += self._kakari_score(state, piece)
+        score += self._last_one_remaining_bonus(state, player, piece)
+        score += self._occupancy_priority_bonus(state, piece)
+        score += POINTS.get(piece, 0) / 10.0
+
+        tr = self._track.get(id(state))
+        if tr is not None:
+            ax = tr.get("ally_axis_pending")
+            if ax in TARGET_X and piece == ax:
+                score += 90.0
+
+        return score
+
+    def _top_attack_pieces_for_preserve(self, state, player: str, topn: int = 2) -> List[str]:
+        unique_pieces = sorted(set(state.hands[player]))
+        scored = []
+        for piece in unique_pieces:
+            sc = self._attack_piece_priority_for_preserve(state, player, piece)
+            scored.append((sc, piece))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [piece for (_sc, piece) in scored[:topn]]
+
+    def _score_block_only(self, state, player: str, block: str, chosen_attack: Optional[str]) -> float:
+        tr = self._track.get(id(state))
+        score = float(self.BLOCK_BASE_SCORE.get(block, 0.0))
+        hand = state.hands[player]
+        cnt = hand.count(block)
+
+        # ルール2：8/9は原則温存
+        if block in ("8", "9"):
+            if len(hand) >= 4:
+                score -= self.BLOCK_RULE2_KING_PRESERVE_EARLY
+            elif len(hand) == 3:
+                score -= self.BLOCK_RULE2_KING_PRESERVE_MID
+            else:
+                score -= self.BLOCK_RULE2_KING_PRESERVE_LATE
+
+        if tr is not None:
+            # ルール3：味方軸・自分の生きた軸は伏せない
+            if tr.get("ally_axis_pending") == block:
+                score -= self.BLOCK_RULE3_ALLY_AXIS_PENALTY
+            if tr.get("kakari", {}).get(block) == "STRONG":
+                score -= self.BLOCK_RULE3_STRONG_AXIS_PENALTY
+
+            # ルール4：死んだ軸は伏せやすい
+            if tr.get("kakari", {}).get(block) == "DEAD":
+                score += self.BLOCK_RULE4_DEAD_AXIS_BONUS
+
+        # ルール5：余剰枚数は伏せやすい（8/9は除外）
+        if block not in ("8", "9"):
+            if cnt >= 4:
+                score += self.BLOCK_RULE5_COUNT4_BONUS
+            elif cnt == 3:
+                score += self.BLOCK_RULE5_COUNT3_BONUS
+            elif cnt == 2:
+                score += self.BLOCK_RULE5_COUNT2_BONUS
+
+        # ルール6：最後の1枚は伏せない
+        if cnt == 1:
+            score -= self.BLOCK_RULE6_LAST_ONE_PENALTY
+
+        # ルール7：しプラン中の「1」は別扱い
+        if block == "1":
+            if tr is not None and tr.get("shi_plan_active", False):
+                ones = cnt
+                if ones >= 4:
+                    score += self.BLOCK_RULE7_SHI_ACTIVE_4PLUS
+                elif ones == 3:
+                    score += self.BLOCK_RULE7_SHI_ACTIVE_3
+                elif ones == 2:
+                    score += self.BLOCK_RULE7_SHI_ACTIVE_2
+                else:
+                    score -= self.BLOCK_RULE7_SHI_ACTIVE_1_PENALTY
+            else:
+                score += self.BLOCK_RULE7_SHI_NORMAL_BONUS
+
+        # ルール1・8：勝ち筋／主力攻め筋の駒は終盤ほど伏せない
+        top_pieces = self._top_attack_pieces_for_preserve(state, player, topn=2)
+        top1 = top_pieces[0] if top_pieces else None
+        if chosen_attack != block:
+            if block == top1:
+                if len(hand) <= 3:
+                    score -= self.BLOCK_RULE1_BREAK_TOP_ATTACK_PENALTY
+                else:
+                    score -= self.BLOCK_RULE1_BREAK_TOP_ATTACK_PENALTY_EARLY
+            elif len(hand) <= 3 and block in top_pieces:
+                score -= self.BLOCK_RULE8_KEEP_TOP2_ATTACK_PENALTY
+
+        # ルール8：終盤では最後の1枚をさらに残す
+        if len(hand) <= 3 and cnt == 1:
+            score -= self.BLOCK_RULE8_LAST_ONE_EXTRA_PENALTY
+
+        # ルール9：味方支援候補はさらに残す
+        if tr is not None and tr.get("ally_axis_pending") == block:
+            score -= self.BLOCK_RULE9_ALLY_SUPPORT_PENALTY
+
+        # 追加ルール：相手が公開した駒は伏せない
+        if tr is not None:
+            enemy_seen = int(tr.get("enemy_public_seen_counts", {}).get(block, 0))
+            if enemy_seen >= 2:
+                score -= self.BLOCK_ENEMY_SHOWN_MULTI_PENALTY
+            elif enemy_seen >= 1:
+                score -= self.BLOCK_ENEMY_SHOWN_ONCE_PENALTY
+
+        return score
 
     def _occupancy_priority_bonus(self, state, attack: str) -> float:
         tr = self._track.get(id(state))
@@ -363,8 +521,7 @@ class RuleBasedAgent:
         score += POINTS.get(attack, 0) / 10.0
 
         if action_type == "attack_after_block" and block is not None:
-            penalty_table = {"9": 10, "8": 10, "7": 8, "6": 8, "5": 6, "4": 6, "3": 4, "2": 4, "1": 1}
-            score -= float(penalty_table.get(block, 0))
+            score += self._score_block_only(state, player, block, attack)
 
         score += self._win_now_bonus(state, player, (action_type, block, attack))
         return score
@@ -381,6 +538,7 @@ class RuleBasedAgent:
             if state.attacker is not None and self._same_team(state.attacker, player):
                 return -100.0
             base = 1.0 if block in ("8", "9") else 5.0
+            base += self.RECEIVE_BLOCK_SCORE_SCALE * self._score_block_only(state, player, block, None)
 
         tr = self._track.get(id(state))
         if tr is None:
