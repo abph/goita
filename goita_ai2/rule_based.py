@@ -379,7 +379,7 @@ class RuleBasedAgent:
             if bonus > 0:
                 return 1e9
             if state.attacker is not None and self._same_team(state.attacker, player):
-                return -12.0
+                return -100.0
             base = 1.0 if block in ("8", "9") else 5.0
 
         tr = self._track.get(id(state))
@@ -423,10 +423,6 @@ class RuleBasedAgent:
                     base += self.FIRST_ENEMY_PASS_BONUS if action_type == "pass" else -self.FIRST_ENEMY_PASS_BONUS
             else:
                 base += -self.FIRST_ENEMY_RECEIVE_BONUS if action_type == "pass" else self.FIRST_ENEMY_RECEIVE_BONUS
-
-        # 通常の敵攻めに対しては、pass に寄りすぎないよう receive を少し後押しする
-        if enemy_attack_turn and tr.get("first_enemy_attack_seen", False) and action_type == "receive":
-            base += 8.0
 
         return base
 
@@ -526,7 +522,7 @@ class RuleBasedAgent:
             )
 
             # (S1) 相手チームが親の初回攻め：一度パスして「相手の伏せ」にしを消費させる
-            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)) and state.current_attack == "1":
+            if (not tr.get("shi_plan_active", False)) and enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)):
                 # 「初回はパス」が目的なので、相手の攻め駒が何であっても基本パス（※即上がり系は上で処理済）
                 for act in actions:
                     if act[0] == "pass":
