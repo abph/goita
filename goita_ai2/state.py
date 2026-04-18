@@ -1,7 +1,6 @@
 # goita_ai2/state.py
 from typing import Dict, List, Tuple, Optional
 
-
 POINTS: Dict[str, int] = {
     "9": 50,  # 王
     "8": 50,  # 玉
@@ -33,7 +32,6 @@ class GoitaState:
             "C": list(hands["C"]),
             "D": list(hands["D"]),
         }
-
 
         # 「両王持ち」フラグ：配牌時点で 8(玉) と 9(王) を両方持っていたか
         # いったん両方持っていれば、その後どちらかを使って片方だけになっても
@@ -135,6 +133,10 @@ class GoitaState:
         self.attacker = player
         self.phase = "attack"
         self.turn = player  # 受けた人が続けて攻める
+        
+        # ★追加：通常の受けが発生した時点で「伏せ上がり」の権利は消失するため記録をクリアする
+        self.last_block = None
+        self.last_block_player = None
 
     def apply_pass(self, player: str) -> None:
         """player がパスする。"""
@@ -289,21 +291,20 @@ class GoitaState:
         """
         base = POINTS[attack]
 
+        # 今回の上がりが「直前の自身の伏せ」から連続しているか（途中で他人の受けなどを挟んでいないか）
+        is_continuous_from_hidden = (self.last_block_player == player)
 
-        # 王玉上がり（直前の伏せ＋最後の攻め が 8/9 の組）
-        # 例：7枚目が伏せで8、8枚目が9（攻め） → 100
-        #     7枚目が伏せで9、8枚目が8（攻め） → 100
-        hidden = self.face_down_hidden.get(player, [])
-        if hidden and set([hidden[-1], attack]) == {"8", "9"}:
-            base = 100
-        # ダブル判定：
-        # ・最後に伏せた駒(last_block)が上がった駒(attack)と同じ
-        # ・それを伏せたのが上がったプレイヤー
-        is_double = (
-            self.last_block_player == player and
-            self.last_block == attack
-        )
-        score = base * (2 if is_double else 1)
+        if is_continuous_from_hidden:
+            # 王・玉のペア上がり（8と9の組み合わせ）
+            if set([self.last_block, attack]) == {"8", "9"}:
+                score = 100
+            # 通常の同種2枚上がり（ばい）
+            elif self.last_block == attack:
+                score = base * 2
+            else:
+                score = base
+        else:
+            score = base
 
         team = "AC" if player in ("A", "C") else "BD"
         return score, team
@@ -379,4 +380,3 @@ class GoitaState:
             return actions
 
         return actions
-
