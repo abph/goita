@@ -46,6 +46,9 @@ class RuleBasedAgent:
         self.PUBLIC_SAFE_ATTACK_BONUS_MID = 30.0
         self.PUBLIC_SAFE_ATTACK_BONUS_LOW = 10.0
 
+        # ★ かかりごたえボーナス
+        self.KAKARI_GOTAE_BONUS = 100.0
+
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -327,6 +330,12 @@ class RuleBasedAgent:
 
         if tr is not None and tr.get("shi_plan_active", False) and attack == "1":
             score += self.SHI_PLAN_ATTACK_FORCE
+
+        # ★ かかりごたえボーナス（味方の攻めに同調する、ただし無理な王玉受けは除く）
+        if tr is not None and attack in tr.get("ally_past_attacks", set()):
+            is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
+            if not is_unreasonable_block:
+                score += self.KAKARI_GOTAE_BONUS
 
         score += POINTS.get(attack, 0) / 10.0
 
