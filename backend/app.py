@@ -16,8 +16,9 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
+# ★変更：定数・マッピング辞書は constants.py からインポートするように統一
+from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
-ALL_SEATS = ["A", "B", "C", "D"]
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
 
@@ -34,31 +35,16 @@ def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
 
 
 def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
-    last_hands: Dict[str, List[str]] = {p: [] for p in ALL_SEATS}
     for _ in range(max_retry):
         raw = create_random_hands()
         hands = _normalize_hands(raw)
-        last_hands = hands
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
-    return last_hands
-
+    # ★修正：5000回失敗した場合は不正なデータを返さず、明示的に例外を投げる
+    raise RuntimeError(f"Failed to generate valid hands after {max_retry} retries.")
 
 
 # ====== 手札プリセット（枚数指定） ======
-PIECE_TOTALS: Dict[str, int] = {
-    "1": 10,  # し
-    "2": 4,   # 香
-    "3": 4,   # 馬
-    "4": 4,   # 銀
-    "5": 4,   # 金
-    "6": 2,   # 角
-    "7": 2,   # 飛
-    "8": 1,   # 玉
-    "9": 1,   # 王
-}
-
-
 def build_hands_from_preset_counts(
     preset: Dict[str, Dict[str, int]],
     dealer: str,
@@ -195,13 +181,6 @@ def serve_index():
 
 
 # ====== 棋譜（kifu）用 ======
-PIECE_KANJI: Dict[str, str] = {
-    "9": "王", "8": "玉", "7": "飛", "6": "角",
-    "5": "金", "4": "銀", "3": "馬", "2": "香", "1": "し",
-}
-PLAYER_IDX: Dict[str, str] = {"A": "0", "B": "1", "C": "2", "D": "3"}
-
-
 def _hand_to_kifu_string(hand: List[Any]) -> str:
     return "".join(PIECE_KANJI.get(str(x), str(x)) for x in hand)
 
@@ -647,32 +626,8 @@ def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # CPUを回す：次がhuman_seatsの誰かの番になったら止める
-    safety = 0
-    while (not state.finished) and (state.turn not in human_seats):
-        safety += 1
-        if safety > 2000:
-            raise HTTPException(status_code=500, detail="safety stop: too many cpu steps")
-
-        p = state.turn
-        acts = state.legal_actions(p)
-        if not acts:
-            log.append(f"{p}: no legal actions (stop)")
-            break
-
-        cpu_action = agents[p].select_action(state, p, acts)
-
-        before_fd_cpu = len(state.face_down_hidden[p])
-        _apply_action(state, p, cpu_action)
-        hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
-        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
-
-        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
-        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
-        _notify_public(agents, state, p, cpu_action)
-
-    if state.finished:
-        log.append(f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}")
+    # ★修正：長大なwhileループを削除し、共通関数を呼び出すだけにする
+    _run_cpu_until_human(game)
 
     payload = _state_public_view(
         state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names

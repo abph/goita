@@ -1,18 +1,8 @@
 # goita_ai2/state.py
 from typing import Dict, List, Tuple, Optional
 
-POINTS: Dict[str, int] = {
-    "9": 50,  # 王
-    "8": 50,  # 玉
-    "7": 40,  # 飛
-    "6": 40,  # 角
-    "5": 30,  # 金
-    "4": 30,  # 銀
-    "3": 20,  # 馬
-    "2": 20,  # 香
-    "1": 10,  # し
-}
-
+# ★変更：定数（POINTS、ALL_SEATS）は constants.py からインポートするように統一
+from goita_ai2.constants import POINTS, ALL_SEATS
 
 class GoitaState:
     """
@@ -27,10 +17,7 @@ class GoitaState:
         dealer: 親プレイヤー（"A"〜"D"）
         """
         self.hands: Dict[str, List[str]] = {
-            "A": list(hands["A"]),
-            "B": list(hands["B"]),
-            "C": list(hands["C"]),
-            "D": list(hands["D"]),
+            p: list(hands[p]) for p in ALL_SEATS
         }
 
         # 「両王持ち」フラグ：配牌時点で 8(玉) と 9(王) を両方持っていたか
@@ -38,15 +25,12 @@ class GoitaState:
         # もう片方の 8/9 を攻めに使える扱いにする（期待挙動の修正）。
         self.had_both_kings: Dict[str, bool] = {
             p: (("8" in self.hands[p]) and ("9" in self.hands[p]))
-            for p in ("A", "B", "C", "D")
+            for p in ALL_SEATS
         }
 
         # 伏せ札（中身は内部でのみ使用、後でobservation側で隠す）
         self.face_down_hidden: Dict[str, List[str]] = {
-            "A": [],
-            "B": [],
-            "C": [],
-            "D": [],
+            p: [] for p in ALL_SEATS
         }
 
         # 現在場に出ている攻めの駒（なければ None）
@@ -81,9 +65,8 @@ class GoitaState:
     # ================================
     @staticmethod
     def next_player(p: str) -> str:
-        order = ["A", "B", "C", "D"]
-        i = order.index(p)
-        return order[(i + 1) % 4]
+        i = ALL_SEATS.index(p)
+        return ALL_SEATS[(i + 1) % 4]
 
     # ================================
     # 受け判定
