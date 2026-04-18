@@ -109,6 +109,11 @@ class RuleBasedAgent:
             my_attack_count=0,
             kg_plan_active=(("9" in init_hand) and ("8" in init_hand)),
             kg_second=None,
+            
+            # ★ 過去の攻め駒履歴（伏せ札除外ロジック用）
+            my_past_attacks=set(),
+            ally_past_attacks=set(),
+            enemy_past_attacks=set(),
         )
 
     def _strong_initial_hand(self, state) -> bool:
@@ -265,6 +270,14 @@ class RuleBasedAgent:
         if action_type in ("attack", "attack_after_block") and attack is not None:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
+                
+            # ★ 誰が何で攻めたかの履歴を記録
+            if player == self.me:
+                tr["my_past_attacks"].add(attack)
+            elif self._same_team(player, self.me):
+                tr["ally_past_attacks"].add(attack)
+            else:
+                tr["enemy_past_attacks"].add(attack)
 
     def _occupancy_priority_bonus(self, state, attack: str) -> float:
         tr = self._track.get(id(state))
@@ -317,9 +330,29 @@ class RuleBasedAgent:
 
         score += POINTS.get(attack, 0) / 10.0
 
+        # ★ 伏せ札の評価ロジック
         if action_type == "attack_after_block" and block is not None:
-            penalty_table = {"9": 10, "8": 10, "7": 8, "6": 8, "5": 6, "4": 6, "3": 4, "2": 4, "1": 1}
-            score -= float(penalty_table.get(block, 0))
+            # 1. 香を温存し、飛角をブラフ消費する新ベースペナルティ
+            penalty_table = {"9": 10, "8": 10, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
+            base_penalty = float(penalty_table.get(block, 0))
+            
+            context_penalty = 0.0
+            
+            if tr is not None:
+                # 2. 自分の攻め駒の保護（自爆防止）
+                if block in tr.get("my_past_attacks", set()):
+                    context_penalty += 5.0
+                    
+                # 3. 味方の攻め駒の保護（連携維持）
+                if block in tr.get("ally_past_attacks", set()):
+                    context_penalty += 5.0
+                    
+                # 4. 敵の攻め駒の保護（防壁維持）
+                if block in tr.get("enemy_past_attacks", set()):
+                    context_penalty += 5.0
+
+            # ベースのペナルティに文脈ペナルティを上乗せして減点
+            score -= (base_penalty + context_penalty)
 
         score += self._win_now_bonus(state, player, (action_type, block, attack))
         return score
