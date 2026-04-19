@@ -489,8 +489,14 @@ class RuleBasedAgent:
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY
 
+        # ★ 修正箇所：自分が「ドライバー」である場合のみ、しプランの超ボーナスを与える
         if tr is not None and tr.get("shi_plan_active", False) and attack == "1":
-            score += self.SHI_PLAN_ATTACK_FORCE
+            init_shi = tr.get("my_init_count", {}).get("1", 0)
+            is_shi_driver = (init_shi >= 4) or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None))
+            if is_shi_driver:
+                score += self.SHI_PLAN_ATTACK_FORCE
+            else:
+                score -= 500.0  # サポーターは絶対に自ら「し」で攻めない（ペナルティ）
 
         score += POINTS.get(attack, 0) / 10.0
 
@@ -544,8 +550,14 @@ class RuleBasedAgent:
         if tr is None:
             return base
 
+        # ★ 修正箇所：自分が「ドライバー」である場合のみ、しプランの強制受けボーナスを与える
         if action_type == "receive" and block == "1" and tr.get("shi_plan_active", False):
-            base += self.SHI_PLAN_RECEIVE_FORCE
+            init_shi = tr.get("my_init_count", {}).get("1", 0)
+            is_shi_driver = (init_shi >= 4) or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None))
+            if is_shi_driver:
+                base += self.SHI_PLAN_RECEIVE_FORCE
+            else:
+                base -= 500.0  # サポーターはむやみに「し」で受けない
 
         enemy_attack_turn = (
             state.phase == "receive"
@@ -595,6 +607,15 @@ class RuleBasedAgent:
 
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
+
+        # ★ 新規追加：自分が「しプラン」のドライバー（主導権を持つ者）かどうかの判定
+        is_shi_driver = False
+        if tr is not None:
+            init_shi = tr.get("my_init_count", {}).get("1", 0)
+            if init_shi >= 4:
+                is_shi_driver = True
+            elif init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None):
+                is_shi_driver = True
 
         # ★ 新規追加：王・玉が受けや伏せで失われた場合、だまだまコンボを動的に強制終了
         if tr is not None and tr.get("kg_plan_active"):
@@ -798,7 +819,8 @@ class RuleBasedAgent:
                                 tr["kg_plan_active"] = False
                             return act
 
-        if tr is not None and shi_mode and (not tr.get("kg_plan_active", False)) and attack_actions:
+        # ★ 修正箇所：ドライバー（主導者）の場合のみ、自発的な「し」攻めを強制する
+        if tr is not None and shi_mode and is_shi_driver and (not tr.get("kg_plan_active", False)) and attack_actions:
             shi_cands = [act for act in attack_actions if act[2] == "1"]
             if shi_cands:
                 chosen = shi_cands[0]
