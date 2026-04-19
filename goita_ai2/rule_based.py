@@ -105,7 +105,7 @@ class RuleBasedAgent:
             public_seen_counts=public_seen_counts,
 
             shi_signal=shi_signal,
-            shi_plan_active=False,
+            shi_plan_active=(shi_signal >= self.SHI_SIGNAL_ACTIVATE),
             shi_message_sent=False,
             shi_chain_attacker=None,
             shi_chain_passed=False,
@@ -209,19 +209,68 @@ class RuleBasedAgent:
         search(hand, [])
         return best_plan
 
-    def _strong_initial_hand(self, state) -> bool:
-        tr = self._track.get(id(state))
-        if tr is None:
-            return False
-        c_all = tr["my_init_count"]
+    # ★ 期待値（打点 × 確率）ベースの動的手札戦闘力スコア
+    def _calculate_hand_power(self, state, player: str, tr: dict) -> float:
+        hand = state.hands[player]
+        if not hand:
+            return 0.0
 
-        for x in ("2", "3", "4", "5"):
-            if c_all.get(x, 0) >= 3:
-                return True
-        for x in ("6", "7"):
-            if c_all.get(x, 0) == 2:
-                return True
-        return False
+        score = 0.0
+        counts = Counter(hand)
+        
+        # 1. ベース得点（Firepower）：手札にある最も点数の高い駒を基準とする
+        max_base_point = 0.0
+        for p in counts.keys():
+            pt = 50.0 if p in ("8", "9") else float(POINTS.get(p, 0))
+            if pt > max_base_point:
+                max_base_point = pt
+        score += max_base_point
+
+        # 2. 確率ボーナス（Win Probability）：上がりやすさを加点
+        # 王・玉の保有（絶対的な手番奪取力）
+        if "9" in counts or "8" in counts:
+            score += 20.0
+            
+        # 独占・絶対安全ペアの保有（ブロックされない確率）
+        for p, count in counts.items():
+            if p in ("6", "7") and count == 2:
+                score += 20.0  # 飛角ペアは絶対に受けられないため超加点
+            elif p in ("2", "3", "4", "5"):
+                if count >= 3:
+                    score += 20.0  # 3〜4枚持ちはほぼ確実通る
+                elif count == 2:
+                    score += 10.0  # ペアもそれなりに強い武器
+
+        # 3. 「し」の文脈評価（ドライバーかサポーターか）
+        shi_count = counts.get("1", 0)
+        is_shi_driver = False
+        if tr is not None:
+            init_shi = tr.get("my_init_count", {}).get("1", 0)
+            if init_shi >= 4 or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None)):
+                is_shi_driver = True
+
+        if tr is not None and tr.get("shi_plan_active", False) and is_shi_driver:
+            score += shi_count * 10.0  # ドライバーなら「し」は武器
+        else:
+            score -= shi_count * 5.0   # サポーターなら「し」は上がりを阻害するノイズ
+
+        # 4. 手札枚数による進行度補正（残り枚数が少ないほど受けの価値が暴騰する）
+        cards_played = 8 - len(hand)
+        score += cards_played * 5.0
+
+        # ★ 5. 受けの広さ（多様性 / Coverage）ボーナス
+        # 平駒（金・銀・香・馬・飛・角）の種類数をカウント
+        unique_hiragoma = sum(1 for p in ("2", "3", "4", "5", "6", "7") if counts.get(p, 0) > 0)
+        
+        # 王・玉がある、または「しプラン」のドライバーである場合、広い受けが真価を発揮する
+        has_anchor = ("9" in counts) or ("8" in counts) or is_shi_driver
+        if has_anchor:
+            if unique_hiragoma >= 4:
+                score += 20.0  # 超広域カバー（鉄壁の防御力）
+            elif unique_hiragoma == 3:
+                score += 10.0  # 広域カバー
+
+        return score
 
     def _last_one_remaining_bonus(self, state, player: str, attack: Optional[str]) -> float:
         if attack is None or attack not in TARGET_LAST1:
@@ -272,7 +321,7 @@ class RuleBasedAgent:
 
         return bonus
         
-    # ★ 新規追加：中盤の詰めごいた（事実上の確定勝利）を判定する専用ヘルパー
+    # ★ 中盤の詰めごいた（事実上の確定勝利）を判定する専用ヘルパー
     def _is_absolute_safe_for_tsume(self, state, player: str, attack: str, tr: dict) -> bool:
         if attack is None:
             return False
@@ -289,6 +338,27 @@ class RuleBasedAgent:
         # それ以外の駒は、王と玉の両方が場に出ている（または自分が持っている）場合のみ絶対安全
         visible_kings = tr.get("public_seen_counts", {}).get("8", 0) + tr.get("public_seen_counts", {}).get("9", 0) + state.hands[player].count("8") + state.hands[player].count("9")
         return visible_kings == 2
+
+    # ★ 新規追加：いかなる枚数からでも「確定勝利ルート」を探し出す深さ優先探索（DFS）
+    def _is_tsume_from_even(self, hand: List[str], state, player: str, tr: dict) -> bool:
+        if len(hand) <= 2:
+            return True  # 残り2枚で手番を握っていれば無条件で勝利確定
+            
+        # 現在の手札にある「絶対安全駒」をリストアップ
+        safe_pieces = set(p for p in hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
+        if not safe_pieces:
+            return False
+            
+        # 安全な駒を攻撃に使ったと仮定し、残りの手札でさらに勝利できるか再帰チェック
+        for atk in safe_pieces:
+            temp1 = list(hand)
+            temp1.remove(atk)
+            for fuse in set(temp1):
+                temp2 = list(temp1)
+                temp2.remove(fuse)
+                if self._is_tsume_from_even(temp2, state, player, tr):
+                    return True
+        return False
 
     def _apply_action_on_copy(self, state, player: str, action: Action):
         s = copy.deepcopy(state)
@@ -432,9 +502,29 @@ class RuleBasedAgent:
         score = 0.0
         tr = self._track.get(id(state))
 
+        # ★ 動的詰めごいた全探索（攻めフェーズ）
+        if tr is not None and attack is not None:
+            is_safe = self._is_absolute_safe_for_tsume(state, player, attack, tr)
+            if is_safe:
+                temp_hand = list(state.hands[player])
+                if action_type == "attack_after_block":
+                    temp_hand.remove(attack)
+                else: # "attack"
+                    if block is not None:
+                        temp_hand.remove(block)
+                    temp_hand.remove(attack)
+                
+                if self._is_tsume_from_even(temp_hand, state, player, tr):
+                    score += 1e8  # 確定勝利ルートへの圧倒的ボーナス
+
         score += self._last_one_remaining_bonus(state, player, attack)
         score += self._occupancy_priority_bonus(state, attack)
         score += self._public_attack_safety_bonus(state, player, attack)
+
+        # ★ 孤立駒（1枚しか持っていない駒）の早打ちペナルティ
+        if tr is not None and tr.get("my_attack_count", 0) == 0 and state.hands[player].count(attack) == 1:
+            if attack not in ("8", "9", "1"):
+                score -= 30.0 # 序盤に孤立した平駒を打つのはブロックされる確率が高いためマイナス評価
 
         # ★ 連打（Renda）ボーナスと、味方のスルーによる連打キャンセル判定（※「し」は除外）
         if tr is not None and attack != "1" and attack == tr.get("my_last_attack"):
@@ -483,13 +573,21 @@ class RuleBasedAgent:
                     else:
                         score += self.TATEWARI_BONUS # 敵の王・玉あぶり出し
 
+        # ★ 初手の「し」ペナルティの賢い免除（手札整理の許容）
         if state.attacker is None and state.current_attack is None and attack == "1":
-            score -= 100.0
+            my_shis = state.hands[player].count("1")
+            has_kg = tr is not None and tr.get("kg_plan_active", False)
+            if my_shis >= 4 or has_kg:
+                score -= 0.0  # 4枚以上ある、または王玉がある場合は立派な手札整理なのでペナルティ免除
+            elif my_shis == 3:
+                score -= 30.0
+            else:
+                score -= 100.0
 
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY
 
-        # ★ 修正箇所：自分が「ドライバー」である場合のみ、しプランの超ボーナスを与える
+        # ★ 自分が「ドライバー」である場合のみ、しプランの超ボーナスを与える
         if tr is not None and tr.get("shi_plan_active", False) and attack == "1":
             init_shi = tr.get("my_init_count", {}).get("1", 0)
             is_shi_driver = (init_shi >= 4) or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None))
@@ -529,15 +627,21 @@ class RuleBasedAgent:
             if bonus > 0:
                 return 1e9
                 
-            # ★ 新規追加：中盤の強制詰めごいた判定（手札4枚時、反撃が絶対安全なら味方の攻めでも受けて勝つ）
+            # ★ 中盤の動的詰めごいた全探索（手札が何枚だろうと、反撃が絶対安全なら味方の攻めでも受けて勝つ）
             tr = self._track.get(id(state))
-            if tr is not None and len(state.hands[player]) == 4:
+            if tr is not None:
                 try:
-                    s = self._apply_action_on_copy(state, player, (action_type, block, None))
-                    next_actions = s.legal_actions(player)
-                    for (nt, nb, na) in next_actions:
-                        if nt in ("attack", "attack_after_block") and na is not None:
-                            if self._is_absolute_safe_for_tsume(state, player, na, tr):
+                    temp_hand = list(state.hands[player])
+                    if block in temp_hand:
+                        temp_hand.remove(block)
+                        if len(temp_hand) <= 1:
+                            return 1e8  # 残り1枚なら即上がり確定
+                        
+                        safe_atks = set(p for p in temp_hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
+                        for atk in safe_atks:
+                            next_hand = list(temp_hand)
+                            next_hand.remove(atk)
+                            if self._is_tsume_from_even(next_hand, state, player, tr):
                                 return 1e8  # 詰めろ確定！味方の攻めであっても強引に割り込んで勝利を掴む
                 except Exception:
                     pass
@@ -550,7 +654,7 @@ class RuleBasedAgent:
         if tr is None:
             return base
 
-        # ★ 修正箇所：自分が「ドライバー」である場合のみ、しプランの強制受けボーナスを与える
+        # ★ 自分が「ドライバー」である場合のみ、しプランの強制受けボーナスを与える
         if action_type == "receive" and block == "1" and tr.get("shi_plan_active", False):
             init_shi = tr.get("my_init_count", {}).get("1", 0)
             is_shi_driver = (init_shi >= 4) or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None))
@@ -569,7 +673,10 @@ class RuleBasedAgent:
         if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
             if state.current_attack == "1":
                 ones = state.hands[player].count("1")
-                strong = self._strong_initial_hand(state)
+                
+                # ★ 静的な判定から、動的な手札戦闘力（期待値スコア）による判定へ
+                hand_power = self._calculate_hand_power(state, player, tr)
+                strong = hand_power >= 60.0
 
                 is_receive_1 = (action_type == "receive" and block == "1")
                 is_receive_not1 = (action_type == "receive" and block != "1")
@@ -587,7 +694,10 @@ class RuleBasedAgent:
                             return base + (self.FIRST_ENEMY_SHI_FORCE if action_type == "pass" else -self.FIRST_ENEMY_SHI_FORCE)
                         return base
 
-            strong = self._strong_initial_hand(state)
+            # ★ 静的な判定から、動的な手札戦闘力（期待値スコア）による判定へ
+            hand_power = self._calculate_hand_power(state, player, tr)
+            strong = hand_power >= 60.0
+            
             receiving_with_king = (action_type == "receive" and block in ("8", "9"))
             prefer_skip_once = (not strong) or receiving_with_king
 
@@ -608,7 +718,7 @@ class RuleBasedAgent:
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
 
-        # ★ 新規追加：自分が「しプラン」のドライバー（主導権を持つ者）かどうかの判定
+        # ★ 自分が「しプラン」のドライバー（主導権を持つ者）かどうかの判定
         is_shi_driver = False
         if tr is not None:
             init_shi = tr.get("my_init_count", {}).get("1", 0)
@@ -617,7 +727,7 @@ class RuleBasedAgent:
             elif init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None):
                 is_shi_driver = True
 
-        # ★ 新規追加：王・玉が受けや伏せで失われた場合、だまだまコンボを動的に強制終了
+        # ★ 王・玉が受けや伏せで失われた場合、だまだまコンボを動的に強制終了
         if tr is not None and tr.get("kg_plan_active"):
             kings_in_hand = state.hands[player].count("8") + state.hands[player].count("9")
             kings_in_past = 1 if "8" in tr.get("my_past_attacks", set()) else 0
@@ -819,8 +929,8 @@ class RuleBasedAgent:
                                 tr["kg_plan_active"] = False
                             return act
 
-        # ★ 修正箇所：ドライバー（主導者）の場合のみ、自発的な「し」攻めを強制する
-        if tr is not None and shi_mode and is_shi_driver and (not tr.get("kg_plan_active", False)) and attack_actions:
+        # ドライバー（主導者）の場合のみ、自発的な「し」攻めを強制する（kg_planの干渉を削除）
+        if tr is not None and shi_mode and is_shi_driver and attack_actions:
             shi_cands = [act for act in attack_actions if act[2] == "1"]
             if shi_cands:
                 chosen = shi_cands[0]
