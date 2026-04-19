@@ -436,8 +436,8 @@ class RuleBasedAgent:
         score += self._occupancy_priority_bonus(state, attack)
         score += self._public_attack_safety_bonus(state, player, attack)
 
-        # ★ 連打（Renda）ボーナスと、味方のスルーによる連打キャンセル判定
-        if tr is not None and attack == tr.get("my_last_attack"):
+        # ★ 連打（Renda）ボーナスと、味方のスルーによる連打キャンセル判定（※「し」は除外）
+        if tr is not None and attack != "1" and attack == tr.get("my_last_attack"):
             if tr.get("ally_attacked_since_my_last_attack"):
                 if tr.get("ally_last_attack") == attack:
                     # 味方がかかりごたえをしてくれた！超連打で押し切る！
@@ -450,8 +450,8 @@ class RuleBasedAgent:
                 # 味方にターンが回っていない場合は通常の連打
                 score += self.CONTINUOUS_ATTACK_BONUS
 
-        # ★ 味方への「遅延かかりごたえ（2枚目の攻めでのシグナル返し）」
-        if tr is not None:
+        # ★ 味方への「遅延かかりごたえ（2枚目の攻めでのシグナル返し）」（※「し」は除外）
+        if tr is not None and attack != "1":
             ally_first = tr.get("ally_first_attack")
             if ally_first is not None and attack == ally_first:
                 is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
