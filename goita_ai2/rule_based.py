@@ -50,6 +50,7 @@ class RuleBasedAgent:
         self.KAKARI_GOTAE_BONUS = 100.0
         self.ABSOLUTE_SAFE_BONUS = 1000.0  # 絶対安全駒（パス確定）
         self.TATEWARI_BONUS = 800.0        # 盾割り（王・玉あぶり出し）
+        self.CONTINUOUS_ATTACK_BONUS = 500.0 # 連打ボーナス
 
     def bind_player(self, player: str) -> None:
         if self.me is None:
@@ -117,6 +118,12 @@ class RuleBasedAgent:
             my_past_attacks=set(),
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
+            
+            # ★ 新規追加：連打とシグナル応答のトラッキング
+            my_last_attack=None,
+            ally_attacked_since_my_last_attack=False,
+            ally_last_attack=None,
+            ally_first_attack=None,
             
             perfect_plan=None,
             perfect_plan_step=0,
@@ -357,10 +364,17 @@ class RuleBasedAgent:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
                 
+            # ★ 自分と味方の攻め履歴とシグナル応答をトラッキング
             if player == self.me:
                 tr["my_past_attacks"].add(attack)
+                tr["my_last_attack"] = attack
+                tr["ally_attacked_since_my_last_attack"] = False
             elif self._same_team(player, self.me):
+                if not tr["ally_past_attacks"]:
+                    tr["ally_first_attack"] = attack
                 tr["ally_past_attacks"].add(attack)
+                tr["ally_last_attack"] = attack
+                tr["ally_attacked_since_my_last_attack"] = True
             else:
                 tr["enemy_past_attacks"].add(attack)
 
@@ -404,7 +418,38 @@ class RuleBasedAgent:
         score += self._occupancy_priority_bonus(state, attack)
         score += self._public_attack_safety_bonus(state, player, attack)
 
-        # ★ 盾割り（Tatewari）＆ 絶対安全（Absolute Safe）の判定
+        # ★ 連打（Renda）ボーナスと、味方のスルーによる連打キャンセル判定
+        if tr is not None and attack == tr.get("my_last_attack"):
+            if tr.get("ally_attacked_since_my_last_attack"):
+                if tr.get("ally_last_attack") == attack:
+                    # 味方がかかりごたえをしてくれた！超連打で押し切る！
+                    score += self.CONTINUOUS_ATTACK_BONUS * 1.5
+                else:
+                    # 味方が別の駒で攻めた（スルーした）ため、連打ストップ
+                    score -= self.CONTINUOUS_ATTACK_BONUS
+                    score -= 300.0  # 危険ペナルティ
+            else:
+                # 味方にターンが回っていない場合は通常の連打
+                score += self.CONTINUOUS_ATTACK_BONUS
+
+        # ★ 味方への「遅延かかりごたえ（2枚目の攻めでのシグナル返し）」
+        if tr is not None:
+            ally_first = tr.get("ally_first_attack")
+            if ally_first is not None and attack == ally_first:
+                is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
+                if not is_unreasonable_block:
+                    if tr.get("my_attack_count", 0) == 1:
+                        # 自分の2回目の攻めで、味方の1枚目（本命）に応える場合は特大ボーナス！
+                        score += self.KAKARI_GOTAE_BONUS * 10.0
+                    else:
+                        score += self.KAKARI_GOTAE_BONUS
+            elif attack in tr.get("ally_past_attacks", set()):
+                # 味方の2枚目以降の攻めに対する通常のかかりごたえ
+                is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
+                if not is_unreasonable_block:
+                    score += self.KAKARI_GOTAE_BONUS
+
+        # 盾割り（Tatewari）＆ 絶対安全（Absolute Safe）の判定
         if tr is not None:
             visible_kings = tr["public_seen_counts"].get("8", 0) + tr["public_seen_counts"].get("9", 0) + state.hands[player].count("8") + state.hands[player].count("9")
             total_p = 4 if attack in ("2", "3", "4", "5") else 2 if attack in ("6", "7") else 10 if attack == "1" else 1
@@ -428,12 +473,6 @@ class RuleBasedAgent:
 
         if tr is not None and tr.get("shi_plan_active", False) and attack == "1":
             score += self.SHI_PLAN_ATTACK_FORCE
-
-        # かかりごたえ
-        if tr is not None and attack in tr.get("ally_past_attacks", set()):
-            is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
-            if not is_unreasonable_block:
-                score += self.KAKARI_GOTAE_BONUS
 
         score += POINTS.get(attack, 0) / 10.0
 
@@ -525,6 +564,14 @@ class RuleBasedAgent:
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
 
+        # ★ 新規追加：王・玉が受けや伏せで失われた場合、だまだまコンボを動的に強制終了
+        if tr is not None and tr.get("kg_plan_active"):
+            kings_in_hand = state.hands[player].count("8") + state.hands[player].count("9")
+            kings_in_past = 1 if "8" in tr.get("my_past_attacks", set()) else 0
+            kings_in_past += 1 if "9" in tr.get("my_past_attacks", set()) else 0
+            if kings_in_hand + kings_in_past < 2:
+                tr["kg_plan_active"] = False
+
         # ★ パーフェクトゲーム（確定上がり）の計画と実行
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
             if tr.get("perfect_plan") is None:
@@ -539,7 +586,6 @@ class RuleBasedAgent:
             if step < len(plan):
                 expected_fuse, expected_atk = plan[step]
                 for act in actions:
-                    # AIの完璧なルートと一致するアクションを探して無条件実行
                     if act[0] in ("attack", "attack_after_block") and act[1] == expected_fuse and act[2] == expected_atk:
                         tr["perfect_plan_step"] += 1
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
