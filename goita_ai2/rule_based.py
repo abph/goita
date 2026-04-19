@@ -122,22 +122,12 @@ class RuleBasedAgent:
             perfect_plan_step=0,
         )
 
-    # ★ 「完全読み（詰めごいた）」全探索アルゴリズム（最終完全版）
+    # ★ 「完全読み（詰めごいた）」全探索アルゴリズム
     def _plan_perfect_game(self, hand: List[str]) -> Optional[List[Tuple[str, str]]]:
         if len(hand) != 8:
             return None
 
         counts = Counter(hand)
-
-        # パターンH, I: 「七し」「八し」の手役（即上がり確定）
-        if counts.get("1", 0) >= 7:
-            # 役満としてルール上即座に上がりとなるため、そのまま流せるダミープランを生成
-            dummy_plan = []
-            temp = list(hand)
-            while temp:
-                dummy_plan.append((temp.pop(0), temp.pop(0)))
-            return dummy_plan
-
         has_kings = ("8" in hand and "9" in hand)
 
         # 絶対安全駒のリストアップ（王玉独占による無敵化 or 香の独占）
