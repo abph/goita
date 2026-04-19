@@ -271,6 +271,24 @@ class RuleBasedAgent:
             bonus += self.PUBLIC_SAFE_ATTACK_BONUS_LOW
 
         return bonus
+        
+    # ★ 新規追加：中盤の詰めごいた（事実上の確定勝利）を判定する専用ヘルパー
+    def _is_absolute_safe_for_tsume(self, state, player: str, attack: str, tr: dict) -> bool:
+        if attack is None:
+            return False
+        # 王・玉の攻めは絶対にブロックされない
+        if attack in ("8", "9"):
+            return True
+        total_p = 4 if attack in ("2", "3", "4", "5") else 2 if attack in ("6", "7") else 10 if attack == "1" else 1
+        seen_and_mine = tr.get("public_seen_counts", {}).get(attack, 0) + state.hands[player].count(attack)
+        if seen_and_mine < total_p:
+            return False
+        # 香(2)・し(1)を独占している場合は王玉でも切れないため絶対安全
+        if attack in ("1", "2"):
+            return True
+        # それ以外の駒は、王と玉の両方が場に出ている（または自分が持っている）場合のみ絶対安全
+        visible_kings = tr.get("public_seen_counts", {}).get("8", 0) + tr.get("public_seen_counts", {}).get("9", 0) + state.hands[player].count("8") + state.hands[player].count("9")
+        return visible_kings == 2
 
     def _apply_action_on_copy(self, state, player: str, action: Action):
         s = copy.deepcopy(state)
@@ -504,6 +522,20 @@ class RuleBasedAgent:
             bonus = self._win_after_receive_bonus(state, player, (action_type, block, None))
             if bonus > 0:
                 return 1e9
+                
+            # ★ 新規追加：中盤の強制詰めごいた判定（手札4枚時、反撃が絶対安全なら味方の攻めでも受けて勝つ）
+            tr = self._track.get(id(state))
+            if tr is not None and len(state.hands[player]) == 4:
+                try:
+                    s = self._apply_action_on_copy(state, player, (action_type, block, None))
+                    next_actions = s.legal_actions(player)
+                    for (nt, nb, na) in next_actions:
+                        if nt in ("attack", "attack_after_block") and na is not None:
+                            if self._is_absolute_safe_for_tsume(state, player, na, tr):
+                                return 1e8  # 詰めろ確定！味方の攻めであっても強引に割り込んで勝利を掴む
+                except Exception:
+                    pass
+
             if state.attacker is not None and self._same_team(state.attacker, player):
                 return -100.0
             base = 1.0 if block in ("8", "9") else 5.0
