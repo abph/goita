@@ -36,10 +36,10 @@ class RuleBasedAgent:
         self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK = True
         self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT = True
 
-        # ===== "し"(=駒"1") 攻め戦略 =====
-        self.SHI_PLAN_ATTACK_FORCE = 2_000.0
-        self.SHI_PLAN_RECEIVE_FORCE = 2_000.0
-        self.SHI_SIGNAL_ACTIVATE = 3.0
+        # ===== "し"(=駒"1") 攻め戦略（過激派チューニング） =====
+        self.SHI_PLAN_ATTACK_FORCE = 5_000.0   # 元2000.0: し攻めへの執着を最大化
+        self.SHI_PLAN_RECEIVE_FORCE = 5_000.0  # 元2000.0: し受けの優先度を最大化
+        self.SHI_SIGNAL_ACTIVATE = 2.0         # 元3.0: 少しの気配でシグナル発動
 
         # 公開情報ベースの「通りやすさ」加点
         self.PUBLIC_SAFE_ATTACK_BONUS_HIGH = 60.0
