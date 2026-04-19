@@ -46,8 +46,10 @@ class RuleBasedAgent:
         self.PUBLIC_SAFE_ATTACK_BONUS_MID = 30.0
         self.PUBLIC_SAFE_ATTACK_BONUS_LOW = 10.0
 
-        # ★ かかりごたえボーナス
+        # ★ 連携・戦術ボーナス
         self.KAKARI_GOTAE_BONUS = 100.0
+        self.ABSOLUTE_SAFE_BONUS = 1000.0  # 絶対安全駒（パス確定）
+        self.TATEWARI_BONUS = 800.0        # 盾割り（王・玉あぶり出し）
 
     def bind_player(self, player: str) -> None:
         if self.me is None:
@@ -101,7 +103,6 @@ class RuleBasedAgent:
             first_enemy_attack_skipped=False,
             public_seen_counts=public_seen_counts,
 
-            # "し"(=1) 攻め戦略のトラッキング
             shi_signal=shi_signal,
             shi_plan_active=False,
             shi_message_sent=False,
@@ -113,11 +114,103 @@ class RuleBasedAgent:
             kg_plan_active=(("9" in init_hand) and ("8" in init_hand)),
             kg_second=None,
             
-            # ★ 過去の攻め駒履歴（伏せ札除外ロジック用）
             my_past_attacks=set(),
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
+            
+            perfect_plan=None,
+            perfect_plan_step=0,
         )
+
+    # ★ 「完全読み（詰めごいた）」全探索アルゴリズム（最終完全版）
+    def _plan_perfect_game(self, hand: List[str]) -> Optional[List[Tuple[str, str]]]:
+        if len(hand) != 8:
+            return None
+
+        counts = Counter(hand)
+
+        # パターンH, I: 「七し」「八し」の手役（即上がり確定）
+        if counts.get("1", 0) >= 7:
+            # 役満としてルール上即座に上がりとなるため、そのまま流せるダミープランを生成
+            dummy_plan = []
+            temp = list(hand)
+            while temp:
+                dummy_plan.append((temp.pop(0), temp.pop(0)))
+            return dummy_plan
+
+        has_kings = ("8" in hand and "9" in hand)
+
+        # 絶対安全駒のリストアップ（王玉独占による無敵化 or 香の独占）
+        safe_pieces = set()
+        if counts.get("2", 0) == 4:
+            safe_pieces.add("2")  # パターンB, E, F: 無敵の矛
+        
+        if has_kings:
+            for p in ("3", "4", "5"):
+                if counts.get(p, 0) == 4: safe_pieces.add(p)  # パターンA, G: 盾の独占＋4枚組
+            for p in ("6", "7"):
+                if counts.get(p, 0) == 2: safe_pieces.add(p)  # パターンD: 飛角の双龍
+            safe_pieces.add("8")
+            safe_pieces.add("9")
+
+        # 確定上がり不可の場合は探索終了
+        if not safe_pieces:
+            return None
+
+        best_score = -1
+        best_plan = None
+
+        def search(current_hand: List[str], current_plan: List[Tuple[str, str]]):
+            nonlocal best_score, best_plan
+            
+            if best_score == 100:
+                return  # 最大スコア（100点）に到達した時点で探索を打ち切り（超高速化）
+
+            # 手札を出し切った（上がり）の得点計算
+            if not current_hand:
+                fuse, atk = current_plan[-1]
+                if fuse == atk:
+                    score = POINTS.get(atk, 0) * 2
+                elif set([fuse, atk]) == {"8", "9"}:
+                    score = 100
+                else:
+                    score = POINTS.get(atk, 0)
+
+                if score > best_score:
+                    best_score = score
+                    best_plan = list(current_plan)
+                return
+
+            turn = len(current_plan) + 1
+            if turn < 4:
+                # 道中（1〜3ターン）は絶対に受けられない安全駒でのみ攻める
+                available_safe = [p for p in safe_pieces if p in current_hand]
+                if not available_safe:
+                    return
+                for atk in set(available_safe):
+                    if best_score == 100: break
+                    temp_hand = list(current_hand)
+                    temp_hand.remove(atk)
+                    for fuse in set(temp_hand):
+                        if best_score == 100: break
+                        next_hand = list(temp_hand)
+                        next_hand.remove(fuse)
+                        current_plan.append((fuse, atk))
+                        search(next_hand, current_plan)
+                        current_plan.pop()
+            else:
+                # 最終ターン（4ターン目）：上がりには受けが発生しないため、残りの任意の2枚で上がれる
+                for atk in set(current_hand):
+                    if best_score == 100: break
+                    temp_hand = list(current_hand)
+                    temp_hand.remove(atk)
+                    fuse = temp_hand[0]
+                    current_plan.append((fuse, atk))
+                    search([], current_plan)
+                    current_plan.pop()
+
+        search(hand, [])
+        return best_plan
 
     def _strong_initial_hand(self, state) -> bool:
         tr = self._track.get(id(state))
@@ -274,7 +367,6 @@ class RuleBasedAgent:
             if attack in tr["public_seen_counts"]:
                 tr["public_seen_counts"][attack] += 1
                 
-            # ★ 誰が何で攻めたかの履歴を記録
             if player == self.me:
                 tr["my_past_attacks"].add(attack)
             elif self._same_team(player, self.me):
@@ -322,6 +414,22 @@ class RuleBasedAgent:
         score += self._occupancy_priority_bonus(state, attack)
         score += self._public_attack_safety_bonus(state, player, attack)
 
+        # ★ 盾割り（Tatewari）＆ 絶対安全（Absolute Safe）の判定
+        if tr is not None:
+            visible_kings = tr["public_seen_counts"].get("8", 0) + tr["public_seen_counts"].get("9", 0) + state.hands[player].count("8") + state.hands[player].count("9")
+            total_p = 4 if attack in ("2", "3", "4", "5") else 2 if attack in ("6", "7") else 10 if attack == "1" else 1
+            seen_and_mine = tr["public_seen_counts"].get(attack, 0) + state.hands[player].count(attack)
+            is_monopoly = (seen_and_mine == total_p)
+
+            if is_monopoly:
+                if attack == "2":
+                    score += self.ABSOLUTE_SAFE_BONUS
+                elif attack not in ("1", "8", "9"):
+                    if visible_kings == 2:
+                        score += self.ABSOLUTE_SAFE_BONUS
+                    else:
+                        score += self.TATEWARI_BONUS # 敵の王・玉あぶり出し
+
         if state.attacker is None and state.current_attack is None and attack == "1":
             score -= 100.0
 
@@ -331,7 +439,7 @@ class RuleBasedAgent:
         if tr is not None and tr.get("shi_plan_active", False) and attack == "1":
             score += self.SHI_PLAN_ATTACK_FORCE
 
-        # ★ かかりごたえボーナス（味方の攻めに同調する、ただし無理な王玉受けは除く）
+        # かかりごたえ
         if tr is not None and attack in tr.get("ally_past_attacks", set()):
             is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
             if not is_unreasonable_block:
@@ -339,28 +447,20 @@ class RuleBasedAgent:
 
         score += POINTS.get(attack, 0) / 10.0
 
-        # ★ 伏せ札の評価ロジック
+        # 伏せ札の評価ロジック
         if action_type == "attack_after_block" and block is not None:
-            # 1. 香を温存し、飛角をブラフ消費する新ベースペナルティ
             penalty_table = {"9": 10, "8": 10, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
             base_penalty = float(penalty_table.get(block, 0))
-            
             context_penalty = 0.0
             
             if tr is not None:
-                # 2. 自分の攻め駒の保護（自爆防止）
                 if block in tr.get("my_past_attacks", set()):
                     context_penalty += 5.0
-                    
-                # 3. 味方の攻め駒の保護（連携維持）
                 if block in tr.get("ally_past_attacks", set()):
                     context_penalty += 5.0
-                    
-                # 4. 敵の攻め駒の保護（防壁維持）
                 if block in tr.get("enemy_past_attacks", set()):
                     context_penalty += 5.0
 
-            # ベースのペナルティに文脈ペナルティを上乗せして減点
             score -= (base_penalty + context_penalty)
 
         score += self._win_now_bonus(state, player, (action_type, block, attack))
@@ -434,6 +534,26 @@ class RuleBasedAgent:
 
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
+
+        # ★ パーフェクトゲーム（確定上がり）の計画と実行
+        if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
+            if tr.get("perfect_plan") is None:
+                plan = self._plan_perfect_game(state.hands[player])
+                if plan:
+                    tr["perfect_plan"] = plan
+                    tr["perfect_plan_step"] = 0
+
+        if tr is not None and tr.get("perfect_plan") is not None:
+            step = tr["perfect_plan_step"]
+            plan = tr["perfect_plan"]
+            if step < len(plan):
+                expected_fuse, expected_atk = plan[step]
+                for act in actions:
+                    # AIの完璧なルートと一致するアクションを探して無条件実行
+                    if act[0] in ("attack", "attack_after_block") and act[1] == expected_fuse and act[2] == expected_atk:
+                        tr["perfect_plan_step"] += 1
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return act
 
         has_non_king_attack_option = any(
             (t in ("attack", "attack_after_block")) and (a is not None) and (a not in ("8", "9"))
