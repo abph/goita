@@ -100,7 +100,6 @@ class RuleBasedAgent:
             ally_last_attack=None,
             ally_first_attack=None,
             
-            # ★ 新規追加：ペアのかかりごたえトラッキング
             ally_responded_to_my_attacks=set(),
             ally_ignored_my_attacks=set(),
             
@@ -376,7 +375,6 @@ class RuleBasedAgent:
                 tr["ally_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = True
                 
-                # ★ 味方の「受け→攻め」から、自分への応答（かかりごたえ・無視）を判定
                 if action_type == "attack_after_block":
                     if attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
@@ -401,6 +399,16 @@ class RuleBasedAgent:
             return 55.0
         if attack in ("2", "3", "4", "5") and c_all.get(attack, 0) == 2:
             return 35.0
+
+        # ★ 修正箇所：「し」で攻めて味方に無視された場合、王玉を除いて点数が高い駒を優先する
+        if tr is not None and "1" in tr.get("ally_ignored_my_attacks", set()):
+            if attack in ("6", "7"): # 飛・角
+                return 32.0
+            if attack in ("4", "5"): # 金・銀
+                return 29.0
+            if attack in ("2", "3"): # 馬・香
+                return 26.0
+
         if attack == "1" and c_all.get("1", 0) == 4:
             return 25.0
         if attack == "1" and c_all.get("1", 0) == 3:
@@ -598,7 +606,6 @@ class RuleBasedAgent:
             for (t, _b, a) in actions
         )
 
-        # --- 第1位：絶対強制ルール「かかりごたえ」の実行 ---
         kakari_actions: List[Tuple[float, Action]] = []
         if tr is not None:
             ally_first = tr.get("ally_first_attack")
@@ -624,12 +631,10 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
-        # --- 第2位：ペアのかかりごたえの有無（呼応された駒の連打） ---
         responded_actions: List[Tuple[float, Action]] = []
         if tr is not None:
             for (t, b, a) in actions:
                 if t in ("attack", "attack_after_block") and a is not None:
-                    # 4枚駒（香・馬・銀・金）または「し」で、味方がかかりごたえしてくれた駒なら連打する
                     if a in ("1", "2", "3", "4", "5") and a in tr.get("ally_responded_to_my_attacks", set()):
                         is_unreasonable_block = (t == "attack_after_block" and b in ("8", "9"))
                         if not is_unreasonable_block:
@@ -649,7 +654,6 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
-        # --- 無視された駒のフィルタリング（諦め） ---
         filtered_actions = []
         if tr is not None:
             ignored = tr.get("ally_ignored_my_attacks", set())
@@ -657,23 +661,19 @@ class RuleBasedAgent:
                 t, b, a = act
                 if t in ("attack", "attack_after_block") and a is not None:
                     if a in ignored:
-                        # しの場合は無条件で出さない
                         if a == "1":
                             continue
-                        # 4枚駒で、最初から2枚しか持っていなかった場合は出さない
                         elif a in ("2", "3", "4", "5") and tr["my_init_count"].get(a, 0) == 2:
                             continue
                 filtered_actions.append(act)
         else:
             filtered_actions = actions
             
-        # 全ての合法手が除外されてしまった場合は、仕方なく元の選択肢に戻す
         if not filtered_actions:
             filtered_actions = actions
             
         actions = filtered_actions
 
-        # --- 以降の順位（パーフェクトゲーム、即上がり等） ---
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
             if tr.get("perfect_plan") is None:
                 plan = self._plan_perfect_game(state.hands[player])
