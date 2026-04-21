@@ -197,58 +197,6 @@ class RuleBasedAgent:
         search(hand, [])
         return best_plan
 
-    def _calculate_hand_power(self, state, player: str, tr: dict) -> float:
-        hand = state.hands[player]
-        if not hand:
-            return 0.0
-
-        score = 0.0
-        counts = Counter(hand)
-        
-        max_base_point = 0.0
-        for p in counts.keys():
-            pt = 50.0 if p in ("8", "9") else float(POINTS.get(p, 0))
-            if pt > max_base_point:
-                max_base_point = pt
-        score += max_base_point
-
-        if "9" in counts or "8" in counts:
-            score += 20.0
-            
-        for p, count in counts.items():
-            if p in ("6", "7") and count == 2:
-                score += 20.0
-            elif p in ("2", "3", "4", "5"):
-                if count >= 3:
-                    score += 20.0
-                elif count == 2:
-                    score += 10.0
-
-        shi_count = counts.get("1", 0)
-        is_shi_driver = False
-        if tr is not None:
-            init_shi = tr.get("my_init_count", {}).get("1", 0)
-            if init_shi >= 4 or (init_shi == 3 and (tr.get("shi_chain_attacker") == player or tr.get("shi_chain_attacker") is None)):
-                is_shi_driver = True
-
-        if tr is not None and tr.get("shi_plan_active", False) and is_shi_driver:
-            score += shi_count * 10.0
-        else:
-            score -= shi_count * 5.0
-
-        cards_played = 8 - len(hand)
-        score += cards_played * 5.0
-
-        unique_hiragoma = sum(1 for p in ("2", "3", "4", "5", "6", "7") if counts.get(p, 0) > 0)
-        has_anchor = ("9" in counts) or ("8" in counts) or is_shi_driver
-        if has_anchor:
-            if unique_hiragoma >= 4:
-                score += 20.0
-            elif unique_hiragoma == 3:
-                score += 10.0
-
-        return score
-
     def _last_one_remaining_bonus(self, state, player: str, attack: Optional[str]) -> float:
         if attack is None or attack not in TARGET_LAST1:
             return 0.0
@@ -616,6 +564,7 @@ class RuleBasedAgent:
             else:
                 base -= 500.0
 
+        # ★ 変更箇所：敵の攻めに対する絶対ルール（1手目スルー、2・3手目キャッチ）
         enemy_attack_turn = (
             state.phase == "receive"
             and state.current_attack is not None
@@ -623,40 +572,23 @@ class RuleBasedAgent:
             and (not self._same_team(state.attacker, player))
         )
 
-        if enemy_attack_turn and (not tr["first_enemy_attack_seen"]):
-            if state.current_attack == "1":
-                ones = state.hands[player].count("1")
-                
-                hand_power = self._calculate_hand_power(state, player, tr)
-                strong = hand_power >= 60.0
-
-                is_receive_1 = (action_type == "receive" and block == "1")
-                is_receive_not1 = (action_type == "receive" and block != "1")
-                if is_receive_not1:
+        if enemy_attack_turn:
+            if not tr.get("first_enemy_attack_seen", False):
+                # 1つ目の攻め：絶対にパスする（詰めごいたの例外を除く）
+                if action_type == "pass":
+                    base += 10000.0
+                else:
                     return -1e18
-
-                if ones >= 2:
-                    return base + (self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE)
-
-                if ones == 1:
-                    if strong:
-                        return base + (self.FIRST_ENEMY_SHI_FORCE if is_receive_1 else -self.FIRST_ENEMY_SHI_FORCE)
-                    else:
-                        if not tr["first_enemy_attack_skipped"]:
-                            return base + (self.FIRST_ENEMY_SHI_FORCE if action_type == "pass" else -self.FIRST_ENEMY_SHI_FORCE)
-                        return base
-
-            hand_power = self._calculate_hand_power(state, player, tr)
-            strong = hand_power >= 60.0
-            
-            receiving_with_king = (action_type == "receive" and block in ("8", "9"))
-            prefer_skip_once = (not strong) or receiving_with_king
-
-            if prefer_skip_once:
-                if not tr["first_enemy_attack_skipped"]:
-                    base += self.FIRST_ENEMY_PASS_BONUS if action_type == "pass" else -self.FIRST_ENEMY_PASS_BONUS
             else:
-                base += -self.FIRST_ENEMY_RECEIVE_BONUS if action_type == "pass" else self.FIRST_ENEMY_RECEIVE_BONUS
+                # 2つ目、3つ目の攻め：受けることを最優先する
+                if action_type == "receive":
+                    # 無理な王玉受けを防ぐため、平駒よりはボーナスを抑える
+                    if block in ("8", "9"):
+                        base += 1000.0
+                    else:
+                        base += 10000.0
+                else:
+                    base -= 10000.0
 
         return base
 
