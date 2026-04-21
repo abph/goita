@@ -34,7 +34,6 @@ class RuleBasedAgent:
         self.FORCE_KING_GYOKU_ON_THIRD_ATTACK = True
 
         self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK = True
-        # ※ KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT は削除されました
 
         self.SHI_PLAN_ATTACK_FORCE = 5_000.0
         self.SHI_PLAN_RECEIVE_FORCE = 5_000.0
@@ -685,7 +684,38 @@ class RuleBasedAgent:
             if kings_in_hand + kings_in_past < 2:
                 tr["kg_plan_active"] = False
 
-        # --- 第1位：パーフェクトゲーム（配牌時の確定上がり）の計画遂行 ---
+        has_non_king_attack_option = any(
+            (t in ("attack", "attack_after_block")) and (a is not None) and (a not in ("8", "9"))
+            for (t, _b, a) in actions
+        )
+
+        # --- 第1位：絶対強制ルール「かかりごたえ」の実行 ---
+        kakari_actions: List[Tuple[float, Action]] = []
+        if tr is not None:
+            ally_first = tr.get("ally_first_attack")
+            ally_past = tr.get("ally_past_attacks", set())
+            for (t, b, a) in actions:
+                if t in ("attack", "attack_after_block") and a is not None and a != "1":
+                    is_unreasonable_block = (t == "attack_after_block" and b in ("8", "9"))
+                    if not is_unreasonable_block:
+                        if (ally_first is not None and a == ally_first) or (a in ally_past):
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                            if t == "attack_after_block":
+                                sc += self._score_receive_phase(state, player, "receive", b)
+                            kakari_actions.append((sc, (t, b, a)))
+
+        if kakari_actions:
+            kakari_actions.sort(key=lambda x: x[0], reverse=True)
+            chosen = kakari_actions[0][1]
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and chosen[2] in ("8", "9") and tr.get("kg_second") is None:
+                    tr["kg_second"] = chosen[2]
+                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                    tr["kg_plan_active"] = False
+            return chosen
+
+        # --- 第2位：パーフェクトゲーム（配牌時の確定上がり）の計画遂行 ---
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
             if tr.get("perfect_plan") is None:
                 plan = self._plan_perfect_game(state.hands[player])
@@ -704,12 +734,7 @@ class RuleBasedAgent:
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                         return act
 
-        has_non_king_attack_option = any(
-            (t in ("attack", "attack_after_block")) and (a is not None) and (a not in ("8", "9"))
-            for (t, _b, a) in actions
-        )
-
-        # --- 第2位：即上がり（目の前の勝利）の実行 ---
+        # --- 第3位：即上がり（目の前の勝利）の実行 ---
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
             if t in ("attack", "attack_after_block"):
@@ -727,7 +752,7 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
-        # --- 第3位：詰めごいた（中盤の確定勝利）ルートの実行 ---
+        # --- 第4位：詰めごいた（中盤の確定勝利）ルートの実行 ---
         tsume_actions: List[Tuple[float, Action]] = []
         if tr is not None:
             for (t, b, a) in actions:
@@ -760,7 +785,7 @@ class RuleBasedAgent:
 
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
 
-        # --- 第4位：3回目の攻めにおける「王玉」の強制出し（出し惜しみ防止） ---
+        # --- 第5位：3回目の攻めにおける「王玉」の強制出し（出し惜しみ防止） ---
         if tr is not None and self.FORCE_KING_GYOKU_ON_THIRD_ATTACK and attack_actions:
             next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if next_attack_no == 3:
@@ -772,7 +797,7 @@ class RuleBasedAgent:
                                 tr["kg_plan_active"] = False
                             return act
 
-        # --- 第5位：「だまだま（王玉ペア）」コンボの強制執行 ---
+        # --- 第6位：「だまだま（王玉ペア）」コンボの強制執行 ---
         if tr is not None and tr.get("kg_plan_active") and self.KING_GYOKU_FORCE_ORDER:
             next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if attack_actions and next_attack_no in (2, 3):
@@ -806,7 +831,7 @@ class RuleBasedAgent:
                                     tr["kg_plan_active"] = False
                                     return act
 
-        # --- 第6位：3回目の攻めにおける「安全な平駒」の優先（王玉温存） ---
+        # --- 第7位：3回目の攻めにおける「安全な平駒」の優先（王玉温存） ---
         if tr is not None and self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK and attack_actions:
             next_attack_no = int(tr.get("my_attack_count", 0)) + 1
             if next_attack_no == 3:
@@ -840,7 +865,7 @@ class RuleBasedAgent:
                 or state.hands[player].count("1") >= 4
             )
 
-        # --- 第7位：「しプラン」主導者（ドライバー）の自発的な「し」攻め ---
+        # --- 第8位：「しプラン」主導者（ドライバー）の自発的な「し」攻め ---
         if tr is not None and shi_mode and is_shi_driver and attack_actions:
             shi_cands = [act for act in attack_actions if act[2] == "1"]
             if shi_cands:
@@ -856,7 +881,7 @@ class RuleBasedAgent:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 return chosen
 
-        # --- 第8位：「しプラン（シグナル連携）」による特殊行動（パス・受け・スルー等） ---
+        # --- 第9位：「しプラン（シグナル連携）」による特殊行動（パス回し・スルー等） ---
         if tr is not None and shi_mode:
             ally = tr["ally"]
             enemy_attack_turn = (
@@ -921,7 +946,7 @@ class RuleBasedAgent:
                             tr["shi_plan_active"] = True
                             return act
 
-        # --- 第9位：総合スコア評価（通常時の最適解計算） ---
+        # --- 第10位：総合スコア評価（通常時の最適解計算） ---
         best_action = actions[0]
         best_score = -1e18
 
