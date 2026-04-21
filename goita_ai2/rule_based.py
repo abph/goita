@@ -400,13 +400,12 @@ class RuleBasedAgent:
         if attack in ("2", "3", "4", "5") and c_all.get(attack, 0) == 2:
             return 35.0
 
-        # ★ 修正箇所：「し」で攻めて味方に無視された場合、王玉を除いて点数が高い駒を優先する
         if tr is not None and "1" in tr.get("ally_ignored_my_attacks", set()):
-            if attack in ("6", "7"): # 飛・角
+            if attack in ("6", "7"):
                 return 32.0
-            if attack in ("4", "5"): # 金・銀
+            if attack in ("4", "5"):
                 return 29.0
-            if attack in ("2", "3"): # 馬・香
+            if attack in ("2", "3"):
                 return 26.0
 
         if attack == "1" and c_all.get("1", 0) == 4:
@@ -808,6 +807,54 @@ class RuleBasedAgent:
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                         return best
 
+        # --- 第8位：味方の「し」攻めに対するレスポンス（しシグナルへの返答） ---
+        if tr is not None:
+            ally = tr["ally"]
+            if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
+                my_shis = state.hands[player].count("1")
+
+                if my_shis >= 4:
+                    for act in actions:
+                        if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and act[2] in ("8", "9") and tr.get("kg_second") is None:
+                                tr["kg_second"] = act[2]
+                            if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                                tr["kg_plan_active"] = False
+                            return act
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            return act
+
+                elif my_shis == 3:
+                    for act in actions:
+                        if act[0] == "pass":
+                            return act
+
+                elif my_shis in (1, 2):
+                    cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
+                    if cands:
+                        has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
+                        best = cands[0]
+                        best_score = -1e18
+                        for (t, b, a) in cands:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            sc += self._score_receive_phase(state, player, "receive", b)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best[2] in ("8", "9") and tr.get("kg_second") is None:
+                            tr["kg_second"] = best[2]
+                        if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                            tr["kg_plan_active"] = False
+                        return best
+                    
+                    for act in actions:
+                        if act[0] == "receive" and act[1] == "1":
+                            return act
+
+        # --- 第9位：総合スコア評価（通常時の最適解計算） ---
         best_action = actions[0]
         best_score = -1e18
 
