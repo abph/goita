@@ -34,7 +34,7 @@ class RuleBasedAgent:
         self.FORCE_KING_GYOKU_ON_THIRD_ATTACK = True
 
         self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK = True
-        self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT = True
+        # ※ KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT は削除されました
 
         self.SHI_PLAN_ATTACK_FORCE = 5_000.0
         self.SHI_PLAN_RECEIVE_FORCE = 5_000.0
@@ -685,6 +685,7 @@ class RuleBasedAgent:
             if kings_in_hand + kings_in_past < 2:
                 tr["kg_plan_active"] = False
 
+        # --- 第1位：パーフェクトゲーム（配牌時の確定上がり）の計画遂行 ---
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
             if tr.get("perfect_plan") is None:
                 plan = self._plan_perfect_game(state.hands[player])
@@ -708,6 +709,7 @@ class RuleBasedAgent:
             for (t, _b, a) in actions
         )
 
+        # --- 第2位：即上がり（目の前の勝利）の実行 ---
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
             if t in ("attack", "attack_after_block"):
@@ -725,6 +727,111 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
+        # --- 第3位：詰めごいた（中盤の確定勝利）ルートの実行 ---
+        tsume_actions: List[Tuple[float, Action]] = []
+        if tr is not None:
+            for (t, b, a) in actions:
+                if t in ("attack", "attack_after_block") and a is not None:
+                    is_safe = self._is_absolute_safe_for_tsume(state, player, a, tr)
+                    if is_safe:
+                        temp_hand = list(state.hands[player])
+                        if t == "attack_after_block":
+                            temp_hand.remove(a)
+                        else:
+                            if b is not None:
+                                temp_hand.remove(b)
+                            temp_hand.remove(a)
+                        if self._is_tsume_from_even(temp_hand, state, player, tr):
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                            if t == "attack_after_block":
+                                sc += self._score_receive_phase(state, player, "receive", b)
+                            tsume_actions.append((sc, (t, b, a)))
+            
+        if tsume_actions:
+            tsume_actions.sort(key=lambda x: x[0], reverse=True)
+            chosen = tsume_actions[0][1]
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and chosen[2] in ("8", "9") and tr.get("kg_second") is None:
+                    tr["kg_second"] = chosen[2]
+                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                    tr["kg_plan_active"] = False
+            return chosen
+
+        attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
+
+        # --- 第4位：3回目の攻めにおける「王玉」の強制出し（出し惜しみ防止） ---
+        if tr is not None and self.FORCE_KING_GYOKU_ON_THIRD_ATTACK and attack_actions:
+            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
+            if next_attack_no == 3:
+                for p in ["8", "9"]:
+                    for act in attack_actions:
+                        if act[2] == p:
+                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            if tr.get("kg_plan_active"):
+                                tr["kg_plan_active"] = False
+                            return act
+
+        # --- 第5位：「だまだま（王玉ペア）」コンボの強制執行 ---
+        if tr is not None and tr.get("kg_plan_active") and self.KING_GYOKU_FORCE_ORDER:
+            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
+            if attack_actions and next_attack_no in (2, 3):
+                hand = state.hands[player]
+                has9 = "9" in hand
+                has8 = "8" in hand
+                if has8 or has9:
+                    if next_attack_no == 2:
+                        for p in ["9", "8"]:
+                            if p == "9" and not has9: continue
+                            if p == "8" and not has8: continue
+                            for act in attack_actions:
+                                if act[2] == p:
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    if act[2] in ("8", "9") and tr.get("kg_second") is None:
+                                        tr["kg_second"] = act[2]
+                                    return act
+                    if next_attack_no == 3:
+                        second = tr.get("kg_second")
+                        want = "8" if second == "9" else "9" if second == "8" else None
+                        if want is not None:
+                            for act in attack_actions:
+                                if act[2] == want:
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    tr["kg_plan_active"] = False
+                                    return act
+                        for p in ["9", "8"]:
+                            for act in attack_actions:
+                                if act[2] == p:
+                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                                    tr["kg_plan_active"] = False
+                                    return act
+
+        # --- 第6位：3回目の攻めにおける「安全な平駒」の優先（王玉温存） ---
+        if tr is not None and self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK and attack_actions:
+            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
+            if next_attack_no == 3:
+                has_king_attack = any(act[2] in ("8", "9") for act in attack_actions)
+                if has_king_attack:
+                    safe_non_king = []
+                    for act in attack_actions:
+                        a = act[2]
+                        if a is None or a in ("8", "9"): continue
+                        safety = self._public_attack_safety_bonus(state, player, a)
+                        if safety >= self.PUBLIC_SAFE_ATTACK_BONUS_MID:
+                            safe_non_king.append(act)
+                    if safe_non_king:
+                        best = safe_non_king[0]
+                        best_score = -1e18
+                        for (t, b, a) in safe_non_king:
+                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
+                            if t == "attack_after_block":
+                                sc += self._score_receive_phase(state, player, "receive", b)
+                            if sc > best_score:
+                                best_score = sc
+                                best = (t, b, a)
+                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                        return best
+
         shi_mode = False
         if tr is not None:
             shi_mode = (
@@ -733,6 +840,23 @@ class RuleBasedAgent:
                 or state.hands[player].count("1") >= 4
             )
 
+        # --- 第7位：「しプラン」主導者（ドライバー）の自発的な「し」攻め ---
+        if tr is not None and shi_mode and is_shi_driver and attack_actions:
+            shi_cands = [act for act in attack_actions if act[2] == "1"]
+            if shi_cands:
+                chosen = shi_cands[0]
+                best_score = -1e18
+                for (t, b, a) in shi_cands:
+                    sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                    if t == "attack_after_block":
+                        sc += self._score_receive_phase(state, player, "receive", b)
+                    if sc > best_score:
+                        best_score = sc
+                        chosen = (t, b, a)
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                return chosen
+
+        # --- 第8位：「しプラン（シグナル連携）」による特殊行動（パス・受け・スルー等） ---
         if tr is not None and shi_mode:
             ally = tr["ally"]
             enemy_attack_turn = (
@@ -767,7 +891,6 @@ class RuleBasedAgent:
                         best_score = -1e18
                         for (t, b, a) in cands:
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
-                            # ★ 修正：受けのスコアも合算する
                             if t == "attack_after_block":
                                 sc += self._score_receive_phase(state, player, "receive", b)
                             if sc > best_score:
@@ -798,118 +921,12 @@ class RuleBasedAgent:
                             tr["shi_plan_active"] = True
                             return act
 
-        attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
-
-        if tr is not None and self.KEEP_KING_GYOKU_FOR_LAST_WHEN_TWO_LEFT and attack_actions:
-            if len(state.hands[player]) == 2 and any(x in state.hands[player] for x in ("8", "9")):
-                non_king_attack_actions = [act for act in attack_actions if act[2] not in ("8", "9")]
-                if non_king_attack_actions:
-                    best = non_king_attack_actions[0]
-                    best_score = -1e18
-                    for (t, b, a) in non_king_attack_actions:
-                        sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
-                        # ★ 修正：受けのスコアも合算する
-                        if t == "attack_after_block":
-                            sc += self._score_receive_phase(state, player, "receive", b)
-                        if sc > best_score:
-                            best_score = sc
-                            best = (t, b, a)
-                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                    return best
-
-        if tr is not None and tr.get("kg_plan_active") and self.KING_GYOKU_FORCE_ORDER:
-            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
-            if attack_actions and next_attack_no in (2, 3):
-                hand = state.hands[player]
-                has9 = "9" in hand
-                has8 = "8" in hand
-                if has8 or has9:
-                    if next_attack_no == 2:
-                        for p in ["9", "8"]:
-                            if p == "9" and not has9: continue
-                            if p == "8" and not has8: continue
-                            for act in attack_actions:
-                                if act[2] == p:
-                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                    if act[2] in ("8", "9") and tr.get("kg_second") is None:
-                                        tr["kg_second"] = act[2]
-                                    return act
-                    if next_attack_no == 3:
-                        second = tr.get("kg_second")
-                        want = "8" if second == "9" else "9" if second == "8" else None
-                        if want is not None:
-                            for act in attack_actions:
-                                if act[2] == want:
-                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                    tr["kg_plan_active"] = False
-                                    return act
-                        for p in ["9", "8"]:
-                            for act in attack_actions:
-                                if act[2] == p:
-                                    tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                                    tr["kg_plan_active"] = False
-                                    return act
-
-        if tr is not None and self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK and attack_actions:
-            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
-            if next_attack_no == 3:
-                has_king_attack = any(act[2] in ("8", "9") for act in attack_actions)
-                if has_king_attack:
-                    safe_non_king = []
-                    for act in attack_actions:
-                        a = act[2]
-                        if a is None or a in ("8", "9"): continue
-                        safety = self._public_attack_safety_bonus(state, player, a)
-                        if safety >= self.PUBLIC_SAFE_ATTACK_BONUS_MID:
-                            safe_non_king.append(act)
-                    if safe_non_king:
-                        best = safe_non_king[0]
-                        best_score = -1e18
-                        for (t, b, a) in safe_non_king:
-                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
-                            # ★ 修正：受けのスコアも合算する
-                            if t == "attack_after_block":
-                                sc += self._score_receive_phase(state, player, "receive", b)
-                            if sc > best_score:
-                                best_score = sc
-                                best = (t, b, a)
-                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                        return best
-
-        if tr is not None and self.FORCE_KING_GYOKU_ON_THIRD_ATTACK and attack_actions:
-            next_attack_no = int(tr.get("my_attack_count", 0)) + 1
-            if next_attack_no == 3:
-                for p in ["8", "9"]:
-                    for act in attack_actions:
-                        if act[2] == p:
-                            tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                            if tr.get("kg_plan_active"):
-                                tr["kg_plan_active"] = False
-                            return act
-
-        if tr is not None and shi_mode and is_shi_driver and attack_actions:
-            shi_cands = [act for act in attack_actions if act[2] == "1"]
-            if shi_cands:
-                chosen = shi_cands[0]
-                best_score = -1e18
-                for (t, b, a) in shi_cands:
-                    sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
-                    # ★ 修正：受けのスコアも合算する
-                    if t == "attack_after_block":
-                        sc += self._score_receive_phase(state, player, "receive", b)
-                    if sc > best_score:
-                        best_score = sc
-                        chosen = (t, b, a)
-                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                return chosen
-
+        # --- 第9位：総合スコア評価（通常時の最適解計算） ---
         best_action = actions[0]
         best_score = -1e18
 
-        # ★ 修正箇所：攻めと受けの評価を正しく合算する
         for (t, block, attack) in actions:
             if t == "attack_after_block":
-                # 受けの点数と攻めの点数を両方足し算する！
                 score = self._score_receive_phase(state, player, "receive", block)
                 score += self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
             elif t == "attack":
