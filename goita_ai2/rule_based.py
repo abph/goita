@@ -725,36 +725,6 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
-        # ★ 修正箇所：ハードコードされた戦略ルールよりも先に、「詰めごいた確定ルート」を最優先で実行する
-        tsume_actions: List[Tuple[float, Action]] = []
-        if tr is not None:
-            for (t, b, a) in actions:
-                if t in ("attack", "attack_after_block") and a is not None:
-                    is_safe = self._is_absolute_safe_for_tsume(state, player, a, tr)
-                    if is_safe:
-                        temp_hand = list(state.hands[player])
-                        if t == "attack_after_block":
-                            temp_hand.remove(a)
-                        else:
-                            if b is not None:
-                                temp_hand.remove(b)
-                            temp_hand.remove(a)
-                        if self._is_tsume_from_even(temp_hand, state, player, tr):
-                            # スコアを計算して一番評価の高い詰めルートを選ぶ
-                            sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
-                            tsume_actions.append((sc, (t, b, a)))
-            
-        if tsume_actions:
-            tsume_actions.sort(key=lambda x: x[0], reverse=True)
-            chosen = tsume_actions[0][1]
-            if tr is not None:
-                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and chosen[2] in ("8", "9") and tr.get("kg_second") is None:
-                    tr["kg_second"] = chosen[2]
-                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
-                    tr["kg_plan_active"] = False
-            return chosen
-
         shi_mode = False
         if tr is not None:
             shi_mode = (
@@ -797,6 +767,9 @@ class RuleBasedAgent:
                         best_score = -1e18
                         for (t, b, a) in cands:
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
+                            # ★ 修正：受けのスコアも合算する
+                            if t == "attack_after_block":
+                                sc += self._score_receive_phase(state, player, "receive", b)
                             if sc > best_score:
                                 best_score = sc
                                 best = (t, b, a)
@@ -835,6 +808,9 @@ class RuleBasedAgent:
                     best_score = -1e18
                     for (t, b, a) in non_king_attack_actions:
                         sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
+                        # ★ 修正：受けのスコアも合算する
+                        if t == "attack_after_block":
+                            sc += self._score_receive_phase(state, player, "receive", b)
                         if sc > best_score:
                             best_score = sc
                             best = (t, b, a)
@@ -891,6 +867,9 @@ class RuleBasedAgent:
                         best_score = -1e18
                         for (t, b, a) in safe_non_king:
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=True)
+                            # ★ 修正：受けのスコアも合算する
+                            if t == "attack_after_block":
+                                sc += self._score_receive_phase(state, player, "receive", b)
                             if sc > best_score:
                                 best_score = sc
                                 best = (t, b, a)
@@ -915,6 +894,9 @@ class RuleBasedAgent:
                 best_score = -1e18
                 for (t, b, a) in shi_cands:
                     sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                    # ★ 修正：受けのスコアも合算する
+                    if t == "attack_after_block":
+                        sc += self._score_receive_phase(state, player, "receive", b)
                     if sc > best_score:
                         best_score = sc
                         chosen = (t, b, a)
@@ -924,8 +906,13 @@ class RuleBasedAgent:
         best_action = actions[0]
         best_score = -1e18
 
+        # ★ 修正箇所：攻めと受けの評価を正しく合算する
         for (t, block, attack) in actions:
-            if t in ("attack", "attack_after_block"):
+            if t == "attack_after_block":
+                # 受けの点数と攻めの点数を両方足し算する！
+                score = self._score_receive_phase(state, player, "receive", block)
+                score += self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
+            elif t == "attack":
                 score = self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
             else:
                 score = self._score_receive_phase(state, player, t, block)
