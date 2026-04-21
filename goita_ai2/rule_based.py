@@ -554,8 +554,10 @@ class RuleBasedAgent:
 
         score += POINTS.get(attack, 0) / 10.0
 
-        if action_type == "attack_after_block" and block is not None:
-            penalty_table = {"9": 10, "8": 10, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
+        # ★ 修正箇所：自分が手番の時（attack）も、必ず伏せ札のペナルティを計算する
+        if action_type in ("attack", "attack_after_block") and block is not None:
+            # ★ 修正箇所：王・玉の伏せペナルティを「10」から「100」へ激増させ、絶対に伏せさせないようにする
+            penalty_table = {"9": 100, "8": 100, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
             base_penalty = float(penalty_table.get(block, 0))
             context_penalty = 0.0
             
@@ -729,7 +731,6 @@ class RuleBasedAgent:
                     tr["kg_plan_active"] = False
             return chosen
 
-        # --- 第4位：詰めごいた（中盤の確定勝利）ルートの実行 ---
         tsume_actions: List[Tuple[float, Action]] = []
         if tr is not None:
             for (t, b, a) in actions:
@@ -737,7 +738,6 @@ class RuleBasedAgent:
                     is_safe = self._is_absolute_safe_for_tsume(state, player, a, tr)
                     if is_safe:
                         temp_hand = list(state.hands[player])
-                        # ★ 修正箇所：受けに使った駒（b）をシミュレーションの手札から確実に減らす
                         if b is not None and b in temp_hand:
                             temp_hand.remove(b)
                         if a in temp_hand:
