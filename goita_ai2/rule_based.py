@@ -83,8 +83,6 @@ class RuleBasedAgent:
         self._track[sid] = dict(
             my_init_count=cnt_all,
             ally=ally_player,
-            first_enemy_attack_seen=False,
-            first_enemy_attack_skipped=False,
             public_seen_counts=public_seen_counts,
 
             my_attack_count=0,
@@ -94,11 +92,8 @@ class RuleBasedAgent:
             my_past_attacks=set(),
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
-            
-            my_last_attack=None,
-            ally_attacked_since_my_last_attack=False,
-            ally_last_attack=None,
-            ally_first_attack=None,
+            # ★ 追加：敵の総攻撃回数をトラッキング
+            enemy_total_attack_count=0,
             
             ally_responded_to_my_attacks=set(),
             ally_ignored_my_attacks=set(),
@@ -384,6 +379,8 @@ class RuleBasedAgent:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
                 tr["enemy_past_attacks"].add(attack)
+                # ★ 追加：敵の攻撃回数を確実に加算
+                tr["enemy_total_attack_count"] = tr.get("enemy_total_attack_count", 0) + 1
 
     def _occupancy_priority_bonus(self, state, attack: str) -> float:
         tr = self._track.get(id(state))
@@ -568,7 +565,8 @@ class RuleBasedAgent:
         )
 
         if enemy_attack_turn:
-            if not tr.get("first_enemy_attack_seen", False):
+            # ★ 修正：個人のフラグではなく、敵の総攻撃回数で「初手」かどうかを判定する
+            if tr.get("enemy_total_attack_count", 1) == 1:
                 if action_type == "pass":
                     base += 10000.0
                 else:
@@ -881,17 +879,6 @@ class RuleBasedAgent:
                 best_action = (t, block, attack)
 
         if tr is not None:
-            enemy_attack_turn = (
-                state.phase == "receive"
-                and state.current_attack is not None
-                and state.attacker is not None
-                and (not self._same_team(state.attacker, player))
-            )
-            if enemy_attack_turn and (not tr.get("first_enemy_attack_seen", False)):
-                tr["first_enemy_attack_seen"] = True
-                if best_action[0] == "pass":
-                    tr["first_enemy_attack_skipped"] = True
-
             if best_action[0] in ("attack", "attack_after_block"):
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best_action[2] in ("8", "9") and tr.get("kg_second") is None:
