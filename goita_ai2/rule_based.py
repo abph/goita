@@ -411,7 +411,7 @@ class RuleBasedAgent:
             return 10.0
         return 0.0
 
-def _score_attack_phase(
+    def _score_attack_phase(
         self,
         state,
         player: str,
