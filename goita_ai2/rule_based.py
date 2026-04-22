@@ -492,7 +492,7 @@ class RuleBasedAgent:
                         score += self.TATEWARI_BONUS
 
         if state.attacker is None and state.current_attack is None and attack == "1":
-            my_shis = state.hands[player].count("1")
+            my_shis = tr["my_init_count"].get("1", 0)
             has_kg = tr is not None and tr.get("kg_plan_active", False)
             if my_shis >= 4 or has_kg:
                 score -= 0.0
@@ -811,9 +811,10 @@ class RuleBasedAgent:
         if tr is not None:
             ally = tr["ally"]
             if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
-                my_shis = state.hands[player].count("1")
+                # ★ 修正箇所：「現在の」手札ではなく、「配られた時（初期手札）」の「し」の枚数で判定する
+                initial_shis = tr["my_init_count"].get("1", 0)
 
-                if my_shis >= 4:
+                if initial_shis >= 4:
                     for act in actions:
                         if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
                             tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
@@ -822,16 +823,17 @@ class RuleBasedAgent:
                             if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                                 tr["kg_plan_active"] = False
                             return act
+                    # 「し受け・し攻め」ができない場合は、とりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
 
-                elif my_shis == 3:
+                elif initial_shis == 3:
                     for act in actions:
                         if act[0] == "pass":
                             return act
 
-                elif my_shis in (1, 2):
+                elif initial_shis in (1, 2):
                     cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
                     if cands:
                         has_non_king = any((c[2] is not None) and (c[2] not in ("8", "9")) for c in cands)
@@ -850,6 +852,7 @@ class RuleBasedAgent:
                             tr["kg_plan_active"] = False
                         return best
                     
+                    # 別の駒で攻められない場合（残り1枚など）はとりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
