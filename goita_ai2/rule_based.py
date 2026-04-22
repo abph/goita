@@ -811,10 +811,11 @@ class RuleBasedAgent:
         if tr is not None:
             ally = tr["ally"]
             if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
-                # ★ 修正箇所：「現在の」手札ではなく、「配られた時（初期手札）」の「し」の枚数で判定する
                 initial_shis = tr["my_init_count"].get("1", 0)
+                current_shis = state.hands[player].count("1")
 
-                if initial_shis >= 4:
+                # 1. 「現在の手札」に「し」が4枚以上ある場合（し受け・し攻め）
+                if current_shis >= 4:
                     for act in actions:
                         if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
                             tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
@@ -823,16 +824,18 @@ class RuleBasedAgent:
                             if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                                 tr["kg_plan_active"] = False
                             return act
-                    # 「し受け・し攻め」ができない場合は、とりあえず「し」で受ける
+                    # 「し受け・し攻め」が物理的にできない場合は、とりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
 
+                # 2. 「配牌時の手札」に「し」が3枚だった場合（パス）
                 elif initial_shis == 3:
                     for act in actions:
                         if act[0] == "pass":
                             return act
 
+                # 3. 「配牌時の手札」に「し」が1〜2枚だった場合（し受け・別の強い駒で攻め）
                 elif initial_shis in (1, 2):
                     cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
                     if cands:
@@ -840,11 +843,13 @@ class RuleBasedAgent:
                         best = cands[0]
                         best_score = -1e18
                         for (t, b, a) in cands:
+                            # 第9位のスコア計算関数を流用して、最も強い駒を選ぶ
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
                             sc += self._score_receive_phase(state, player, "receive", b)
                             if sc > best_score:
                                 best_score = sc
                                 best = (t, b, a)
+                        
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                         if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best[2] in ("8", "9") and tr.get("kg_second") is None:
                             tr["kg_second"] = best[2]
@@ -856,6 +861,7 @@ class RuleBasedAgent:
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
+
 
         # --- 第9位：総合スコア評価（通常時の最適解計算） ---
         best_action = actions[0]
