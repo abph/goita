@@ -92,7 +92,6 @@ class RuleBasedAgent:
             my_past_attacks=set(),
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
-            # ★ 追加：敵の総攻撃回数をトラッキング
             enemy_total_attack_count=0,
             
             ally_responded_to_my_attacks=set(),
@@ -379,7 +378,6 @@ class RuleBasedAgent:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
                 tr["enemy_past_attacks"].add(attack)
-                # ★ 追加：敵の攻撃回数を確実に加算
                 tr["enemy_total_attack_count"] = tr.get("enemy_total_attack_count", 0) + 1
 
     def _occupancy_priority_bonus(self, state, attack: str) -> float:
@@ -427,7 +425,6 @@ class RuleBasedAgent:
         score = 0.0
         tr = self._track.get(id(state))
 
-        # 1. 詰めごいた（絶対安全な確定勝利）ルートの加点
         if tr is not None and attack is not None:
             is_safe = self._is_absolute_safe_for_tsume(state, player, attack, tr)
             if is_safe:
@@ -442,17 +439,14 @@ class RuleBasedAgent:
                 if self._is_tsume_from_even(temp_hand, state, player, tr):
                     score += 1e8
 
-        # 2. 各種ボーナスの加算
         score += self._last_one_remaining_bonus(state, player, attack)
         score += self._occupancy_priority_bonus(state, attack)
         score += self._public_attack_safety_bonus(state, player, attack)
 
-        # 3. 序盤の孤立した強い駒の早打ちペナルティ
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.hands[player].count(attack) == 1:
             if attack not in ("8", "9", "1"):
                 score -= 30.0
 
-        # 4. 連続攻撃（連打）ボーナス
         if tr is not None and attack != "1" and attack == tr.get("my_last_attack"):
             if tr.get("ally_attacked_since_my_last_attack"):
                 if tr.get("ally_last_attack") == attack:
@@ -463,7 +457,6 @@ class RuleBasedAgent:
             else:
                 score += self.CONTINUOUS_ATTACK_BONUS
 
-        # 5. かかりごたえのベースボーナス
         if tr is not None and attack != "1":
             ally_first = tr.get("ally_first_attack")
             if ally_first is not None and attack == ally_first:
@@ -478,7 +471,6 @@ class RuleBasedAgent:
                 if not is_unreasonable_block:
                     score += self.KAKARI_GOTAE_BONUS
 
-        # 6. 絶対安全ボーナスと盾割りボーナス
         if tr is not None:
             visible_kings = tr["public_seen_counts"].get("8", 0) + tr["public_seen_counts"].get("9", 0) + state.hands[player].count("8") + state.hands[player].count("9")
             total_p = 4 if attack in ("2", "3", "4", "5") else 2 if attack in ("6", "7") else 10 if attack == "1" else 1
@@ -494,7 +486,6 @@ class RuleBasedAgent:
                     else:
                         score += self.TATEWARI_BONUS
 
-        # 7. 「し」の空回り連打に対するペナルティ
         if state.attacker is None and state.current_attack is None and attack == "1":
             my_shis = tr["my_init_count"].get("1", 0) if tr is not None else 0
             has_kg = tr is not None and tr.get("kg_plan_active", False)
@@ -505,31 +496,23 @@ class RuleBasedAgent:
             else:
                 score -= 100.0
 
-        # 8. 王・玉の無駄打ちペナルティ
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY
 
-        # 9. 駒自体の上がり点のベース加算
         score += POINTS.get(attack, 0) / 10.0
 
-        # 10. 伏せ札のペナルティと「自爆防止」ロジック
         if action_type in ("attack", "attack_after_block") and block is not None:
-            # 王玉は100に激増させ、絶対に伏せさせない
             penalty_table = {"9": 100, "8": 100, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
             base_penalty = float(penalty_table.get(block, 0))
             context_penalty = 0.0
             
-            # 「し(1)」は自爆防止の対象外とする
             if tr is not None and block != "1":
-                # 今回のアクションで「block」の駒を何枚消費するか計算
                 consumed = 1
                 if action_type == "attack_after_block" and attack == block:
                     consumed += 1
                 
-                # アクション実行後の手札の残り枚数
                 remaining_blocks = state.hands[player].count(block) - consumed
 
-                # アクション後に手札から「0枚」になってしまう場合のみ、自爆防止ペナルティを与える
                 if remaining_blocks <= 0:
                     if block in tr.get("my_past_attacks", set()):
                         context_penalty += 5.0
@@ -540,9 +523,7 @@ class RuleBasedAgent:
 
             score -= (base_penalty + context_penalty)
 
-        # 11. 即上がり（目の前の勝利）ボーナスの加算
         score += self._win_now_bonus(state, player, (action_type, block, attack))
-        
         return score
 
     def _score_receive_phase(self, state, player: str, action_type: str, block: Optional[str]) -> float:
@@ -589,7 +570,6 @@ class RuleBasedAgent:
         )
 
         if enemy_attack_turn:
-            # ★ 修正：個人のフラグではなく、敵の総攻撃回数で「初手」かどうかを判定する
             if tr.get("enemy_total_attack_count", 1) == 1:
                 if action_type == "pass":
                     base += 10000.0
