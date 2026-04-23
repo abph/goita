@@ -92,7 +92,7 @@ class RuleBasedAgent:
             my_past_attacks=set(),
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
-            enemy_total_attack_count=0,
+            enemy_attack_counts={},
             
             ally_responded_to_my_attacks=set(),
             ally_ignored_my_attacks=set(),
@@ -378,7 +378,9 @@ class RuleBasedAgent:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
                 tr["enemy_past_attacks"].add(attack)
-                tr["enemy_total_attack_count"] = tr.get("enemy_total_attack_count", 0) + 1
+                if "enemy_attack_counts" not in tr:
+                    tr["enemy_attack_counts"] = {}
+                tr["enemy_attack_counts"][player] = tr["enemy_attack_counts"].get(player, 0) + 1
 
     def _occupancy_priority_bonus(self, state, attack: str) -> float:
         tr = self._track.get(id(state))
@@ -570,7 +572,10 @@ class RuleBasedAgent:
         )
 
         if enemy_attack_turn:
-            if tr.get("enemy_total_attack_count", 1) == 1:
+            attacker = state.attacker
+            attacker_count = tr.get("enemy_attack_counts", {}).get(attacker, 1)
+
+            if attacker_count == 1:
                 if action_type == "pass":
                     base += 10000.0
                 else:
