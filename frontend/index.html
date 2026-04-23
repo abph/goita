@@ -56,7 +56,7 @@
 
     /* ===== 駒（将棋の駒の形・五角形に変更） ===== */
     .slot, .hand { 
-      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹・木目風のグラデーション */
+      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 基本：竹・木目風 */
       clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
       font-weight: 600; 
       width: 80%;
@@ -68,20 +68,21 @@
       filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
     
-    /* 駒の文字位置の微調整 */
+    /* 駒の文字位置の微調整（テキスト誤爆防止） */
     .slot .val, .hand .val { 
       font-size: 20px; 
       font-weight: 900; 
       color: #1a1a1a; 
       transform: translateY(4px); 
+      pointer-events: none; /* テキスト部分のタップ判定を無視させ、確実に駒本体をクリックさせる [cite: 204] */
     }
 
-    /* 敵（AI）の攻め駒は背景色を少し朱色に */
-    .slot.attack.ai, .hand.ai { 
-      background: linear-gradient(135deg, #fcd0b5, #e69d75);
+    /* ★修正：CPU（AI）の駒は、攻め・受け・伏せに関わらず赤っぽく統一 */
+    .slot.ai, .hand.ai { 
+      background: linear-gradient(135deg, #fcd0b5, #e69d75); /* 赤みのあるグラデーション [cite: 177, 189] */
     }
-    .slot.attack.ai .val, .hand.ai .val { 
-      color: #b00000; 
+    .slot.ai .val, .hand.ai .val { 
+      color: #b00000; /* 文字色も朱色に [cite: 177, 189] */
     }
 
     /* 現在の攻めの強調表示 */
@@ -102,14 +103,19 @@
     .phys-C { transform: rotate(180deg); }
     .phys-D { transform: rotate(90deg); }
 
-    /* クリック可能な手札のホバー演出 */
+    /* クリック可能な手札のホバー演出（スマホ対応） */
     .hand.clickable { 
       cursor: pointer; 
       transition: all 0.2s ease; 
+      touch-action: manipulation; /* スマホでのタップ遅延を無効化 [cite: 202] */
     }
-    .hand.clickable:hover { 
-      transform: translateY(-4px) scale(1.05); 
-      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
+    
+    /* ホバーで浮き上がるアニメーションは、マウス操作ができるPC環境のみに限定 [cite: 202] */
+    @media (hover: hover) {
+      .hand.clickable:hover { 
+        transform: translateY(-4px) scale(1.05); 
+        filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
+      }
     }
 
     /* 出せない駒（グレーアウト） */
@@ -130,6 +136,7 @@
       font-weight: 900;
       letter-spacing: 0.5px;
       cursor: pointer;
+      touch-action: manipulation;
     }
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
@@ -332,45 +339,48 @@
           <div class="preset-grid" id="presetGrid">
             <div></div>
             <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
-            <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"A\" data-piece=\"5\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"A\" data-piece=\"6\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"A\" data-piece=\"7\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"A\" data-piece=\"8\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"A\" data-piece=\"9\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" />
+            <div class=\"seat\">B</div><input class=\"ph\" data-seat=\"B\" data-piece=\"1\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"2\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"3\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"4\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"5\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"6\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"7\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"8\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"B\" data-piece=\"9\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" />
+            <div class=\"seat\">C</div><input class=\"ph\" data-seat=\"C\" data-piece=\"1\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"2\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"3\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"4\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"5\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"6\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"7\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"8\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"C\" data-piece=\"9\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" />
+            <div class=\"seat\">D</div><input class=\"ph\" data-seat=\"D\" data-piece=\"1\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"2\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"3\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"4\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"5\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"6\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"7\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"8\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" /><input class=\"ph\" data-seat=\"D\" data-piece=\"9\" maxlength=\"1\" inputmode=\"numeric\" autocomplete=\"off\" />
           </div>
-          <div class="preset-err" id="presetErr" style="display:none;"></div>
+          <div class=\"preset-err\" id=\"presetErr\" style=\"display:none;\"></div>
         </details>
 
-        <details style="margin-top:10px;">
+        <details style=\"margin-top:10px;\">
           <summary><b>（デバッグ用）合法手</b></summary>
-          <div class="small">観戦中は空になります。</div>
-          <div id="actions" style="margin-top:8px;"></div>
+          <div class=\"small\">観戦中は空になります。</div>
+          <div id=\"actions\" style=\"margin-top:8px;\"></div>
         </details>
       </div>
 
-      <div class="card">
+      <div class=\"card\">
         <div><b>ログ</b></div>
-        <pre id="log" style="margin-top:8px;"></pre>
+        <pre id=\"log\" style=\"margin-top:8px;\"></pre>
       </div>
     </div>
   </div>
 
 <script>
-const API = "";
-const MAIN_GID = "main";
+const API = \"\";
+const MAIN_GID = \"main\";
 let gid = MAIN_GID;
 
-const WATCH = "W";
+const WATCH = \"W\";
 let mySeat = WATCH;
-let lastSeat = "A";
+let lastSeat = \"A\";
 
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
 
-const SEAT_ORDER = ["A","B","C","D"];
+// ★盤面が不必要に再描画されてタップ判定が消えるのを防ぐためのハッシュ
+let lastRenderHash = \"\";
+
+const SEAT_ORDER = [\"A\",\"B\",\"C\",\"D\"];
 
 function getPhysToSeat(){
-  const base = (!mySeat || isSpectator()) ? "A" : mySeat;
+  const base = (!mySeat || isSpectator()) ? \"A\" : mySeat;
   const s = SEAT_ORDER.indexOf(base);
   return {
     A: SEAT_ORDER[s],
@@ -382,7 +392,7 @@ function getPhysToSeat(){
 function getSeatToPhys(){
   const p2s = getPhysToSeat();
   const out = {};
-  for(const p of ["A","B","C","D"]) out[p2s[p]] = p;
+  for(const p of [\"A\",\"B\",\"C\",\"D\"]) out[p2s[p]] = p;
   return out;
 }
 
@@ -391,11 +401,11 @@ let latestState = null;
 let latestLegal = [];
 let pending = null;
 
-const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
-const PRESET_TOTALS = {"1":10,"2":4,"3":4,"4":4,"5":4,"6":2,"7":2,"8":1,"9":1};
-const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
+const PIECE_LABEL = {\"9\":\"王\",\"8\":\"玉\",\"7\":\"飛\",\"6\":\"角\",\"5\":\"金\",\"4\":\"銀\",\"3\":\"馬\",\"2\":\"香\",\"1\":\"し\"};
+const PRESET_TOTALS = {\"1\":10,\"2\":4,\"3\":4,\"4\":4,\"5\":4,\"6\":2,\"7\":2,\"8\":1,\"9\":1};
+const PRESET_PIECES = [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"];
 
-function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
+function pieceToLabel(v){ if(!v) return \"\"; if(v===\"■\"||v===\"□\") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
 function getWinnerPoints(state){
@@ -403,44 +413,44 @@ function getWinnerPoints(state){
   if(!w) return 0;
   if(state?.scores && state.scores[w] != null){
     const v = state.scores[w];
-    if(typeof v === "number" && isFinite(v)) return v;
-    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+    if(typeof v === \"number\" && isFinite(v)) return v;
+    if(typeof v === \"string\" && v.trim() !== \"\" && !isNaN(Number(v))) return Number(v);
   }
-  if(state?.team_score && typeof state.team_score === "object"){
-    const team = (w === "A" || w === "C") ? "AC" : "BD";
+  if(state?.team_score && typeof state.team_score === \"object\"){
+    const team = (w === \"A\" || w === \"C\") ? \"AC\" : \"BD\";
     const v = state.team_score[team];
-    if(typeof v === "number" && isFinite(v)) return v;
-    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+    if(typeof v === \"number\" && isFinite(v)) return v;
+    if(typeof v === \"string\" && v.trim() !== \"\" && !isNaN(Number(v))) return Number(v);
   }
   const cand = [ state?.winner_score, state?.score, state?.points, state?.team_points ];
   for(const v of cand){
-    if(typeof v === "number" && isFinite(v)) return v;
-    if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+    if(typeof v === \"number\" && isFinite(v)) return v;
+    if(typeof v === \"string\" && v.trim() !== \"\" && !isNaN(Number(v))) return Number(v);
   }
   return 0;
 }
 
 function presetIsEnabled(){
   try{
-    const v = localStorage.getItem("goita_preset_enabled");
+    const v = localStorage.getItem(\"goita_preset_enabled\");
     if(v === null) return false;
-    return v === "1";
+    return v === \"1\";
   }catch(e){ return false; }
 }
 
 function presetSetEnabled(on){
-  try{ localStorage.setItem("goita_preset_enabled", on ? "1" : "0"); }catch(e){}
-  const box = document.getElementById("presetEnabled");
+  try{ localStorage.setItem(\"goita_preset_enabled\", on ? \"1\" : \"0\"); }catch(e){}
+  const box = document.getElementById(\"presetEnabled\");
   if(box) box.checked = !!on;
-  const details = document.getElementById("presetHandsDetails");
+  const details = document.getElementById(\"presetHandsDetails\");
   if(details){
-    if(on) details.classList.remove("preset-disabled");
-    else details.classList.add("preset-disabled");
+    if(on) details.classList.remove(\"preset-disabled\");
+    else details.classList.add(\"preset-disabled\");
   }
 }
 
 function presetHasAny(){
-  const inputs = document.querySelectorAll("#presetGrid input.ph");
+  const inputs = document.querySelectorAll(\"#presetGrid input.ph\");
   for(const inp of inputs){
     const n = parseInt(inp.value, 10);
     if(!isNaN(n) && n > 0) return true;
@@ -450,60 +460,60 @@ function presetHasAny(){
 
 function presetLoad(){
   try{
-    const raw = localStorage.getItem("goita_preset_counts");
+    const raw = localStorage.getItem(\"goita_preset_counts\");
     if(!raw) return;
     const obj = JSON.parse(raw);
-    document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+    document.querySelectorAll(\"#presetGrid input.ph\").forEach(inp=>{
       const s = inp.dataset.seat;
       const p = inp.dataset.piece;
       const v = obj?.[s]?.[p];
-      inp.value = (v===0 || v) ? String(v).slice(0,1) : "";
+      inp.value = (v===0 || v) ? String(v).slice(0,1) : \"\";
     });
   }catch(e){}
 }
 
 function presetSave(){
-  try{ localStorage.setItem("goita_preset_counts", JSON.stringify(presetGet())); }catch(e){}
+  try{ localStorage.setItem(\"goita_preset_counts\", JSON.stringify(presetGet())); }catch(e){}
 }
 
 function presetClear(){
-  document.querySelectorAll("#presetGrid input.ph").forEach(inp=> inp.value="");
-  const err = document.getElementById("presetErr");
-  if(err){ err.style.display="none"; err.textContent=""; }
-  try{ localStorage.removeItem("goita_preset_counts"); }catch(e){}
+  document.querySelectorAll(\"#presetGrid input.ph\").forEach(inp=> inp.value=\"\");
+  const err = document.getElementById(\"presetErr\");
+  if(err){ err.style.display=\"none\"; err.textContent=\"\"; }
+  try{ localStorage.removeItem(\"goita_preset_counts\"); }catch(e){}
 }
 
 function presetGet(){
   const out = {A:{},B:{},C:{},D:{}};
-  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+  document.querySelectorAll(\"#presetGrid input.ph\").forEach(inp=>{
     const n = parseInt(inp.value,10);
     if(!isNaN(n) && n>0){
       out[inp.dataset.seat][inp.dataset.piece] = n;
     }
   });
-  for(const s of ["A","B","C","D"]){
+  for(const s of [\"A\",\"B\",\"C\",\"D\"]){
     if(Object.keys(out[s]).length===0) delete out[s];
   }
   return out;
 }
 
 function presetValidateAndClamp(changed){
-  const errEl = document.getElementById("presetErr");
+  const errEl = document.getElementById(\"presetErr\");
   const all = {A:{},B:{},C:{},D:{}};
 
-  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
-    let v = (inp.value ?? "").toString().replace(/\D/g,"");
+  document.querySelectorAll(\"#presetGrid input.ph\").forEach(inp=>{
+    let v = (inp.value ?? \"\").toString().replace(/\\D/g,\"\");
     if(v.length>1) v = v.slice(-1);
     inp.value = v;
-    const n = v==="" ? 0 : parseInt(v,10);
+    const n = v===\"\" ? 0 : parseInt(v,10);
     all[inp.dataset.seat][inp.dataset.piece] = isNaN(n)?0:n;
   });
 
-  for(const s of ["A","B","C","D"]){
-    if((all[s]["1"]||0) > 4){
-      all[s]["1"]=4;
-      const inp = document.querySelector(`#presetGrid input.ph[data-seat="${s}"][data-piece="1"]`);
-      if(inp) inp.value="4";
+  for(const s of [\"A\",\"B\",\"C\",\"D\"]){
+    if((all[s][\"1\"]||0) > 4){
+      all[s][\"1\"]=4;
+      const inp = document.querySelector(`#presetGrid input.ph[data-seat=\"${s}\"][data-piece=\"1\"]`);
+      if(inp) inp.value=\"4\";
     }
   }
 
@@ -511,21 +521,21 @@ function presetValidateAndClamp(changed){
   for(const p of PRESET_PIECES){
     const maxn = PRESET_TOTALS[p];
     let tot = 0;
-    for(const s of ["A","B","C","D"]) tot += (all[s][p]||0);
+    for(const s of [\"A\",\"B\",\"C\",\"D\"]) tot += (all[s][p]||0);
     if(tot>maxn){
       if(changed && changed.dataset.piece===p){
         const s = changed.dataset.seat;
         const other = tot - (all[s][p]||0);
         const allow = Math.max(0, maxn - other);
         all[s][p] = allow;
-        changed.value = allow===0 ? "" : String(allow);
+        changed.value = allow===0 ? \"\" : String(allow);
       }else{
         errors.push(`${PIECE_LABEL[p] ?? p} の合計が上限を超えています（${tot}/${maxn}）`);
       }
     }
   }
 
-  for(const s of ["A","B","C","D"]){
+  for(const s of [\"A\",\"B\",\"C\",\"D\"]){
     let sum = 0;
     for(const p of PRESET_PIECES) sum += (all[s][p]||0);
     if(sum>8) errors.push(`${s} の合計が8を超えています（${sum}）`);
@@ -533,11 +543,11 @@ function presetValidateAndClamp(changed){
 
   if(errEl){
     if(errors.length){
-      errEl.style.display="";
-      errEl.textContent = errors.join("\n");
+      errEl.style.display=\"\";
+      errEl.textContent = errors.join(\"\\n\");
     }else{
-      errEl.style.display="none";
-      errEl.textContent="";
+      errEl.style.display=\"none\";
+      errEl.textContent=\"\";
     }
   }
   presetSave();
@@ -548,53 +558,53 @@ async function resetWithPreset(dealer){
   if(usePreset){
     const preset = presetGet();
     await fetch(`${API}/games/main/reset_config`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
+      method:\"POST\",
+      headers: {\"Content-Type\":\"application/json\"},
       body: JSON.stringify({ dealer, preset_counts: preset })
     });
   }else{
     await fetch(`${API}/games/main/reset?dealer=${encodeURIComponent(dealer)}`, {
-      method:"POST",
+      method:\"POST\",
     });
   }
 }
 
-function setHint(msg){ document.getElementById("handHint").textContent = msg; }
+function setHint(msg){ document.getElementById(\"handHint\").textContent = msg; }
 
 function _extractDealerFromLog(logArr){
-  if(!Array.isArray(logArr) || logArr.length===0) return "";
-  const s = String(logArr[0] ?? "");
+  if(!Array.isArray(logArr) || logArr.length===0) return \"\";
+  const s = String(logArr[0] ?? \"\");
   const m = s.match(/dealer=([ABCD])/);
-  return m ? m[1] : "";
+  return m ? m[1] : \"\";
 }
 
 function _chooseRandomDealer(){
-  const seats = ["A","B","C","D"];
+  const seats = [\"A\",\"B\",\"C\",\"D\"];
   return seats[Math.floor(Math.random()*seats.length)];
 }
 function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
-function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
+function viewerSeat(){ return isSpectator() ? \"A\" : mySeat; }
 
 function sanitizeName(s){
-  s = (s ?? "").toString().replace(/\r?\n/g, "");
+  s = (s ?? \"\").toString().replace(/\\r?\\n/g, \"\");
   if(s.length > 9) s = s.slice(0,9);
   return s;
 }
 
 function phaseToJa(p){
-  const m = { "attack":"攻め", "receive":"受け", "defense":"受け", "block":"受け", "end":"終了", "finished":"終了" };
+  const m = { \"attack\":\"攻め\", \"receive\":\"受け\", \"defense\":\"受け\", \"block\":\"受け\", \"end\":\"終了\", \"finished\":\"終了\" };
   return m[p] || p;
 }
 
 function formatNameForBoard(s){
   s = sanitizeName(s);
-  if(!s) return "";
+  if(!s) return \"\";
   const lines = [];
   for(let i=0;i<s.length && lines.length<3;i+=3){
     lines.push(s.slice(i, i+3));
   }
-  return lines.join("\n");
+  return lines.join(\"\\n\");
 }
 
 const SLOTS = {
@@ -623,43 +633,44 @@ const NAME_POS = {
 
 function buildSlotMap(physToSeat){
   const m=new Map();
-  for(const phys of ["A","B","C","D"]){
+  for(const phys of [\"A\",\"B\",\"C\",\"D\"]){
     const seat = physToSeat[phys];
-    SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"R",idx:i, phys:phys}));
-    SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i, phys:phys}));
+    SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:\"R\",idx:i, phys:phys}));
+    SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:\"A\",idx:i, phys:phys}));
   }
   return m;
 }
 
 function buildHandMap(physToSeat){
   const m=new Map();
-  for(const phys of ["A","B","C","D"]){
+  for(const phys of [\"A\",\"B\",\"C\",\"D\"]){
     const seat = physToSeat[phys];
     HAND_POS[phys].forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,idx:i, phys:phys}));
   }
   return m;
 }
 
-async function claimSeat(seat){ try{ await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
-async function releaseSeat(seat){ try{ await fetch(`${API}/games/main/release?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
+async function claimSeat(seat){ try{ await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:\"POST\"}); }catch(e){} }
+async function releaseSeat(seat){ try{ await fetch(`${API}/games/main/release?seat=${encodeURIComponent(seat)}`, {method:\"POST\"}); }catch(e){} }
 
 async function setName(seat, name){
   name = sanitizeName(name);
   try{
     await fetch(`${API}/games/${gid}/set_name`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
+      method:\"POST\",
+      headers: {\"Content-Type\":\"application/json\"},
       body: JSON.stringify({ seat, name })
     });
   }catch(e){}
 }
 
 async function applyName(seat){
-  const el = document.getElementById("name" + seat);
+  const el = document.getElementById(\"name\" + seat);
   if(!el) return;
   const v = sanitizeName(el.value);
   el.value = v;
   await setName(seat, v);
+  lastRenderHash = \"\"; // 強制再描画
   await refresh();
   updateNameInputVisibility();
 }
@@ -667,9 +678,9 @@ async function applyName(seat){
 async function downloadKifu(){
   const res = await fetch(`${API}/games/${gid}/kifu`);
   const text = await res.text();
-  const blob = new Blob([text], {type:"text/yaml;charset=utf-8"});
+  const blob = new Blob([text], {type:\"text/yaml;charset=utf-8\"});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement(\"a\");
   a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}.yaml`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
@@ -677,75 +688,85 @@ async function downloadKifu(){
 
 function toggleAllHands(){
   showAllHands = !showAllHands;
-  document.getElementById("toggleHandsBtn").textContent = showAllHands ? "手札表示を戻す" : "みんな手札公開";
+  document.getElementById(\"toggleHandsBtn\").textContent = showAllHands ? \"手札表示を戻す\" : \"みんな手札公開\";
+  lastRenderHash = \"\"; // 強制再描画
   refresh();
 }
 
 async function submitAction(actionObj){
   await fetch(`${API}/games/${gid}/step`, {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
+    method:\"POST\",
+    headers: {\"Content-Type\":\"application/json\"},
     body: JSON.stringify({ player: mySeat, action: actionObj })
   });
 }
 
 async function onHandPieceClick(piece){
-  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
+  if(isSpectator()){ setHint(\"観戦中は操作できません。A/B/C/Dを選んでください。\"); return; }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。"); return; }
+  if(latestState.finished){ setHint(\"この局は終了しています。\"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
   if(pending){
-    const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
+    const matched = pending.candidates.filter(a => pending.need===\"attack\" ? a.attack===piece : a.block===piece);
     if(matched.length === 1){
       await submitAction(matched[0]);
       pending = null;
+      lastRenderHash = \"\"; // ★送信完了時は盤面を強制リセット
       await refresh();
       updateNameInputVisibility();
       return;
     }
-    if(matched.length > 1){ setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。"); return; }
-    setHint("その駒は選べません。");
+    if(matched.length > 1){ setHint(\"同じ駒で複数候補があります。デバッグ用ボタンから選んでください。\"); return; }
+    setHint(\"その駒は選べません。\");
     return;
   }
 
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-  if(candidates.length === 0){ setHint("その駒は今は出せません。（パス：6列目6行目）"); return; }
+  if(candidates.length === 0){ setHint(\"その駒は今は出せません。（パス：6列目6行目）\"); return; }
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
+    lastRenderHash = \"\"; // ★送信完了時は盤面を強制リセット
     await refresh();
     updateNameInputVisibility();
     return;
   }
 
-  const aab = candidates.filter(a => a.action_type === "attack_after_block");
+  const aab = candidates.filter(a => a.action_type === \"attack_after_block\");
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
-    pending = { need: "attack", candidates: asBlock };
+    pending = { need: \"attack\", candidates: asBlock };
     setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
+    // ★伏せ札を選んだ直後に、待たずに即座に画面を再描画して「選べる攻め札」をハイライトさせる
+    lastRenderHash = \"\"; 
+    renderBoard(latestState);
     return;
   }
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
-    pending = { need: "block", candidates: asAttack };
+    pending = { need: \"block\", candidates: asAttack };
     setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
+    // ★同様に即座に再描画
+    lastRenderHash = \"\";
+    renderBoard(latestState);
     return;
   }
-  setHint("複数候補があり確定できません。デバッグ用ボタンから選んでください。");
+  setHint(\"複数候補があり確定できません。デバッグ用ボタンから選んでください。\");
 }
 
 async function onPassClick(){
-  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
+  if(isSpectator()){ setHint(\"観戦中は操作できません。A/B/C/Dを選んでください。\"); return; }
   if(!latestState) return;
-  if(latestState.finished){ setHint("この局は終了しています。"); return; }
+  if(latestState.finished){ setHint(\"この局は終了しています。\"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
-  const pass = latestLegal.find(a => a.action_type === "pass");
-  if(!pass){ setHint("今はパスできません。"); return; }
+  const pass = latestLegal.find(a => a.action_type === \"pass\");
+  if(!pass){ setHint(\"今はパスできません。\"); return; }
 
   pending = null;
   await submitAction(pass);
+  lastRenderHash = \"\"; // ★送信完了時は強制リセット
   await refresh();
   updateNameInputVisibility();
 }
@@ -757,8 +778,8 @@ function seatIsHuman(state, seat){
 }
 
 function renderBoard(state){
-  const board=document.getElementById("board");
-  board.innerHTML="";
+  const board=document.getElementById(\"board\");
+  board.innerHTML=\"\";
 
   const physToSeat = getPhysToSeat();
   const seatToPhys = getSeatToPhys();
@@ -769,66 +790,66 @@ function renderBoard(state){
   if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
       pending.candidates.forEach(a => {
-        if(pending.need==="attack" && a.attack) usable.add(a.attack);
-        if(pending.need==="block" && a.block) usable.add(a.block);
+        if(pending.need===\"attack\" && a.attack) usable.add(a.attack);
+        if(pending.need===\"block\" && a.block) usable.add(a.block);
       });
     }else{
       latestLegal.forEach(a => { if(a.block) usable.add(a.block); if(a.attack) usable.add(a.attack); });
     }
   }
 
-  const names = state.player_names || {A:"",B:"",C:"",D:""};
+  const names = state.player_names || {A:\"\",B:\"\",C:\"\",D:\"\"};
 
   for(let row=1;row<=10;row++){
     for(let col=1;col<=10;col++){
-      const div=document.createElement("div");
-      div.className="cell";
+      const div=document.createElement(\"div\");
+      div.className=\"cell\";
       div.style.gridColumn=col; div.style.gridRow=row;
 
       const k = key(col,row);
 
       if(col===PASS_POS.col && row===PASS_POS.row){
-        div.classList.add("pass");
-        div.textContent="パス";
-        if(!isSpectator() && state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
+        div.classList.add(\"pass\");
+        div.textContent=\"パス\";
+        if(!isSpectator() && state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type===\"pass\")){
           div.onclick=onPassClick;
         }else{
-          div.classList.add("disabled");
+          div.classList.add(\"disabled\");
         }
         board.appendChild(div);
         continue;
       }
 
       if(col===TURN_LABEL_POS.col && row===TURN_LABEL_POS.row){
-        div.classList.add("turn-label");
-        div.textContent = `手番${state.turn || ""}`;
+        div.classList.add(\"turn-label\");
+        div.textContent = `手番${state.turn || \"\"}`;
         board.appendChild(div);
         continue;
       }
 
       if(col===PHASE_LABEL_POS.col && row===PHASE_LABEL_POS.row){
-        div.classList.add("phase-label");
+        div.classList.add(\"phase-label\");
         div.textContent = phaseToJa(state.phase);
         board.appendChild(div);
         continue;
       }
 
       if(col===ATK_LABEL_POS.col && row===ATK_LABEL_POS.row){
-        div.classList.add("atk-label");
-        const atk = state.attacker || "";
-        const ca = state.current_attack ? pieceToLabel(state.current_attack) : "";
-        div.textContent = (atk && ca) ? `${atk}${ca}` : "";
+        div.classList.add(\"atk-label\");
+        const atk = state.attacker || \"\";
+        const ca = state.current_attack ? pieceToLabel(state.current_attack) : \"\";
+        div.textContent = (atk && ca) ? `${atk}${ca}` : \"\";
         board.appendChild(div);
         continue;
       }
 
       let placedName = false;
-      for(const phys of ["A","B","C","D"]){
+      for(const phys of [\"A\",\"B\",\"C\",\"D\"]){
         const pos = NAME_POS[phys];
         if(pos.col === col && pos.row === row){
           const seat = physToSeat[phys];
-          div.classList.add("name-label");
-          div.textContent = formatNameForBoard(names[seat] || "");
+          div.classList.add(\"name-label\");
+          div.textContent = formatNameForBoard(names[seat] || \"\");
           board.appendChild(div);
           placedName = true;
           break;
@@ -837,7 +858,7 @@ function renderBoard(state){
       if(placedName) continue;
 
       let label = null;
-      for(const phys of ["A","B","C","D"]){
+      for(const phys of [\"A\",\"B\",\"C\",\"D\"]){
         const pos = SEAT_LABEL_POS[phys];
         if(pos && pos.col===col && pos.row===row){
           label = physToSeat[phys];
@@ -845,7 +866,7 @@ function renderBoard(state){
         }
       }
       if(label){
-        div.classList.add("seat-label");
+        div.classList.add(\"seat-label\");
         div.textContent = label;
         board.appendChild(div);
         continue;
@@ -861,20 +882,20 @@ function renderBoard(state){
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
 
           if (card) {
-            div.classList.add("hand");
-            div.classList.add("phys-" + hand.phys);
-            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
+            div.classList.add(\"hand\");
+            div.classList.add(\"phys-\" + hand.phys);
+            div.classList.add(seatIsHuman(state, hand.p) ? \"human\" : \"ai\");
 
-            const val=document.createElement("div");
-            val.className="val";
+            const val=document.createElement(\"div\");
+            val.className=\"val\";
             val.textContent = pieceToLabel(card);
 
             if(!isSpectator() && hand.p===mySeat && state.turn===mySeat && !state.finished){
               if(usable.has(card)){
-                div.classList.add("clickable");
+                div.classList.add(\"clickable\");
                 div.onclick = () => onHandPieceClick(card);
               }else{
-                div.classList.add("disabled");
+                div.classList.add(\"disabled\");
               }
             }
             div.appendChild(val);
@@ -887,13 +908,13 @@ function renderBoard(state){
           const remainingCount = 8 - playedCount;
 
           if (hand.idx < remainingCount) {
-            div.classList.add("hand");
-            div.classList.add("phys-" + hand.phys);
-            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
+            div.classList.add(\"hand\");
+            div.classList.add(\"phys-\" + hand.phys);
+            div.classList.add(seatIsHuman(state, hand.p) ? \"human\" : \"ai\");
 
-            const val=document.createElement("div");
-            val.className="val";
-            val.textContent="□";
+            const val=document.createElement(\"div\");
+            val.className=\"val\";
+            val.textContent=\"□\";
             div.appendChild(val);
           }
         }
@@ -903,22 +924,25 @@ function renderBoard(state){
 
       const slot=SLOT_MAP.get(k);
       if(slot){
-        const kindKey = slot.kind==="R" ? "receive" : "attack";
+        const kindKey = slot.kind===\"R\" ? \"receive\" : \"attack\";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
 
         if (piece) {
-          div.classList.add("slot");
-          div.classList.add("phys-" + slot.phys);
-          if(slot.kind==="A"){
-            div.classList.add("attack");
-            div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
+          div.classList.add(\"slot\");
+          div.classList.add(\"phys-\" + slot.phys);
+          
+          // ★修正：攻めに関わらず、CPUの駒なら一律で .ai クラスを付与 [cite: 216]
+          div.classList.add(seatIsHuman(state, slot.p) ? \"human\" : \"ai\");
+          
+          if(slot.kind===\"A\"){
+            div.classList.add(\"attack\");
           }
-          const val=document.createElement("div");
-          val.className="val";
+          const val=document.createElement(\"div\");
+          val.className=\"val\";
 
-          if(kindKey==="receive"){
+          if(kindKey===\"receive\"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-            val.textContent = hidden ? "■" : pieceToLabel(piece);
+            val.textContent = hidden ? \"■\" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
           }
@@ -931,15 +955,15 @@ function renderBoard(state){
 }
 
 async function renderActions(){
-  const actionsDiv = document.getElementById("actions");
-  actionsDiv.innerHTML="";
+  const actionsDiv = document.getElementById(\"actions\");
+  actionsDiv.innerHTML=\"\";
   if(isSpectator()) return;
 
   latestLegal.forEach(a=>{
-    const btn=document.createElement("button");
+    const btn=document.createElement(\"button\");
     const t=a.action_type;
-    const b=a.block ? pieceToLabel(a.block) : "";
-    const at=a.attack ? pieceToLabel(a.attack) : "";
+    const b=a.block ? pieceToLabel(a.block) : \"\";
+    const at=a.attack ? pieceToLabel(a.attack) : \"\";
     btn.textContent = `${t} ${b} ${at}`.trim();
     btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); updateNameInputVisibility(); };
     actionsDiv.appendChild(btn);
@@ -947,23 +971,23 @@ async function renderActions(){
 }
 
 function showPassAnimation(phys) {
-  const board = document.getElementById("board");
+  const board = document.getElementById(\"board\");
   if (!board) return;
   
-  const wrapper = document.createElement("div");
-  wrapper.className = "pass-anim-wrapper";
+  const wrapper = document.createElement(\"div\");
+  wrapper.className = \"pass-anim-wrapper\";
   
-  if (phys === "A") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "8 / 10"; }
-  else if (phys === "B") { wrapper.style.gridColumn = "8 / 10"; wrapper.style.gridRow = "5 / 7"; }
-  else if (phys === "C") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "2 / 4"; }
-  else if (phys === "D") { wrapper.style.gridColumn = "2 / 4"; wrapper.style.gridRow = "5 / 7"; }
+  if (phys === \"A\") { wrapper.style.gridColumn = \"5 / 7\"; wrapper.style.gridRow = \"8 / 10\"; }
+  else if (phys === \"B\") { wrapper.style.gridColumn = \"8 / 10\"; wrapper.style.gridRow = \"5 / 7\"; }
+  else if (phys === \"C\") { wrapper.style.gridColumn = \"5 / 7\"; wrapper.style.gridRow = \"2 / 4\"; }
+  else if (phys === \"D\") { wrapper.style.gridColumn = \"2 / 4\"; wrapper.style.gridRow = \"5 / 7\"; }
   
-  const inner = document.createElement("div");
-  inner.className = "phys-" + phys;
+  const inner = document.createElement(\"div\");
+  inner.className = \"phys-\" + phys;
   
-  const textDiv = document.createElement("div");
-  textDiv.className = "pass-anim-text";
-  textDiv.textContent = "パス";
+  const textDiv = document.createElement(\"div\");
+  textDiv.className = \"pass-anim-text\";
+  textDiv.textContent = \"パス\";
   
   inner.appendChild(textDiv);
   wrapper.appendChild(inner);
@@ -975,15 +999,15 @@ function showPassAnimation(phys) {
 }
 
 async function startNewGame(){
-  const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
+  const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:\"\",B:\"\",C:\"\",D:\"\"};
   const seatToKeep = mySeat; 
-  const sel = document.getElementById("dealerSelect");
-  let dealer = sel ? sel.value : "random";
-  if(dealer === "random") dealer = _chooseRandomDealer();
+  const sel = document.getElementById(\"dealerSelect\");
+  let dealer = sel ? sel.value : \"random\";
+  if(dealer === \"random\") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
-  for(const s of ["A","B","C","D"]){
-    const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
+  for(const s of [\"A\",\"B\",\"C\",\"D\"]){
+    const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : \"\";
     if(nm){ await setName(s, nm); }
   }
 
@@ -992,7 +1016,7 @@ async function startNewGame(){
   }
 
   pending=null; showAllHands=false; lastLogCount = 0;
-  document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
+  document.getElementById(\"toggleHandsBtn\").textContent=\"みんな手札公開\";
   await refresh();
   updateNameInputVisibility();
 }
@@ -1000,23 +1024,23 @@ async function startNewGame(){
 async function resetAll(){
   presetClear();
   presetSetEnabled(false);
-  const sel = document.getElementById("dealerSelect");
-  let dealer = sel ? sel.value : "random";
-  if(dealer === "random") dealer = _chooseRandomDealer();
+  const sel = document.getElementById(\"dealerSelect\");
+  let dealer = sel ? sel.value : \"random\";
+  if(dealer === \"random\") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
   pending = null; showAllHands = false; lastLogCount = 0;
-  document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
+  document.getElementById(\"toggleHandsBtn\").textContent = \"みんな手札公開\";
 
   mySeat = WATCH;
-  lastSeat = "A";
-  const seatSel = document.getElementById("seatSelect");
+  lastSeat = \"A\";
+  const seatSel = document.getElementById(\"seatSelect\");
   if(seatSel) seatSel.value = WATCH;
 
-  const ids = ["nameA","nameB","nameC","nameD"];
+  const ids = [\"nameA\",\"nameB\",\"nameC\",\"nameD\"];
   for(const id of ids){
     const el = document.getElementById(id);
-    if(el) el.value = "";
+    if(el) el.value = \"\";
   }
   await refresh();
   updateNameInputVisibility();
@@ -1029,18 +1053,31 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
+function getRenderHash(state) {
+  if(!state) return \"\";
+  return JSON.stringify({
+    turn: state.turn,
+    phase: state.phase,
+    bp: state.board_public,
+    h: state.hands,
+    f: state.finished,
+    p: pending ? pending.need : null,
+    names: state.player_names
+  });
+}
+
 async function refresh(){
   if(isProcessingCpu) return;
 
   const qs = new URLSearchParams();
-  qs.set("viewer", viewerSeat());
-  if(showAllHands) qs.set("reveal_hands","1");
+  qs.set(\"viewer\", viewerSeat());
+  if(showAllHands) qs.set(\"reveal_hands\",\"1\");
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
-  document.getElementById("log").textContent = (state.log||[]).join("\n");
-  const dn = document.getElementById("dealerNow");
-  if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || "-"; }
+  document.getElementById(\"log\").textContent = (state.log||[]).join(\"\\n\");
+  const dn = document.getElementById(\"dealerNow\");
+  if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || \"-\"; }
 
   latestLegal = await fetchLegal();
 
@@ -1048,27 +1085,31 @@ async function refresh(){
     setHint(`勝者:${state.winner}、${getWinnerPoints(state)}点。新規ゲームを押してください。`);
     pending = null;
   }else if(isSpectator()){
-    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
+    setHint(\"観戦中です。A/B/C/Dを選ぶと操作できます。\");
     pending = null;
   }else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`);
     pending = null;
   }else if(!pending){
-    setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
+    setHint(\"あなたの手番です。手札をクリックしてください。（パス：6列目6行目）\");
   }
 
-  renderBoard(state);
-  await renderActions();
-  updateNameInputVisibility();
+  // 盤面とボタンの描画
+  const currentHash = getRenderHash(state);
+  if (lastRenderHash !== currentHash) {
+    renderBoard(state);
+    await renderActions();
+    updateNameInputVisibility();
+    lastRenderHash = currentHash;
+  }
 
-  // ===== 新規追加：パスのアニメーション判定（時間差表示） =====
   const currentLogCount = state.log ? state.log.length : 0;
   if (currentLogCount < lastLogCount) {
     lastLogCount = 0; 
   }
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
-    let passDelay = 0; // ★アニメーションをずらすための時間
+    let passDelay = 0; 
     
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
@@ -1077,38 +1118,36 @@ async function refresh(){
         const logicalSeat = match[1];
         const physSeat = seatToPhys[logicalSeat];
         
-        // ★setTimeoutを使ってパスの表示タイミングをずらす
         setTimeout(() => {
           showPassAnimation(physSeat);
         }, passDelay);
         
-        passDelay += 800; // 0.8秒（800ms）ずつ遅らせて順番に表示
+        passDelay += 800; 
       }
     }
   }
   lastLogCount = currentLogCount;
-  // ============================================
 
   if(!state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     setTimeout(async () => {
       try {
-        await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
+        await fetch(`${API}/games/${gid}/cpu_step`, { method: \"POST\" });
       } catch(e) {
-        console.error("CPU step error:", e);
+        console.error(\"CPU step error:\", e);
       }
       isProcessingCpu = false;
       refresh(); 
-    }, 1000); 
+    }, 2000); 
   }
 }
 
 function bindNameInputs(){
-  const ids = ["nameA","nameB","nameC","nameD"];
+  const ids = [\"nameA\",\"nameB\",\"nameC\",\"nameD\"];
   for(const id of ids){
     const el = document.getElementById(id);
     if(!el) continue;
-    el.addEventListener("input", ()=>{
+    el.addEventListener(\"input\", ()=>{
       const v = sanitizeName(el.value);
       if(el.value !== v) el.value = v;
     });
@@ -1116,58 +1155,17 @@ function bindNameInputs(){
 }
 
 function updateNameInputVisibility(){
-  const grid = document.getElementById("nameGrid");
+  const grid = document.getElementById(\"nameGrid\");
   if(!grid) return;
 
-  const items = grid.querySelectorAll("[data-seat]");
+  const items = grid.querySelectorAll(\"[data-seat]\");
   if(mySeat === WATCH){
-    items.forEach(el => el.style.display = "none");
+    items.forEach(el => el.style.display = \"none\");
     return;
   }
   items.forEach(el => {
-    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
+    el.style.display = (el.dataset.seat === mySeat) ? \"\" : \"none\";
   });
 }
 
-window.addEventListener("load", async ()=>{
-  presetLoad();
-  presetSetEnabled(presetIsEnabled());
-  const presetEnabledBox = document.getElementById("presetEnabled");
-  if(presetEnabledBox){
-    presetEnabledBox.addEventListener("change", ()=> presetSetEnabled(presetEnabledBox.checked));
-  }
-  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
-    inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
-  });
-  bindNameInputs();
-
-  const sel = document.getElementById("seatSelect");
-  mySeat = WATCH;
-  sel.value = WATCH;
-
-  await refresh();
-  updateNameInputVisibility();
-  
-  sel.addEventListener("change", async ()=>{
-    const next = sel.value;
-    if(!isSpectator()){ await releaseSeat(lastSeat); }
-    pending = null;
-    if(next === WATCH){
-      mySeat = WATCH;
-      sel.value = WATCH;
-      await refresh();
-      updateNameInputVisibility();
-      return;
-    }
-    mySeat = next;
-    lastSeat = mySeat;
-    await claimSeat(mySeat);
-    await refresh();
-    updateNameInputVisibility();
-  });
-
-  setInterval(refresh, 2000);
-});
-</script>
-</body>
-</html>
+window.addEventListener(\"load\", async ()=>{\r\n  presetLoad();\r\n  presetSetEnabled(presetIsEnabled());\r\n  const presetEnabledBox = document.getElementById(\"presetEnabled\");\r\n  if(presetEnabledBox){\r\n    presetEnabledBox.addEventListener(\"change\", ()=> presetSetEnabled(presetEnabledBox.checked));\r\n  }\r\n  document.querySelectorAll(\"#presetGrid input.ph\").forEach(inp=>{\r\n    inp.addEventListener(\"input\", ()=> presetValidateAndClamp(inp));\r\n  });\r\n  bindNameInputs();\r\n\r\n  const sel = document.getElementById(\"seatSelect\");\r\n  mySeat = WATCH;\r\n  sel.value = WATCH;\r\n\r\n  await refresh();\r\n  updateNameInputVisibility();\r\n  \r\n  sel.addEventListener(\"change\", async ()=>{\r\n    const next = sel.value;\r\n    if(!isSpectator()){ await releaseSeat(lastSeat); }\r\n    pending = null; lastRenderHash = \"\";\r\n    if(next === WATCH){\r\n      mySeat = WATCH;\r\n      sel.value = WATCH;\r\n      await refresh();\r\n      updateNameInputVisibility();\r\n      return;\r\n    }\r\n    mySeat = next;\r\n    lastSeat = mySeat;\r\n    await claimSeat(mySeat);\r\n    await refresh();\r\n    updateNameInputVisibility();\r\n  });\r\n\r\n  setInterval(refresh, 2000);\r\n});\n</script>\n</body>\n</html>
