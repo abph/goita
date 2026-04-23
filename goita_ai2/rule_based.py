@@ -299,6 +299,36 @@ class RuleBasedAgent:
                     return True
         return False
 
+    def _max_tsume_score(self, hand: List[str], state, player: str, tr: dict) -> float:
+        """確定上がりルートを探索し、そのルートでの最大打点を逆算して返す"""
+        if len(hand) <= 2:
+            # 残り2枚（または1枚）なら確実に上がれるので、最大点を計算
+            if len(hand) == 2:
+                p1, p2 = hand[0], hand[1]
+                if p1 == p2:
+                    return float(POINTS.get(p1, 0)) * 2.0
+                if set([p1, p2]) == {"8", "9"}:
+                    return 100.0
+                return max(float(POINTS.get(p1, 0)), float(POINTS.get(p2, 0)))
+            if len(hand) == 1:
+                return float(POINTS.get(hand[0], 0))
+
+        safe_pieces = set(p for p in hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
+        if not safe_pieces:
+            return -1.0  # 確定上がりルートではない
+            
+        best_score = -1.0
+        for atk in safe_pieces:
+            temp1 = list(hand)
+            temp1.remove(atk)
+            for fuse in set(temp1):
+                temp2 = list(temp1)
+                temp2.remove(fuse)
+                score = self._max_tsume_score(temp2, state, player, tr)
+                if score > best_score:
+                    best_score = score
+        return best_score
+
     def _apply_action_on_copy(self, state, player: str, action: Action):
         s = copy.deepcopy(state)
         t, block, attack = action
@@ -429,17 +459,28 @@ class RuleBasedAgent:
 
         if tr is not None and attack is not None:
             is_safe = self._is_absolute_safe_for_tsume(state, player, attack, tr)
-            if is_safe:
+            is_agari = (len(state.hands[player]) <= 2)
+            
+            if is_safe or is_agari:
                 temp_hand = list(state.hands[player])
-                if action_type == "attack_after_block":
-                    temp_hand.remove(attack)
-                else: 
-                    if block is not None:
-                        temp_hand.remove(block)
+                if block is not None and block in temp_hand:
+                    temp_hand.remove(block)
+                if attack in temp_hand:
                     temp_hand.remove(attack)
                 
-                if self._is_tsume_from_even(temp_hand, state, player, tr):
-                    score += 1e8
+                if len(temp_hand) == 0:
+                    agari_pt = 0.0
+                    if block == attack and block is not None:
+                        agari_pt = float(POINTS.get(attack, 0)) * 2.0
+                    elif block is not None and set([block, attack]) == {"8", "9"}:
+                        agari_pt = 100.0
+                    else:
+                        agari_pt = float(POINTS.get(attack, 0))
+                    score += 1e8 + agari_pt
+                else:
+                    max_sc = self._max_tsume_score(temp_hand, state, player, tr)
+                    if max_sc >= 0:
+                        score += 1e8 + max_sc
 
         score += self._last_one_remaining_bonus(state, player, attack)
         score += self._occupancy_priority_bonus(state, attack)
@@ -551,8 +592,9 @@ class RuleBasedAgent:
                         for atk in safe_atks:
                             next_hand = list(temp_hand)
                             next_hand.remove(atk)
-                            if self._is_tsume_from_even(next_hand, state, player, tr):
-                                return 1e8
+                            max_sc = self._max_tsume_score(next_hand, state, player, tr)
+                            if max_sc >= 0:
+                                return 1e8 + max_sc
                 except Exception:
                     pass
 
@@ -720,17 +762,26 @@ class RuleBasedAgent:
             for (t, b, a) in actions:
                 if t in ("attack", "attack_after_block") and a is not None:
                     is_safe = self._is_absolute_safe_for_tsume(state, player, a, tr)
-                    if is_safe:
+                    is_agari = (len(state.hands[player]) <= 2)
+                    if is_safe or is_agari:
                         temp_hand = list(state.hands[player])
                         if b is not None and b in temp_hand:
                             temp_hand.remove(b)
                         if a in temp_hand:
                             temp_hand.remove(a)
-                        if self._is_tsume_from_even(temp_hand, state, player, tr):
+                        
+                        if len(temp_hand) == 0:
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
                             if t == "attack_after_block":
                                 sc += self._score_receive_phase(state, player, "receive", b)
                             tsume_actions.append((sc, (t, b, a)))
+                        else:
+                            max_sc = self._max_tsume_score(temp_hand, state, player, tr)
+                            if max_sc >= 0:
+                                sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
+                                if t == "attack_after_block":
+                                    sc += self._score_receive_phase(state, player, "receive", b)
+                                tsume_actions.append((sc, (t, b, a)))
             
         if tsume_actions:
             tsume_actions.sort(key=lambda x: x[0], reverse=True)
