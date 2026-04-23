@@ -250,9 +250,7 @@ class NameRequest(BaseModel):
 
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
-    # 例: {"A":{"1":2,"9":1}, "B":{...}, ...}
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -390,12 +388,6 @@ def _state_public_view(
     return payload
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ★削除・無効化: サーバー側で一気にCPUを進める _run_cpu_until_human 関数は
-#   フロントエンドの1秒アニメーションと競合するため完全に廃止しました。
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
     hands = create_random_hands_no_five_shi()
@@ -413,8 +405,11 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
-        "human_seats": set(),  # type: Set[str]
-        "player_names": {p: "" for p in ALL_SEATS},  # ★共有名
+        "human_seats": set(),
+        "player_names": {p: "" for p in ALL_SEATS},
+        # ★ 追加：プライベートルーム用のフィールド
+        "password": None,
+        "owner_name": "",
     }
 
 
@@ -423,10 +418,63 @@ def _ensure_main_game(dealer: str = "A") -> None:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
 
+# ====== ★ 新設：支援者用の固定部屋をセットアップする ======
+def setup_supporter_rooms():
+    # 支援者が増えるたびにここに追記するだけで部屋が固定配置されます
+    supporter_data = [
+        {"gid": "room-gold-01", "pass": "ushitsu77", "owner": "支援者A様"},
+        {"gid": "room-silver-02", "pass": "goita-ai", "owner": "支援者B様"},
+    ]
+    for data in supporter_data:
+        if data["gid"] not in GAMES:
+            room = _create_game_obj(dealer="A")
+            room["password"] = data["pass"]
+            room["owner_name"] = data["owner"]
+            # ログも専用部屋用にする
+            room["log"] = [f"Game start. dealer=A, table={data['gid']}"]
+            GAMES[data["gid"]] = room
+
+# サーバー起動時にあらかじめ部屋を用意しておく
+setup_supporter_rooms()
+
+
+# ====== ★ 新設：ロビー機能関連のAPI ======
+@app.get("/games/list")
+def list_rooms():
+    """ロビー表示用に、メイン以外の部屋（支援者部屋）をリストアップする"""
+    return {
+        "rooms": [
+            {
+                "game_id": gid,
+                "is_private": data.get("password") is not None,
+                "owner_name": data.get("owner_name", "サポーター"),
+                "player_count": len(data.get("human_seats", set()))
+            }
+            for gid, data in GAMES.items() if gid != MAIN_GID
+        ]
+    }
+
+@app.post("/games/{game_id}/verify_password")
+def verify_password(game_id: str, password: str = Body(..., embed=True)):
+    """合言葉の照合"""
+    if game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="部屋が存在しません")
+    
+    required_pass = GAMES[game_id].get("password")
+    
+    # パスワードが設定されていないか、一致していればOK
+    if not required_pass or required_pass == password:
+        return {"ok": True}
+        
+    raise HTTPException(status_code=401, detail="合言葉が違います")
+
+
+# =========================================================
+
+
 @app.post("/games/main/reset")
 def reset_main(dealer: str = "A"):
     GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
-    # ★一気打ちロジック削除: _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
@@ -452,7 +500,6 @@ def reset_main_config(body: ResetConfigBody):
     else:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
-    # ★一気打ちロジック削除: _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer, "preset": bool(preset)}
 
 
@@ -502,8 +549,6 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
-    # ★一気打ちロジック削除: _run_cpu_until_human(game)
 
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
@@ -579,17 +624,12 @@ def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # ★一気打ちロジック削除: _run_cpu_until_human(game)
-
     payload = _state_public_view(
         state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
     )
     return {"ok": True, "state": payload}
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ★新設: フロントエンドから「1秒ごとに」叩かれる、CPU専用の1手進行API
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.post("/games/{game_id}/cpu_step")
 def cpu_step(game_id: str):
     if game_id == MAIN_GID:
