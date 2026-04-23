@@ -405,7 +405,7 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
-// ====== ★新規追加: 部屋リストを取得して表示する関数 ======
+// ====== ★修正: 部屋リストを取得して表示する関数 ======
 async function fetchRoomList() {
     try {
         const res = await fetch(`${API}/games/list`);
@@ -441,7 +441,8 @@ async function fetchRoomList() {
             const btn = document.createElement("button");
             const lockIcon = room.is_private ? "🔒" : "🔓";
             
-            btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b> <small>(${room.player_count}人)</small>`;
+            // ★変更箇所：ここで人数（ <small>(${room.player_count}人)</small> ）を削りました
+            btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b>`;
             btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
             
             // 今いる部屋は色を変えて押せないようにする
