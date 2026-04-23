@@ -350,6 +350,9 @@ const WATCH = "W";
 let mySeat = WATCH;
 let lastSeat = "A";
 
+// ★追加：CPU処理中かどうかを管理するフラグ
+let isProcessingCpu = false; 
+
 const SEAT_ORDER = ["A","B","C","D"];
 
 // 表示の向き：下=物理A, 右=物理B, 上=物理C, 左=物理D として
@@ -997,6 +1000,9 @@ async function fetchLegal(){
 }
 
 async function refresh(){
+  // ★CPUの処理中（1秒待機中）はリフレッシュの競合を防ぐためにスキップ
+  if(isProcessingCpu) return;
+
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
@@ -1025,6 +1031,20 @@ async function refresh(){
   renderBoard(state);
   await renderActions();
   updateNameInputVisibility();
+
+  // ★追加：CPUの番なら、1秒待ってから「1手だけ進めるAPI（/cpu_step）」を叩く
+  if(!state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
+    isProcessingCpu = true;
+    setTimeout(async () => {
+      try {
+        await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
+      } catch(e) {
+        console.error("CPU step error:", e);
+      }
+      isProcessingCpu = false;
+      refresh(); // 1手進んだら即座に画面を更新して、次の状況を表示する
+    }, 1000); // 1000ミリ秒 ＝ 1秒
+  }
 }
 
 function bindNameInputs(){

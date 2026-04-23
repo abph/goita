@@ -390,52 +390,10 @@ def _state_public_view(
     return payload
 
 
-def _run_cpu_until_human(game: Dict[str, Any]) -> None:
-    """Advance the game automatically while it's a CPU seat's turn.
-    Stops when:
-      - game finished, or
-      - next turn is in human_seats, or
-      - there are no human seats (to avoid autoplaying the whole game).
-    """
-    state: GoitaState = game["state"]
-    agents: Dict[str, RuleBasedAgent] = game["agents"]
-    log: List[str] = game.setdefault("log", [])
-    board = game.setdefault("board", _new_board_snapshot())
-    human_seats: Set[str] = game.setdefault("human_seats", set())
-
-    # If nobody is playing as human, do not autoplay (spectator-only mode).
-    if not human_seats:
-        return
-
-    safety = 0
-    while (not state.finished) and (state.turn not in human_seats):
-        safety += 1
-        if safety > 2000:
-            # avoid runaway loops
-            log.append("safety stop: too many cpu steps")
-            break
-
-        p = state.turn
-        acts = state.legal_actions(p)
-        if not acts:
-            log.append(f"{p}: no legal actions (stop)")
-            break
-
-        cpu_action = agents[p].select_action(state, p, acts)
-
-        before_fd_cpu = len(state.face_down_hidden[p])
-        _apply_action(state, p, cpu_action)
-        hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
-        _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
-
-        log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
-        game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
-        _notify_public(agents, state, p, cpu_action)
-
-    if state.finished:
-        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
-        if not log or log[-1] != msg:
-            log.append(msg)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★削除・無効化: サーバー側で一気にCPUを進める _run_cpu_until_human 関数は
+#   フロントエンドの1秒アニメーションと競合するため完全に廃止しました。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
@@ -468,8 +426,7 @@ def _ensure_main_game(dealer: str = "A") -> None:
 @app.post("/games/main/reset")
 def reset_main(dealer: str = "A"):
     GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
-    # If humans are already claimed (e.g., kept across "new game"), let CPUs play until a human turn.
-    _run_cpu_until_human(GAMES[MAIN_GID])
+    # ★一気打ちロジック削除: _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
 
 
@@ -495,9 +452,8 @@ def reset_main_config(body: ResetConfigBody):
     else:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
-    _run_cpu_until_human(GAMES[MAIN_GID])
+    # ★一気打ちロジック削除: _run_cpu_until_human(GAMES[MAIN_GID])
     return {"ok": True, "game_id": MAIN_GID, "dealer": dealer, "preset": bool(preset)}
-
 
 
 @app.post("/games/main/claim")
@@ -520,7 +476,6 @@ def release_seat(seat: str):
     return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
 
 
-# ★追加：共有名の更新
 @app.post("/games/{game_id}/set_name")
 def set_player_name(game_id: str, req: NameRequest):
     if game_id == MAIN_GID:
@@ -548,9 +503,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
 
-    state: GoitaState = game["state"]
-    # If it is a CPU seat turn, advance automatically until a human turn.
-    _run_cpu_until_human(game)
+    # ★一気打ちロジック削除: _run_cpu_until_human(game)
 
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
@@ -626,13 +579,60 @@ def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # ★修正：長大なwhileループを削除し、共通関数を呼び出すだけにする
-    _run_cpu_until_human(game)
+    # ★一気打ちロジック削除: _run_cpu_until_human(game)
 
     payload = _state_public_view(
         state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
     )
     return {"ok": True, "state": payload}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★新設: フロントエンドから「1秒ごとに」叩かれる、CPU専用の1手進行API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@app.post("/games/{game_id}/cpu_step")
+def cpu_step(game_id: str):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    state: GoitaState = game["state"]
+    human_seats: Set[str] = game.get("human_seats", set())
+
+    # すでに終了している、または人間の番なら何もしない
+    if state.finished or (state.turn in human_seats):
+        return {"status": "ignored"}
+
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+
+    p = state.turn
+    acts = state.legal_actions(p)
+    if not acts:
+        return {"status": "no_legal_actions"}
+
+    # CPUが1手だけ考えてアクションを実行する
+    cpu_action = agents[p].select_action(state, p, acts)
+
+    before_fd_cpu = len(state.face_down_hidden[p])
+    _apply_action(state, p, cpu_action)
+    hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
+    _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
+
+    log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
+    _notify_public(agents, state, p, cpu_action)
+
+    if state.finished:
+        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
+        if not log or log[-1] != msg:
+            log.append(msg)
+
+    return {"status": "ok"}
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
