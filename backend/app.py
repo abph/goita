@@ -407,7 +407,6 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "kifu_moves": [],
         "human_seats": set(),
         "player_names": {p: "" for p in ALL_SEATS},
-        # ★ 追加：プライベートルーム用のフィールド
         "password": None,
         "owner_name": "",
     }
@@ -418,9 +417,8 @@ def _ensure_main_game(dealer: str = "A") -> None:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
 
-# ====== ★ 新設：支援者用の固定部屋をセットアップする ======
+# ====== 支援者用の固定部屋をセットアップする ======
 def setup_supporter_rooms():
-    # 支援者が増えるたびにここに追記するだけで部屋が固定配置されます
     supporter_data = [
         {"gid": "room-gold-01", "pass": "ushitsu77", "owner": "支援者A様"},
         {"gid": "room-silver-02", "pass": "goita-ai", "owner": "支援者B様"},
@@ -430,18 +428,15 @@ def setup_supporter_rooms():
             room = _create_game_obj(dealer="A")
             room["password"] = data["pass"]
             room["owner_name"] = data["owner"]
-            # ログも専用部屋用にする
             room["log"] = [f"Game start. dealer=A, table={data['gid']}"]
             GAMES[data["gid"]] = room
 
-# サーバー起動時にあらかじめ部屋を用意しておく
 setup_supporter_rooms()
 
 
-# ====== ★ 新設：ロビー機能関連のAPI ======
+# ====== ロビー機能関連のAPI ======
 @app.get("/games/list")
 def list_rooms():
-    """ロビー表示用に、メイン以外の部屋（支援者部屋）をリストアップする"""
     return {
         "rooms": [
             {
@@ -454,15 +449,14 @@ def list_rooms():
         ]
     }
 
+
 @app.post("/games/{game_id}/verify_password")
 def verify_password(game_id: str, password: str = Body(..., embed=True)):
-    """合言葉の照合"""
     if game_id not in GAMES:
         raise HTTPException(status_code=404, detail="部屋が存在しません")
     
     required_pass = GAMES[game_id].get("password")
     
-    # パスワードが設定されていないか、一致していればOK
     if not required_pass or required_pass == password:
         return {"ok": True}
         
@@ -471,17 +465,43 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 
 # =========================================================
 
+# ★修正部分: /games/main/... から /games/{game_id}/... に変更し、パスワード状態等を引き継ぐ
 
-@app.post("/games/main/reset")
-def reset_main(dealer: str = "A"):
-    GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
-    return {"ok": True, "game_id": MAIN_GID, "dealer": dealer}
+@app.post("/games/{game_id}/reset")
+def reset_game(game_id: str, dealer: str = "A"):
+    if game_id == MAIN_GID:
+        _ensure_main_game(dealer=dealer)
+    elif game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    old_game = GAMES.get(game_id, {})
+    password = old_game.get("password")
+    owner_name = old_game.get("owner_name", "")
+    
+    new_game = _create_game_obj(dealer=dealer)
+    new_game["password"] = password
+    new_game["owner_name"] = owner_name
+    
+    if game_id != MAIN_GID:
+        new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
+
+    GAMES[game_id] = new_game
+    return {"ok": True, "game_id": game_id, "dealer": dealer}
 
 
-@app.post("/games/main/reset_config")
-def reset_main_config(body: ResetConfigBody):
+@app.post("/games/{game_id}/reset_config")
+def reset_game_config(game_id: str, body: ResetConfigBody):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    elif game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="game not found")
+
     dealer = _validate_seat(body.dealer, name="dealer")
     preset = body.preset_counts or {}
+
+    old_game = GAMES.get(game_id, {})
+    password = old_game.get("password")
+    owner_name = old_game.get("owner_name", "")
 
     if preset:
         try:
@@ -489,39 +509,56 @@ def reset_main_config(body: ResetConfigBody):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        game = _create_game_obj(dealer=dealer)
-        game["state"] = GoitaState(hands=hands, dealer=dealer)
-        game["board"] = _new_board_snapshot()
-        game["log"] = [f"Game start. dealer={dealer}, table=main"]
-        game["init_hands"] = hands
-        game["dealer"] = dealer
-        game["kifu_moves"] = []
-        GAMES[MAIN_GID] = game
+        new_game = _create_game_obj(dealer=dealer)
+        new_game["state"] = GoitaState(hands=hands, dealer=dealer)
+        new_game["board"] = _new_board_snapshot()
+        new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
+        new_game["init_hands"] = hands
+        new_game["dealer"] = dealer
+        new_game["kifu_moves"] = []
+        new_game["password"] = password
+        new_game["owner_name"] = owner_name
+        GAMES[game_id] = new_game
     else:
-        GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+        new_game = _create_game_obj(dealer=dealer)
+        new_game["password"] = password
+        new_game["owner_name"] = owner_name
+        if game_id != MAIN_GID:
+            new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
+        GAMES[game_id] = new_game
 
-    return {"ok": True, "game_id": MAIN_GID, "dealer": dealer, "preset": bool(preset)}
+    return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
 
-@app.post("/games/main/claim")
-def claim_seat(seat: str):
-    _ensure_main_game()
+@app.post("/games/{game_id}/claim")
+def claim_seat(game_id: str, seat: str):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    elif game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="game not found")
+
     seat = _validate_seat(seat, name="seat")
-    game = GAMES[MAIN_GID]
+    game = GAMES[game_id]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.add(seat)
-    return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
+    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
 
 
-@app.post("/games/main/release")
-def release_seat(seat: str):
-    _ensure_main_game()
+@app.post("/games/{game_id}/release")
+def release_seat(game_id: str, seat: str):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    elif game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="game not found")
+
     seat = _validate_seat(seat, name="seat")
-    game = GAMES[MAIN_GID]
+    game = GAMES[game_id]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.discard(seat)
-    return {"ok": True, "game_id": MAIN_GID, "human_seats": sorted(list(hs))}
+    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
 
+
+# =========================================================
 
 @app.post("/games/{game_id}/set_name")
 def set_player_name(game_id: str, req: NameRequest):
