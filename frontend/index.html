@@ -674,7 +674,7 @@ async function onHandPieceClick(piece){
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
   if(pending){
     const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
@@ -691,7 +691,7 @@ async function onHandPieceClick(piece){
   }
 
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-  if(candidates.length === 0){ setHint("その駒は今は出せません。（PASS：6列目6行目）"); return; }
+  if(candidates.length === 0){ setHint("その駒は今は出せません。（パス：6列目6行目）"); return; }
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
@@ -720,7 +720,7 @@ async function onPassClick(){
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
   if(!pass){ setHint("今はパスできません。"); return; }
@@ -770,7 +770,7 @@ function renderBoard(state){
 
       if(col===PASS_POS.col && row===PASS_POS.row){
         div.classList.add("pass");
-        div.textContent="PASS";
+        div.textContent="パス";
         if(!isSpectator() && state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
           div.onclick=onPassClick;
         }else{
@@ -984,10 +984,10 @@ async function refresh(){
     setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
     pending = null;
   }else if(state.turn !== mySeat){
-    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`);
+    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`);
     pending = null;
   }else if(!pending){
-    setHint("あなたの手番です。手札をクリックしてください。（PASS：6列目6行目）");
+    setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
   }
 
   renderBoard(state);
