@@ -304,7 +304,7 @@
     
     <div class="bottom-grid">
       <div class="card">
-        <details>
+        <details id="dealerDetails">
           <summary><b>親（dealer）設定</b></summary>
           <div class="small" style="margin-top:6px;">
             次の「新規ゲーム」で適用されます。random は毎回ランダムに親を選びます。
@@ -405,7 +405,20 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
-// ====== ★修正: 部屋リストを取得して表示する関数 ======
+// ====== ★新規追加: 部屋に応じてUI（デバッグ・設定機能）の表示を切り替える関数 ======
+function updateRoomUI() {
+    const isMain = (gid === MAIN_GID);
+    const toggleBtn = document.getElementById("toggleHandsBtn");
+    const dealerDetails = document.getElementById("dealerDetails");
+    const presetDetails = document.getElementById("presetHandsDetails");
+    
+    // メインルーム(main)の場合は非表示、それ以外（プライベートルーム）の場合は表示
+    if (toggleBtn) toggleBtn.style.display = isMain ? "none" : "";
+    if (dealerDetails) dealerDetails.style.display = isMain ? "none" : "";
+    if (presetDetails) presetDetails.style.display = isMain ? "none" : "";
+}
+
+// 部屋リストを取得して表示する関数
 async function fetchRoomList() {
     try {
         const res = await fetch(`${API}/games/list`);
@@ -441,7 +454,6 @@ async function fetchRoomList() {
             const btn = document.createElement("button");
             const lockIcon = room.is_private ? "🔒" : "🔓";
             
-            // ★変更箇所：ここで人数（ <small>(${room.player_count}人)</small> ）を削りました
             btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b>`;
             btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
             
@@ -462,7 +474,7 @@ async function fetchRoomList() {
     }
 }
 
-// ====== ★新規追加: 部屋に入る時のパスワード確認 ======
+// 部屋に入る時のパスワード確認
 async function tryJoinRoom(targetGid, isPrivate) {
     if (isPrivate) {
         // 簡単なブラウザ標準の入力ダイアログ
@@ -1130,6 +1142,8 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
+  updateRoomUI(); // ★ ここでUIの表示/非表示を更新
+
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
@@ -1159,14 +1173,14 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
-  // ===== 新規追加：パスのアニメーション判定（時間差表示） =====
+  // ===== パスのアニメーション判定（時間差表示） =====
   const currentLogCount = state.log ? state.log.length : 0;
   if (currentLogCount < lastLogCount) {
     lastLogCount = 0; 
   }
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
-    let passDelay = 0; // ★アニメーションをずらすための時間
+    let passDelay = 0; // アニメーションをずらすための時間
     
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
@@ -1175,7 +1189,7 @@ async function refresh(){
         const logicalSeat = match[1];
         const physSeat = seatToPhys[logicalSeat];
         
-        // ★setTimeoutを使ってパスの表示タイミングをずらす
+        // setTimeoutを使ってパスの表示タイミングをずらす
         setTimeout(() => {
           showPassAnimation(physSeat);
         }, passDelay);
@@ -1246,7 +1260,7 @@ window.addEventListener("load", async ()=>{
   await refresh();
   updateNameInputVisibility();
   
-  // ★ ここに追記：ページ読み込み時に部屋リストを取得
+  // ページ読み込み時に部屋リストを取得
   fetchRoomList();
   
   sel.addEventListener("change", async ()=>{
