@@ -68,13 +68,12 @@
       filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
     
-    /* 駒の文字位置の微調整（テキスト誤爆防止） */
+    /* 駒の文字位置の微調整 */
     .slot .val, .hand .val { 
       font-size: 20px; 
       font-weight: 900; 
       color: #1a1a1a; 
       transform: translateY(4px); 
-      pointer-events: none; /* ★テキスト部分のタップ判定を無視させ、確実に駒本体をクリックさせる */
     }
 
     /* 敵（AI）の攻め駒は背景色を少し朱色に */
@@ -103,19 +102,14 @@
     .phys-C { transform: rotate(180deg); }
     .phys-D { transform: rotate(90deg); }
 
-    /* クリック可能な手札のホバー演出（スマホ対応） */
+    /* クリック可能な手札のホバー演出 */
     .hand.clickable { 
       cursor: pointer; 
       transition: all 0.2s ease; 
-      touch-action: manipulation; /* ★スマホでのダブルタップズーム待機（遅延）を無効化してサクサクにする */
     }
-    
-    /* ★ホバーで浮き上がるアニメーションは、マウス操作ができるPC環境のみに限定する（スマホでのタップ逃げを防ぐ） */
-    @media (hover: hover) {
-      .hand.clickable:hover { 
-        transform: translateY(-4px) scale(1.05); 
-        filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
-      }
+    .hand.clickable:hover { 
+      transform: translateY(-4px) scale(1.05); 
+      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
     }
 
     /* 出せない駒（グレーアウト） */
@@ -136,7 +130,6 @@
       font-weight: 900;
       letter-spacing: 0.5px;
       cursor: pointer;
-      touch-action: manipulation; /* ★こちらもタップ遅延解消 */
     }
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
@@ -373,9 +366,6 @@ let lastSeat = "A";
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
-
-// ★新規追加：盤面が不必要に再描画されてタップ判定が消えるのを防ぐためのハッシュ
-let lastRenderHash = "";
 
 const SEAT_ORDER = ["A","B","C","D"];
 
@@ -670,7 +660,6 @@ async function applyName(seat){
   const v = sanitizeName(el.value);
   el.value = v;
   await setName(seat, v);
-  lastRenderHash = ""; // 強制再描画
   await refresh();
   updateNameInputVisibility();
 }
@@ -689,7 +678,6 @@ async function downloadKifu(){
 function toggleAllHands(){
   showAllHands = !showAllHands;
   document.getElementById("toggleHandsBtn").textContent = showAllHands ? "手札表示を戻す" : "みんな手札公開";
-  lastRenderHash = ""; // 強制再描画
   refresh();
 }
 
@@ -712,7 +700,6 @@ async function onHandPieceClick(piece){
     if(matched.length === 1){
       await submitAction(matched[0]);
       pending = null;
-      lastRenderHash = ""; // ★送信完了時は盤面を強制リセット
       await refresh();
       updateNameInputVisibility();
       return;
@@ -727,7 +714,6 @@ async function onHandPieceClick(piece){
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
-    lastRenderHash = ""; // ★送信完了時は盤面を強制リセット
     await refresh();
     updateNameInputVisibility();
     return;
@@ -738,18 +724,12 @@ async function onHandPieceClick(piece){
   if(asBlock.length >= 1){
     pending = { need: "attack", candidates: asBlock };
     setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
-    // ★伏せ札を選んだ直後に、2秒待たずに即座に画面を再描画して「選べる攻め札」をハイライトさせる
-    lastRenderHash = ""; 
-    renderBoard(latestState);
     return;
   }
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
     pending = { need: "block", candidates: asAttack };
     setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
-    // ★同様に即座に再描画
-    lastRenderHash = "";
-    renderBoard(latestState);
     return;
   }
   setHint("複数候補があり確定できません。デバッグ用ボタンから選んでください。");
@@ -766,7 +746,6 @@ async function onPassClick(){
 
   pending = null;
   await submitAction(pass);
-  lastRenderHash = ""; // ★送信完了時は強制リセット
   await refresh();
   updateNameInputVisibility();
 }
@@ -962,7 +941,7 @@ async function renderActions(){
     const b=a.block ? pieceToLabel(a.block) : "";
     const at=a.attack ? pieceToLabel(a.attack) : "";
     btn.textContent = `${t} ${b} ${at}`.trim();
-    btn.onclick = async ()=>{ pending=null; await submitAction(a); lastRenderHash = ""; await refresh(); updateNameInputVisibility(); };
+    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); updateNameInputVisibility(); };
     actionsDiv.appendChild(btn);
   });
 }
@@ -1012,7 +991,7 @@ async function startNewGame(){
     await claimSeat(seatToKeep);
   }
 
-  pending=null; showAllHands=false; lastLogCount = 0; lastRenderHash = "";
+  pending=null; showAllHands=false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
   await refresh();
   updateNameInputVisibility();
@@ -1026,7 +1005,7 @@ async function resetAll(){
   if(dealer === "random") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
-  pending = null; showAllHands = false; lastLogCount = 0; lastRenderHash = "";
+  pending = null; showAllHands = false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
 
   mySeat = WATCH;
@@ -1050,24 +1029,10 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
-// ★新規追加：盤面が不必要に再描画されてタップ判定が消えるのを防ぐためのハッシュ生成関数
-function getRenderHash(state) {
-  if(!state) return "";
-  return JSON.stringify({
-    turn: state.turn,
-    phase: state.phase,
-    bp: state.board_public,
-    h: state.hands,
-    f: state.finished,
-    p: pending ? pending.need : null,
-    names: state.player_names
-  });
-}
-
 async function refresh(){
   if(isProcessingCpu) return;
 
-  const qs = new URLSearchParams(); // ★修正：ここが newSearchParams() になっていたタイポを直しました
+  const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
@@ -1092,22 +1057,18 @@ async function refresh(){
     setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
   }
 
-  // ★盤面とボタンの描画（変化があった時だけ更新して、タップ抜けを防ぐ）
-  const currentHash = getRenderHash(state);
-  if (lastRenderHash !== currentHash) {
-    renderBoard(state);
-    await renderActions();
-    updateNameInputVisibility();
-    lastRenderHash = currentHash;
-  }
+  renderBoard(state);
+  await renderActions();
+  updateNameInputVisibility();
 
+  // ===== 新規追加：パスのアニメーション判定（時間差表示） =====
   const currentLogCount = state.log ? state.log.length : 0;
   if (currentLogCount < lastLogCount) {
     lastLogCount = 0; 
   }
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
-    let passDelay = 0; 
+    let passDelay = 0; // ★アニメーションをずらすための時間
     
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
@@ -1116,5 +1077,97 @@ async function refresh(){
         const logicalSeat = match[1];
         const physSeat = seatToPhys[logicalSeat];
         
+        // ★setTimeoutを使ってパスの表示タイミングをずらす
         setTimeout(() => {
-          showPassAnimation
+          showPassAnimation(physSeat);
+        }, passDelay);
+        
+        passDelay += 800; // 0.8秒（800ms）ずつ遅らせて順番に表示
+      }
+    }
+  }
+  lastLogCount = currentLogCount;
+  // ============================================
+
+  if(!state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
+    isProcessingCpu = true;
+    setTimeout(async () => {
+      try {
+        await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
+      } catch(e) {
+        console.error("CPU step error:", e);
+      }
+      isProcessingCpu = false;
+      refresh(); 
+    }, 1000); 
+  }
+}
+
+function bindNameInputs(){
+  const ids = ["nameA","nameB","nameC","nameD"];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    el.addEventListener("input", ()=>{
+      const v = sanitizeName(el.value);
+      if(el.value !== v) el.value = v;
+    });
+  }
+}
+
+function updateNameInputVisibility(){
+  const grid = document.getElementById("nameGrid");
+  if(!grid) return;
+
+  const items = grid.querySelectorAll("[data-seat]");
+  if(mySeat === WATCH){
+    items.forEach(el => el.style.display = "none");
+    return;
+  }
+  items.forEach(el => {
+    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
+  });
+}
+
+window.addEventListener("load", async ()=>{
+  presetLoad();
+  presetSetEnabled(presetIsEnabled());
+  const presetEnabledBox = document.getElementById("presetEnabled");
+  if(presetEnabledBox){
+    presetEnabledBox.addEventListener("change", ()=> presetSetEnabled(presetEnabledBox.checked));
+  }
+  document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
+    inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
+  });
+  bindNameInputs();
+
+  const sel = document.getElementById("seatSelect");
+  mySeat = WATCH;
+  sel.value = WATCH;
+
+  await refresh();
+  updateNameInputVisibility();
+  
+  sel.addEventListener("change", async ()=>{
+    const next = sel.value;
+    if(!isSpectator()){ await releaseSeat(lastSeat); }
+    pending = null;
+    if(next === WATCH){
+      mySeat = WATCH;
+      sel.value = WATCH;
+      await refresh();
+      updateNameInputVisibility();
+      return;
+    }
+    mySeat = next;
+    lastSeat = mySeat;
+    await claimSeat(mySeat);
+    await refresh();
+    updateNameInputVisibility();
+  });
+
+  setInterval(refresh, 2000);
+});
+</script>
+</body>
+</html>
