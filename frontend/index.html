@@ -5,15 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ごいたAIプレイ</title>
   <style>
-    
+    /* ===== 和風テイストのビジュアル強化 ===== */
     :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
-* , *::before, *::after { box-sizing: border-box; }
-body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
+    * , *::before, *::after { box-sizing: border-box; }
+    
+    /* ベースのフォントと背景（和紙調） */
+    body { 
+      font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif;
+      background-color: #f4efdf; /* 落ち着いた和紙のような色 */
+      color: #2b2b2b; /* 墨色 */
+      max-width: 1250px; 
+      margin: 20px auto; 
+    }
     h1 { margin-bottom: 12px; font-size: 28px; }
     @media (max-width: 430px){
       h1{ font-size: 16px; margin-bottom: 6px; }
     }
-    .board-wrap { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+    
+    /* 盤面（木製の盤をイメージ） */
+    .board-wrap { 
+      background-color: #d1ab75; /* 木の盤面色 */
+      border: 4px solid #8b5a2b; 
+      border-radius: 6px; 
+      padding: 12px; 
+      box-shadow: 0 8px 16px rgba(0,0,0,0.3); /* 盤面の立体感 */
+    }
     .board {
       display: grid;
       grid-template-columns: repeat(10, var(--cell));
@@ -24,10 +40,12 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       width: fit-content;
       max-width: 100%;
     }
+    
+    /* マス目は控えめな焼き印風に */
     .cell {
-      border: 1px solid #e6e6e6;
-      border-radius: 10px;
-      background: #fafafa;
+      border: 1px dashed rgba(139, 90, 43, 0.4);
+      border-radius: 4px;
+      background: transparent;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -36,99 +54,107 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       overflow: hidden;
     }
 
-    .slot { border: 2px solid #999; background: #fff; font-weight: 600; }
-    .slot .val { font-size: 18px; font-weight: 800; }
+    /* 駒（竹札の質感と立体感） */
+    .slot, .hand { 
+      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹札風のグラデーション */
+      border: 1px solid #a67c00; 
+      border-radius: 3px; 
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+      font-weight: 600; 
+    }
+    .slot .val, .hand .val { 
+      font-size: 20px; 
+      font-weight: 900; 
+      color: #1a1a1a; /* 基本は黒墨 */
+    }
 
-    .slot.attack { background: #eef6ff; }
-    .slot.attack.human { border-color: #4a90e2; background: #eef6ff; }
-    .slot.attack.ai    { border-color: #e74c3c; background: #fff2f2; }
-    .slot.attack.ai .val { color: #b00000; font-weight: 900; }
+    /* 敵（AI）の攻め駒は朱色にして警戒感を出す */
+    .slot.attack.ai, .hand.ai { 
+      border-color: #c93a3a; 
+    }
+    .slot.attack.ai .val, .hand.ai .val { 
+      color: #b00000; 
+    }
 
+    /* 現在の攻めの強調表示 */
     .slot.current-attack {
-      background: #cfe8ff;
-      border-color: #2b78d6;
+      background: #f7e1a0;
+      border-color: #d35400;
       animation: pulse 1.5s infinite;
     }
-    .slot.current-attack .val { color: #0b3c7a; font-size: 22px; }
+    .slot.current-attack .val { color: #d35400; font-size: 22px; }
     @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(43,120,214,0.6); }
-      70%  { box-shadow: 0 0 0 10px rgba(43,120,214,0); }
-      100% { box-shadow: 0 0 0 0 rgba(43,120,214,0); }
+      0%   { box-shadow: 0 0 0 0 rgba(211,84,0,0.6); }
+      70%  { box-shadow: 0 0 0 10px rgba(211,84,0,0); }
+      100% { box-shadow: 0 0 0 0 rgba(211,84,0,0); }
     }
 
-    .hand { border: 2px solid #4a90e2; background: #ffffff; }
-    .hand .val { font-size: 18px; font-weight: 900; }
-    .hand.clickable { cursor: pointer; }
-    .hand.clickable:hover { outline: 3px solid rgba(74,144,226,0.35); }
-    .hand.disabled { background: #f0f0f0; border-color: #bbb; color: #999; cursor: not-allowed; }
-    .hand.disabled .val { color: #999; }
-    .hand.human { border-color: #4a90e2; }
-    .hand.ai    { border-color: #e74c3c; }
+    /* クリック可能な手札のホバー演出（持ち上がるアクション） */
+    .hand.clickable { 
+      cursor: pointer; 
+      transition: all 0.2s ease; 
+    }
+    .hand.clickable:hover { 
+      outline: 3px solid rgba(176, 0, 0, 0.5); /* 緋色で強調 */
+      transform: translateY(-4px); /* スッと手前に持ち上がる */
+      box-shadow: 2px 6px 8px rgba(0,0,0,0.5);
+    }
 
+    /* 出せない駒（グレーアウト） */
+    .hand.disabled { 
+      background: #e0d8c8; 
+      border-color: #bba; 
+      cursor: not-allowed; 
+      box-shadow: none; 
+    }
+    .hand.disabled .val { color: #888; }
+
+    /* PASSボタン（朱肉のハンコ風） */
     .pass {
-      border: 3px solid #e74c3c;
-      background: #fff2f2;
-      cursor: pointer;
+      border: 3px double #b00000;
+      background: #fffafa;
+      color: #b00000;
+      border-radius: 8px;
+      font-family: sans-serif;
       font-weight: 900;
       letter-spacing: 0.5px;
+      cursor: pointer;
     }
-    .pass:hover { background: #ffe7e7; }
+    .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    .seat-label{
-      border: 2px solid #333;
-      background: #fff;
+    /* ラベル類も和風に馴染ませる */
+    .seat-label, .turn-label, .phase-label, .atk-label, .name-label {
+      border: 2px solid #8b5a2b;
+      background: #f4efdf;
+      color: #2b2b2b;
       font-weight: 900;
-      font-size: 22px;
-      letter-spacing: 1px;
-    }
-    .turn-label{
-      border: 2px solid #333;
-      background: #fff;
-      font-weight: 900;
-      font-size: 16px;
-      letter-spacing: 0px;
-    }
-
-    .phase-label{
-      border: 2px solid #333;
-      background: #fff;
-      font-weight: 900;
-      font-size: 14px;
-      letter-spacing: 0px;
-    }
-    .atk-label{
-      border: 2px solid #333;
-      background: #fff;
-      font-weight: 900;
-      font-size: 14px;
-      letter-spacing: 0px;
-    }
-
-    /* ★共有プレイヤー名（9文字/ 1行3文字×3行） */
-    .name-label{
-      border: 2px solid #333;
-      background: #fff;
-      font-weight: 900;
-      font-size: 12px;
-      line-height: 1.15;
-      padding: 4px;
-      white-space: pre-line;
       text-align: center;
+      border-radius: 4px;
     }
 
-    .ui { margin-top: 14px; border: 1px solid #ddd; border-radius: 12px; padding: 12px; background: #fff; }
+    .seat-label{ font-size: 22px; letter-spacing: 1px; }
+    .turn-label{ font-size: 16px; letter-spacing: 0px; }
+    .phase-label{ font-size: 14px; letter-spacing: 0px; }
+    .atk-label{ font-size: 14px; letter-spacing: 0px; }
+    .name-label{ font-size: 12px; line-height: 1.15; padding: 4px; white-space: pre-line; }
+
+    .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
     .meta { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-    button { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    button:hover { background: #f6f6f6; }
-    select, input[type="text"] { padding: 7px 10px; border-radius: 10px; border: 1px solid #ccc; background: #fff; }
-    select { cursor: pointer; }
-    .hint { background:#fff7e6; border: 1px solid #ffd39a; padding: 8px; border-radius: 10px; margin: 10px 0; }
+    
+    /* ボタンと入力欄も少しトーンを合わせる */
+    button, select, input[type="text"] { 
+      padding: 7px 10px; border-radius: 6px; border: 1px solid #a67c00; background: #fffdf5; cursor: pointer; font-family: inherit;
+    }
+    button:hover { background: #fceeb5; }
+    input[type="text"] { cursor: text; }
+    
+    .hint { background:#fffdf5; border: 1px solid #d35400; padding: 8px; border-radius: 6px; margin: 10px 0; font-weight: bold; color: #b00000; }
     .small { font-size: 12px; color: #555; }
     .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 10px; background: #fafafa; min-height: 120px; }
-    pre { background:#f7f7f7; padding:10px; border-radius:10px; max-height: 420px; overflow:auto; margin: 0; }
+    .card { border: 1px solid #c8a77a; border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.6); min-height: 120px; }
+    pre { background:#f4efdf; padding:10px; border-radius:6px; max-height: 420px; overflow:auto; margin: 0; border: 1px solid #c8a77a; font-family: monospace; }
 
     .name-grid{
       display: grid;
@@ -138,123 +164,68 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       margin-top: 6px;
       margin-bottom: 6px;
     }
-
-    .name-grid button{
-      width: 64px;
-      white-space: nowrap;
-    }
-
-    /* ★名前入力欄は幅固定（15文字相当） */
-    .name-grid input[type="text"]{
-      width: 15ch;   /* 半角英数字15文字分 */
-      box-sizing: content-box;
-    }
-
+    .name-grid button{ width: 64px; white-space: nowrap; }
+    .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
 
     @media (max-width: 980px){
       :root{ --gap: 4px; --cell: clamp(24px, calc((100vw - 40px - (9 * var(--gap)))/10), 52px); }
       body { margin: 10px; }
       .board-wrap { padding: 8px; }
-.bottom-grid { grid-template-columns: 1fr; }
-      .ui,
-      .card,
-      details,
-      summary,
-      pre,
-      select {
-        max-width: 100%;
-      }
-      .bottom-grid > *{
-        min-width: 0;
-      }
-      .card{
-        min-width: 0;
-      }
-      pre{
-        width: 100%;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-      #dealerSelect{
-        width: 100%;
-      }
-      /* スマホでは 1fr にすると3列目（表示ボタン）が右端に飛ぶので、列幅を固定して左詰め */
-      .name-grid{
-        grid-template-columns: 70px 15ch 56px;
-        justify-content: start;
-      }
-      .name-grid button{
-        width: 56px;
-      }
+      .bottom-grid { grid-template-columns: 1fr; }
+      .ui, .card, details, summary, pre, select { max-width: 100%; }
+      .bottom-grid > *{ min-width: 0; }
+      .card{ min-width: 0; }
+      pre{ width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+      #dealerSelect{ width: 100%; }
+      .name-grid{ grid-template-columns: 70px 15ch 56px; justify-content: start; }
+      .name-grid button{ width: 56px; }
     }
   
-    /* === iPhone(小画面) 文字はみ出し対策 === */
     @media (max-width: 430px){
-      input[type="text"],
-      select,
-      textarea{
-        font-size: 16px;   /* ← これでズームしない */
-      }
+      input[type="text"], select, textarea{ font-size: 16px; }
       .seat-label{ font-size: 18px; }
       .turn-label{ font-size: 12px; }
       .phase-label{ font-size: 11px; }
       .atk-label{ font-size: 12px; }
-
-      /* 2文字以上でも折り返さない */
       .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
-
-      /* 盤面の駒表示も少し縮める */
       .slot .val{ font-size: 16px; }
       .hand .val{ font-size: 16px; }
       .pass{ font-size: 12px; }
     }
-
   
-/* ===== 手札指定（枚数） ===== */
-.preset-grid{
-  display: grid;
-  grid-template-columns: 22px repeat(9, 34px);
-  gap: 6px 6px;
-  align-items: center;
-  justify-content: start;
-  margin-top: 8px;
-}
-.preset-grid .hdr{ font-weight: 900; text-align: center; }
-.preset-grid .seat{ font-weight: 900; }
-.preset-grid input{
-  width: 34px;
-  padding: 6px 6px;
-  text-align: center;
-}
-.preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
-.preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
+    /* ===== 手札指定（枚数） ===== */
+    .preset-grid{
+      display: grid;
+      grid-template-columns: 22px repeat(9, 34px);
+      gap: 6px 6px;
+      align-items: center;
+      justify-content: start;
+      margin-top: 8px;
+    }
+    .preset-grid .hdr{ font-weight: 900; text-align: center; }
+    .preset-grid .seat{ font-weight: 900; }
+    .preset-grid input{
+      width: 34px;
+      padding: 6px 6px;
+      text-align: center;
+    }
+    .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
+    .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
 
-@media (max-width: 430px){
-  .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
-  .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } /* iOSズーム防止も兼ねる */
-}
+    @media (max-width: 430px){
+      .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
+      .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } 
+    }
 
+    .preset-disabled #presetGrid,
+    .preset-disabled .preset-note,
+    .preset-disabled #presetErr{ display: none !important; }
+    .preset-toggle{
+      display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-weight: 600; font-size: 13px;
+    }
+    .preset-toggle input{ transform: translateY(1px); }
 
-/* 手札指定 ON/OFF */
-.preset-disabled #presetGrid,
-.preset-disabled .preset-note,
-.preset-disabled #presetErr{
-  display: none !important;
-}
-.preset-toggle{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 10px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.preset-toggle input{
-  transform: translateY(1px);
-}
-
-</style>
+  </style>
 </head>
 <body>
   <h1>ごいたAIプレイ</h1>
@@ -292,15 +263,7 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
   </div>
 
   <div class="ui">
-    
-
     <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
-
-    
-
-
-    <!-- ★共有プレイヤー名入力（サーバに保存） -->
-    
 
     <div class="btns" style="margin-top:10px;">
       <button onclick="startNewGame()">新規ゲーム</button>
@@ -308,7 +271,8 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
       <button onclick="toggleAllHands()" id="toggleHandsBtn">みんな手札公開</button>
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
-<div class="bottom-grid">
+    
+    <div class="bottom-grid">
       <div class="card">
         <details>
           <summary><b>親（dealer）設定</b></summary>
@@ -346,8 +310,6 @@ body { font-family: sans-serif; max-width: 1250px; margin: 20px auto; }
           <div class="preset-err" id="presetErr" style="display:none;"></div>
         </details>
 
-
-
         <details style="margin-top:10px;">
           <summary><b>（デバッグ用）合法手</b></summary>
           <div class="small">観戦中は空になります。</div>
@@ -370,7 +332,6 @@ let gid = MAIN_GID;
 const WATCH = "W";
 let mySeat = WATCH;
 let lastSeat = "A";
-
 
 const SEAT_ORDER = ["A","B","C","D"];
 
@@ -410,14 +371,13 @@ function getWinnerPoints(state){
   if(!w) return 0;
 
   // 1) まずは seats形式のスコアがあればそれを優先
-  //    （backendが scores: {A:..,B:..,C:..,D:..} を返している場合）
   if(state?.scores && state.scores[w] != null){
     const v = state.scores[w];
     if(typeof v === "number" && isFinite(v)) return v;
     if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
   }
 
-  // 2) team_score が {AC:xx, BD:yy} の場合（こちらが本命）
+  // 2) team_score が {AC:xx, BD:yy} の場合
   if(state?.team_score && typeof state.team_score === "object"){
     const team = (w === "A" || w === "C") ? "AC" : "BD";
     const v = state.team_score[team];
@@ -425,13 +385,8 @@ function getWinnerPoints(state){
     if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
   }
 
-  // 3) フォールバック（数値が直接来る場合）
-  const cand = [
-    state?.winner_score,
-    state?.score,
-    state?.points,
-    state?.team_points
-  ];
+  // 3) フォールバック
+  const cand = [ state?.winner_score, state?.score, state?.points, state?.team_points ];
   for(const v of cand){
     if(typeof v === "number" && isFinite(v)) return v;
     if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
@@ -439,16 +394,12 @@ function getWinnerPoints(state){
   return 0;
 }
 
-
-
 function presetIsEnabled(){
   try{
     const v = localStorage.getItem("goita_preset_enabled");
-    if(v === null) return false; // 初期OFF
+    if(v === null) return false;
     return v === "1";
-  }catch(e){
-    return false;
-  }
+  }catch(e){ return false; }
 }
 
 function presetSetEnabled(on){
@@ -463,7 +414,6 @@ function presetSetEnabled(on){
 }
 
 function presetHasAny(){
-  // 1つでも「1〜9」が入っていれば true
   const inputs = document.querySelectorAll("#presetGrid input.ph");
   for(const inp of inputs){
     const n = parseInt(inp.value, 10);
@@ -471,7 +421,6 @@ function presetHasAny(){
   }
   return false;
 }
-
 
 function presetLoad(){
   try{
@@ -516,7 +465,6 @@ function presetValidateAndClamp(changed){
   const errEl = document.getElementById("presetErr");
   const all = {A:{},B:{},C:{},D:{}};
 
-  // normalize to 0-9 single digit
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
     let v = (inp.value ?? "").toString().replace(/\D/g,"");
     if(v.length>1) v = v.slice(-1);
@@ -525,7 +473,6 @@ function presetValidateAndClamp(changed){
     all[inp.dataset.seat][inp.dataset.piece] = isNaN(n)?0:n;
   });
 
-  // per-player shi <=4
   for(const s of ["A","B","C","D"]){
     if((all[s]["1"]||0) > 4){
       all[s]["1"]=4;
@@ -534,7 +481,6 @@ function presetValidateAndClamp(changed){
     }
   }
 
-  // per-piece totals <= max (prefer clamping the changed field)
   const errors = [];
   for(const p of PRESET_PIECES){
     const maxn = PRESET_TOTALS[p];
@@ -553,7 +499,6 @@ function presetValidateAndClamp(changed){
     }
   }
 
-  // warn if any player's total > 8
   for(const s of ["A","B","C","D"]){
     let sum = 0;
     for(const p of PRESET_PIECES) sum += (all[s][p]||0);
@@ -569,10 +514,8 @@ function presetValidateAndClamp(changed){
       errEl.textContent="";
     }
   }
-
   presetSave();
 }
-
 
 async function resetWithPreset(dealer){
   const usePreset = presetIsEnabled() && presetHasAny();
@@ -590,13 +533,11 @@ async function resetWithPreset(dealer){
   }
 }
 
-
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 
 function _extractDealerFromLog(logArr){
   if(!Array.isArray(logArr) || logArr.length===0) return "";
   const s = String(logArr[0] ?? "");
-  // 例: "Game start. dealer=A, table=main"
   const m = s.match(/dealer=([ABCD])/);
   return m ? m[1] : "";
 }
@@ -609,34 +550,20 @@ function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
 function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
 
-/** ★共有プレイヤー名（state.player_names を描画に使う） */
 function sanitizeName(s){
-  s = (s ?? "").toString();
-  // 改行だけ除去
-  s = s.replace(/\r?\n/g, "");
-  // 9文字まで
+  s = (s ?? "").toString().replace(/\r?\n/g, "");
   if(s.length > 9) s = s.slice(0,9);
   return s;
 }
 
-
 function phaseToJa(p){
-  const m = {
-    "attack":"攻め",
-    "receive":"受け",
-    "defense":"受け",
-    "block":"受け",
-    "end":"終了",
-    "finished":"終了"
-  };
-  if(!p) return "";
+  const m = { "attack":"攻め", "receive":"受け", "defense":"受け", "block":"受け", "end":"終了", "finished":"終了" };
   return m[p] || p;
 }
 
 function formatNameForBoard(s){
   s = sanitizeName(s);
   if(!s) return "";
-  // 1行3文字×3行
   const lines = [];
   for(let i=0;i<s.length && lines.length<3;i+=3){
     lines.push(s.slice(i, i+3));
@@ -664,12 +591,9 @@ const PHASE_LABEL_POS = { col: 6, row: 5 };
 const ATK_LABEL_POS = { col: 5, row: 6 };
 
 const NAME_POS = {
-  A: { col: 8, row: 9 },
-  B: { col: 9, row: 3 },
-  C: { col: 3, row: 2 },
-  D: { col: 2, row: 8 },
+  A: { col: 8, row: 9 }, B: { col: 9, row: 3 },
+  C: { col: 3, row: 2 }, D: { col: 2, row: 8 },
 };
-
 
 function buildSlotMap(physToSeat){
   const m=new Map();
@@ -681,7 +605,6 @@ function buildSlotMap(physToSeat){
   return m;
 }
 
-
 function buildHandMap(physToSeat){
   const m=new Map();
   for(const phys of ["A","B","C","D"]){
@@ -691,16 +614,8 @@ function buildHandMap(physToSeat){
   return m;
 }
 
-async function claimSeat(seat){
-  try{
-    await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"});
-  }catch(e){ console.error(e); }
-}
-async function releaseSeat(seat){
-  try{
-    await fetch(`${API}/games/main/release?seat=${encodeURIComponent(seat)}`, {method:"POST"});
-  }catch(e){ console.error(e); }
-}
+async function claimSeat(seat){ try{ await fetch(`${API}/games/main/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
+async function releaseSeat(seat){ try{ await fetch(`${API}/games/main/release?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
 
 async function setName(seat, name){
   name = sanitizeName(name);
@@ -710,7 +625,7 @@ async function setName(seat, name){
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ seat, name })
     });
-  }catch(e){ console.error(e); }
+  }catch(e){}
 }
 
 async function applyName(seat){
@@ -719,13 +634,9 @@ async function applyName(seat){
   const v = sanitizeName(el.value);
   el.value = v;
   await setName(seat, v);
-  // 反映確認のため更新
   await refresh();
-    updateNameInputVisibility();
-
-updateNameInputVisibility();
-
-  }
+  updateNameInputVisibility();
+}
 
 async function downloadKifu(){
   const res = await fetch(`${API}/games/${gid}/kifu`);
@@ -740,8 +651,7 @@ async function downloadKifu(){
 
 function toggleAllHands(){
   showAllHands = !showAllHands;
-  document.getElementById("toggleHandsBtn").textContent =
-    showAllHands ? "手札表示を戻す" : "みんな手札公開";
+  document.getElementById("toggleHandsBtn").textContent = showAllHands ? "手札表示を戻す" : "みんな手札公開";
   refresh();
 }
 
@@ -754,10 +664,7 @@ async function submitAction(actionObj){
 }
 
 async function onHandPieceClick(piece){
-  if(isSpectator()){
-    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
-    return;
-  }
+  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -768,13 +675,10 @@ async function onHandPieceClick(piece){
       await submitAction(matched[0]);
       pending = null;
       await refresh();
-    updateNameInputVisibility();
-return;
-    }
-    if(matched.length > 1){
-      setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。");
+      updateNameInputVisibility();
       return;
     }
+    if(matched.length > 1){ setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。"); return; }
     setHint("その駒は選べません。");
     return;
   }
@@ -786,7 +690,7 @@ return;
     await submitAction(candidates[0]);
     await refresh();
     updateNameInputVisibility();
-return;
+    return;
   }
 
   const aab = candidates.filter(a => a.action_type === "attack_after_block");
@@ -802,15 +706,11 @@ return;
     setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
     return;
   }
-
   setHint("複数候補があり確定できません。デバッグ用ボタンから選んでください。");
 }
 
 async function onPassClick(){
-  if(isSpectator()){
-    setHint("観戦中は操作できません。A/B/C/Dを選んでください。");
-    return;
-  }
+  if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / PASS：6列目6行目）`); return; }
@@ -821,7 +721,7 @@ async function onPassClick(){
   pending = null;
   await submitAction(pass);
   await refresh();
-    updateNameInputVisibility();
+  updateNameInputVisibility();
 }
 
 function seatIsHuman(state, seat){
@@ -896,38 +796,34 @@ function renderBoard(state){
         continue;
       }
 
-      // ★プレイヤー名表示（共有）
       let placedName = false;
-      
-for(const phys of ["A","B","C","D"]){
-  const pos = NAME_POS[phys];
-  if(pos.col === col && pos.row === row){
-    const seat = physToSeat[phys];
-    div.classList.add("name-label");
-    div.textContent = formatNameForBoard(names[seat] || "");
-    board.appendChild(div);
-    placedName = true;
-    break;
-  }
-}
+      for(const phys of ["A","B","C","D"]){
+        const pos = NAME_POS[phys];
+        if(pos.col === col && pos.row === row){
+          const seat = physToSeat[phys];
+          div.classList.add("name-label");
+          div.textContent = formatNameForBoard(names[seat] || "");
+          board.appendChild(div);
+          placedName = true;
+          break;
+        }
+      }
       if(placedName) continue;
 
-      
-// 席ラベル（視点回転後に表示）
-let label = null;
-for(const phys of ["A","B","C","D"]){
-  const pos = SEAT_LABEL_POS[phys];
-  if(pos && pos.col===col && pos.row===row){
-    label = physToSeat[phys];
-    break;
-  }
-}
-if(label){
-  div.classList.add("seat-label");
-  div.textContent = label;
-  board.appendChild(div);
-  continue;
-}
+      let label = null;
+      for(const phys of ["A","B","C","D"]){
+        const pos = SEAT_LABEL_POS[phys];
+        if(pos && pos.col===col && pos.row===row){
+          label = physToSeat[phys];
+          break;
+        }
+      }
+      if(label){
+        div.classList.add("seat-label");
+        div.textContent = label;
+        board.appendChild(div);
+        continue;
+      }
 
       const hand=HAND_MAP.get(k);
       if(hand){
@@ -936,7 +832,6 @@ if(label){
 
         const val=document.createElement("div");
         val.className="val";
-
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || showAllHands;
 
         if(canShowSeat){
@@ -956,7 +851,6 @@ if(label){
         }else{
           val.textContent="□";
         }
-
         div.appendChild(val);
         board.appendChild(div);
         continue;
@@ -965,12 +859,10 @@ if(label){
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
-
         if(slot.kind==="A"){
           div.classList.add("attack");
           div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
         }
-
         const val=document.createElement("div");
         val.className="val";
         const kindKey = slot.kind==="R" ? "receive" : "attack";
@@ -986,7 +878,6 @@ if(label){
         }
         div.appendChild(val);
       }
-
       board.appendChild(div);
     }
   }
@@ -1003,33 +894,24 @@ async function renderActions(){
     const b=a.block ? pieceToLabel(a.block) : "";
     const at=a.attack ? pieceToLabel(a.attack) : "";
     btn.textContent = `${t} ${b} ${at}`.trim();
-    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh();
-    updateNameInputVisibility();
-};
+    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); updateNameInputVisibility(); };
     actionsDiv.appendChild(btn);
   });
 }
 
 async function startNewGame(){
-  // 現在の名前は保持（サーバで共有されている値を優先）
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
-  const seatToKeep = mySeat; // 観戦/W or A/B/C/D
-
+  const seatToKeep = mySeat; 
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
   if(dealer === "random") dealer = _chooseRandomDealer();
 
-  // いったんゲームを作り直す（サーバ側は名前/席を初期化する仕様）
   await resetWithPreset(dealer);
-// 名前を復元（入力欄は同期しない方針なので触らない）
   for(const s of ["A","B","C","D"]){
     const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
-    if(nm){
-      await setName(s, nm);
-    }
+    if(nm){ await setName(s, nm); }
   }
 
-  // 自分の席を維持（観戦ならそのまま）
   if(seatToKeep && seatToKeep !== WATCH){
     await claimSeat(seatToKeep);
   }
@@ -1037,38 +919,33 @@ async function startNewGame(){
   pending=null; showAllHands=false;
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
   await refresh();
-    updateNameInputVisibility();
+  updateNameInputVisibility();
 }
 
 async function resetAll(){
   presetClear();
   presetSetEnabled(false);
-  // 旧「新規ゲーム（main卓リセット）」と同等：名前/席/表示なども初期化
   const sel = document.getElementById("dealerSelect");
   let dealer = sel ? sel.value : "random";
   if(dealer === "random") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
-// クライアント側の状態も初期化
   pending = null;
   showAllHands = false;
   document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
 
-  // 観戦に戻す（席の維持をしない）
   mySeat = WATCH;
   lastSeat = "A";
   const seatSel = document.getElementById("seatSelect");
   if(seatSel) seatSel.value = WATCH;
 
-  // 名前入力欄もクリア（同期しない方針なので明示的に消す）
   const ids = ["nameA","nameB","nameC","nameD"];
   for(const id of ids){
     const el = document.getElementById(id);
     if(el) el.value = "";
   }
-
   await refresh();
-    updateNameInputVisibility();
+  updateNameInputVisibility();
 }
 
 async function fetchLegal(){
@@ -1106,8 +983,8 @@ async function refresh(){
 
   renderBoard(state);
   await renderActions();
-updateNameInputVisibility();
-  }
+  updateNameInputVisibility();
+}
 
 function bindNameInputs(){
   const ids = ["nameA","nameB","nameC","nameD"];
@@ -1121,25 +998,21 @@ function bindNameInputs(){
   }
 }
 
-
 function updateNameInputVisibility(){
   const grid = document.getElementById("nameGrid");
   if(!grid) return;
 
   const items = grid.querySelectorAll("[data-seat]");
-  // 観戦中は全部非表示
   if(mySeat === WATCH){
     items.forEach(el => el.style.display = "none");
     return;
   }
-  // 自分の席だけ表示
   items.forEach(el => {
     el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
   });
 }
 
 window.addEventListener("load", async ()=>{
-  // 手札指定（枚数）
   presetLoad();
   presetSetEnabled(presetIsEnabled());
   const presetEnabledBox = document.getElementById("presetEnabled");
@@ -1156,30 +1029,25 @@ window.addEventListener("load", async ()=>{
   sel.value = WATCH;
 
   await refresh();
-    updateNameInputVisibility();
-sel.addEventListener("change", async ()=>{
+  updateNameInputVisibility();
+  
+  sel.addEventListener("change", async ()=>{
     const next = sel.value;
-
-    if(!isSpectator()){
-      await releaseSeat(lastSeat);
-    }
-
+    if(!isSpectator()){ await releaseSeat(lastSeat); }
     pending = null;
-
     if(next === WATCH){
       mySeat = WATCH;
       sel.value = WATCH;
       await refresh();
-    updateNameInputVisibility();
-return;
+      updateNameInputVisibility();
+      return;
     }
-
     mySeat = next;
     lastSeat = mySeat;
     await claimSeat(mySeat);
     await refresh();
     updateNameInputVisibility();
-});
+  });
 
   setInterval(refresh, 2000);
 });
