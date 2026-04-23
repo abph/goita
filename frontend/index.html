@@ -54,23 +54,34 @@
       overflow: hidden;
     }
 
-    /* 駒（竹札の質感と立体感） */
+    /* ===== 駒（将棋の駒の形・五角形に変更） ===== */
     .slot, .hand { 
-      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹札風のグラデーション */
-      border: 1px solid #a67c00; 
-      border-radius: 3px; 
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹・木目風のグラデーション */
+      /* 将棋の駒の形に切り抜く（上中央、右上、右下、左下、左上） */
+      clip-path: polygon(50% 0%, 95% 20%, 80% 100%, 20% 100%, 5% 20%);
       font-weight: 600; 
+      /* マス目の中で少し余白を持たせて縦長にする */
+      width: 80%;
+      height: 95%;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* clip-pathを使った要素への影付け */
+      filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
+    
+    /* 駒の文字位置の微調整（頭が尖っている分、文字を少し下げる） */
     .slot .val, .hand .val { 
       font-size: 20px; 
       font-weight: 900; 
-      color: #1a1a1a; /* 基本は黒墨 */
+      color: #1a1a1a; 
+      transform: translateY(4px); /* 文字を少し中央〜下寄りに */
     }
 
-    /* 敵（AI）の攻め駒は朱色にして警戒感を出す */
+    /* 敵（AI）の攻め駒は背景色を少し朱色にして警戒感を出す（borderが効かないため） */
     .slot.attack.ai, .hand.ai { 
-      border-color: #c93a3a; 
+      background: linear-gradient(135deg, #fcd0b5, #e69d75);
     }
     .slot.attack.ai .val, .hand.ai .val { 
       color: #b00000; 
@@ -78,41 +89,40 @@
 
     /* 現在の攻めの強調表示 */
     .slot.current-attack {
-      background: #f7e1a0;
-      border-color: #d35400;
+      background: linear-gradient(135deg, #f7e1a0, #f1c40f);
       animation: pulse 1.5s infinite;
     }
     .slot.current-attack .val { color: #d35400; font-size: 22px; }
     @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(211,84,0,0.6); }
-      70%  { box-shadow: 0 0 0 10px rgba(211,84,0,0); }
-      100% { box-shadow: 0 0 0 0 rgba(211,84,0,0); }
+      0%   { filter: drop-shadow(0 0 0 rgba(211,84,0,0.6)); }
+      70%  { filter: drop-shadow(0 0 10px rgba(211,84,0,0.8)); }
+      100% { filter: drop-shadow(0 0 0 rgba(211,84,0,0)); }
     }
 
     /* ===== 駒の向きを盤面中央に向ける ===== */
     /* 手前(A)はそのまま、右(B)は左向き、奥(C)は下向き、左(D)は右向き */
-    .phys-A .val { transform: rotate(0deg); }
-    .phys-B .val { transform: rotate(-90deg); }
-    .phys-C .val { transform: rotate(180deg); }
-    .phys-D .val { transform: rotate(90deg); }
+    /* 五角形自体を回転させるために本体にtransformをかける */
+    .phys-A { transform: rotate(0deg); }
+    .phys-B { transform: rotate(-90deg); }
+    .phys-C { transform: rotate(180deg); }
+    .phys-D { transform: rotate(90deg); }
 
     /* クリック可能な手札のホバー演出（持ち上がるアクション） */
     .hand.clickable { 
       cursor: pointer; 
       transition: all 0.2s ease; 
     }
+    /* phys-A（自分の手札）しかclickableにならないため、回転0deg前提のホバーでOK */
     .hand.clickable:hover { 
-      outline: 3px solid rgba(176, 0, 0, 0.5); /* 緋色で強調 */
-      transform: translateY(-4px); /* スッと手前に持ち上がる */
-      box-shadow: 2px 6px 8px rgba(0,0,0,0.5);
+      transform: translateY(-4px) scale(1.05); /* 少し手前に拡大して持ち上がる */
+      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); /* 緋色の影で強調 */
     }
 
     /* 出せない駒（グレーアウト） */
     .hand.disabled { 
       background: #e0d8c8; 
-      border-color: #bba; 
       cursor: not-allowed; 
-      box-shadow: none; 
+      filter: none; 
     }
     .hand.disabled .val { color: #888; }
 
