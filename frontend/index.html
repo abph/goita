@@ -89,6 +89,13 @@
       100% { box-shadow: 0 0 0 0 rgba(211,84,0,0); }
     }
 
+    /* ===== 駒の向きを盤面中央に向ける ===== */
+    /* 手前(A)はそのまま、右(B)は左向き、奥(C)は下向き、左(D)は右向き */
+    .phys-A .val { transform: rotate(0deg); }
+    .phys-B .val { transform: rotate(-90deg); }
+    .phys-C .val { transform: rotate(180deg); }
+    .phys-D .val { transform: rotate(90deg); }
+
     /* クリック可能な手札のホバー演出（持ち上がるアクション） */
     .hand.clickable { 
       cursor: pointer; 
@@ -599,8 +606,8 @@ function buildSlotMap(physToSeat){
   const m=new Map();
   for(const phys of ["A","B","C","D"]){
     const seat = physToSeat[phys];
-    SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"R",idx:i}));
-    SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i}));
+    SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"R",idx:i, phys:phys}));
+    SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i, phys:phys}));
   }
   return m;
 }
@@ -609,7 +616,7 @@ function buildHandMap(physToSeat){
   const m=new Map();
   for(const phys of ["A","B","C","D"]){
     const seat = physToSeat[phys];
-    HAND_POS[phys].forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,idx:i}));
+    HAND_POS[phys].forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,idx:i, phys:phys}));
   }
   return m;
 }
@@ -828,6 +835,7 @@ function renderBoard(state){
       const hand=HAND_MAP.get(k);
       if(hand){
         div.classList.add("hand");
+        div.classList.add("phys-" + hand.phys);
         div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
 
         const val=document.createElement("div");
@@ -859,6 +867,7 @@ function renderBoard(state){
       const slot=SLOT_MAP.get(k);
       if(slot){
         div.classList.add("slot");
+        div.classList.add("phys-" + slot.phys);
         if(slot.kind==="A"){
           div.classList.add("attack");
           div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
