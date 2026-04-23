@@ -844,58 +844,80 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
-        div.classList.add("hand");
-        div.classList.add("phys-" + hand.phys);
-        div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
-
-        const val=document.createElement("div");
-        val.className="val";
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || showAllHands;
 
         if(canShowSeat){
           const raw = state.hands?.[hand.p];
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
-          val.textContent = card ? pieceToLabel(card) : "□";
 
-          if(!isSpectator() && hand.p===mySeat && state.turn===mySeat && !state.finished && card){
-            if(usable.has(card)){
-              div.classList.add("clickable");
-              div.onclick = () => onHandPieceClick(card);
-            }else{
-              div.classList.add("disabled");
+          // 駒が存在する場合のみ、駒の形（.hand クラス）を付与する
+          if (card) {
+            div.classList.add("hand");
+            div.classList.add("phys-" + hand.phys);
+            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
+
+            const val=document.createElement("div");
+            val.className="val";
+            val.textContent = pieceToLabel(card);
+
+            if(!isSpectator() && hand.p===mySeat && state.turn===mySeat && !state.finished){
+              if(usable.has(card)){
+                div.classList.add("clickable");
+                div.onclick = () => onHandPieceClick(card);
+              }else{
+                div.classList.add("disabled");
+              }
             }
+            div.appendChild(val);
           }
         }else{
-          val.textContent="□";
+          // 敵の伏せ手札の場合：すでに出した駒の数をカウントし、残りの手札枚数だけ「□」を描画する
+          const pAttack = state.board_public?.[hand.p]?.attack || [];
+          const pReceive = state.board_public?.[hand.p]?.receive || [];
+          const playedCount = pAttack.filter(x => x !== null && x !== undefined).length + 
+                              pReceive.filter(x => x !== null && x !== undefined).length;
+          const remainingCount = 8 - playedCount;
+
+          if (hand.idx < remainingCount) {
+            div.classList.add("hand");
+            div.classList.add("phys-" + hand.phys);
+            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
+
+            const val=document.createElement("div");
+            val.className="val";
+            val.textContent="□";
+            div.appendChild(val);
+          }
         }
-        div.appendChild(val);
         board.appendChild(div);
         continue;
       }
 
       const slot=SLOT_MAP.get(k);
       if(slot){
-        div.classList.add("slot");
-        div.classList.add("phys-" + slot.phys);
-        if(slot.kind==="A"){
-          div.classList.add("attack");
-          div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
-        }
-        const val=document.createElement("div");
-        val.className="val";
         const kindKey = slot.kind==="R" ? "receive" : "attack";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
 
-        if(piece){
+        // 盤面に実際に駒が出ている場合のみ、駒の形（.slot クラス）を付与する
+        if (piece) {
+          div.classList.add("slot");
+          div.classList.add("phys-" + slot.phys);
+          if(slot.kind==="A"){
+            div.classList.add("attack");
+            div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
+          }
+          const val=document.createElement("div");
+          val.className="val";
+
           if(kindKey==="receive"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
             val.textContent = hidden ? "■" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
           }
+          div.appendChild(val);
         }
-        div.appendChild(val);
       }
       board.appendChild(div);
     }
