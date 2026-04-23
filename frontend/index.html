@@ -340,7 +340,7 @@
           <div class="preset-err" id="presetErr" style="display:none;"></div>
         </details>
 
-        <details style="margin-top:10px;">
+        <details id="actionsDetails" style="margin-top:10px;">
           <summary><b>（デバッグ用）合法手</b></summary>
           <div class="small">観戦中は空になります。</div>
           <div id="actions" style="margin-top:8px;"></div>
@@ -348,8 +348,10 @@
       </div>
 
       <div class="card">
-        <div><b>ログ</b></div>
-        <pre id="log" style="margin-top:8px;"></pre>
+        <details>
+          <summary><b>ログ</b></summary>
+          <pre id="log" style="margin-top:8px;"></pre>
+        </details>
       </div>
     </div>
 
@@ -405,17 +407,19 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
-// ====== ★新規追加: 部屋に応じてUI（デバッグ・設定機能）の表示を切り替える関数 ======
+// ====== ★変更: 部屋に応じてUI（デバッグ・設定機能）の表示を切り替える関数 ======
 function updateRoomUI() {
     const isMain = (gid === MAIN_GID);
     const toggleBtn = document.getElementById("toggleHandsBtn");
     const dealerDetails = document.getElementById("dealerDetails");
     const presetDetails = document.getElementById("presetHandsDetails");
+    const actionsDetails = document.getElementById("actionsDetails"); // ★追加
     
     // メインルーム(main)の場合は非表示、それ以外（プライベートルーム）の場合は表示
     if (toggleBtn) toggleBtn.style.display = isMain ? "none" : "";
     if (dealerDetails) dealerDetails.style.display = isMain ? "none" : "";
     if (presetDetails) presetDetails.style.display = isMain ? "none" : "";
+    if (actionsDetails) actionsDetails.style.display = isMain ? "none" : ""; // ★追加
 }
 
 // 部屋リストを取得して表示する関数
@@ -1142,7 +1146,7 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  updateRoomUI(); // ★ ここでUIの表示/非表示を更新
+  updateRoomUI(); // ★ UIの表示/非表示を更新
 
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
