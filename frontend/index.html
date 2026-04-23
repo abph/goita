@@ -57,29 +57,26 @@
     /* ===== 駒（将棋の駒の形・五角形に変更） ===== */
     .slot, .hand { 
       background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹・木目風のグラデーション */
-      /* いただいた画像のシルエットに合わせて末広がり（下部を98%と2%）に調整 */
       clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
       font-weight: 600; 
-      /* マス目の中で少し余白を持たせて縦長にする */
       width: 80%;
       height: 95%;
       margin: auto;
       display: flex;
       align-items: center;
       justify-content: center;
-      /* clip-pathを使った要素への影付け */
       filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
     
-    /* 駒の文字位置の微調整（頭が尖っている分、文字を少し下げる） */
+    /* 駒の文字位置の微調整 */
     .slot .val, .hand .val { 
       font-size: 20px; 
       font-weight: 900; 
       color: #1a1a1a; 
-      transform: translateY(4px); /* 文字を少し中央〜下寄りに */
+      transform: translateY(4px); 
     }
 
-    /* 敵（AI）の攻め駒は背景色を少し朱色にして警戒感を出す（borderが効かないため） */
+    /* 敵（AI）の攻め駒は背景色を少し朱色に */
     .slot.attack.ai, .hand.ai { 
       background: linear-gradient(135deg, #fcd0b5, #e69d75);
     }
@@ -100,22 +97,19 @@
     }
 
     /* ===== 駒の向きを盤面中央に向ける ===== */
-    /* 手前(A)はそのまま、右(B)は左向き、奥(C)は下向き、左(D)は右向き */
-    /* 五角形自体を回転させるために本体にtransformをかける */
     .phys-A { transform: rotate(0deg); }
     .phys-B { transform: rotate(-90deg); }
     .phys-C { transform: rotate(180deg); }
     .phys-D { transform: rotate(90deg); }
 
-    /* クリック可能な手札のホバー演出（持ち上がるアクション） */
+    /* クリック可能な手札のホバー演出 */
     .hand.clickable { 
       cursor: pointer; 
       transition: all 0.2s ease; 
     }
-    /* phys-A（自分の手札）しかclickableにならないため、回転0deg前提のホバーでOK */
     .hand.clickable:hover { 
-      transform: translateY(-4px) scale(1.05); /* 少し手前に拡大して持ち上がる */
-      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); /* 緋色の影で強調 */
+      transform: translateY(-4px) scale(1.05); 
+      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
     }
 
     /* 出せない駒（グレーアウト） */
@@ -157,7 +151,6 @@
       border-radius: 8px;
       padding: 6px 16px;
       box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-      /* スケールと透明度で1秒間ポップアップ */
       animation: popOut 1s ease-in-out forwards;
     }
     @keyframes popOut {
@@ -167,7 +160,7 @@
       100% { transform: scale(0.8); opacity: 0; }
     }
 
-    /* ラベル類も和風に馴染ませる */
+    /* ラベル類 */
     .seat-label, .turn-label, .phase-label, .atk-label, .name-label {
       border: 2px solid #8b5a2b;
       background: #f4efdf;
@@ -176,7 +169,6 @@
       text-align: center;
       border-radius: 4px;
     }
-
     .seat-label{ font-size: 22px; letter-spacing: 1px; }
     .turn-label{ font-size: 16px; letter-spacing: 0px; }
     .phase-label{ font-size: 14px; letter-spacing: 0px; }
@@ -187,7 +179,6 @@
     .meta { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     
-    /* ボタンと入力欄も少しトーンを合わせる */
     button, select, input[type="text"] { 
       padding: 7px 10px; border-radius: 6px; border: 1px solid #a67c00; background: #fffdf5; cursor: pointer; font-family: inherit;
     }
@@ -237,7 +228,6 @@
       .pass{ font-size: 12px; }
     }
   
-    /* ===== 手札指定（枚数） ===== */
     .preset-grid{
       display: grid;
       grid-template-columns: 22px repeat(9, 34px);
@@ -248,11 +238,7 @@
     }
     .preset-grid .hdr{ font-weight: 900; text-align: center; }
     .preset-grid .seat{ font-weight: 900; }
-    .preset-grid input{
-      width: 34px;
-      padding: 6px 6px;
-      text-align: center;
-    }
+    .preset-grid input{ width: 34px; padding: 6px 6px; text-align: center; }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
 
@@ -377,14 +363,12 @@ const WATCH = "W";
 let mySeat = WATCH;
 let lastSeat = "A";
 
-// CPU処理中フラグとログ履歴カウンタ（パス検知用）
+// CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
 
 const SEAT_ORDER = ["A","B","C","D"];
 
-// 表示の向き：下=物理A, 右=物理B, 上=物理C, 左=物理D として
-// 「自分の席(mySeat)が常に下(物理A)に来る」ように表示を回転する
 function getPhysToSeat(){
   const base = (!mySeat || isSpectator()) ? "A" : mySeat;
   const s = SEAT_ORDER.indexOf(base);
@@ -417,23 +401,17 @@ function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort(
 function getWinnerPoints(state){
   const w = state?.winner;
   if(!w) return 0;
-
-  // 1) まずは seats形式のスコアがあればそれを優先
   if(state?.scores && state.scores[w] != null){
     const v = state.scores[w];
     if(typeof v === "number" && isFinite(v)) return v;
     if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
   }
-
-  // 2) team_score が {AC:xx, BD:yy} の場合
   if(state?.team_score && typeof state.team_score === "object"){
     const team = (w === "A" || w === "C") ? "AC" : "BD";
     const v = state.team_score[team];
     if(typeof v === "number" && isFinite(v)) return v;
     if(typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
   }
-
-  // 3) フォールバック
   const cand = [ state?.winner_score, state?.score, state?.points, state?.team_points ];
   for(const v of cand){
     if(typeof v === "number" && isFinite(v)) return v;
@@ -882,7 +860,6 @@ function renderBoard(state){
           const arr = sortHandNumeric(raw);
           const card = Array.isArray(arr) ? arr[hand.idx] : null;
 
-          // 駒が存在する場合のみ、駒の形（.hand クラス）を付与する
           if (card) {
             div.classList.add("hand");
             div.classList.add("phys-" + hand.phys);
@@ -903,7 +880,6 @@ function renderBoard(state){
             div.appendChild(val);
           }
         }else{
-          // 敵の伏せ手札の場合：すでに出した駒の数をカウントし、残りの手札枚数だけ「□」を描画する
           const pAttack = state.board_public?.[hand.p]?.attack || [];
           const pReceive = state.board_public?.[hand.p]?.receive || [];
           const playedCount = pAttack.filter(x => x !== null && x !== undefined).length + 
@@ -930,7 +906,6 @@ function renderBoard(state){
         const kindKey = slot.kind==="R" ? "receive" : "attack";
         const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
 
-        // 盤面に実際に駒が出ている場合のみ、駒の形（.slot クラス）を付与する
         if (piece) {
           div.classList.add("slot");
           div.classList.add("phys-" + slot.phys);
@@ -971,7 +946,6 @@ async function renderActions(){
   });
 }
 
-// ===== パスのアニメーションを表示する関数 =====
 function showPassAnimation(phys) {
   const board = document.getElementById("board");
   if (!board) return;
@@ -979,17 +953,14 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
-  // 物理的な席（A〜D）の、受け2・3枚目、攻め2・3枚目の位置（2x2マス）に重ねる
   if (phys === "A") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "8 / 10"; }
   else if (phys === "B") { wrapper.style.gridColumn = "8 / 10"; wrapper.style.gridRow = "5 / 7"; }
   else if (phys === "C") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "2 / 4"; }
   else if (phys === "D") { wrapper.style.gridColumn = "2 / 4"; wrapper.style.gridRow = "5 / 7"; }
   
-  // 回転用の内側ラッパー（駒と同じ向きにする）
   const inner = document.createElement("div");
   inner.className = "phys-" + phys;
   
-  // アニメーション用のテキスト要素
   const textDiv = document.createElement("div");
   textDiv.className = "pass-anim-text";
   textDiv.textContent = "パス";
@@ -998,7 +969,6 @@ function showPassAnimation(phys) {
   wrapper.appendChild(inner);
   board.appendChild(wrapper);
   
-  // 1秒後に削除
   setTimeout(() => {
     if(wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
   }, 1000);
@@ -1060,7 +1030,6 @@ async function fetchLegal(){
 }
 
 async function refresh(){
-  // CPU処理中はリフレッシュしない
   if(isProcessingCpu) return;
 
   const qs = new URLSearchParams();
@@ -1088,33 +1057,38 @@ async function refresh(){
     setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
   }
 
-  // 盤面とボタンの描画
   renderBoard(state);
   await renderActions();
   updateNameInputVisibility();
 
-  // ===== 新規追加：パスのアニメーション判定 =====
+  // ===== 新規追加：パスのアニメーション判定（時間差表示） =====
   const currentLogCount = state.log ? state.log.length : 0;
   if (currentLogCount < lastLogCount) {
-    lastLogCount = 0; // リセット等でログが減った場合は初期化
+    lastLogCount = 0; 
   }
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
-    // 増えた分のログを確認し、「: pass」が含まれていればアニメーションを実行
+    let passDelay = 0; // ★アニメーションをずらすための時間
+    
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
       const match = entry.match(/^([ABCD]): pass/);
       if (match) {
         const logicalSeat = match[1];
         const physSeat = seatToPhys[logicalSeat];
-        showPassAnimation(physSeat);
+        
+        // ★setTimeoutを使ってパスの表示タイミングをずらす
+        setTimeout(() => {
+          showPassAnimation(physSeat);
+        }, passDelay);
+        
+        passDelay += 800; // 0.8秒（800ms）ずつ遅らせて順番に表示
       }
     }
   }
   lastLogCount = currentLogCount;
   // ============================================
 
-  // CPUの番なら、1秒待ってから1手進める
   if(!state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     setTimeout(async () => {
