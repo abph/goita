@@ -140,6 +140,33 @@
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
+    /* ===== パス時のポップアップアニメーション ===== */
+    .pass-anim-wrapper {
+      z-index: 100;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pass-anim-text {
+      font-size: clamp(24px, 5vw, 36px);
+      font-weight: 900;
+      color: #b00000;
+      background: rgba(255, 250, 250, 0.95);
+      border: 4px double #b00000;
+      border-radius: 8px;
+      padding: 6px 16px;
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+      /* スケールと透明度で1秒間ポップアップ */
+      animation: popOut 1s ease-in-out forwards;
+    }
+    @keyframes popOut {
+      0%   { transform: scale(0.5); opacity: 0; }
+      15%  { transform: scale(1.15); opacity: 1; }
+      85%  { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0; }
+    }
+
     /* ラベル類も和風に馴染ませる */
     .seat-label, .turn-label, .phase-label, .atk-label, .name-label {
       border: 2px solid #8b5a2b;
@@ -350,8 +377,9 @@ const WATCH = "W";
 let mySeat = WATCH;
 let lastSeat = "A";
 
-// ★追加：CPU処理中かどうかを管理するフラグ
+// CPU処理中フラグとログ履歴カウンタ（パス検知用）
 let isProcessingCpu = false; 
+let lastLogCount = 0;
 
 const SEAT_ORDER = ["A","B","C","D"];
 
@@ -943,6 +971,39 @@ async function renderActions(){
   });
 }
 
+// ===== パスのアニメーションを表示する関数 =====
+function showPassAnimation(phys) {
+  const board = document.getElementById("board");
+  if (!board) return;
+  
+  const wrapper = document.createElement("div");
+  wrapper.className = "pass-anim-wrapper";
+  
+  // 物理的な席（A〜D）の、受け2・3枚目、攻め2・3枚目の位置（2x2マス）に重ねる
+  if (phys === "A") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "8 / 10"; }
+  else if (phys === "B") { wrapper.style.gridColumn = "8 / 10"; wrapper.style.gridRow = "5 / 7"; }
+  else if (phys === "C") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "2 / 4"; }
+  else if (phys === "D") { wrapper.style.gridColumn = "2 / 4"; wrapper.style.gridRow = "5 / 7"; }
+  
+  // 回転用の内側ラッパー（駒と同じ向きにする）
+  const inner = document.createElement("div");
+  inner.className = "phys-" + phys;
+  
+  // アニメーション用のテキスト要素
+  const textDiv = document.createElement("div");
+  textDiv.className = "pass-anim-text";
+  textDiv.textContent = "パス";
+  
+  inner.appendChild(textDiv);
+  wrapper.appendChild(inner);
+  board.appendChild(wrapper);
+  
+  // 1秒後に削除
+  setTimeout(() => {
+    if(wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+  }, 1000);
+}
+
 async function startNewGame(){
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
@@ -960,7 +1021,7 @@ async function startNewGame(){
     await claimSeat(seatToKeep);
   }
 
-  pending=null; showAllHands=false;
+  pending=null; showAllHands=false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
   await refresh();
   updateNameInputVisibility();
@@ -974,8 +1035,7 @@ async function resetAll(){
   if(dealer === "random") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
-  pending = null;
-  showAllHands = false;
+  pending = null; showAllHands = false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
 
   mySeat = WATCH;
@@ -1000,7 +1060,7 @@ async function fetchLegal(){
 }
 
 async function refresh(){
-  // ★CPUの処理中（1秒待機中）はリフレッシュの競合を防ぐためにスキップ
+  // CPU処理中はリフレッシュしない
   if(isProcessingCpu) return;
 
   const qs = new URLSearchParams();
@@ -1028,11 +1088,33 @@ async function refresh(){
     setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
   }
 
+  // 盤面とボタンの描画
   renderBoard(state);
   await renderActions();
   updateNameInputVisibility();
 
-  // ★追加：CPUの番なら、1秒待ってから「1手だけ進めるAPI（/cpu_step）」を叩く
+  // ===== 新規追加：パスのアニメーション判定 =====
+  const currentLogCount = state.log ? state.log.length : 0;
+  if (currentLogCount < lastLogCount) {
+    lastLogCount = 0; // リセット等でログが減った場合は初期化
+  }
+  if (lastLogCount > 0 && currentLogCount > lastLogCount) {
+    const seatToPhys = getSeatToPhys();
+    // 増えた分のログを確認し、「: pass」が含まれていればアニメーションを実行
+    for (let i = lastLogCount; i < currentLogCount; i++) {
+      const entry = state.log[i];
+      const match = entry.match(/^([ABCD]): pass/);
+      if (match) {
+        const logicalSeat = match[1];
+        const physSeat = seatToPhys[logicalSeat];
+        showPassAnimation(physSeat);
+      }
+    }
+  }
+  lastLogCount = currentLogCount;
+  // ============================================
+
+  // CPUの番なら、1秒待ってから1手進める
   if(!state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     setTimeout(async () => {
@@ -1042,8 +1124,8 @@ async function refresh(){
         console.error("CPU step error:", e);
       }
       isProcessingCpu = false;
-      refresh(); // 1手進んだら即座に画面を更新して、次の状況を表示する
-    }, 1000); // 1000ミリ秒 ＝ 1秒
+      refresh(); 
+    }, 1000); 
   }
 }
 
