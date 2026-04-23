@@ -419,9 +419,10 @@ def _ensure_main_game(dealer: str = "A") -> None:
 
 # ====== 支援者用の固定部屋をセットアップする ======
 def setup_supporter_rooms():
+    # "pass" の値を None に変更することで、パスワードなし（公開状態）になります
     supporter_data = [
-        {"gid": "room-gold-01", "pass": "ushitsu77", "owner": "支援者A様"},
-        {"gid": "room-silver-02", "pass": "goita-ai", "owner": "支援者B様"},
+        {"gid": "room-gold-01", "pass": None, "owner": "支援者A様"},
+        {"gid": "room-silver-02", "pass": None, "owner": "支援者B様"},
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
@@ -432,7 +433,6 @@ def setup_supporter_rooms():
             GAMES[data["gid"]] = room
 
 setup_supporter_rooms()
-
 
 # ====== ロビー機能関連のAPI ======
 @app.get("/games/list")
