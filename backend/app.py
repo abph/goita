@@ -27,6 +27,7 @@ NAME_MAX_LEN = 9
 # =========================================================
 class ConnectionManager:
     def __init__(self):
+        # game_id ごとの WebSocket 接続リスト
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, game_id: str):
@@ -41,11 +42,13 @@ class ConnectionManager:
                 self.active_connections[game_id].remove(websocket)
 
     async def broadcast_update(self, game_id: str):
+        """その部屋の全員に更新通知を送る"""
         if game_id in self.active_connections:
             for connection in self.active_connections[game_id]:
                 try:
                     await connection.send_json({"type": "update"})
                 except:
+                    # 無効な接続は無視（切断時に自動削除されるため）
                     pass
 
 manager = ConnectionManager()
@@ -58,8 +61,10 @@ def _validate_seat(s: str, *, name: str = "seat") -> str:
         raise HTTPException(status_code=400, detail=f"invalid {name}: {s} (must be A/B/C/D)")
     return s
 
+
 def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
     return {p: [str(x) for x in hands[p]] for p in ALL_SEATS}
+
 
 def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
     for _ in range(max_retry):
@@ -69,6 +74,8 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
             return hands
     raise RuntimeError(f"Failed to generate valid hands after {max_retry} retries.")
 
+
+# ====== 手札プリセット（枚数指定） ======
 def build_hands_from_preset_counts(
     preset: Dict[str, Dict[str, int]],
     dealer: str,
@@ -170,6 +177,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ====== frontend 配信 ======
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -183,31 +191,29 @@ def serve_index():
     return FileResponse(index_path)
 
 
-# ★ 修正: 切断検知と自動権限解除のロジックを追加
+# ====== WebSocket エンドポイント ======
 @app.websocket("/ws/{game_id}")
-async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
+async def websocket_endpoint(websocket: WebSocket, game_id: str):
     await manager.connect(websocket, game_id)
     try:
         while True:
+            # 接続維持のためメッセージを待機
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, game_id)
-        
-        # 接続が切れた人が管理者だった場合、権限を自動解除する
-        game = GAMES.get(game_id)
-        if game and game.get("admin_id") == client_id:
-            game["admin_id"] = None
-            await manager.broadcast_update(game_id)
 
 
+# ====== 棋譜（kifu）用 ======
 def _hand_to_kifu_string(hand: List[Any]) -> str:
     return "".join(PIECE_KANJI.get(str(x), str(x)) for x in hand)
+
 
 def _piece_to_kifu(v: Optional[str]) -> str:
     if v is None:
         return ""
     v = str(v)
     return PIECE_KANJI.get(v, v)
+
 
 def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> List[str]:
     t, b, a = action
@@ -221,6 +227,7 @@ def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[
     if t == "attack_after_block":
         return [pid, _piece_to_kifu(b), _piece_to_kifu(a)]
     return [pid, t, ""]
+
 
 def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
     out: List[List[str]] = []
@@ -255,16 +262,15 @@ class StepRequest(BaseModel):
     player: str = Field(..., description="A/B/C/D")
     action: ActionModel
 
+
 class NameRequest(BaseModel):
     seat: str
     name: str = ""
 
+
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-
-class AdminRequest(BaseModel):
-    client_id: str
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -366,7 +372,6 @@ def _state_public_view(
     reveal_hands: bool = False,
     human_seats: Optional[Set[str]] = None,
     player_names: Optional[Dict[str, str]] = None,
-    admin_id: Optional[str] = None, 
 ) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
@@ -397,7 +402,6 @@ def _state_public_view(
         "finished": state.finished,
         "winner": state.winner,
         "player_names": player_names or {p: "" for p in ALL_SEATS},
-        "admin_id": admin_id, 
     }
     if human_seats is not None:
         payload["human_seats"] = sorted(list(human_seats))
@@ -423,7 +427,6 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
         "owner_name": "",
-        "admin_id": None, 
     }
 
 
@@ -477,36 +480,6 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 # ゲーム操作 API (通知対応)
 # =========================================================
 
-@app.post("/games/{game_id}/claim_admin")
-async def claim_admin(game_id: str, req: AdminRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-
-    if game.get("admin_id") is None:
-        game["admin_id"] = req.client_id
-        await manager.broadcast_update(game_id)
-        return {"ok": True}
-    return {"ok": False}
-
-
-@app.post("/games/{game_id}/release_admin")
-async def release_admin(game_id: str, req: AdminRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-
-    if game.get("admin_id") == req.client_id:
-        game["admin_id"] = None
-        await manager.broadcast_update(game_id)
-        return {"ok": True}
-    return {"ok": False}
-
-
 @app.post("/games/{game_id}/reset")
 async def reset_game(game_id: str, dealer: str = "A"):
     if game_id == MAIN_GID:
@@ -517,13 +490,9 @@ async def reset_game(game_id: str, dealer: str = "A"):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
-    admin_id = old_game.get("admin_id") 
-    
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
     new_game["owner_name"] = owner_name
-    new_game["admin_id"] = admin_id 
-    
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
     GAMES[game_id] = new_game
@@ -544,7 +513,6 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
-    admin_id = old_game.get("admin_id") 
 
     if preset:
         try:
@@ -560,13 +528,11 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["kifu_moves"] = []
         new_game["password"] = password
         new_game["owner_name"] = owner_name
-        new_game["admin_id"] = admin_id 
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
         new_game["password"] = password
         new_game["owner_name"] = owner_name
-        new_game["admin_id"] = admin_id 
         if game_id != MAIN_GID:
             new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
         GAMES[game_id] = new_game
@@ -638,7 +604,7 @@ async def step(game_id: str, req: StepRequest):
     human_seats.add(player)
 
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, admin_id=game.get("admin_id"))
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
         return {"ok": True, "state": payload}
 
     if state.turn != player:
@@ -656,7 +622,7 @@ async def step(game_id: str, req: StepRequest):
     _notify_public(agents, state, player, action)
 
     await manager.broadcast_update(game_id)
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, admin_id=game.get("admin_id"))
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
     return {"ok": True, "state": payload}
 
 
@@ -707,7 +673,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
-    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=bool(reveal_hands), human_seats=hs, player_names=pn, admin_id=game.get("admin_id"))
+    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=bool(reveal_hands), human_seats=hs, player_names=pn)
 
 
 @app.get("/games/{game_id}/legal_actions")
