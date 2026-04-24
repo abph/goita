@@ -385,7 +385,19 @@ let pending = null;
 // ゲームが開始されているかどうかのフラグ
 let isGameStarted = false; 
 
+// ★新規追加：裏で動いているCPUの待機タイマーを管理する変数
+let cpuTimeoutId = null;
+
 const SEAT_ORDER = ["A","B","C","D"];
+
+// ★新規追加：部屋移動時やリセット時に、CPUの暴走を防ぐための強制キャンセル処理
+function cancelCpuLoop() {
+    if (cpuTimeoutId) {
+        clearTimeout(cpuTimeoutId);
+        cpuTimeoutId = null;
+    }
+    isProcessingCpu = false;
+}
 
 function getPhysToSeat(){
   const base = (!mySeat || isSpectator()) ? "A" : mySeat;
@@ -453,8 +465,9 @@ async function fetchRoomList() {
             backBtn.textContent = "🏠 公開部屋(main)に戻る";
             backBtn.style.fontWeight = "bold";
             backBtn.onclick = async () => { 
+                cancelCpuLoop(); // ★追加：戻る前にタイマー破壊
                 gid = MAIN_GID; 
-                isGameStarted = false; // ★ 追加: メイン部屋に戻る時もフラグをリセット
+                isGameStarted = false; 
                 setHint("公開部屋に戻りました。");
                 await refresh(); 
                 fetchRoomList(); 
@@ -507,9 +520,9 @@ async function tryJoinRoom(targetGid, isPrivate) {
         }
     }
 
-    // パスワードが合っていれば、部屋IDを切り替えて画面を更新
+    cancelCpuLoop(); // ★追加：部屋移動前にタイマー破壊
     gid = targetGid;
-    isGameStarted = false; // ★ 修正箇所：部屋を移動した瞬間に確実に開始フラグをリセットする
+    isGameStarted = false; 
     setHint(`${gid} に入室しました。手番をお待ち下さい。`);
     await refresh();
     fetchRoomList(); 
@@ -1104,6 +1117,7 @@ function showPassAnimation(phys) {
 }
 
 async function startNewGame(){
+  cancelCpuLoop(); // ★追加：リセット時にタイマー破壊
   isGameStarted = false; 
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
@@ -1128,6 +1142,7 @@ async function startNewGame(){
 }
 
 async function resetAll(){
+  cancelCpuLoop(); // ★追加：リセット時にタイマー破壊
   isGameStarted = false; 
   presetClear();
   presetSetEnabled(false);
@@ -1161,6 +1176,7 @@ async function fetchLegal(){
 }
 
 async function refresh(){
+  const currentGid = gid; // ★追加：非同期処理中に部屋が変わっていないか確認用
   if(isProcessingCpu) return;
 
   updateRoomUI(); 
@@ -1169,7 +1185,16 @@ async function refresh(){
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
-  const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
+  let state;
+  try {
+      state = await (await fetch(`${API}/games/${currentGid}/state?${qs.toString()}`)).json();
+  } catch(e) {
+      return;
+  }
+  
+  // ★追加：fetchの待ち時間の間にユーザーが部屋を移動していたら、この処理を完全に破棄する
+  if (gid !== currentGid) return;
+
   latestState = state;
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
@@ -1233,11 +1258,21 @@ async function refresh(){
 
   if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
-    setTimeout(async () => {
+    cpuTimeoutId = setTimeout(async () => {
+      // ★追加：待機中に部屋が変わっていたら何もしないで停止
+      if (gid !== currentGid) {
+          isProcessingCpu = false;
+          return;
+      }
       try {
-        await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
+        await fetch(`${API}/games/${currentGid}/cpu_step`, { method: "POST" });
       } catch(e) {
         console.error("CPU step error:", e);
+      }
+      // ★追加：fetch後にもう一度チェック
+      if (gid !== currentGid) {
+          isProcessingCpu = false;
+          return;
       }
       isProcessingCpu = false;
       refresh(); 
