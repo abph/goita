@@ -16,6 +16,7 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
+# ★変更：定数・マッピング辞書は constants.py からインポートするように統一
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
@@ -181,14 +182,28 @@ def serve_index():
     return FileResponse(index_path)
 
 
+# ★ 修正: WebSocket切断時に、その人が座っていた席を自動で解放する
 @app.websocket("/ws/{game_id}")
-async def websocket_endpoint(websocket: WebSocket, game_id: str):
+async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
     await manager.connect(websocket, game_id)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, game_id)
+        if client_id:
+            game = GAMES.get(game_id)
+            if game:
+                hs = game.get("human_seats", {})
+                if isinstance(hs, dict):
+                    removed = False
+                    # そのclient_idが占有している席があれば全て削除
+                    for s, cid in list(hs.items()):
+                        if cid == client_id:
+                            del hs[s]
+                            removed = True
+                    if removed:
+                        await manager.broadcast_update(game_id)
 
 
 def _hand_to_kifu_string(hand: List[Any]) -> str:
@@ -353,7 +368,7 @@ def _state_public_view(
     log: List[str],
     board_public: Dict[str, Dict[str, Any]],
     reveal_hands: bool = False,
-    human_seats: Optional[Set[str]] = None,
+    human_seats: Optional[Any] = None,
     player_names: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
@@ -387,7 +402,10 @@ def _state_public_view(
         "player_names": player_names or {p: "" for p in ALL_SEATS},
     }
     if human_seats is not None:
-        payload["human_seats"] = sorted(list(human_seats))
+        if isinstance(human_seats, dict):
+            payload["human_seats"] = sorted(list(human_seats.keys()))
+        else:
+            payload["human_seats"] = sorted(list(human_seats))
     return payload
 
 
@@ -406,7 +424,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
-        "human_seats": set(),
+        "human_seats": {}, # ★修正: set() ではなく辞書でID管理する
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
         "owner_name": "",
@@ -442,7 +460,7 @@ def list_rooms():
                 "game_id": gid,
                 "is_private": data.get("password") is not None,
                 "owner_name": data.get("owner_name", "サポーター"),
-                "player_count": len(data.get("human_seats", set()))
+                "player_count": len(data.get("human_seats", {}))
             }
             for gid, data in GAMES.items() if gid != MAIN_GID
         ]
@@ -476,8 +494,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
-    # ★ 修正: リセット時に「座っている人間」と「名前」を引き継ぐ
-    human_seats = old_game.get("human_seats", set())
+    human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     
     new_game = _create_game_obj(dealer=dealer)
@@ -509,8 +526,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
-    # ★ 修正: リセット時に「座っている人間」と「名前」を引き継ぐ
-    human_seats = old_game.get("human_seats", set())
+    human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
 
     if preset:
@@ -545,33 +561,44 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
 
 
 @app.post("/games/{game_id}/claim")
-async def claim_seat(game_id: str, seat: str):
+async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
     game = GAMES[game_id]
-    hs: Set[str] = game.setdefault("human_seats", set())
-    hs.add(seat)
     
+    hs = game.setdefault("human_seats", {})
+    if isinstance(hs, dict):
+        # 既に他の席に座っていたら一度立ち上がらせる
+        for k, v in list(hs.items()):
+            if v == client_id:
+                del hs[k]
+        hs[seat] = client_id
+    else:
+        game["human_seats"] = {seat: client_id}
+        hs = game["human_seats"]
+        
     await manager.broadcast_update(game_id)
-    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
+    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs.keys()))}
 
 
 @app.post("/games/{game_id}/release")
-async def release_seat(game_id: str, seat: str):
+async def release_seat(game_id: str, seat: str, client_id: str = ""):
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
     game = GAMES[game_id]
-    hs: Set[str] = game.setdefault("human_seats", set())
-    hs.discard(seat)
+    hs = game.setdefault("human_seats", {})
+    if isinstance(hs, dict):
+        if seat in hs and hs[seat] == client_id:
+            del hs[seat]
     
     await manager.broadcast_update(game_id)
-    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
+    return {"ok": True, "game_id": game_id}
 
 
 @app.post("/games/{game_id}/set_name")
@@ -602,9 +629,8 @@ async def step(game_id: str, req: StepRequest):
     agents: Dict[str, RuleBasedAgent] = game["agents"]
     log: List[str] = game.setdefault("log", [])
     board = game.setdefault("board", _new_board_snapshot())
-    human_seats: Set[str] = game.setdefault("human_seats", set())
+    human_seats = game.setdefault("human_seats", {})
     player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
-    human_seats.add(player)
 
     if state.finished:
         payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
@@ -637,7 +663,7 @@ async def cpu_step(game_id: str):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     state: GoitaState = game["state"]
-    human_seats: Set[str] = game.get("human_seats", set())
+    human_seats = game.get("human_seats", {})
     if state.finished or (state.turn in human_seats):
         return {"status": "ignored"}
     agents: Dict[str, RuleBasedAgent] = game["agents"]
@@ -674,7 +700,7 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     state: GoitaState = game["state"]
-    hs: Set[str] = game.get("human_seats", set())
+    hs = game.get("human_seats", {})
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
     return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=bool(reveal_hands), human_seats=hs, player_names=pn)
 

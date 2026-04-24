@@ -312,7 +312,6 @@
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
       <button onclick="resetAll()" id="btnResetAll" style="display:none;">リセット</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
-      
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
     
@@ -383,8 +382,17 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 
 const WATCH = "W";
-let mySeat = WATCH;
-let lastSeat = "A";
+
+// ★ 追加：クライアントIDの生成（ブラウザのタブごとに記憶する名札）
+let clientId = sessionStorage.getItem("goita_client_id");
+if (!clientId) {
+    clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    sessionStorage.setItem("goita_client_id", clientId);
+}
+
+// ★ 修正：自分が座っている席もブラウザに記憶させる（間違えて更新した時のため）
+let mySeat = sessionStorage.getItem("goita_my_seat") || WATCH;
+let lastSeat = mySeat === WATCH ? "A" : mySeat;
 
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
@@ -409,7 +417,8 @@ function connectWS() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host || "localhost:8000"; 
-    const wsUrl = `${protocol}//${host}/ws/${gid}`;
+    // ★ 修正：WebSocketをつなぐときに「自分のID」をサーバーに教える
+    const wsUrl = `${protocol}//${host}/ws/${gid}?client_id=${clientId}`;
     
     socket = new WebSocket(wsUrl);
 
@@ -467,7 +476,6 @@ function startGame() {
     refresh(); 
 }
 
-// ====== ★ A席の人のみホストとして各種ボタンや設定を表示 ======
 function updateRoomUI() {
     const isMain = (gid === MAIN_GID);
     const isHost = (mySeat === "A"); 
@@ -487,9 +495,7 @@ function updateRoomUI() {
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
-// ==========================================================
 
-// ====== ★ 席選択ボタンの状態更新 ======
 function updateSeatButtons(humanSeats) {
     const seats = ['A', 'B', 'C', 'D'];
     const btnW = document.getElementById('btnSeatW');
@@ -507,17 +513,14 @@ function updateSeatButtons(humanSeats) {
         if (!btn) return;
 
         if (mySeat === s) {
-            // 自分が座っている
             btn.disabled = false;
             btn.classList.add('active');
             btn.textContent = s + " (あなた)";
         } else if (humanSeats && humanSeats.includes(s)) {
-            // 他人が座っている（ロック）
             btn.disabled = true;
             btn.classList.remove('active');
             btn.textContent = s + " (使用中)";
         } else {
-            // 誰も座っていない（空席）
             btn.disabled = false;
             btn.classList.remove('active');
             btn.textContent = s;
@@ -525,16 +528,17 @@ function updateSeatButtons(humanSeats) {
     });
 }
 
-// ボタンが押されたときの処理
 async function selectSeat(next) {
     if (next === mySeat) return;
 
     if (!isSpectator()) {
         await releaseSeat(mySeat);
     }
-    
+
     pending = null;
     mySeat = next;
+    // ★ 修正：座った席を記憶しておく
+    sessionStorage.setItem("goita_my_seat", mySeat);
     
     if (next !== WATCH) {
         lastSeat = mySeat;
@@ -544,8 +548,6 @@ async function selectSeat(next) {
     await refresh();
     updateNameInputVisibility();
 }
-// ========================================
-
 
 async function fetchRoomList() {
     try {
@@ -572,6 +574,7 @@ async function fetchRoomList() {
                     await releaseSeat(mySeat);
                 }
                 mySeat = WATCH;
+                sessionStorage.setItem("goita_my_seat", mySeat);
 
                 gid = MAIN_GID; 
                 isGameStarted = false; 
@@ -632,6 +635,7 @@ async function tryJoinRoom(targetGid, isPrivate) {
         await releaseSeat(mySeat);
     }
     mySeat = WATCH;
+    sessionStorage.setItem("goita_my_seat", mySeat);
 
     gid = targetGid;
     isGameStarted = false; 
@@ -884,8 +888,9 @@ function buildHandMap(physToSeat){
   return m;
 }
 
-async function claimSeat(seat){ try{ await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
-async function releaseSeat(seat){ try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}`, {method:"POST"}); }catch(e){} }
+// ★ 修正：API通信時に必ずclientIdを渡す
+async function claimSeat(seat){ try{ await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
+async function releaseSeat(seat){ try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
 
 async function setName(seat, name){
   name = sanitizeName(name);
@@ -1298,7 +1303,7 @@ async function refresh(){
   latestState = state;
   
   updateRoomUI(); 
-  updateSeatButtons(state.human_seats); // ★追加：他の人の座席状況をUIに反映する
+  updateSeatButtons(state.human_seats);
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
@@ -1421,7 +1426,10 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  mySeat = WATCH;
+  // ★ 修正：ページロード時に、記憶している席があれば自動で座り直す
+  if (mySeat !== WATCH) {
+      await claimSeat(mySeat);
+  }
 
   await refresh();
   updateNameInputVisibility();
