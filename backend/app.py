@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,38 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
 
+# =========================================================
+# WebSocket 管理
+# =========================================================
+class ConnectionManager:
+    def __init__(self):
+        # game_id ごとの WebSocket 接続リスト
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, game_id: str):
+        await websocket.accept()
+        if game_id not in self.active_connections:
+            self.active_connections[game_id] = []
+        self.active_connections[game_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, game_id: str):
+        if game_id in self.active_connections:
+            if websocket in self.active_connections[game_id]:
+                self.active_connections[game_id].remove(websocket)
+
+    async def broadcast_update(self, game_id: str):
+        """その部屋の全員に更新通知を送る"""
+        if game_id in self.active_connections:
+            for connection in self.active_connections[game_id]:
+                try:
+                    await connection.send_json({"type": "update"})
+                except:
+                    # 無効な接続は無視（切断時に自動削除されるため）
+                    pass
+
+manager = ConnectionManager()
+
+# =========================================================
 
 def _validate_seat(s: str, *, name: str = "seat") -> str:
     s = (s or "").strip().upper()
@@ -40,7 +72,6 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
         hands = _normalize_hands(raw)
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
-    # ★修正：5000回失敗した場合は不正なデータを返さず、明示的に例外を投げる
     raise RuntimeError(f"Failed to generate valid hands after {max_retry} retries.")
 
 
@@ -50,13 +81,6 @@ def build_hands_from_preset_counts(
     dealer: str,
     max_retry: int = 8000,
 ) -> Dict[str, List[str]]:
-    """A/B/C/D の各駒枚数（0-9の1桁）指定から配牌を作る。
-
-    仕様:
-    - 各プレイヤーの指定合計は 0〜8（不足分は残り山からランダム補充）
-    - 全体の駒枚数上限（PIECE_TOTALS）を超えない
-    - 'し'(1) は各プレイヤー最大4枚（指定+補充含む）
-    """
     p = {seat: {k: int(v) for k, v in (preset.get(seat) or {}).items()} for seat in ALL_SEATS}
 
     used_total = {k: 0 for k in PIECE_TOTALS}
@@ -91,7 +115,6 @@ def build_hands_from_preset_counts(
         hands: Dict[str, List[str]] = {s: [] for s in ALL_SEATS}
         shi_cnt: Dict[str, int] = {s: 0 for s in ALL_SEATS}
 
-        # 指定分
         for seat in ALL_SEATS:
             for k in sorted(PIECE_TOTALS.keys()):
                 n = int(p[seat].get(k, 0) or 0)
@@ -100,43 +123,33 @@ def build_hands_from_preset_counts(
                     if k == "1":
                         shi_cnt[seat] += n
 
-        # 補充（指定した駒は追加で配らない／し上限も守る）
         ok = True
         for seat in ALL_SEATS:
             need = 8 - len(hands[seat])
             if need <= 0:
                 continue
 
-            # この席で「指定済み」の駒種類
             fixed_kinds = {k for k, v in p[seat].items() if int(v) > 0}
 
             for _i in range(need):
                 found = False
                 for j in range(len(pool2)):
                     k = pool2[j]
-
-                    # 指定済みの駒は、この席には追加で配らない
                     if k in fixed_kinds:
                         continue
-
-                    # し の上限
                     if k == "1" and shi_cnt[seat] >= 4:
                         continue
-
                     hands[seat].append(k)
                     if k == "1":
                         shi_cnt[seat] += 1
                     pool2.pop(j)
                     found = True
                     break
-
                 if not found:
                     ok = False
                     break
-
             if not ok:
                 break
-
         if not ok:
             continue
 
@@ -148,9 +161,7 @@ def build_hands_from_preset_counts(
 
 def _sanitize_player_name(s: str) -> str:
     s = (s or "").strip()
-    # 改行は除去（盤面崩れ防止）
     s = s.replace("\r", "").replace("\n", "")
-    # 9文字まで
     if len(s) > 9:
         s = s[:9]
     return s
@@ -178,6 +189,18 @@ def serve_index():
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="frontend/index.html not found")
     return FileResponse(index_path)
+
+
+# ====== WebSocket エンドポイント ======
+@app.websocket("/ws/{game_id}")
+async def websocket_endpoint(websocket: WebSocket, game_id: str):
+    await manager.connect(websocket, game_id)
+    try:
+        while True:
+            # 接続維持のためメッセージを待機
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, game_id)
 
 
 # ====== 棋譜（kifu）用 ======
@@ -212,16 +235,13 @@ def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
         if not row or len(row) < 3:
             continue
         pid, b, a = str(row[0]), str(row[1]), str(row[2])
-
         if b == "パス" or b.lower() == "pass":
             continue
-
         if out:
             lp, lb, la = out[-1]
             if lp == pid and la == "" and lb != "" and b == "" and a != "":
                 out[-1] = [lp, lb, a]
                 continue
-
         out.append([pid, b, a])
     return out
 
@@ -392,11 +412,9 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
-
     agents: Dict[str, RuleBasedAgent] = {s: RuleBasedAgent(name=f"CPU-{s}") for s in ALL_SEATS}
     for seat, ag in agents.items():
         ag.bind_player(seat)
-
     return {
         "state": state,
         "agents": agents,
@@ -417,9 +435,7 @@ def _ensure_main_game(dealer: str = "A") -> None:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
 
-# ====== 支援者用の固定部屋をセットアップする ======
 def setup_supporter_rooms():
-    # "pass" の値を None に変更することで、パスワードなし（公開状態）になります
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "owner": "支援者A様"},
         {"gid": "room-silver-02", "pass": None, "owner": "支援者B様"},
@@ -434,7 +450,7 @@ def setup_supporter_rooms():
 
 setup_supporter_rooms()
 
-# ====== ロビー機能関連のAPI ======
+
 @app.get("/games/list")
 def list_rooms():
     return {
@@ -454,21 +470,18 @@ def list_rooms():
 def verify_password(game_id: str, password: str = Body(..., embed=True)):
     if game_id not in GAMES:
         raise HTTPException(status_code=404, detail="部屋が存在しません")
-    
     required_pass = GAMES[game_id].get("password")
-    
     if not required_pass or required_pass == password:
         return {"ok": True}
-        
     raise HTTPException(status_code=401, detail="合言葉が違います")
 
 
 # =========================================================
-
-# ★修正部分: /games/main/... から /games/{game_id}/... に変更し、パスワード状態等を引き継ぐ
+# ゲーム操作 API (通知対応)
+# =========================================================
 
 @app.post("/games/{game_id}/reset")
-def reset_game(game_id: str, dealer: str = "A"):
+async def reset_game(game_id: str, dealer: str = "A"):
     if game_id == MAIN_GID:
         _ensure_main_game(dealer=dealer)
     elif game_id not in GAMES:
@@ -477,20 +490,19 @@ def reset_game(game_id: str, dealer: str = "A"):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
-    
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
     new_game["owner_name"] = owner_name
-    
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
-
     GAMES[game_id] = new_game
+    
+    await manager.broadcast_update(game_id)
     return {"ok": True, "game_id": game_id, "dealer": dealer}
 
 
 @app.post("/games/{game_id}/reset_config")
-def reset_game_config(game_id: str, body: ResetConfigBody):
+async def reset_game_config(game_id: str, body: ResetConfigBody):
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:
@@ -498,7 +510,6 @@ def reset_game_config(game_id: str, body: ResetConfigBody):
 
     dealer = _validate_seat(body.dealer, name="dealer")
     preset = body.preset_counts or {}
-
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
@@ -508,7 +519,6 @@ def reset_game_config(game_id: str, body: ResetConfigBody):
             hands = build_hands_from_preset_counts(preset, dealer=dealer)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-
         new_game = _create_game_obj(dealer=dealer)
         new_game["state"] = GoitaState(hands=hands, dealer=dealer)
         new_game["board"] = _new_board_snapshot()
@@ -527,56 +537,130 @@ def reset_game_config(game_id: str, body: ResetConfigBody):
             new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
         GAMES[game_id] = new_game
 
+    await manager.broadcast_update(game_id)
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
 
 @app.post("/games/{game_id}/claim")
-def claim_seat(game_id: str, seat: str):
+async def claim_seat(game_id: str, seat: str):
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
-
     seat = _validate_seat(seat, name="seat")
     game = GAMES[game_id]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.add(seat)
+    
+    await manager.broadcast_update(game_id)
     return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
 
 
 @app.post("/games/{game_id}/release")
-def release_seat(game_id: str, seat: str):
+async def release_seat(game_id: str, seat: str):
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
-
     seat = _validate_seat(seat, name="seat")
     game = GAMES[game_id]
     hs: Set[str] = game.setdefault("human_seats", set())
     hs.discard(seat)
+    
+    await manager.broadcast_update(game_id)
     return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs))}
 
 
-# =========================================================
-
 @app.post("/games/{game_id}/set_name")
-def set_player_name(game_id: str, req: NameRequest):
+async def set_player_name(game_id: str, req: NameRequest):
     if game_id == MAIN_GID:
         _ensure_main_game()
-
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     seat = _validate_seat(req.seat, name="seat")
     name = _sanitize_player_name(req.name)
-
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
     pn[seat] = name
 
+    await manager.broadcast_update(game_id)
     return {"ok": True, "game_id": game_id, "player_names": pn}
 
+
+@app.post("/games/{game_id}/step")
+async def step(game_id: str, req: StepRequest):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    player = _validate_seat(req.player, name="player")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    state: GoitaState = game["state"]
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+    human_seats: Set[str] = game.setdefault("human_seats", set())
+    player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
+    human_seats.add(player)
+
+    if state.finished:
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
+        return {"ok": True, "state": payload}
+
+    if state.turn != player:
+        raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
+    action = req.action.to_tuple()
+    before_fd = len(state.face_down_hidden[player])
+    try:
+        _apply_action(state, player, action)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid action: {e}")
+    hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
+    _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
+    log.append(_format_action(player, action) + (" (hidden)" if hidden_receive else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
+    _notify_public(agents, state, player, action)
+
+    await manager.broadcast_update(game_id)
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
+    return {"ok": True, "state": payload}
+
+
+@app.post("/games/{game_id}/cpu_step")
+async def cpu_step(game_id: str):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    state: GoitaState = game["state"]
+    human_seats: Set[str] = game.get("human_seats", set())
+    if state.finished or (state.turn in human_seats):
+        return {"status": "ignored"}
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+    p = state.turn
+    acts = state.legal_actions(p)
+    if not acts:
+        return {"status": "no_legal_actions"}
+    cpu_action = agents[p].select_action(state, p, acts)
+    before_fd_cpu = len(state.face_down_hidden[p])
+    _apply_action(state, p, cpu_action)
+    hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
+    _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
+    log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
+    _notify_public(agents, state, p, cpu_action)
+    if state.finished:
+        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
+        if not log or log[-1] != msg:
+            log.append(msg)
+
+    await manager.broadcast_update(game_id)
+    return {"status": "ok"}
+
+# =========================================================
 
 @app.get("/games/{game_id}/state")
 def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
@@ -586,20 +670,10 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     state: GoitaState = game["state"]
     hs: Set[str] = game.get("human_seats", set())
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
-
-    return _state_public_view(
-        state,
-        viewer=viewer,
-        log=game.get("log", []),
-        board_public=game.get("board", _new_board_snapshot()),
-        reveal_hands=bool(reveal_hands),
-        human_seats=hs,
-        player_names=pn,
-    )
+    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=bool(reveal_hands), human_seats=hs, player_names=pn)
 
 
 @app.get("/games/{game_id}/legal_actions")
@@ -610,127 +684,27 @@ def get_legal_actions(game_id: str, player: str = "A"):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     state: GoitaState = game["state"]
     if state.finished or state.turn != player:
         return []
     return _actions_to_json(state.legal_actions(player))
 
 
-@app.post("/games/{game_id}/step")
-def step(game_id: str, req: StepRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
-
-    player = _validate_seat(req.player, name="player")
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-
-    state: GoitaState = game["state"]
-    agents: Dict[str, RuleBasedAgent] = game["agents"]
-    log: List[str] = game.setdefault("log", [])
-    board = game.setdefault("board", _new_board_snapshot())
-    human_seats: Set[str] = game.setdefault("human_seats", set())
-    player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
-
-    # stepを送ってきた席は人間席として登録（claim漏れ対策）
-    human_seats.add(player)
-
-    if state.finished:
-        payload = _state_public_view(
-            state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
-        )
-        return {"ok": True, "state": payload}
-
-    if state.turn != player:
-        raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
-
-    action = req.action.to_tuple()
-
-    before_fd = len(state.face_down_hidden[player])
-    try:
-        _apply_action(state, player, action)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"invalid action: {e}")
-
-    hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
-    _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
-
-    log.append(_format_action(player, action) + (" (hidden)" if hidden_receive else ""))
-    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
-    _notify_public(agents, state, player, action)
-
-    payload = _state_public_view(
-        state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names
-    )
-    return {"ok": True, "state": payload}
-
-
-@app.post("/games/{game_id}/cpu_step")
-def cpu_step(game_id: str):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
-
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-
-    state: GoitaState = game["state"]
-    human_seats: Set[str] = game.get("human_seats", set())
-
-    # すでに終了している、または人間の番なら何もしない
-    if state.finished or (state.turn in human_seats):
-        return {"status": "ignored"}
-
-    agents: Dict[str, RuleBasedAgent] = game["agents"]
-    log: List[str] = game.setdefault("log", [])
-    board = game.setdefault("board", _new_board_snapshot())
-
-    p = state.turn
-    acts = state.legal_actions(p)
-    if not acts:
-        return {"status": "no_legal_actions"}
-
-    # CPUが1手だけ考えてアクションを実行する
-    cpu_action = agents[p].select_action(state, p, acts)
-
-    before_fd_cpu = len(state.face_down_hidden[p])
-    _apply_action(state, p, cpu_action)
-    hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
-    _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
-
-    log.append(_format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else ""))
-    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
-    _notify_public(agents, state, p, cpu_action)
-
-    if state.finished:
-        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
-        if not log or log[-1] != msg:
-            log.append(msg)
-
-    return {"status": "ok"}
-
-
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
 def get_kifu_yaml(game_id: str):
     if game_id == MAIN_GID:
         _ensure_main_game()
-
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
-
     state: GoitaState = game["state"]
     ts = getattr(state, "team_score", None)
     score = [0, 0]
     if isinstance(ts, dict):
         score = [int(ts.get("AC", 0)), int(ts.get("BD", 0))]
-
     h = {
         "p0": _hand_to_kifu_string(init_hands.get("A", [])),
         "p1": _hand_to_kifu_string(init_hands.get("B", [])),
@@ -738,25 +712,8 @@ def get_kifu_yaml(game_id: str):
         "p3": _hand_to_kifu_string(init_hands.get("D", [])),
     }
     uchidashi = int(PLAYER_IDX.get(dealer, "0"))
-
-    lines: List[str] = []
-    lines.append("version: 1.0")
-    lines.append('p0: "プレイヤーA"')
-    lines.append('p1: "プレイヤーB"')
-    lines.append('p2: "プレイヤーC"')
-    lines.append('p3: "プレイヤーD"')
-    lines.append("log:")
-    lines.append(" - hand:")
-    lines.append(f'     p0: "{h["p0"]}"')
-    lines.append(f'     p1: "{h["p1"]}"')
-    lines.append(f'     p2: "{h["p2"]}"')
-    lines.append(f'     p3: "{h["p3"]}"')
-    lines.append(f"   uchidashi: {uchidashi}")
-    lines.append(f"   score: [{score[0]},{score[1]}]")
-    lines.append("   game:")
+    lines: List[str] = ["version: 1.0", 'p0: "プレイヤーA"', 'p1: "プレイヤーB"', 'p2: "プレイヤーC"', 'p3: "プレイヤーD"', "log:", " - hand:", f'     p0: "{h["p0"]}"', f'     p1: "{h["p1"]}"', f'     p2: "{h["p2"]}"', f'     p3: "{h["p3"]}"', f"   uchidashi: {uchidashi}", f"   score: [{score[0]},{score[1]}]", "   game:"]
     for row in moves:
-        a = str(row[0]).replace('"', '\\"')
-        b = str(row[1]).replace('"', '\\"')
-        c = str(row[2]).replace('"', '\\"')
+        a, b, c = str(row[0]).replace('"', '\\"'), str(row[1]).replace('"', '\\"'), str(row[2]).replace('"', '\\"')
         lines.append(f'    - ["{a}","{b}","{c}"]')
     return "\n".join(lines) + "\n"
