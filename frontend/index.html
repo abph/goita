@@ -289,16 +289,17 @@
     <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
     <div class="btns" style="margin-top:10px;">
-      <button onclick="startNewGame()">新規ゲーム</button>
+      <button onclick="startNewGame()" id="btnNewGame" style="display:none;">新規ゲーム</button>
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
-      <button onclick="resetAll()">リセット</button>
-      <button onclick="toggleAllHands()" id="toggleHandsBtn">みんな手札公開</button>
+      <button onclick="resetAll()" id="btnResetAll" style="display:none;">リセット</button>
+      <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
+      
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
     
     <div class="bottom-grid">
       <div class="card">
-        <details id="dealerDetails">
+        <details id="dealerDetails" style="display:none;">
           <summary><b>親（dealer）設定</b></summary>
           <div class="small" style="margin-top:6px;">
             次の「新規ゲーム」で適用されます。random は毎回ランダムに親を選びます。
@@ -315,7 +316,7 @@
           </div>
         </details>
 
-        <details id="presetHandsDetails" style="margin-top:10px;">
+        <details id="presetHandsDetails" style="margin-top:10px; display:none;">
           <summary><b>手札指定（枚数）</b></summary>
           <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
           <div class="preset-note">
@@ -334,7 +335,7 @@
           <div class="preset-err" id="presetErr" style="display:none;"></div>
         </details>
 
-        <details id="actionsDetails" style="margin-top:10px;">
+        <details id="actionsDetails" style="margin-top:10px; display:none;">
           <summary><b>（デバッグ用）合法手</b></summary>
           <div class="small">観戦中は空になります。</div>
           <div id="actions" style="margin-top:8px;"></div>
@@ -369,30 +370,26 @@ let lastSeat = "A";
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
-let cpuTimer = null; // CPUの思考タイマーを管理
+let cpuTimer = null; 
 
 let showAllHands = false;
 let latestState = null;
 let latestLegal = [];
 let pending = null;
 
-// ゲームが開始されているかどうかのフラグ
 let isGameStarted = false; 
-
-// 現在表示中の部屋ID（アニメーションの重複再生防止用）
 let activeRoomId = gid; 
 
-// ====== ★ WebSocket接続の管理 ======
 let socket = null;
 
 function connectWS() {
     if (socket) {
-        socket.onclose = null; // 意図的な切断時に再接続ループを防ぐ
+        socket.onclose = null;
         socket.close();
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host || "localhost:8000"; // ローカルテスト時のフォールバック
+    const host = window.location.host || "localhost:8000"; 
     const wsUrl = `${protocol}//${host}/ws/${gid}`;
     
     socket = new WebSocket(wsUrl);
@@ -401,7 +398,7 @@ function connectWS() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === "update") {
-                refresh(); // サーバーから更新合図が来たら画面を再取得
+                refresh(); 
             }
         } catch (e) {
             console.error("WebSocket Message Error:", e);
@@ -417,7 +414,6 @@ function connectWS() {
         console.error("WebSocket Error:", err);
     };
 }
-// ====================================
 
 const SEAT_ORDER = ["A","B","C","D"];
 
@@ -445,26 +441,36 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
-// ゲーム開始ボタンの処理
 function startGame() {
     isGameStarted = true;
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
-    refresh(); // CPUの番なら思考をスタートさせる
+    refresh(); 
 }
 
+// ====== ★ A席の人のみホストとして各種ボタンや設定を表示 ======
 function updateRoomUI() {
     const isMain = (gid === MAIN_GID);
+    const isHost = (mySeat === "A"); // 席Aの人がホスト
+
     const toggleBtn = document.getElementById("toggleHandsBtn");
     const dealerDetails = document.getElementById("dealerDetails");
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
+    const btnNewGame = document.getElementById("btnNewGame");
+    const btnResetAll = document.getElementById("btnResetAll");
     
-    if (toggleBtn) toggleBtn.style.display = isMain ? "none" : "";
-    if (dealerDetails) dealerDetails.style.display = isMain ? "none" : "";
-    if (presetDetails) presetDetails.style.display = isMain ? "none" : "";
-    if (actionsDetails) actionsDetails.style.display = isMain ? "none" : ""; 
+    // 新規ゲーム・リセットはA席のみ表示
+    if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
+    if (btnResetAll) btnResetAll.style.display = isHost ? "" : "none";
+    
+    // 手札公開や各種設定は、プライベートルームかつA席の人のみ表示
+    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
+    if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
+    if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
+    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
+// ==========================================================
 
 async function fetchRoomList() {
     try {
@@ -857,8 +863,6 @@ async function onHandPieceClick(piece){
     if(matched.length === 1){
       await submitAction(matched[0]);
       pending = null;
-      await refresh();
-      updateNameInputVisibility();
       return;
     }
     if(matched.length > 1){ setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。"); return; }
@@ -871,8 +875,6 @@ async function onHandPieceClick(piece){
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
-    await refresh();
-    updateNameInputVisibility();
     return;
   }
 
@@ -908,8 +910,6 @@ async function onPassClick(){
 
   pending = null;
   await submitAction(pass);
-  await refresh();
-  updateNameInputVisibility();
 }
 
 function seatIsHuman(state, seat){
@@ -1105,7 +1105,7 @@ async function renderActions(){
     const b=a.block ? pieceToLabel(a.block) : "";
     const at=a.attack ? pieceToLabel(a.attack) : "";
     btn.textContent = `${t} ${b} ${at}`.trim();
-    btn.onclick = async ()=>{ pending=null; await submitAction(a); await refresh(); updateNameInputVisibility(); };
+    btn.onclick = async ()=>{ pending=null; await submitAction(a); };
     actionsDiv.appendChild(btn);
   });
 }
@@ -1164,8 +1164,6 @@ async function startNewGame(){
 
   pending=null; showAllHands=false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
-  await refresh();
-  updateNameInputVisibility();
 }
 
 async function resetAll(){
@@ -1196,8 +1194,6 @@ async function resetAll(){
     const el = document.getElementById(id);
     if(el) el.value = "";
   }
-  await refresh();
-  updateNameInputVisibility();
 }
 
 async function fetchLegal(){
@@ -1210,14 +1206,15 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  updateRoomUI(); 
-
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
+  
+  updateRoomUI(); 
+
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || "-"; }
@@ -1238,7 +1235,9 @@ async function refresh(){
   
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
-      startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished) ? "inline-block" : "none";
+      // ★ 修正: 開始ボタンもA席に座っている人だけが表示・操作できる
+      const isHost = (mySeat === "A"); 
+      startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
 
   if (!isGameStarted && currentLogCount <= 1 && !state.finished) {
@@ -1295,7 +1294,6 @@ async function refresh(){
       }
       isProcessingCpu = false;
       cpuTimer = null; 
-      refresh(); 
     }, 1000); 
   }
 }
