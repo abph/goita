@@ -16,7 +16,6 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
-# ★変更：定数・マッピング辞書は constants.py からインポートするように統一
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
@@ -254,7 +253,7 @@ class NameRequest(BaseModel):
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
-    requester: str = Field(default="W") # ★追加：誰がリクエストしたか
+    requester: str = Field(default="W") 
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -461,12 +460,11 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 
 
 # =========================================================
-# ゲーム操作 API (通知対応 & ★A席チェック追加)
+# ゲーム操作 API
 # =========================================================
 
 @app.post("/games/{game_id}/reset")
 async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
-    # ★追加：リクエスト元がA席でなければエラーを返す（サーバー側での防御）
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
 
@@ -478,10 +476,15 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
+    # ★ 修正: リセット時に「座っている人間」と「名前」を引き継ぐ
+    human_seats = old_game.get("human_seats", set())
+    player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
     new_game["owner_name"] = owner_name
+    new_game["human_seats"] = human_seats
+    new_game["player_names"] = player_names
     
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
@@ -493,7 +496,6 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
 
 @app.post("/games/{game_id}/reset_config")
 async def reset_game_config(game_id: str, body: ResetConfigBody):
-    # ★追加：リクエスト元がA席でなければエラーを返す（サーバー側での防御）
     if body.requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game configuration.")
 
@@ -507,6 +509,9 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
+    # ★ 修正: リセット時に「座っている人間」と「名前」を引き継ぐ
+    human_seats = old_game.get("human_seats", set())
+    player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
 
     if preset:
         try:
@@ -522,11 +527,15 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["kifu_moves"] = []
         new_game["password"] = password
         new_game["owner_name"] = owner_name
+        new_game["human_seats"] = human_seats
+        new_game["player_names"] = player_names
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
         new_game["password"] = password
         new_game["owner_name"] = owner_name
+        new_game["human_seats"] = human_seats
+        new_game["player_names"] = player_names
         if game_id != MAIN_GID:
             new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
         GAMES[game_id] = new_game
