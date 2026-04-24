@@ -376,6 +376,7 @@ let lastSeat = "A";
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
+let cpuTimer = null; // ★ 新規追加：CPUの思考タイマーを管理
 
 let showAllHands = false;
 let latestState = null;
@@ -1145,6 +1146,13 @@ function showPassAnimation(phys) {
 }
 
 async function startNewGame(){
+  // ★ 予約されているCPUの思考タイマーがあれば強制キャンセル
+  if (cpuTimer) {
+      clearTimeout(cpuTimer);
+      cpuTimer = null;
+  }
+  isProcessingCpu = false;
+
   isGameStarted = false; 
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
@@ -1169,6 +1177,13 @@ async function startNewGame(){
 }
 
 async function resetAll(){
+  // ★ 予約されているCPUの思考タイマーがあれば強制キャンセル
+  if (cpuTimer) {
+      clearTimeout(cpuTimer);
+      cpuTimer = null;
+  }
+  isProcessingCpu = false;
+
   isGameStarted = false; 
   presetClear();
   presetSetEnabled(false);
@@ -1281,14 +1296,16 @@ async function refresh(){
 
   if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
-    setTimeout(async () => {
+    // ★ 修正: タイマーIDを変数に保存しておく
+    cpuTimer = setTimeout(async () => {
       try {
         await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
       } catch(e) {
         console.error("CPU step error:", e);
       }
       isProcessingCpu = false;
-      refresh(); // ★復活: CPU処理完了後にフラグが降りた状態で再度盤面を確認・進行させる
+      cpuTimer = null; // 処理が終わったら変数を空にする
+      refresh(); 
     }, 1000); 
   }
 }
