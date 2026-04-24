@@ -177,6 +177,27 @@
     }
     button:hover { background: #fceeb5; }
     input[type="text"] { cursor: text; }
+
+    /* ★ 追加：席選択ボタンのスタイル */
+    .seat-btn {
+      padding: 6px 14px;
+      font-weight: bold;
+      border: 2px solid #8b5a2b;
+      background: #f4efdf;
+      color: #8b5a2b;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .seat-btn.active {
+      background: #8b5a2b;
+      color: #fff;
+    }
+    .seat-btn:disabled {
+      background: #e0d8c8;
+      color: #999;
+      border-color: #bfa88f;
+      cursor: not-allowed;
+    }
     
     .hint { background:#fffdf5; border: 1px solid #d35400; padding: 8px; border-radius: 6px; margin: 10px 0; font-weight: bold; color: #b00000; }
     .small { font-size: 12px; color: #555; }
@@ -254,16 +275,14 @@
   <h1>そろうごいた</h1>
 
 <div class="top-controls">
-<div class="meta">
+<div class="meta" style="align-items: center;">
       <b>自分の席</b>
-      <span>
-        <select id="seatSelect">
-          <option value="W">観戦</option>
-          <option value="A">A</option>
-          <option value="B">B</option>
-          <option value="C">C</option>
-          <option value="D">D</option>
-        </select>
+      <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
+        <button id="btnSeatA" onclick="selectSeat('A')" class="seat-btn">A</button>
+        <button id="btnSeatB" onclick="selectSeat('B')" class="seat-btn">B</button>
+        <button id="btnSeatC" onclick="selectSeat('C')" class="seat-btn">C</button>
+        <button id="btnSeatD" onclick="selectSeat('D')" class="seat-btn">D</button>
       </span>
     </div>
 <div class="name-grid" id="nameGrid">
@@ -451,7 +470,7 @@ function startGame() {
 // ====== ★ A席の人のみホストとして各種ボタンや設定を表示 ======
 function updateRoomUI() {
     const isMain = (gid === MAIN_GID);
-    const isHost = (mySeat === "A"); // 席Aの人がホスト
+    const isHost = (mySeat === "A"); 
 
     const toggleBtn = document.getElementById("toggleHandsBtn");
     const dealerDetails = document.getElementById("dealerDetails");
@@ -460,17 +479,73 @@ function updateRoomUI() {
     const btnNewGame = document.getElementById("btnNewGame");
     const btnResetAll = document.getElementById("btnResetAll");
     
-    // 新規ゲーム・リセットはA席のみ表示
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (btnResetAll) btnResetAll.style.display = isHost ? "" : "none";
     
-    // 手札公開や各種設定は、プライベートルームかつA席の人のみ表示
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
 // ==========================================================
+
+// ====== ★ 席選択ボタンの状態更新 ======
+function updateSeatButtons(humanSeats) {
+    const seats = ['A', 'B', 'C', 'D'];
+    const btnW = document.getElementById('btnSeatW');
+    
+    if (btnW) {
+        if (mySeat === WATCH) {
+            btnW.classList.add('active');
+        } else {
+            btnW.classList.remove('active');
+        }
+    }
+
+    seats.forEach(s => {
+        const btn = document.getElementById('btnSeat' + s);
+        if (!btn) return;
+
+        if (mySeat === s) {
+            // 自分が座っている
+            btn.disabled = false;
+            btn.classList.add('active');
+            btn.textContent = s + " (あなた)";
+        } else if (humanSeats && humanSeats.includes(s)) {
+            // 他人が座っている（ロック）
+            btn.disabled = true;
+            btn.classList.remove('active');
+            btn.textContent = s + " (使用中)";
+        } else {
+            // 誰も座っていない（空席）
+            btn.disabled = false;
+            btn.classList.remove('active');
+            btn.textContent = s;
+        }
+    });
+}
+
+// ボタンが押されたときの処理
+async function selectSeat(next) {
+    if (next === mySeat) return;
+
+    if (!isSpectator()) {
+        await releaseSeat(mySeat);
+    }
+    
+    pending = null;
+    mySeat = next;
+    
+    if (next !== WATCH) {
+        lastSeat = mySeat;
+        await claimSeat(mySeat);
+    }
+    
+    await refresh();
+    updateNameInputVisibility();
+}
+// ========================================
+
 
 async function fetchRoomList() {
     try {
@@ -493,14 +568,10 @@ async function fetchRoomList() {
             backBtn.textContent = "🏠 公開部屋(main)に戻る";
             backBtn.style.fontWeight = "bold";
             backBtn.onclick = async () => { 
-                // ★ 部屋を移動する前に現在の席を立つ
                 if(!isSpectator()){
                     await releaseSeat(mySeat);
                 }
-                // ★ 観戦状態に戻す
                 mySeat = WATCH;
-                const sel = document.getElementById("seatSelect");
-                if(sel) sel.value = WATCH;
 
                 gid = MAIN_GID; 
                 isGameStarted = false; 
@@ -557,14 +628,10 @@ async function tryJoinRoom(targetGid, isPrivate) {
         }
     }
 
-    // ★ 部屋を移動する前に現在の席を立つ
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
-    // ★ 観戦状態に戻す
     mySeat = WATCH;
-    const sel = document.getElementById("seatSelect");
-    if(sel) sel.value = WATCH;
 
     gid = targetGid;
     isGameStarted = false; 
@@ -722,7 +789,6 @@ function presetValidateAndClamp(changed){
 async function resetWithPreset(dealer){
   const usePreset = presetIsEnabled() && presetHasAny();
   
-  // ★追加：リクエストに requester: mySeat を含める
   if(usePreset){
     const preset = presetGet();
     await fetch(`${API}/games/${gid}/reset_config`, {
@@ -1206,8 +1272,6 @@ async function resetAll(){
 
   mySeat = WATCH;
   lastSeat = "A";
-  const seatSel = document.getElementById("seatSelect");
-  if(seatSel) seatSel.value = WATCH;
 
   const ids = ["nameA","nameB","nameC","nameD"];
   for(const id of ids){
@@ -1234,6 +1298,7 @@ async function refresh(){
   latestState = state;
   
   updateRoomUI(); 
+  updateSeatButtons(state.human_seats); // ★追加：他の人の座席状況をUIに反映する
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
@@ -1313,7 +1378,7 @@ async function refresh(){
       }
       isProcessingCpu = false;
       cpuTimer = null; 
-      refresh(); // ★復活：CPUの連鎖を止めないための安全装置
+      refresh(); 
     }, 1000); 
   }
 }
@@ -1356,33 +1421,13 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  const sel = document.getElementById("seatSelect");
   mySeat = WATCH;
-  sel.value = WATCH;
 
   await refresh();
   updateNameInputVisibility();
   
   fetchRoomList();
   connectWS(); 
-  
-  sel.addEventListener("change", async ()=>{
-    const next = sel.value;
-    if(!isSpectator()){ await releaseSeat(lastSeat); }
-    pending = null;
-    if(next === WATCH){
-      mySeat = WATCH;
-      sel.value = WATCH;
-      await refresh();
-      updateNameInputVisibility();
-      return;
-    }
-    mySeat = next;
-    lastSeat = mySeat;
-    await claimSeat(mySeat);
-    await refresh();
-    updateNameInputVisibility();
-  });
 });
 </script>
 </body>
