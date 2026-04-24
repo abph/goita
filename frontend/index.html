@@ -183,7 +183,7 @@
       padding: 7px 10px; border-radius: 6px; border: 1px solid #a67c00; background: #fffdf5; cursor: pointer; font-family: inherit;
     }
     button:hover { background: #fceeb5; }
-    input[type="text"] { cursor: text; }
+    input[type=\"text\"] { cursor: text; }
     
     .hint { background:#fffdf5; border: 1px solid #d35400; padding: 8px; border-radius: 6px; margin: 10px 0; font-weight: bold; color: #b00000; }
     .small { font-size: 12px; color: #555; }
@@ -200,7 +200,7 @@
       margin-bottom: 6px;
     }
     .name-grid button{ width: 64px; white-space: nowrap; }
-    .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
+    .name-grid input[type=\"text\"]{ width: 15ch; box-sizing: content-box; }
 
     @media (max-width: 980px){
       :root{ --gap: 4px; --cell: clamp(24px, calc((100vw - 40px - (9 * var(--gap)))/10), 52px); }
@@ -217,7 +217,7 @@
     }
   
     @media (max-width: 430px){
-      input[type="text"], select, textarea{ font-size: 16px; }
+      input[type=\"text\"], select, textarea{ font-size: 16px; }
       .seat-label{ font-size: 18px; }
       .turn-label{ font-size: 12px; }
       .phase-label{ font-size: 11px; }
@@ -385,45 +385,8 @@ let pending = null;
 // ゲームが開始されているかどうかのフラグ
 let isGameStarted = false; 
 
-// 現在表示中の部屋ID（アニメーションの重複再生防止用）
+// ★ 追加: 現在表示中の部屋ID（アニメーションの重複再生防止用）
 let activeRoomId = gid; 
-
-// ====== ★ WebSocket接続の管理 ======
-let socket = null;
-
-function connectWS() {
-    if (socket) {
-        socket.onclose = null; // 意図的な切断時に再接続ループを防ぐ
-        socket.close();
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host || "localhost:8000"; // ローカルテスト時のフォールバック
-    const wsUrl = `${protocol}//${host}/ws/${gid}`;
-    
-    socket = new WebSocket(wsUrl);
-
-    socket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.type === "update") {
-                refresh(); // サーバーから更新合図が来たら画面を再取得
-            }
-        } catch (e) {
-            console.error("WebSocket Message Error:", e);
-        }
-    };
-
-    socket.onclose = () => {
-        console.log("WebSocket disconnected. 3秒後に再接続します...");
-        setTimeout(connectWS, 3000);
-    };
-
-    socket.onerror = (err) => {
-        console.error("WebSocket Error:", err);
-    };
-}
-// ====================================
 
 const SEAT_ORDER = ["A","B","C","D"];
 
@@ -496,7 +459,6 @@ async function fetchRoomList() {
                 gid = MAIN_GID; 
                 isGameStarted = false; 
                 setHint("公開部屋に戻りました。");
-                connectWS(); // ★ 追加: 部屋移動時にWebSocketを繋ぎ直す
                 await refresh(); 
                 fetchRoomList(); 
             };
@@ -551,7 +513,6 @@ async function tryJoinRoom(targetGid, isPrivate) {
     gid = targetGid;
     isGameStarted = false; 
     setHint(`${gid} に入室しました。手番をお待ち下さい。`);
-    connectWS(); // ★ 追加: 部屋移動時にWebSocketを繋ぎ直す
     await refresh();
     fetchRoomList(); 
 }
@@ -1218,12 +1179,11 @@ async function refresh(){
 
   latestLegal = await fetchLegal();
 
+  // ★ 修正: 部屋を移動した直後の初回更新時はアニメーションをスキップする
   const currentLogCount = state.log ? state.log.length : 0;
-
   if (activeRoomId !== gid) {
     lastLogCount = currentLogCount;
     activeRoomId = gid;
-    isGameStarted = false; 
   }
 
   if (currentLogCount > 1) {
@@ -1288,7 +1248,7 @@ async function refresh(){
         console.error("CPU step error:", e);
       }
       isProcessingCpu = false;
-      // refresh(); // WebSocket化に伴い、サーバーからの通知で更新するため不要
+      refresh(); 
     }, 1000); 
   }
 }
@@ -1339,7 +1299,6 @@ window.addEventListener("load", async ()=>{
   updateNameInputVisibility();
   
   fetchRoomList();
-  connectWS(); // ★ 追加: ページ読み込み時にWebSocketを接続
   
   sel.addEventListener("change", async ()=>{
     const next = sel.value;
@@ -1359,7 +1318,7 @@ window.addEventListener("load", async ()=>{
     updateNameInputVisibility();
   });
 
-  // setInterval(refresh, 2000); // ★ 削除: WebSocketがあるので不要
+  setInterval(refresh, 2000);
 });
 </script>
 </body>
