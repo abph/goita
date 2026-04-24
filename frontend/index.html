@@ -493,6 +493,15 @@ async function fetchRoomList() {
             backBtn.textContent = "🏠 公開部屋(main)に戻る";
             backBtn.style.fontWeight = "bold";
             backBtn.onclick = async () => { 
+                // ★ 部屋を移動する前に現在の席を立つ
+                if(!isSpectator()){
+                    await releaseSeat(mySeat);
+                }
+                // ★ 観戦状態に戻す
+                mySeat = WATCH;
+                const sel = document.getElementById("seatSelect");
+                if(sel) sel.value = WATCH;
+
                 gid = MAIN_GID; 
                 isGameStarted = false; 
                 setHint("公開部屋に戻りました。");
@@ -547,6 +556,15 @@ async function tryJoinRoom(targetGid, isPrivate) {
             return;
         }
     }
+
+    // ★ 部屋を移動する前に現在の席を立つ
+    if(!isSpectator()){
+        await releaseSeat(mySeat);
+    }
+    // ★ 観戦状態に戻す
+    mySeat = WATCH;
+    const sel = document.getElementById("seatSelect");
+    if(sel) sel.value = WATCH;
 
     gid = targetGid;
     isGameStarted = false; 
