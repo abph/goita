@@ -383,18 +383,15 @@ let gid = MAIN_GID;
 
 const WATCH = "W";
 
-// ★ 追加：クライアントIDの生成（ブラウザのタブごとに記憶する名札）
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
     sessionStorage.setItem("goita_client_id", clientId);
 }
 
-// ★ 修正：自分が座っている席もブラウザに記憶させる（間違えて更新した時のため）
 let mySeat = sessionStorage.getItem("goita_my_seat") || WATCH;
 let lastSeat = mySeat === WATCH ? "A" : mySeat;
 
-// CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
 let cpuTimer = null; 
@@ -417,7 +414,6 @@ function connectWS() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host || "localhost:8000"; 
-    // ★ 修正：WebSocketをつなぐときに「自分のID」をサーバーに教える
     const wsUrl = `${protocol}//${host}/ws/${gid}?client_id=${clientId}`;
     
     socket = new WebSocket(wsUrl);
@@ -537,7 +533,6 @@ async function selectSeat(next) {
 
     pending = null;
     mySeat = next;
-    // ★ 修正：座った席を記憶しておく
     sessionStorage.setItem("goita_my_seat", mySeat);
     
     if (next !== WATCH) {
@@ -888,7 +883,6 @@ function buildHandMap(physToSeat){
   return m;
 }
 
-// ★ 修正：API通信時に必ずclientIdを渡す
 async function claimSeat(seat){ try{ await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
 async function releaseSeat(seat){ try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
 
@@ -1319,7 +1313,10 @@ async function refresh(){
     isGameStarted = false; 
   }
 
-  if (currentLogCount > 1) {
+  // ★ 修正：ログが1行以下（誰も打っていない状態）なら強制的に未開始とする
+  if (currentLogCount <= 1) {
+      isGameStarted = false;
+  } else {
       isGameStarted = true; 
   }
   
@@ -1426,7 +1423,6 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  // ★ 修正：ページロード時に、記憶している席があれば自動で座り直す
   if (mySeat !== WATCH) {
       await claimSeat(mySeat);
   }
