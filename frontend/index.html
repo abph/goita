@@ -382,7 +382,7 @@ let latestState = null;
 let latestLegal = [];
 let pending = null;
 
-// ★ 新規追加：ゲームが開始されているかどうかのフラグ
+// ゲームが開始されているかどうかのフラグ
 let isGameStarted = false; 
 
 const SEAT_ORDER = ["A","B","C","D"];
@@ -411,7 +411,7 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
-// ====== ★ 新規追加：ゲーム開始ボタンの処理 ======
+// ゲーム開始ボタンの処理
 function startGame() {
     isGameStarted = true;
     const btn = document.getElementById("startGameBtn");
@@ -454,6 +454,7 @@ async function fetchRoomList() {
             backBtn.style.fontWeight = "bold";
             backBtn.onclick = async () => { 
                 gid = MAIN_GID; 
+                isGameStarted = false; // ★ 追加: メイン部屋に戻る時もフラグをリセット
                 setHint("公開部屋に戻りました。");
                 await refresh(); 
                 fetchRoomList(); 
@@ -506,7 +507,9 @@ async function tryJoinRoom(targetGid, isPrivate) {
         }
     }
 
+    // パスワードが合っていれば、部屋IDを切り替えて画面を更新
     gid = targetGid;
+    isGameStarted = false; // ★ 修正箇所：部屋を移動した瞬間に確実に開始フラグをリセットする
     setHint(`${gid} に入室しました。手番をお待ち下さい。`);
     await refresh();
     fetchRoomList(); 
@@ -804,7 +807,6 @@ async function submitAction(actionObj){
 }
 
 async function onHandPieceClick(piece){
-  // ★ 新規追加：開始ボタンを押す前は操作を受け付けない
   if(!isGameStarted && latestState && latestState.log && latestState.log.length <= 1) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
@@ -856,7 +858,6 @@ async function onHandPieceClick(piece){
 }
 
 async function onPassClick(){
-  // ★ 新規追加：開始ボタンを押す前は操作を受け付けない
   if(!isGameStarted && latestState && latestState.log && latestState.log.length <= 1) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
@@ -1103,7 +1104,7 @@ function showPassAnimation(phys) {
 }
 
 async function startNewGame(){
-  isGameStarted = false; // ★ 新規追加：リセット時は開始フラグを落とす
+  isGameStarted = false; 
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
   const sel = document.getElementById("dealerSelect");
@@ -1127,7 +1128,7 @@ async function startNewGame(){
 }
 
 async function resetAll(){
-  isGameStarted = false; // ★ 新規追加：リセット時は開始フラグを落とす
+  isGameStarted = false; 
   presetClear();
   presetSetEnabled(false);
   const sel = document.getElementById("dealerSelect");
@@ -1176,20 +1177,16 @@ async function refresh(){
 
   latestLegal = await fetchLegal();
 
-  // ★ 新規追加：ログの行数を見てゲームが開始されているか判定する
   const currentLogCount = state.log ? state.log.length : 0;
   if (currentLogCount > 1) {
-      isGameStarted = true; // 誰かが手を打っていれば確実に開始状態
+      isGameStarted = true; 
   }
   
-  // ★ 新規追加：開始ボタンの表示制御
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
-      // ログが1行目（初期状態）かつ未開始ならボタンを表示
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished) ? "inline-block" : "none";
   }
 
-  // ★ ヒントの表示ロジックも調整
   if (!isGameStarted && currentLogCount <= 1 && !state.finished) {
       setHint("手札が配られました。「開始」ボタンを押して対局を始めてください。");
       pending = null;
@@ -1210,7 +1207,6 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
-  // ===== パスのアニメーション判定（時間差表示） =====
   if (currentLogCount < lastLogCount) {
     lastLogCount = 0; 
   }
@@ -1234,9 +1230,7 @@ async function refresh(){
     }
   }
   lastLogCount = currentLogCount;
-  // ============================================
 
-  // ★ 修正：CPUの自動進行は isGameStarted が true の時だけ発動する
   if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     setTimeout(async () => {
