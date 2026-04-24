@@ -1313,6 +1313,7 @@ async function refresh(){
       }
       isProcessingCpu = false;
       cpuTimer = null; 
+      refresh(); // ★復活：CPUの連鎖を止めないための安全装置
     }, 1000); 
   }
 }
