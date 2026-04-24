@@ -385,6 +385,9 @@ let pending = null;
 // ゲームが開始されているかどうかのフラグ
 let isGameStarted = false; 
 
+// ★追加：リセット中（通信中）に勝手に画面が更新されるのを防ぐフラグ
+let isResetting = false;
+
 // 現在表示中の部屋ID（アニメーションの重複再生防止用）
 let activeRoomId = gid; 
 
@@ -456,9 +459,12 @@ async function fetchRoomList() {
             backBtn.textContent = "🏠 公開部屋(main)に戻る";
             backBtn.style.fontWeight = "bold";
             backBtn.onclick = async () => { 
+                isResetting = true;
                 gid = MAIN_GID; 
                 isGameStarted = false; 
                 setHint("公開部屋に戻りました。");
+                activeRoomId = gid;
+                isResetting = false;
                 await refresh(); 
                 fetchRoomList(); 
             };
@@ -510,10 +516,12 @@ async function tryJoinRoom(targetGid, isPrivate) {
         }
     }
 
-    // パスワードが合っていれば、部屋IDを切り替えて画面を更新
+    isResetting = true;
     gid = targetGid;
     isGameStarted = false; 
     setHint(`${gid} に入室しました。手番をお待ち下さい。`);
+    activeRoomId = gid;
+    isResetting = false;
     await refresh();
     fetchRoomList(); 
 }
@@ -1106,8 +1114,10 @@ function showPassAnimation(phys) {
   }, 2000);
 }
 
+// ★ 修正：リセット中に裏で勝手にフラグが上書きされないようにする
 async function startNewGame(){
-  isGameStarted = false; 
+  isResetting = true; // ★ 通信開始の合図
+  
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
   const sel = document.getElementById("dealerSelect");
@@ -1124,14 +1134,18 @@ async function startNewGame(){
     await claimSeat(seatToKeep);
   }
 
+  isGameStarted = false; // ★ ここで確実に落とす
   pending=null; showAllHands=false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
+  
+  isResetting = false; // ★ 通信終了の合図
   await refresh();
   updateNameInputVisibility();
 }
 
 async function resetAll(){
-  isGameStarted = false; 
+  isResetting = true; // ★ 通信開始の合図
+  
   presetClear();
   presetSetEnabled(false);
   const sel = document.getElementById("dealerSelect");
@@ -1139,6 +1153,8 @@ async function resetAll(){
   if(dealer === "random") dealer = _chooseRandomDealer();
 
   await resetWithPreset(dealer);
+  
+  isGameStarted = false; // ★ ここで確実に落とす
   pending = null; showAllHands = false; lastLogCount = 0;
   document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
 
@@ -1152,6 +1168,8 @@ async function resetAll(){
     const el = document.getElementById(id);
     if(el) el.value = "";
   }
+  
+  isResetting = false; // ★ 通信終了の合図
   await refresh();
   updateNameInputVisibility();
 }
@@ -1164,7 +1182,8 @@ async function fetchLegal(){
 }
 
 async function refresh(){
-  if(isProcessingCpu) return;
+  // ★ 修正：リセット通信中は定期更新をスキップする
+  if(isProcessingCpu || isResetting) return;
 
   updateRoomUI(); 
 
@@ -1182,16 +1201,12 @@ async function refresh(){
 
   const currentLogCount = state.log ? state.log.length : 0;
 
-  // ★ 修正箇所：部屋を移動したときの処理
   if (activeRoomId !== gid) {
     lastLogCount = currentLogCount;
     activeRoomId = gid;
-    isGameStarted = false; // 部屋移動時は必ず「未開始」に戻す
+    isGameStarted = false; 
   }
 
-  // ★ 修正箇所：ログが2行以上（誰かが手を打った）なら確実に「開始済み」
-  // ※ここで currentLogCount <= 1 の時に false に上書きする処理を削除しました。
-  // （「開始」ボタンを押した状態を取り消さないため）
   if (currentLogCount > 1) {
       isGameStarted = true; 
   }
