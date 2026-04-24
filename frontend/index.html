@@ -134,7 +134,7 @@
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    /* ===== パス時のポップアップアニメーション ===== */
+    /* ===== パス時のポップアップ表示（アニメーションなし） ===== */
     .pass-anim-wrapper {
       z-index: 100;
       pointer-events: none;
@@ -151,13 +151,6 @@
       border-radius: 8px;
       padding: 6px 16px;
       box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-      animation: popOut 1s ease-in-out forwards;
-    }
-    @keyframes popOut {
-      0%   { transform: scale(0.5); opacity: 0; }
-      15%  { transform: scale(1.15); opacity: 1; }
-      85%  { transform: scale(1); opacity: 1; }
-      100% { transform: scale(0.8); opacity: 0; }
     }
 
     /* ラベル類 */
@@ -376,7 +369,7 @@ let lastSeat = "A";
 // CPU処理中フラグとログ履歴カウンタ
 let isProcessingCpu = false; 
 let lastLogCount = 0;
-let cpuTimer = null; // ★ 新規追加：CPUの思考タイマーを管理
+let cpuTimer = null; // CPUの思考タイマーを管理
 
 let showAllHands = false;
 let latestState = null;
@@ -1146,7 +1139,6 @@ function showPassAnimation(phys) {
 }
 
 async function startNewGame(){
-  // ★ 予約されているCPUの思考タイマーがあれば強制キャンセル
   if (cpuTimer) {
       clearTimeout(cpuTimer);
       cpuTimer = null;
@@ -1177,7 +1169,6 @@ async function startNewGame(){
 }
 
 async function resetAll(){
-  // ★ 予約されているCPUの思考タイマーがあれば強制キャンセル
   if (cpuTimer) {
       clearTimeout(cpuTimer);
       cpuTimer = null;
@@ -1296,7 +1287,6 @@ async function refresh(){
 
   if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
-    // ★ 修正: タイマーIDを変数に保存しておく
     cpuTimer = setTimeout(async () => {
       try {
         await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
@@ -1304,7 +1294,7 @@ async function refresh(){
         console.error("CPU step error:", e);
       }
       isProcessingCpu = false;
-      cpuTimer = null; // 処理が終わったら変数を空にする
+      cpuTimer = null; 
       refresh(); 
     }, 1000); 
   }
