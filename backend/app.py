@@ -27,7 +27,6 @@ NAME_MAX_LEN = 9
 # =========================================================
 class ConnectionManager:
     def __init__(self):
-        # game_id ごとの WebSocket 接続リスト
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, game_id: str):
@@ -42,17 +41,14 @@ class ConnectionManager:
                 self.active_connections[game_id].remove(websocket)
 
     async def broadcast_update(self, game_id: str):
-        """その部屋の全員に更新通知を送る"""
         if game_id in self.active_connections:
             for connection in self.active_connections[game_id]:
                 try:
                     await connection.send_json({"type": "update"})
                 except:
-                    # 無効な接続は無視（切断時に自動削除されるため）
                     pass
 
 manager = ConnectionManager()
-
 # =========================================================
 
 def _validate_seat(s: str, *, name: str = "seat") -> str:
@@ -61,10 +57,8 @@ def _validate_seat(s: str, *, name: str = "seat") -> str:
         raise HTTPException(status_code=400, detail=f"invalid {name}: {s} (must be A/B/C/D)")
     return s
 
-
 def _normalize_hands(hands: Dict[str, List[Any]]) -> Dict[str, List[str]]:
     return {p: [str(x) for x in hands[p]] for p in ALL_SEATS}
-
 
 def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str]]:
     for _ in range(max_retry):
@@ -74,8 +68,6 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
             return hands
     raise RuntimeError(f"Failed to generate valid hands after {max_retry} retries.")
 
-
-# ====== 手札プリセット（枚数指定） ======
 def build_hands_from_preset_counts(
     preset: Dict[str, Dict[str, int]],
     dealer: str,
@@ -177,7 +169,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ====== frontend 配信 ======
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -191,29 +182,24 @@ def serve_index():
     return FileResponse(index_path)
 
 
-# ====== WebSocket エンドポイント ======
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
     await manager.connect(websocket, game_id)
     try:
         while True:
-            # 接続維持のためメッセージを待機
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, game_id)
 
 
-# ====== 棋譜（kifu）用 ======
 def _hand_to_kifu_string(hand: List[Any]) -> str:
     return "".join(PIECE_KANJI.get(str(x), str(x)) for x in hand)
-
 
 def _piece_to_kifu(v: Optional[str]) -> str:
     if v is None:
         return ""
     v = str(v)
     return PIECE_KANJI.get(v, v)
-
 
 def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> List[str]:
     t, b, a = action
@@ -227,7 +213,6 @@ def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[
     if t == "attack_after_block":
         return [pid, _piece_to_kifu(b), _piece_to_kifu(a)]
     return [pid, t, ""]
-
 
 def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
     out: List[List[str]] = []
@@ -262,15 +247,14 @@ class StepRequest(BaseModel):
     player: str = Field(..., description="A/B/C/D")
     action: ActionModel
 
-
 class NameRequest(BaseModel):
     seat: str
     name: str = ""
 
-
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    requester: str = Field(default="W") # ★追加：誰がリクエストしたか
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -477,11 +461,15 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 
 
 # =========================================================
-# ゲーム操作 API (通知対応)
+# ゲーム操作 API (通知対応 & ★A席チェック追加)
 # =========================================================
 
 @app.post("/games/{game_id}/reset")
-async def reset_game(game_id: str, dealer: str = "A"):
+async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
+    # ★追加：リクエスト元がA席でなければエラーを返す（サーバー側での防御）
+    if requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
+
     if game_id == MAIN_GID:
         _ensure_main_game(dealer=dealer)
     elif game_id not in GAMES:
@@ -490,9 +478,11 @@ async def reset_game(game_id: str, dealer: str = "A"):
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
     owner_name = old_game.get("owner_name", "")
+    
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
     new_game["owner_name"] = owner_name
+    
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
     GAMES[game_id] = new_game
@@ -503,6 +493,10 @@ async def reset_game(game_id: str, dealer: str = "A"):
 
 @app.post("/games/{game_id}/reset_config")
 async def reset_game_config(game_id: str, body: ResetConfigBody):
+    # ★追加：リクエスト元がA席でなければエラーを返す（サーバー側での防御）
+    if body.requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can reset the game configuration.")
+
     if game_id == MAIN_GID:
         _ensure_main_game()
     elif game_id not in GAMES:

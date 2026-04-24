@@ -721,15 +721,17 @@ function presetValidateAndClamp(changed){
 
 async function resetWithPreset(dealer){
   const usePreset = presetIsEnabled() && presetHasAny();
+  
+  // ★追加：リクエストに requester: mySeat を含める
   if(usePreset){
     const preset = presetGet();
     await fetch(`${API}/games/${gid}/reset_config`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ dealer, preset_counts: preset })
+      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat })
     });
   }else{
-    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}`, {
+    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}`, {
       method:"POST",
     });
   }
@@ -1253,7 +1255,6 @@ async function refresh(){
   
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
-      // ★ 修正: 開始ボタンもA席に座っている人だけが表示・操作できる
       const isHost = (mySeat === "A"); 
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
