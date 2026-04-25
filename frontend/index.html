@@ -12,8 +12,8 @@
     /* ベースのフォントと背景（和紙調） */
     body { 
       font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif;
-      background-color: #f4efdf; /* 落ち着いた和紙のような色 */
-      color: #2b2b2b; /* 墨色 */
+      background-color: #f4efdf; 
+      color: #2b2b2b; 
       max-width: 1250px; 
       margin: 20px auto; 
     }
@@ -24,11 +24,11 @@
     
     /* 盤面（木製の盤をイメージ） */
     .board-wrap { 
-      background-color: #d1ab75; /* 木の盤面色 */
+      background-color: #d1ab75; 
       border: 4px solid #8b5a2b; 
       border-radius: 6px; 
       padding: 12px; 
-      box-shadow: 0 8px 16px rgba(0,0,0,0.3); /* 盤面の立体感 */
+      box-shadow: 0 8px 16px rgba(0,0,0,0.3); 
     }
     .board {
       display: grid;
@@ -56,7 +56,7 @@
 
     /* ===== 駒（将棋の駒の形・五角形に変更） ===== */
     .slot, .hand { 
-      background: linear-gradient(135deg, #fceeb5, #e6c875); /* 竹・木目風のグラデーション */
+      background: linear-gradient(135deg, #fceeb5, #e6c875); 
       clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
       font-weight: 600; 
       width: 80%;
@@ -169,7 +169,7 @@
     .name-label{ font-size: 12px; line-height: 1.15; padding: 4px; white-space: pre-line; }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
-    .meta { display: grid; grid-template-columns: 140px 1fr; gap: 6px 10px; font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+    .meta { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     
     button, select, input[type="text"] { 
@@ -199,7 +199,7 @@
       cursor: not-allowed;
     }
 
-    /* ★ 追加：ロビー画面用のボタンスタイル */
+    /* ロビー画面用のボタンスタイル */
     .room-btn {
         padding: 12px 20px;
         font-size: 16px;
@@ -321,7 +321,7 @@
   </div>
 
   <div class="top-controls">
-    <div class="meta" style="align-items: center;">
+    <div class="meta">
       <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
@@ -439,6 +439,7 @@ let latestState = null;
 let latestLegal = [];
 let pending = null;
 let isGameStarted = false; 
+let activeRoomId = null;
 let socket = null;
 
 // ====== WebSocket 管理 ======
@@ -501,12 +502,10 @@ async function tryJoinRoom(targetGid, isPrivate) {
             return;
         }
     }
-    // APIから取得した部屋名などを使いたい場合は引数で渡すように変更可能ですが、今回はIDをそのまま名前にします
     await enterRoom(targetGid, targetGid);
 }
 
 async function enterRoom(targetGid, roomName) {
-    // 現在の席を手放す
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
@@ -514,11 +513,10 @@ async function enterRoom(targetGid, roomName) {
     sessionStorage.setItem("goita_my_seat", mySeat);
     
     gid = targetGid;
-    sessionStorage.setItem("goita_current_gid", gid); // 部屋IDを記憶
+    sessionStorage.setItem("goita_current_gid", gid); 
     isGameStarted = false; 
     setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
     
-    // 画面の切り替え
     document.getElementById("lobbyView").style.display = "none";
     document.getElementById("gameView").style.display = "block";
     document.getElementById("currentRoomName").textContent = roomName;
@@ -528,13 +526,12 @@ async function enterRoom(targetGid, roomName) {
 }
 
 async function returnToLobby() {
-    // 席を手放す
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
     mySeat = WATCH;
     sessionStorage.setItem("goita_my_seat", mySeat);
-    sessionStorage.removeItem("goita_current_gid"); // 記憶した部屋IDを削除
+    sessionStorage.removeItem("goita_current_gid"); 
     
     if (socket) {
         socket.onclose = null;
@@ -542,7 +539,6 @@ async function returnToLobby() {
         socket = null;
     }
     
-    // 画面の切り替え
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
     
@@ -1352,7 +1348,8 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  const qs = newSearchParams();
+  // ★ 修正箇所：URLSearchParams を正しく記述
+  const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
