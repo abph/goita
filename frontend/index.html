@@ -199,7 +199,30 @@
       cursor: not-allowed;
     }
 
-    /* ★ 追加：ロビーの正方形ルームカードデザイン */
+    /* ロビー画面用のボタンスタイル */
+    .room-btn {
+        padding: 12px 20px;
+        font-size: 16px;
+        font-weight: bold;
+        border: 2px solid #8b5a2b;
+        background: #fceeb5;
+        color: #2b2b2b;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s;
+        margin-bottom: 8px;
+    }
+    .room-btn:hover {
+        background: #e6c875;
+        transform: translateY(-2px);
+    }
+    #lobbyView {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    /* ロビーの正方形ルームカードデザイン */
     .room-card-container {
         display: flex;
         flex-wrap: wrap;
@@ -254,7 +277,7 @@
         font-size: 18px; 
     }
 
-    /* ロビーの各席バッジ */
+    /* ★ 修正：ロビーの各席バッジの最大幅を広げて省略を防ぐ */
     .seat-badge {
         font-size: 12px;
         font-weight: bold;
@@ -265,7 +288,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 80px; 
+        max-width: 115px; /* ここを広げました */
         text-align: center;
     }
     .seat-badge.ai { 
@@ -283,11 +306,6 @@
     .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
     .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
 
-    #lobbyView {
-        max-width: 800px;
-        margin: 0 auto;
-    }
-    
     .hint { 
       background: #fffdf5; 
       border: 2px solid #d35400; 
@@ -640,6 +658,12 @@ async function returnToLobby() {
         await releaseSeat(mySeat);
     }
     mySeat = WATCH;
+    
+    if (socket) {
+        socket.onclose = null;
+        socket.close();
+        socket = null;
+    }
     
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
