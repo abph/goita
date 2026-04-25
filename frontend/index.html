@@ -296,19 +296,31 @@
 
 <div id="lobbyView">
   <div style="text-align: center; padding: 40px 0;">
-     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた</h1>
-     <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ</p>
+     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた（β）</h1>
+     <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ。</p>
+     
+     <div style="font-size: 14px; color: #555; text-align: left; display: inline-block; background: #fffdf5; padding: 15px 20px; border-radius: 8px; border: 1px dashed #8b5a2b; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+          <li>不足人数に応じて、<b>AI（初級者の上レベル）</b>が自動で参戦します。1人からでも対局可能です。</li>
+          <li>※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
+          <li>※150点先取ルールは未実装のため、1局ごとに終了となります。</li>
+        </ul>
+     </div>
   </div>
 
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
-    <h2>🌐 公開部屋</h2>
-    <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できるメインの対局室です。</p>
+    <h2>🌐 公開部屋（メインルーム）</h2>
+    <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
     <button onclick="joinMainRoom()" style="font-size: 18px; font-weight: bold; padding: 14px 36px; background: #8b5a2b; color: #fff; border: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); cursor: pointer;">🚪 メインルームに入る</button>
   </div>
 
   <div class="card" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
     <h2 style="color: #8b5a2b; margin-top: 0; text-align: center;">🏯 プライベートルーム</h2>
-    <p style="margin-bottom: 15px; color: #555; text-align: center;">合言葉を知っている人だけが入れる専用の部屋です。</p>
+    <p style="margin-bottom: 15px; color: #555; text-align: center; line-height: 1.6;">
+      合言葉を知っている人だけが入れる専用の部屋です。<br>
+      <span style="font-size: 13px;">「全員の手札公開」「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
+      <b>※いまはお試し期間で、自由に使えます。</b></span>
+    </p>
     <div id="lobbyRoomList" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
       </div>
   </div>
@@ -651,7 +663,6 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     
-    // ★修正: 「みんな手札公開」ボタンはA席（ホスト）にのみ表示
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -986,7 +997,7 @@ async function downloadKifu(){
   URL.revokeObjectURL(url);
 }
 
-// ★修正: サーバーに「全員公開モード」の切り替えをリクエストする
+// サーバーに「全員公開モード」の切り替えをリクエストする
 async function toggleAllHands(){
   try{
     await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}`, {
@@ -1171,7 +1182,6 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
-        // ★修正: サーバーから送られてくる状態（state.reveal_hands）に従って表示を切り替える
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
 
         if(canShowSeat){
@@ -1320,7 +1330,6 @@ async function startNewGame(){
   }
 
   pending=null; lastLogCount = 0;
-  // ★削除: ローカルでの表示切替（showAllHands）は使わないため削除
 }
 
 async function fetchLegal(){
@@ -1342,7 +1351,6 @@ async function refresh(){
   updateRoomUI(); 
   updateSeatButtons(state.human_seats);
   
-  // ★修正: ボタンのテキストを、サーバーの状態に合わせて動的に変える
   const toggleBtn = document.getElementById("toggleHandsBtn");
   if (toggleBtn) {
       toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
@@ -1457,12 +1465,23 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  // 常にロビー画面を表示し、ゲーム画面は隠す
-  document.getElementById("lobbyView").style.display = "block";
-  document.getElementById("gameView").style.display = "none";
-  
-  // 部屋リストを取得
-  fetchRoomList();
+  const savedGid = sessionStorage.getItem("goita_current_gid");
+  if (savedGid) {
+     gid = savedGid;
+     document.getElementById("lobbyView").style.display = "none";
+     document.getElementById("gameView").style.display = "block";
+     document.getElementById("currentRoomName").textContent = (gid === MAIN_GID) ? "メインルーム" : gid;
+     if (mySeat !== WATCH) {
+         await claimSeat(mySeat);
+     }
+     await refresh();
+     updateNameInputVisibility();
+     connectWS();
+  } else {
+     document.getElementById("lobbyView").style.display = "block";
+     document.getElementById("gameView").style.display = "none";
+     fetchRoomList();
+  }
 });
 </script>
 </body>
