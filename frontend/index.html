@@ -153,7 +153,7 @@
       box-shadow: 0 6px 12px rgba(0,0,0,0.3);
     }
 
-    /* ★ 追加：必殺技の演出テキスト */
+    /* 必殺技・上がり演出テキスト */
     .special-anim-wrapper {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; display: flex; align-items: center; justify-content: center; z-index: 200;
@@ -164,9 +164,28 @@
       transform: scale(0);
       animation: specialPop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
-    .special-anim-text.damadama {
-      text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400;
+    /* 役ごとのカラーリング */
+    .special-anim-text.kakarigotae { text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000; }
+    .special-anim-text.damadama { text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400; }
+    
+    /* ★ 追加：倍付け、王あがり、だまだまあがりの特別な色 */
+    .special-anim-text.baizuke { 
+      color: #ffe600; 
+      text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 40px #b00000; 
+      font-size: clamp(40px, 9vw, 80px);
     }
+    .special-anim-text.ou_agari { 
+      color: #ffffff; 
+      text-shadow: 0 0 10px #3498db, 0 0 20px #2980b9, 0 0 40px #8e44ad; 
+      font-size: clamp(40px, 9vw, 80px);
+    }
+    .special-anim-text.damadama_agari { 
+      color: #ffd700; 
+      text-shadow: 0 0 15px #e74c3c, 0 0 30px #c0392b, 0 0 50px #8e44ad; 
+      font-size: clamp(45px, 10vw, 90px);
+      letter-spacing: 2px;
+    }
+
     @keyframes specialPop {
       0% { transform: scale(0) rotate(-10deg); opacity: 0; }
       15% { transform: scale(1.2) rotate(5deg); opacity: 1; }
@@ -862,7 +881,7 @@ async function openSettingsModal(targetGid, event) {
             settingTargetGid = targetGid;
             currentAdminPass = pass;
             document.getElementById("setRoomName").value = data.owner_name || "";
-            document.getElementById("checkEnableEffects").checked = data.enable_effects !== false; // ★追加
+            document.getElementById("checkEnableEffects").checked = data.enable_effects !== false;
             document.getElementById("checkUpdatePass").checked = false;
             document.getElementById("setRoomPass").style.display = "none";
             document.getElementById("setRoomPass").value = "";
@@ -885,7 +904,7 @@ async function saveSettings() {
     const newName = document.getElementById("setRoomName").value;
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
-    const enableEffects = document.getElementById("checkEnableEffects").checked; // ★追加
+    const enableEffects = document.getElementById("checkEnableEffects").checked;
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
@@ -896,7 +915,7 @@ async function saveSettings() {
                 new_owner_name: newName,
                 update_password: isUpdatePass,
                 new_password: newPass,
-                enable_effects: enableEffects // ★追加
+                enable_effects: enableEffects
             })
         });
         if (res.ok) {
@@ -1626,7 +1645,6 @@ function showPassAnimation(phys) {
   }, 2000);
 }
 
-// ★ 追加：必殺技アニメーションの表示関数
 function showSpecialAnimation(text, typeClass) {
   const wrap = document.querySelector(".board-wrap");
   if (!wrap) return;
@@ -1639,8 +1657,6 @@ function showSpecialAnimation(text, typeClass) {
   textDiv.textContent = text;
 
   wrapper.appendChild(textDiv);
-  
-  // 盤面の中央に重ねて表示
   wrap.style.position = "relative";
   wrap.appendChild(wrapper);
 
@@ -1785,7 +1801,6 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
-  // ★ 修正：ログをパースして、パス・必殺技の演出を再生
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
     let animDelay = 0; 
@@ -1796,9 +1811,12 @@ async function refresh(){
       const isPass = entry.match(/^([ABCD]): pass/);
       const hasKakarigotae = entry.includes("[EFFECT:kakarigotae]");
       const hasDamadama = entry.includes("[EFFECT:damadama]");
+      const hasBaizuke = entry.includes("[EFFECT:baizuke]");
+      const hasDamadamaAgari = entry.includes("[EFFECT:damadama_agari]");
+      const hasOuAgari = entry.includes("[EFFECT:ou_agari]");
+      
       const seatMatch = entry.match(/^([ABCD]):/);
 
-      // パス演出
       if (isPass) {
         const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
@@ -1808,8 +1826,7 @@ async function refresh(){
         animDelay += 800; 
       }
       
-      // 必殺技演出
-      if (seatMatch && (hasKakarigotae || hasDamadama)) {
+      if (seatMatch) {
           if (hasKakarigotae) {
               setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae"), animDelay);
               animDelay += 1200;
@@ -1817,6 +1834,20 @@ async function refresh(){
           if (hasDamadama) {
               setTimeout(() => showSpecialAnimation("だまだま！", "damadama"), animDelay);
               animDelay += 1200;
+          }
+          
+          // 上がり役のコンボ演出
+          if (hasBaizuke) {
+              setTimeout(() => showSpecialAnimation("倍付け！", "baizuke"), animDelay);
+              animDelay += 1400;
+          }
+          if (hasDamadamaAgari) {
+              setTimeout(() => showSpecialAnimation("だまだまあがり！", "damadama_agari"), animDelay);
+              animDelay += 1500;
+          }
+          if (hasOuAgari) {
+              setTimeout(() => showSpecialAnimation("王あがり！", "ou_agari"), animDelay);
+              animDelay += 1400;
           }
       }
     }

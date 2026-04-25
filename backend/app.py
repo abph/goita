@@ -269,7 +269,6 @@ class ResetConfigBody(BaseModel):
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     requester: str = Field(default="W") 
 
-# ★ 修正: enable_effects を追加
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
     new_owner_name: str
@@ -292,7 +291,7 @@ def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[st
         state.apply_attack(player, attack)
     elif action_type == "attack_after_block":
         if block is None or attack is None:
-            raise ValueError("attack_after_block には block と attack の両方が必要です")
+            raise ValueError("attack_after_block には block と attack 両方が必要です")
         state.apply_attack_after_block(player, block, attack)
     else:
         raise ValueError(f"未知の action_type: {action_type}")
@@ -468,7 +467,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "owner_name": "",
         "reveal_hands": False,
         "is_started": False,
-        "enable_effects": True, # ★ 演出設定の初期値
+        "enable_effects": True,
     }
 
 
@@ -494,22 +493,52 @@ def setup_supporter_rooms():
 
 setup_supporter_rooms()
 
-# ★ 追加：必殺技の条件判定関数
+
+# ★ 修正：上がり役（倍付け・王あがり・だまだまあがり）の判定を追加
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]]) -> List[str]:
     effects = []
     action_type, block, attack = action
     
+    # 実行前（現在）の手札の枚数
+    hand_len = len(state.hands[player])
+    
+    # 今回のアクションで上がれるかどうか
+    is_agari = False
+    if action_type == "attack" and hand_len == 1:
+        is_agari = True
+    elif action_type == "attack_after_block" and hand_len == 2:
+        is_agari = True
+    
     if action_type in ("attack", "attack_after_block") and attack is not None:
-        # 1. だまだま（王玉両方持ちからの攻め）
-        if attack in ("8", "9"):
-            other = "9" if attack == "8" else "8"
-            if other in state.hands[player]:
-                effects.append("damadama")
-        
-        # 2. かかりごたえ（相方の公開されている攻め駒と同じ駒で攻める）
+        # かかりごたえ（相方の公開されている攻め駒と同じ駒で攻める）
         partner = {"A":"C", "C":"A", "B":"D", "D":"B"}[player]
         if attack in board_public.get(partner, {}).get("attack", []):
             effects.append("kakarigotae")
+            
+        if is_agari:
+            # ★ 上がりの場合の特別演出
+            if action_type == "attack_after_block":
+                # だまだまあがり（王と玉のペアで上がる）
+                if (block == "8" and attack == "9") or (block == "9" and attack == "8"):
+                    effects.append("damadama_agari")
+                # 倍付け（同じ駒で上がる。※王と玉は1枚しかないので該当しない）
+                elif block == attack:
+                    effects.append("baizuke")
+                # 王あがり（受けてからの攻めが王・玉）
+                elif attack in ("8", "9"):
+                    effects.append("ou_agari")
+            
+            elif action_type == "attack":
+                # 王あがり（最後の一枚が王・玉）
+                if attack in ("8", "9"):
+                    effects.append("ou_agari")
+                    
+        else:
+            # 上がりではない途中の場合のだまだま
+            if attack in ("8", "9"):
+                other = "9" if attack == "8" else "8"
+                if other in state.hands[player]:
+                    effects.append("damadama")
             
     return effects
 
@@ -569,7 +598,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "ok": True, 
             "owner_name": game.get("owner_name", ""),
             "is_private": game.get("password") is not None,
-            "enable_effects": game.get("enable_effects", True) # ★ 追加
+            "enable_effects": game.get("enable_effects", True)
         }
     raise HTTPException(status_code=401, detail="管理用パスワードが違います")
 
@@ -583,7 +612,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
-    game["enable_effects"] = req.enable_effects # ★ 追加
+    game["enable_effects"] = req.enable_effects
     if req.update_password:
         game["password"] = req.new_password if req.new_password else None
     
@@ -646,7 +675,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
-    enable_effects = old_game.get("enable_effects", True) # ★ 引き継ぎ
+    enable_effects = old_game.get("enable_effects", True)
     
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
@@ -805,7 +834,6 @@ async def step(game_id: str, req: StepRequest):
     
     action = req.action.to_tuple()
     
-    # ★ 追加：適用前に演出の条件を満たしているかチェックする
     effects = []
     if game.get("enable_effects", True):
         effects = _check_effects(state, player, action, board)
@@ -819,7 +847,6 @@ async def step(game_id: str, req: StepRequest):
     hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
     _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
     
-    # ★ ログに演出タグを埋め込む
     log_str = _format_action(player, action) + (" (hidden)" if hidden_receive else "")
     for ef in effects:
         log_str += f" [EFFECT:{ef}]"
@@ -857,7 +884,6 @@ async def cpu_step(game_id: str):
         
     cpu_action = agents[p].select_action(state, p, acts)
     
-    # ★ 追加：AIの行動でも演出チェックを行う
     effects = []
     if game.get("enable_effects", True):
         effects = _check_effects(state, p, cpu_action, board)
@@ -867,7 +893,6 @@ async def cpu_step(game_id: str):
     hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
     _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
     
-    # ★ ログに演出タグを埋め込む
     log_str = _format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else "")
     for ef in effects:
         log_str += f" [EFFECT:{ef}]"
