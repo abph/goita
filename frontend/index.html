@@ -247,6 +247,7 @@
       .bottom-grid > *{ min-width: 0; }
       .card{ min-width: 0; }
       pre{ width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+      #dealerSelect{ width: 100%; }
       .name-grid{ grid-template-columns: 70px 15ch 56px; justify-content: start; }
       .name-grid button{ width: 56px; }
     }
@@ -356,7 +357,6 @@
     <div class="btns" style="margin-top:10px;">
       <button onclick="startNewGame()" id="btnNewGame" style="display:none;">新規ゲーム</button>
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
-      <button onclick="resetAll()" id="btnResetAll" style="display:none;">リセット</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
@@ -506,6 +506,13 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    // ★ 修正：部屋を移動するときにCPUのタイマーを強制的に止める
+    if (cpuTimer) {
+        clearTimeout(cpuTimer);
+        cpuTimer = null;
+    }
+    isProcessingCpu = false;
+
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
@@ -526,6 +533,13 @@ async function enterRoom(targetGid, roomName) {
 }
 
 async function returnToLobby() {
+    // ★ 修正：ロビーに戻るときにCPUのタイマーを強制的に止める
+    if (cpuTimer) {
+        clearTimeout(cpuTimer);
+        cpuTimer = null;
+    }
+    isProcessingCpu = false;
+
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
@@ -639,10 +653,8 @@ function updateRoomUI() {
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
-    const btnResetAll = document.getElementById("btnResetAll");
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
-    if (btnResetAll) btnResetAll.style.display = isHost ? "" : "none";
     
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -1310,34 +1322,6 @@ async function startNewGame(){
   document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
 }
 
-async function resetAll(){
-  if (cpuTimer) {
-      clearTimeout(cpuTimer);
-      cpuTimer = null;
-  }
-  isProcessingCpu = false;
-
-  isGameStarted = false; 
-  presetClear();
-  presetSetEnabled(false);
-  const sel = document.getElementById("dealerSelect");
-  let dealer = sel ? sel.value : "random";
-  if(dealer === "random") dealer = _chooseRandomDealer();
-
-  await resetWithPreset(dealer);
-  pending = null; showAllHands = false; lastLogCount = 0;
-  document.getElementById("toggleHandsBtn").textContent = "みんな手札公開";
-
-  mySeat = WATCH;
-  lastSeat = "A";
-
-  const ids = ["nameA","nameB","nameC","nameD"];
-  for(const id of ids){
-    const el = document.getElementById(id);
-    if(el) el.value = "";
-  }
-}
-
 async function fetchLegal(){
   if(isSpectator()) return [];
   const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}`);
@@ -1348,7 +1332,6 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  // ★ 修正箇所：URLSearchParams を正しく記述
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
