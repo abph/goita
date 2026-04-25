@@ -270,8 +270,6 @@
         color: #555; 
         font-weight: bold;
     }
-
-    /* ロビーのカード左上の設定(歯車)アイコン */
     .room-card .settings-icon { 
         position: absolute; 
         top: 10px; 
@@ -286,8 +284,6 @@
     .room-card .settings-icon:hover {
         transform: rotate(45deg) scale(1.1);
     }
-
-    /* 鍵アイコンは右上 */
     .room-card .lock-icon { 
         position: absolute; 
         top: 10px; 
@@ -745,7 +741,6 @@ async function fetchRoomList() {
                 return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
             };
 
-            // ★ 修正：メインルーム（MAIN_GID）以外の場合のみ設定アイコンを表示
             const settingsIcon = (room.game_id !== MAIN_GID) 
                 ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event)" title="ルーム設定">⚙️</div>` 
                 : "";
@@ -929,6 +924,7 @@ function updateRoomUI() {
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
     
+    // 設定ボタンはプライベートルームなら誰でも表示
     if (settingsBtn) settingsBtn.style.display = (!isMain) ? "inline-block" : "none";
 }
 
@@ -978,7 +974,11 @@ function startGame() {
     isGameStarted = true;
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
-    refresh(); 
+    
+    // ★ 修正：APIを叩いてサーバー側から手札を配る
+    fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
+        method: "POST"
+    }).catch(e => console.error(e));
 }
 
 function getWinnerPoints(state){
@@ -1276,13 +1276,12 @@ async function submitAction(actionObj){
 }
 
 async function onHandPieceClick(piece){
-  if(!isGameStarted && latestState && latestState.log && latestState.log.length <= 1) {
+  if(!latestState || !latestState.is_started) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
   }
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
-  if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
@@ -1323,13 +1322,12 @@ async function onHandPieceClick(piece){
 }
 
 async function onPassClick(){
-  if(!isGameStarted && latestState && latestState.log && latestState.log.length <= 1) {
+  if(!latestState || !latestState.is_started) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
   }
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
-  if(!latestState) return;
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
 
@@ -1443,6 +1441,11 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
+        // ★ 追加：ゲームが開始されていない時は手札エリア（空マス含む）を完全に非表示にする
+        if (!state.is_started) {
+            continue;
+        }
+
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
 
         if(canShowSeat){
@@ -1617,7 +1620,6 @@ async function refresh(){
       toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
   }
 
-  // ★ 修正：ヘッダーのルーム名もリアルタイムに反映させる（メインルームAを考慮）
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
       currentRoomNameEl.textContent = state.owner_name || (gid === MAIN_GID ? "メインルームA" : "");
@@ -1646,17 +1648,19 @@ async function refresh(){
       isGameStarted = true; 
   }
   
+  // ★ 修正：開始ボタンの表示制御
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
       const isHost = (mySeat === "A"); 
-      startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
+      startGameBtn.style.display = (!state.is_started && isHost) ? "inline-block" : "none";
   }
 
-  if (!isGameStarted && currentLogCount <= 1 && !state.finished) {
+  // ★ 修正：ヒントメッセージの制御
+  if (!state.is_started) {
       if (mySeat === "A") {
-          setHint("👑 あなたはホストです。設定を確認し、「開始」ボタンを押して対局を始めてください。");
+          setHint("👑 あなたはホストです。設定や配牌を確認し、「開始」ボタンを押して対局を始めてください。");
       } else {
-          setHint("手札が配られました。ホスト(👑A)が「開始」を押すのをお待ちください。");
+          setHint("待機中... ホスト(👑A)が「開始」を押すのをお待ちください。");
       }
       pending = null;
   } else if(state.finished){

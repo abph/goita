@@ -299,38 +299,70 @@ def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_typ
     return len(state.face_down_hidden[player]) > before_len
 
 
+# ★修正：ゲームの開始前（is_started=False）の時は盤面や手札を空にして返す
 def _state_public_view(
-    state: GoitaState, *, viewer: str, log: List[str], board_public: Dict[str, Dict[str, Any]],
-    reveal_hands: bool = False, human_seats: Optional[Any] = None, player_names: Optional[Dict[str, str]] = None,
-    owner_name: str = "",
+    state: GoitaState, *, viewer: str, game_obj: Dict[str, Any]
 ) -> Dict[str, Any]:
-    hands_view: Dict[str, Any] = {}
-    for p in ALL_SEATS:
-        if reveal_hands or p == viewer: hands_view[p] = list(state.hands[p])
-        else: hands_view[p] = {"count": len(state.hands[p])}
+    
+    log = game_obj.get("log", [])
+    board_public = game_obj.get("board", _new_board_snapshot())
+    reveal_hands = game_obj.get("reveal_hands", False)
+    human_seats = game_obj.get("human_seats", {})
+    player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
+    owner_name = game_obj.get("owner_name", "")
+    is_started = game_obj.get("is_started", False)
 
-    if reveal_hands:
-        board_view = copy.deepcopy(board_public)
+    hands_view: Dict[str, Any] = {}
+    
+    if not is_started:
         for p in ALL_SEATS:
-            rh = board_view.get(p, {}).get("receive_hidden")
-            if isinstance(rh, list): board_view[p]["receive_hidden"] = [False for _ in rh]
+            hands_view[p] = {"count": 0}
+        board_view = _new_board_snapshot()
+        turn = None
+        phase = ""
+        attacker = ""
+        current_attack = None
+        scores = {"A": 0, "B": 0, "C": 0, "D": 0}
+        team_score = {"AC": 0, "BD": 0}
+        finished = False
+        winner = None
     else:
-        board_view = board_public
+        for p in ALL_SEATS:
+            if reveal_hands or p == viewer: hands_view[p] = list(state.hands[p])
+            else: hands_view[p] = {"count": len(state.hands[p])}
+
+        if reveal_hands:
+            board_view = copy.deepcopy(board_public)
+            for p in ALL_SEATS:
+                rh = board_view.get(p, {}).get("receive_hidden")
+                if isinstance(rh, list): board_view[p]["receive_hidden"] = [False for _ in rh]
+        else:
+            board_view = board_public
+            
+        turn = state.turn
+        phase = state.phase
+        attacker = state.attacker
+        current_attack = state.current_attack
+        scores = _build_scores(state)
+        team_score = getattr(state, "team_score", None)
+        finished = state.finished
+        winner = state.winner
 
     payload = {
-        "turn": state.turn, "phase": state.phase, "attacker": state.attacker,
-        "current_attack": state.current_attack, "hands": hands_view,
-        "team_score": getattr(state, "team_score", None), "scores": _build_scores(state),
-        "board_public": board_view, "log": (log or [])[-200:], "finished": state.finished,
-        "winner": state.winner, "player_names": player_names or {p: "" for p in ALL_SEATS},
+        "is_started": is_started,
+        "turn": turn, "phase": phase, "attacker": attacker,
+        "current_attack": current_attack, "hands": hands_view,
+        "team_score": team_score, "scores": scores,
+        "board_public": board_view, "log": log[-200:], "finished": finished,
+        "winner": winner, "player_names": player_names,
         "reveal_hands": reveal_hands, "owner_name": owner_name,
     }
-    if human_seats is not None:
-        if isinstance(human_seats, dict): payload["human_seats"] = sorted(list(human_seats.keys()))
-        else: payload["human_seats"] = sorted(list(human_seats))
+    if isinstance(human_seats, dict): payload["human_seats"] = sorted(list(human_seats.keys()))
+    else: payload["human_seats"] = sorted(list(human_seats))
     return payload
 
 
+# ★修正：初期状態を is_started: False (待機中) にする
 def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
     hands = create_random_hands_no_five_shi()
@@ -338,14 +370,14 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     agents: Dict[str, RuleBasedAgent] = {s: RuleBasedAgent(name=f"CPU-{s}") for s in ALL_SEATS}
     for seat, ag in agents.items(): ag.bind_player(seat)
     return {
-        "state": state, "agents": agents, "log": [f"Game start. dealer={dealer}, table=main"],
+        "state": state, "agents": agents, "log": [], # ログは空でスタート
         "board": _new_board_snapshot(), "init_hands": hands, "dealer": dealer, "kifu_moves": [],
         "human_seats": {}, "player_names": {p: "" for p in ALL_SEATS}, "password": None,
         "admin_password": None, "owner_name": "", "reveal_hands": False,
+        "is_started": False # ゲーム開始前フラグ
     }
 
 
-# ★修正：メインルームの初期名を「メインルームA」に設定
 def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
         game = _create_game_obj(dealer=dealer)
@@ -363,7 +395,6 @@ def setup_supporter_rooms():
             room["password"] = data["pass"]
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
-            room["log"] = [f"Game start. dealer=A, table={data['gid']}"]
             GAMES[data["gid"]] = room
 
 setup_supporter_rooms()
@@ -382,7 +413,6 @@ def list_rooms():
             if is_human: seats_info[s] = name if name else "人間"
             else: seats_info[s] = "AI"
 
-        # ★修正：メインルームの名前を反映
         owner_name = "メインルームA" if gid == MAIN_GID else data.get("owner_name", "サポーター")
         return {
             "game_id": gid, "is_private": data.get("password") is not None,
@@ -438,6 +468,23 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
 # ゲーム操作 API
 # =========================================================
 
+# ★追加：ゲーム開始用のAPI
+@app.post("/games/{game_id}/start")
+async def start_game(game_id: str, requester: str = "W"):
+    if requester != "A": raise HTTPException(status_code=403, detail="Only player in seat A can start.")
+    if game_id == MAIN_GID: _ensure_main_game()
+    game = GAMES.get(game_id)
+    if not game: raise HTTPException(status_code=404, detail="game not found")
+    if game.get("is_started"): return {"ok": False, "detail": "Already started"}
+    
+    game["is_started"] = True
+    dealer = game.get("dealer", "A")
+    game["log"].append(f"Game start. dealer={dealer}")
+    
+    await manager.broadcast_update(game_id)
+    return {"ok": True}
+
+
 @app.post("/games/{game_id}/toggle_reveal_hands")
 async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     if requester != "A": raise HTTPException(status_code=403, detail="Only player in seat A can toggle hands.")
@@ -470,8 +517,8 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     new_game["human_seats"] = human_seats
     new_game["player_names"] = player_names
     new_game["reveal_hands"] = False 
+    new_game["is_started"] = False # ★ 待機状態に
     
-    if game_id != MAIN_GID: new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
     GAMES[game_id] = new_game
     
     await manager.broadcast_update(game_id)
@@ -500,7 +547,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game = _create_game_obj(dealer=dealer)
         new_game["state"] = GoitaState(hands=hands, dealer=dealer)
         new_game["board"] = _new_board_snapshot()
-        new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
+        new_game["log"] = []
         new_game["init_hands"] = hands
         new_game["dealer"] = dealer
         new_game["kifu_moves"] = []
@@ -510,6 +557,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
         new_game["reveal_hands"] = False
+        new_game["is_started"] = False # ★ 待機状態に
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
@@ -519,7 +567,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
         new_game["reveal_hands"] = False
-        if game_id != MAIN_GID: new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
+        new_game["is_started"] = False # ★ 待機状態に
         GAMES[game_id] = new_game
 
     await manager.broadcast_update(game_id)
@@ -584,16 +632,15 @@ async def step(game_id: str, req: StepRequest):
     player = _validate_seat(req.player, name="player")
     game = GAMES.get(game_id)
     if not game: raise HTTPException(status_code=404, detail="game not found")
+    if not game.get("is_started"): raise HTTPException(status_code=400, detail="Game not started")
+
     state: GoitaState = game["state"]
     agents: Dict[str, RuleBasedAgent] = game["agents"]
     log: List[str] = game.setdefault("log", [])
     board = game.setdefault("board", _new_board_snapshot())
-    human_seats = game.setdefault("human_seats", {})
-    player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
-
+    
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False), owner_name=game.get("owner_name", ""))
-        return {"ok": True, "state": payload}
+        return {"ok": True, "state": _state_public_view(state, viewer=player, game_obj=game)}
 
     if state.turn != player: raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
     action = req.action.to_tuple()
@@ -607,8 +654,7 @@ async def step(game_id: str, req: StepRequest):
     _notify_public(agents, state, player, action)
 
     await manager.broadcast_update(game_id)
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False), owner_name=game.get("owner_name", ""))
-    return {"ok": True, "state": payload}
+    return {"ok": True, "state": _state_public_view(state, viewer=player, game_obj=game)}
 
 
 @app.post("/games/{game_id}/cpu_step")
@@ -616,6 +662,8 @@ async def cpu_step(game_id: str):
     if game_id == MAIN_GID: _ensure_main_game()
     game = GAMES.get(game_id)
     if not game: raise HTTPException(status_code=404, detail="game not found")
+    if not game.get("is_started"): return {"status": "ignored"}
+
     state: GoitaState = game["state"]
     human_seats = game.get("human_seats", {})
     if state.finished or (state.turn in human_seats): return {"status": "ignored"}
@@ -648,14 +696,13 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     viewer = _validate_seat(viewer, name="viewer")
     game = GAMES.get(game_id)
     if not game: raise HTTPException(status_code=404, detail="game not found")
-    state: GoitaState = game["state"]
-    hs = game.get("human_seats", {})
-    pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
-    owner = game.get("owner_name", "")
     
-    is_reveal = game.get("reveal_hands", False) or bool(reveal_hands)
-    
-    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=is_reveal, human_seats=hs, player_names=pn, owner_name=owner)
+    # payload に reveal_hands を上書き適用
+    game_copy = copy.copy(game)
+    if reveal_hands:
+        game_copy["reveal_hands"] = True
+        
+    return _state_public_view(game["state"], viewer=viewer, game_obj=game_copy)
 
 
 @app.get("/games/{game_id}/legal_actions")
@@ -664,6 +711,8 @@ def get_legal_actions(game_id: str, player: str = "A"):
     player = _validate_seat(player, name="player")
     game = GAMES.get(game_id)
     if not game: raise HTTPException(status_code=404, detail="game not found")
+    if not game.get("is_started"): return []
+    
     state: GoitaState = game["state"]
     if state.finished or state.turn != player: return []
     return _actions_to_json(state.legal_actions(player))
