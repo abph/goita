@@ -134,7 +134,7 @@
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
 
-    /* ===== パス時のポップアップ表示（アニメーションなし） ===== */
+    /* ===== アニメーション群 ===== */
     .pass-anim-wrapper {
       z-index: 100;
       pointer-events: none;
@@ -151,6 +151,28 @@
       border-radius: 8px;
       padding: 6px 16px;
       box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+
+    /* ★ 追加：必殺技の演出テキスト */
+    .special-anim-wrapper {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; display: flex; align-items: center; justify-content: center; z-index: 200;
+    }
+    .special-anim-text {
+      font-size: clamp(36px, 8vw, 70px); font-weight: 900; color: #fff; white-space: nowrap;
+      text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000;
+      transform: scale(0);
+      animation: specialPop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    .special-anim-text.damadama {
+      text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400;
+    }
+    @keyframes specialPop {
+      0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+      15% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+      30% { transform: scale(1) rotate(0deg); opacity: 1; }
+      80% { transform: scale(1) rotate(0deg); opacity: 1; }
+      100% { transform: scale(1.5) opacity: 0; }
     }
 
     /* ラベル類 */
@@ -567,6 +589,11 @@
       <label>ルーム名（最大9文字）</label>
       <input type="text" id="setRoomName" maxlength="9">
     </div>
+    
+    <div class="settings-row" style="margin-bottom: 20px;">
+      <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
+    </div>
+
     <div class="settings-row">
       <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
       <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
@@ -699,7 +726,6 @@ async function enterRoom(targetGid, roomName) {
     gid = targetGid;
     isGameStarted = false; 
     
-    // 部屋に入った時は手札指定を強制オフ
     forceDisablePreset();
 
     setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
@@ -836,6 +862,7 @@ async function openSettingsModal(targetGid, event) {
             settingTargetGid = targetGid;
             currentAdminPass = pass;
             document.getElementById("setRoomName").value = data.owner_name || "";
+            document.getElementById("checkEnableEffects").checked = data.enable_effects !== false; // ★追加
             document.getElementById("checkUpdatePass").checked = false;
             document.getElementById("setRoomPass").style.display = "none";
             document.getElementById("setRoomPass").value = "";
@@ -858,6 +885,7 @@ async function saveSettings() {
     const newName = document.getElementById("setRoomName").value;
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
+    const enableEffects = document.getElementById("checkEnableEffects").checked; // ★追加
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
@@ -867,7 +895,8 @@ async function saveSettings() {
                 admin_password: currentAdminPass,
                 new_owner_name: newName,
                 update_password: isUpdatePass,
-                new_password: newPass
+                new_password: newPass,
+                enable_effects: enableEffects // ★追加
             })
         });
         if (res.ok) {
@@ -924,7 +953,6 @@ async function selectSeat(next) {
         await releaseSeat(mySeat);
     }
 
-    // 席を移動した時（特にA席に座った時）は手札指定を強制オフ
     forceDisablePreset();
 
     pending = null;
@@ -1440,7 +1468,6 @@ function renderBoard(state){
         continue;
       }
 
-      // ★ 名札ラベルから残り枚数を削除し、シンプルに元に戻しました
       let placedName = false;
       for(const phys of ["A","B","C","D"]){
         const pos = NAME_POS[phys];
@@ -1599,6 +1626,29 @@ function showPassAnimation(phys) {
   }, 2000);
 }
 
+// ★ 追加：必殺技アニメーションの表示関数
+function showSpecialAnimation(text, typeClass) {
+  const wrap = document.querySelector(".board-wrap");
+  if (!wrap) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "special-anim-wrapper";
+
+  const textDiv = document.createElement("div");
+  textDiv.className = "special-anim-text " + typeClass;
+  textDiv.textContent = text;
+
+  wrapper.appendChild(textDiv);
+  
+  // 盤面の中央に重ねて表示
+  wrap.style.position = "relative";
+  wrap.appendChild(wrapper);
+
+  setTimeout(() => {
+    if(wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
+  }, 1500);
+}
+
 async function startNewGame(){
   if (cpuTimer) {
       clearTimeout(cpuTimer);
@@ -1623,7 +1673,6 @@ async function startNewGame(){
   }
 
   await resetWithPreset(dealer);
-  
   forceDisablePreset();
 
   for(const s of ["A","B","C","D"]){
@@ -1736,22 +1785,39 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
+  // ★ 修正：ログをパースして、パス・必殺技の演出を再生
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
-    let passDelay = 0; 
+    let animDelay = 0; 
     
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
-      const match = entry.match(/^([ABCD]): pass/);
-      if (match) {
-        const logicalSeat = match[1];
+      
+      const isPass = entry.match(/^([ABCD]): pass/);
+      const hasKakarigotae = entry.includes("[EFFECT:kakarigotae]");
+      const hasDamadama = entry.includes("[EFFECT:damadama]");
+      const seatMatch = entry.match(/^([ABCD]):/);
+
+      // パス演出
+      if (isPass) {
+        const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
-        
         setTimeout(() => {
           showPassAnimation(physSeat);
-        }, passDelay);
-        
-        passDelay += 800; 
+        }, animDelay);
+        animDelay += 800; 
+      }
+      
+      // 必殺技演出
+      if (seatMatch && (hasKakarigotae || hasDamadama)) {
+          if (hasKakarigotae) {
+              setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae"), animDelay);
+              animDelay += 1200;
+          }
+          if (hasDamadama) {
+              setTimeout(() => showSpecialAnimation("だまだま！", "damadama"), animDelay);
+              animDelay += 1200;
+          }
       }
     }
   }
