@@ -338,7 +338,7 @@
       <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
-        <button id="btnSeatA" onclick="selectSeat('A')" class="seat-btn">A</button>
+        <button id="btnSeatA" onclick="selectSeat('A')" class="seat-btn">👑 A</button>
         <button id="btnSeatB" onclick="selectSeat('B')" class="seat-btn">B</button>
         <button id="btnSeatC" onclick="selectSeat('C')" class="seat-btn">C</button>
         <button id="btnSeatD" onclick="selectSeat('D')" class="seat-btn">D</button>
@@ -616,18 +616,21 @@ function updateSeatButtons(humanSeats) {
         const btn = document.getElementById('btnSeat' + s);
         if (!btn) return;
 
+        // ★ 修正：A席には常に王冠(👑)をつける
+        const displayName = (s === 'A') ? '👑 A' : s;
+
         if (mySeat === s) {
             btn.disabled = false;
             btn.classList.add('active');
-            btn.textContent = s + " (あなた)";
+            btn.textContent = displayName + " (あなた)";
         } else if (humanSeats && humanSeats.includes(s)) {
             btn.disabled = true;
             btn.classList.remove('active');
-            btn.textContent = s + " (使用中)";
+            btn.textContent = displayName + " (使用中)";
         } else {
             btn.disabled = false;
             btn.classList.remove('active');
-            btn.textContent = s;
+            btn.textContent = displayName;
         }
     });
 }
@@ -663,6 +666,7 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     
+    // 手札公開ボタンはプライベートルームかつA席の人のみに表示
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -1182,6 +1186,7 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
+        // サーバー側から送られてくる全員公開フラグ(reveal_hands)を判定に使う
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
 
         if(canShowSeat){
@@ -1385,14 +1390,23 @@ async function refresh(){
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
 
+  // ★ 追加：ヒントメッセージの表示分け（Aさんか、それ以外か）
   if (!isGameStarted && currentLogCount <= 1 && !state.finished) {
-      setHint("手札が配られました。「開始」ボタンを押して対局を始めてください。");
+      if (mySeat === "A") {
+          setHint("👑 あなたはホストです。設定を確認し、「開始」ボタンを押して対局を始めてください。");
+      } else {
+          setHint("手札が配られました。ホスト(👑A)が「開始」を押すのをお待ちください。");
+      }
       pending = null;
   } else if(state.finished){
-    setHint(`勝者:${state.winner}、${getWinnerPoints(state)}点。新規ゲームを押してください。`);
-    pending = null;
+      if (mySeat === "A") {
+          setHint(`勝者:${state.winner}、${getWinnerPoints(state)}点。「新規ゲーム」を押してください。`);
+      } else {
+          setHint(`勝者:${state.winner}、${getWinnerPoints(state)}点。ホスト(👑A)が次のゲームを準備するのをお待ちください。`);
+      }
+      pending = null;
   } else if(isSpectator()){
-    setHint("観戦中です。A/B/C/Dを選ぶと操作できます。");
+    setHint("観戦中です。空いている席のボタンを押すと参加できます。");
     pending = null;
   } else if(state.turn !== mySeat){
     setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`);
