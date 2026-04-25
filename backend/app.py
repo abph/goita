@@ -345,9 +345,12 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     }
 
 
+# ★修正：メインルームの初期名を「メインルームA」に設定
 def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
-        GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
+        game = _create_game_obj(dealer=dealer)
+        game["owner_name"] = "メインルームA"
+        GAMES[MAIN_GID] = game
 
 def setup_supporter_rooms():
     supporter_data = [
@@ -379,7 +382,8 @@ def list_rooms():
             if is_human: seats_info[s] = name if name else "人間"
             else: seats_info[s] = "AI"
 
-        owner_name = "メインルーム" if gid == MAIN_GID else data.get("owner_name", "サポーター")
+        # ★修正：メインルームの名前を反映
+        owner_name = "メインルームA" if gid == MAIN_GID else data.get("owner_name", "サポーター")
         return {
             "game_id": gid, "is_private": data.get("password") is not None,
             "owner_name": owner_name, "player_count": len(hs), "seats": seats_info
@@ -407,7 +411,6 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
     game = GAMES.get(game_id)
     if not game: raise HTTPException(status_code=404, detail="game not found")
     if game.get("admin_password") == password:
-        # ★ フロントの初期値表示用に現在の設定を返す
         return {
             "ok": True, 
             "owner_name": game.get("owner_name", ""),
