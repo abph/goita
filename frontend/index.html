@@ -211,6 +211,7 @@
         cursor: pointer;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.2s;
+        margin-bottom: 8px;
     }
     .room-btn:hover {
         background: #e6c875;
@@ -311,7 +312,8 @@
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
     <h2>🌐 公開部屋（メインルーム）</h2>
     <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
-    <button onclick="joinMainRoom()" style="font-size: 18px; font-weight: bold; padding: 14px 36px; background: #8b5a2b; color: #fff; border: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); cursor: pointer;">🚪 メインルームに入る</button>
+    <div id="lobbyMainRoom" style="display: inline-block;">
+      </div>
   </div>
 
   <div class="card" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
@@ -321,7 +323,7 @@
       <span style="font-size: 13px;">「全員の手札公開」「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
       <b>※いまはお試し期間で、自由に使えます。</b></span>
     </p>
-    <div id="lobbyRoomList" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
+    <div id="lobbyRoomList" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
       </div>
   </div>
 </div>
@@ -573,25 +575,32 @@ async function fetchRoomList() {
         if (!res.ok) return;
         const data = await res.json();
         
-        const container = document.getElementById("lobbyRoomList");
-        if (!container) return;
+        const mainContainer = document.getElementById("lobbyMainRoom");
+        const privateContainer = document.getElementById("lobbyRoomList");
+        if (!mainContainer || !privateContainer) return;
         
-        container.innerHTML = ""; 
+        mainContainer.innerHTML = ""; 
+        privateContainer.innerHTML = ""; 
         
         if (!data.rooms || data.rooms.length === 0) {
-            container.innerHTML = "<span class='small'>現在開設されている部屋はありません。</span>";
             return;
         }
 
         data.rooms.forEach(room => {
             const btn = document.createElement("button");
             btn.className = "room-btn";
-            const lockIcon = room.is_private ? "🔒" : "🔓";
             
-            btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b> <small>(${room.player_count}/4人)</small>`;
-            btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
-            
-            container.appendChild(btn);
+            // ★ 修正：メインルームとプライベートルームでボタンの生成先を分ける
+            if (room.game_id === MAIN_GID) {
+                btn.innerHTML = `🚪 メインルームに入る <small>(${room.player_count}/4人)</small>`;
+                btn.onclick = joinMainRoom;
+                mainContainer.appendChild(btn);
+            } else {
+                const lockIcon = room.is_private ? "🔒" : "🔓";
+                btn.innerHTML = `${lockIcon} <b>${room.owner_name}</b> <small>(${room.player_count}/4人)</small>`;
+                btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
+                privateContainer.appendChild(btn);
+            }
         });
 
     } catch (e) {
@@ -616,7 +625,6 @@ function updateSeatButtons(humanSeats) {
         const btn = document.getElementById('btnSeat' + s);
         if (!btn) return;
 
-        // ★ 修正：A席には常に王冠(👑)をつける
         const displayName = (s === 'A') ? '👑 A' : s;
 
         if (mySeat === s) {
@@ -666,10 +674,12 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     
-    // 手札公開ボタンはプライベートルームかつA席の人のみに表示
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     
-    if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
+    // ★ 修正：親指定（dealerDetails）は、A席ならメイン・プライベート問わず表示する
+    if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
+    
+    // 配牌指定とデバッグはプライベートルーム限定のまま
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
@@ -1390,7 +1400,6 @@ async function refresh(){
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
 
-  // ★ 追加：ヒントメッセージの表示分け（Aさんか、それ以外か）
   if (!isGameStarted && currentLogCount <= 1 && !state.finished) {
       if (mySeat === "A") {
           setHint("👑 あなたはホストです。設定を確認し、「開始」ボタンを押して対局を始めてください。");
@@ -1479,23 +1488,12 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  const savedGid = sessionStorage.getItem("goita_current_gid");
-  if (savedGid) {
-     gid = savedGid;
-     document.getElementById("lobbyView").style.display = "none";
-     document.getElementById("gameView").style.display = "block";
-     document.getElementById("currentRoomName").textContent = (gid === MAIN_GID) ? "メインルーム" : gid;
-     if (mySeat !== WATCH) {
-         await claimSeat(mySeat);
-     }
-     await refresh();
-     updateNameInputVisibility();
-     connectWS();
-  } else {
-     document.getElementById("lobbyView").style.display = "block";
-     document.getElementById("gameView").style.display = "none";
-     fetchRoomList();
-  }
+  // 常にロビー画面を表示し、ゲーム画面は隠す
+  document.getElementById("lobbyView").style.display = "block";
+  document.getElementById("gameView").style.display = "none";
+  
+  // 部屋リストを取得
+  fetchRoomList();
 });
 </script>
 </body>

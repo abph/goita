@@ -16,7 +16,7 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
-# ★変更：定数・マッピング辞書は constants.py からインポートするように統一
+# ★定数・マッピング辞書は constants.py からインポートするように統一
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
@@ -398,7 +398,7 @@ def _state_public_view(
         "finished": state.finished,
         "winner": state.winner,
         "player_names": player_names or {p: "" for p in ALL_SEATS},
-        "reveal_hands": reveal_hands, # ★修正: サーバーの状態をクライアントに伝える
+        "reveal_hands": reveal_hands,
     }
     if human_seats is not None:
         if isinstance(human_seats, dict):
@@ -427,7 +427,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
         "owner_name": "",
-        "reveal_hands": False, # ★修正: 部屋ごとに手札公開状態を記憶する
+        "reveal_hands": False,
     }
 
 
@@ -435,11 +435,11 @@ def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
-
+# ★ 修正: プライベートルームの名前を変更
 def setup_supporter_rooms():
     supporter_data = [
-        {"gid": "room-gold-01", "pass": None, "owner": "支援者A様"},
-        {"gid": "room-silver-02", "pass": None, "owner": "支援者B様"},
+        {"gid": "room-gold-01", "pass": None, "owner": "プライベートA"},
+        {"gid": "room-silver-02", "pass": None, "owner": "プライベートB"},
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
@@ -454,17 +454,28 @@ setup_supporter_rooms()
 
 @app.get("/games/list")
 def list_rooms():
-    return {
-        "rooms": [
-            {
+    # ★ 修正: メインルームの人数も返すようにする
+    _ensure_main_game()
+    main_game = GAMES[MAIN_GID]
+    
+    rooms = [
+        {
+            "game_id": MAIN_GID,
+            "is_private": False,
+            "owner_name": "メインルーム",
+            "player_count": len(main_game.get("human_seats", {}))
+        }
+    ]
+    
+    for gid, data in GAMES.items():
+        if gid != MAIN_GID:
+            rooms.append({
                 "game_id": gid,
                 "is_private": data.get("password") is not None,
                 "owner_name": data.get("owner_name", "サポーター"),
                 "player_count": len(data.get("human_seats", {}))
-            }
-            for gid, data in GAMES.items() if gid != MAIN_GID
-        ]
-    }
+            })
+    return {"rooms": rooms}
 
 
 @app.post("/games/{game_id}/verify_password")
@@ -481,7 +492,6 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 # ゲーム操作 API
 # =========================================================
 
-# ★追加: みんな手札公開のオン/オフを切り替えるAPI（A席のみ）
 @app.post("/games/{game_id}/toggle_reveal_hands")
 async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     if requester != "A":
@@ -492,10 +502,8 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     
-    # 状態を反転させる
     game["reveal_hands"] = not game.get("reveal_hands", False)
     
-    # 全員に更新を通知
     await manager.broadcast_update(game_id)
     return {"ok": True, "reveal_hands": game["reveal_hands"]}
 
@@ -521,7 +529,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     new_game["owner_name"] = owner_name
     new_game["human_seats"] = human_seats
     new_game["player_names"] = player_names
-    new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
+    new_game["reveal_hands"] = False 
     
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
@@ -565,7 +573,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
-        new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
+        new_game["reveal_hands"] = False
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
@@ -573,7 +581,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
-        new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
+        new_game["reveal_hands"] = False
         if game_id != MAIN_GID:
             new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
         GAMES[game_id] = new_game
@@ -724,7 +732,6 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     hs = game.get("human_seats", {})
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
     
-    # ★ 修正: サーバーが記憶している手札公開状態を参照する
     is_reveal = game.get("reveal_hands", False) or bool(reveal_hands)
     
     return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=is_reveal, human_seats=hs, player_names=pn)
