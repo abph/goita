@@ -357,7 +357,9 @@
     <div class="btns" style="margin-top:10px;">
       <button onclick="startNewGame()" id="btnNewGame" style="display:none;">新規ゲーム</button>
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
+      
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
+      
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
     
@@ -430,7 +432,6 @@ if (!clientId) {
     sessionStorage.setItem("goita_client_id", clientId);
 }
 
-// ★ 修正：リロード時は必ず「観戦」からスタートさせる（記憶の引き継ぎを廃止）
 let mySeat = WATCH;
 let lastSeat = "A";
 
@@ -522,6 +523,7 @@ async function enterRoom(targetGid, roomName) {
     
     gid = targetGid;
     isGameStarted = false; 
+    showAllHands = false; // 部屋移動時に手札公開状態をリセット
     setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
     
     document.getElementById("lobbyView").style.display = "none";
@@ -652,7 +654,9 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     
-    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
+    // ★ 修正：プライベートルームなら誰でも「みんな手札公開」ボタンを押せるようにする
+    if (toggleBtn) toggleBtn.style.display = (!isMain) ? "" : "none";
+    
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
@@ -1355,6 +1359,10 @@ async function refresh(){
   if (currentLogCount < lastLogCount) {
       isGameStarted = false;
       lastLogCount = 0; 
+      // ★ 追加：ゲームがリセットされたら、全員の手札公開状態を自動でオフに戻す
+      showAllHands = false;
+      const toggleBtn = document.getElementById("toggleHandsBtn");
+      if (toggleBtn) toggleBtn.textContent = "みんな手札公開";
   }
   
   if (currentLogCount > 1) {
@@ -1435,7 +1443,6 @@ function bindNameInputs(){
   }
 }
 
-// ★ 修正：ページロード時は必ずロビー（待機部屋）からスタートさせる
 window.addEventListener("load", async ()=>{
   presetLoad();
   presetSetEnabled(presetIsEnabled());
