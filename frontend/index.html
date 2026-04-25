@@ -466,6 +466,7 @@ function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; r
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
 function startGame() {
+    // 自分が「開始」を押したというフラグを立てて、直ちに更新を走らせる
     isGameStarted = true;
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
@@ -1307,22 +1308,28 @@ async function refresh(){
 
   const currentLogCount = state.log ? state.log.length : 0;
 
+  // 部屋が変わった時の初期化
   if (activeRoomId !== gid) {
     lastLogCount = currentLogCount;
     activeRoomId = gid;
     isGameStarted = false; 
   }
 
-  // ★ 修正：ログが1行以下（誰も打っていない状態）なら強制的に未開始とする
-  if (currentLogCount <= 1) {
+  // ★ 修正：リセットを検知した時のみ未開始状態に戻す
+  if (currentLogCount < lastLogCount) {
       isGameStarted = false;
-  } else {
+      lastLogCount = 0; // アニメーション用カウンタを初期化
+  }
+  
+  // ★ 修正：誰かが手を打ってログが増えたら開始済みとみなす
+  if (currentLogCount > 1) {
       isGameStarted = true; 
   }
   
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
       const isHost = (mySeat === "A"); 
+      // まだゲームが始まっておらず、ログが1行目（配牌直後）の時だけAさんに開始ボタンを表示
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
 
@@ -1346,9 +1353,6 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
-  if (currentLogCount < lastLogCount) {
-    lastLogCount = 0; 
-  }
   if (lastLogCount > 0 && currentLogCount > lastLogCount) {
     const seatToPhys = getSeatToPhys();
     let passDelay = 0; 
