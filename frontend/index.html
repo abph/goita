@@ -270,14 +270,16 @@
         color: #555; 
         font-weight: bold;
     }
+    
+    /* ★ 修正：鍵アイコンを右上に配置し、サイズを大きく */
     .room-card .lock-icon { 
         position: absolute; 
         top: 10px; 
-        left: 10px; 
-        font-size: 18px; 
+        right: 12px; 
+        font-size: 24px; 
     }
 
-    /* ★ 修正：ロビーの各席バッジの最大幅を広げて省略を防ぐ */
+    /* ロビーの各席バッジ */
     .seat-badge {
         font-size: 12px;
         font-weight: bold;
@@ -288,7 +290,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 115px; /* ここを広げました */
+        max-width: 115px; 
         text-align: center;
     }
     .seat-badge.ai { 
@@ -418,7 +420,7 @@
     <p style="margin-bottom: 15px; color: #555; text-align: center; line-height: 1.6;">
       合言葉を知っている人だけが入れる専用の部屋です。<br>
       <span style="font-size: 13px;">「全員の手札公開」「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
-      <b>※いまはお試し期間で、自由に使えます。</b></span>
+      <b>※いまはお試し期間で、プライベートAを自由に使えます。</b></span>
     </p>
     <div id="lobbyRoomList" class="room-card-container">
       </div>
@@ -705,19 +707,27 @@ async function fetchRoomList() {
                 return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
             };
 
-            const lockIcon = room.is_private ? `<div class="lock-icon">🔒</div>` : "";
-
-            card.innerHTML = `
-                ${lockIcon}
-                <div class="seat-top">${makeBadge('C', s['C'])}</div>
-                <div class="seat-left">${makeBadge('D', s['D'])}</div>
-                <div class="center-info">
-                    <div class="title">${room.owner_name}</div>
-                    <div class="count">(${room.player_count}/4人)</div>
-                </div>
-                <div class="seat-right">${makeBadge('B', s['B'])}</div>
-                <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
-            `;
+            // ★ 修正：鍵付きの場合は座席情報を出さずに注意書きのみ表示
+            if (room.is_private) {
+                card.innerHTML = `
+                    <div class="lock-icon">🔒</div>
+                    <div class="center-info">
+                        <div class="title">${room.owner_name}</div>
+                        <div class="count" style="color: #b00000; font-size: 12px; margin-top: 4px;">※合言葉が必要です</div>
+                    </div>
+                `;
+            } else {
+                card.innerHTML = `
+                    <div class="seat-top">${makeBadge('C', s['C'])}</div>
+                    <div class="seat-left">${makeBadge('D', s['D'])}</div>
+                    <div class="center-info">
+                        <div class="title">${room.owner_name}</div>
+                        <div class="count">(${room.player_count}/4人)</div>
+                    </div>
+                    <div class="seat-right">${makeBadge('B', s['B'])}</div>
+                    <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
+                `;
+            }
             
             if (room.game_id === MAIN_GID) {
                 card.onclick = joinMainRoom;
@@ -1610,7 +1620,6 @@ window.addEventListener("load", async ()=>{
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
   
-  // ★ ロビー専用のWebSocketにつなぐ
   connectWS("lobby");
   fetchRoomList();
 });

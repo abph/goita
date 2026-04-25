@@ -436,10 +436,11 @@ def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
+# ★ 修正: プライベートBのパスワードを "goita-ai" に設定
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "owner": "プライベートA"},
-        {"gid": "room-silver-02", "pass": None, "owner": "プライベートB"},
+        {"gid": "room-silver-02", "pass": "goita-ai", "owner": "プライベートB"},
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
@@ -451,7 +452,7 @@ def setup_supporter_rooms():
 
 setup_supporter_rooms()
 
-# ★ 修正: 各部屋の「全座席の状況（AIか人間か、名前は何か）」を抽出してロビーに送る
+
 @app.get("/games/list")
 def list_rooms():
     _ensure_main_game()
