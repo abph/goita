@@ -422,14 +422,17 @@ const MAIN_GID = "main";
 // 状態管理変数
 let gid = MAIN_GID;
 const WATCH = "W";
+
+// クライアントIDの生成（ブラウザのタブごとに記憶する名札）
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
     sessionStorage.setItem("goita_client_id", clientId);
 }
 
-let mySeat = sessionStorage.getItem("goita_my_seat") || WATCH;
-let lastSeat = mySeat === WATCH ? "A" : mySeat;
+// ★ 修正：リロード時は必ず「観戦」からスタートさせる（記憶の引き継ぎを廃止）
+let mySeat = WATCH;
+let lastSeat = "A";
 
 let isProcessingCpu = false; 
 let lastLogCount = 0;
@@ -506,7 +509,6 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
-    // ★ 修正：部屋を移動するときにCPUのタイマーを強制的に止める
     if (cpuTimer) {
         clearTimeout(cpuTimer);
         cpuTimer = null;
@@ -517,10 +519,8 @@ async function enterRoom(targetGid, roomName) {
         await releaseSeat(mySeat);
     }
     mySeat = WATCH;
-    sessionStorage.setItem("goita_my_seat", mySeat);
     
     gid = targetGid;
-    sessionStorage.setItem("goita_current_gid", gid); 
     isGameStarted = false; 
     setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
     
@@ -533,7 +533,6 @@ async function enterRoom(targetGid, roomName) {
 }
 
 async function returnToLobby() {
-    // ★ 修正：ロビーに戻るときにCPUのタイマーを強制的に止める
     if (cpuTimer) {
         clearTimeout(cpuTimer);
         cpuTimer = null;
@@ -544,8 +543,6 @@ async function returnToLobby() {
         await releaseSeat(mySeat);
     }
     mySeat = WATCH;
-    sessionStorage.setItem("goita_my_seat", mySeat);
-    sessionStorage.removeItem("goita_current_gid"); 
     
     if (socket) {
         socket.onclose = null;
@@ -633,7 +630,6 @@ async function selectSeat(next) {
 
     pending = null;
     mySeat = next;
-    sessionStorage.setItem("goita_my_seat", mySeat);
     
     if (next !== WATCH) {
         lastSeat = mySeat;
@@ -1439,6 +1435,7 @@ function bindNameInputs(){
   }
 }
 
+// ★ 修正：ページロード時は必ずロビー（待機部屋）からスタートさせる
 window.addEventListener("load", async ()=>{
   presetLoad();
   presetSetEnabled(presetIsEnabled());
@@ -1451,23 +1448,12 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  const savedGid = sessionStorage.getItem("goita_current_gid");
-  if (savedGid) {
-     gid = savedGid;
-     document.getElementById("lobbyView").style.display = "none";
-     document.getElementById("gameView").style.display = "block";
-     document.getElementById("currentRoomName").textContent = (gid === MAIN_GID) ? "メインルーム" : gid;
-     if (mySeat !== WATCH) {
-         await claimSeat(mySeat);
-     }
-     await refresh();
-     updateNameInputVisibility();
-     connectWS();
-  } else {
-     document.getElementById("lobbyView").style.display = "block";
-     document.getElementById("gameView").style.display = "none";
-     fetchRoomList();
-  }
+  // 常にロビー画面を表示し、ゲーム画面は隠す
+  document.getElementById("lobbyView").style.display = "block";
+  document.getElementById("gameView").style.display = "none";
+  
+  // 部屋リストを取得
+  fetchRoomList();
 });
 </script>
 </body>
