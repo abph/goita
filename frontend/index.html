@@ -178,7 +178,7 @@
     button:hover { background: #fceeb5; }
     input[type="text"] { cursor: text; }
 
-    /* ★ 追加：席選択ボタンのスタイル */
+    /* 席選択ボタンのスタイル */
     .seat-btn {
       padding: 6px 14px;
       font-weight: bold;
@@ -197,6 +197,28 @@
       color: #999;
       border-color: #bfa88f;
       cursor: not-allowed;
+    }
+
+    /* ★ 追加：ロビー画面用のボタンスタイル */
+    .room-btn {
+        padding: 12px 20px;
+        font-size: 16px;
+        font-weight: bold;
+        border: 2px solid #8b5a2b;
+        background: #fceeb5;
+        color: #2b2b2b;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s;
+    }
+    .room-btn:hover {
+        background: #e6c875;
+        transform: translateY(-2px);
+    }
+    #lobbyView {
+        max-width: 800px;
+        margin: 0 auto;
     }
     
     .hint { background:#fffdf5; border: 1px solid #d35400; padding: 8px; border-radius: 6px; margin: 10px 0; font-weight: bold; color: #b00000; }
@@ -225,7 +247,6 @@
       .bottom-grid > *{ min-width: 0; }
       .card{ min-width: 0; }
       pre{ width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-      #dealerSelect{ width: 100%; }
       .name-grid{ grid-template-columns: 70px 15ch 56px; justify-content: start; }
       .name-grid button{ width: 56px; }
     }
@@ -268,14 +289,39 @@
       display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-weight: 600; font-size: 13px;
     }
     .preset-toggle input{ transform: translateY(1px); }
-
   </style>
 </head>
 <body>
-  <h1>そろうごいた</h1>
 
-<div class="top-controls">
-<div class="meta" style="align-items: center;">
+<div id="lobbyView">
+  <div style="text-align: center; padding: 40px 0;">
+     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた</h1>
+     <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ</p>
+  </div>
+
+  <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
+    <h2>🌐 公開部屋</h2>
+    <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できるメインの対局室です。</p>
+    <button onclick="joinMainRoom()" style="font-size: 18px; font-weight: bold; padding: 14px 36px; background: #8b5a2b; color: #fff; border: none; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); cursor: pointer;">🚪 メインルームに入る</button>
+  </div>
+
+  <div class="card" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
+    <h2 style="color: #8b5a2b; margin-top: 0; text-align: center;">🏯 プライベートルーム</h2>
+    <p style="margin-bottom: 15px; color: #555; text-align: center;">合言葉を知っている人だけが入れる専用の部屋です。</p>
+    <div id="lobbyRoomList" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;">
+      </div>
+  </div>
+</div>
+
+<div id="gameView" style="display: none;">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h1 style="margin: 0; font-size: 24px;">そろうごいた <span style="font-size: 16px; color: #555; font-weight: normal;">- <span id="currentRoomName"></span></span></h1>
+    <button onclick="returnToLobby()" style="font-weight: bold; background: #fffafa; border: 2px solid #8b5a2b; color: #8b5a2b;">🏠 ロビーに戻る</button>
+  </div>
+
+  <div class="top-controls">
+    <div class="meta" style="align-items: center;">
       <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
@@ -285,20 +331,20 @@
         <button id="btnSeatD" onclick="selectSeat('D')" class="seat-btn">D</button>
       </span>
     </div>
-<div class="name-grid" id="nameGrid">
-      <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="A" data-seat="A" type="button" onclick="applyName('A')">表示</button>
+    <div class="name-grid" id="nameGrid">
+      <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="A" type="button" onclick="applyName('A')">表示</button>
 
-      <b data-seat="B">B名前</b><input data-seat="B" id="nameB" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="B" data-seat="B" type="button" onclick="applyName('B')">表示</button>
+      <b data-seat="B">B名前</b><input data-seat="B" id="nameB" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="B" type="button" onclick="applyName('B')">表示</button>
 
-      <b data-seat="C">C名前</b><input data-seat="C" id="nameC" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="C" data-seat="C" type="button" onclick="applyName('C')">表示</button>
+      <b data-seat="C">C名前</b><input data-seat="C" id="nameC" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="C" type="button" onclick="applyName('C')">表示</button>
 
-      <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" inputmode="latin" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="D" data-seat="D" type="button" onclick="applyName('D')">表示</button>
+      <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
+      <button data-seat="D" type="button" onclick="applyName('D')">表示</button>
     </div>
-</div>
+  </div>
 
   <div class="board-wrap">
     <div id="board" class="board"></div>
@@ -367,22 +413,15 @@
         </details>
       </div>
     </div>
-
-    <div class="card" style="margin-top: 12px; background: #fffdf5; border-color: #8b5a2b;">
-      <div><b style="color: #8b5a2b;">🏯 プライベートルーム（支援者専用）</b></div>
-      <div id="roomListContainer" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
-        </div>
-    </div>
-
   </div>
 
-<script>
+</div> <script>
 const API = "";
 const MAIN_GID = "main";
+
+// 状態管理変数
 let gid = MAIN_GID;
-
 const WATCH = "W";
-
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -395,17 +434,14 @@ let lastSeat = mySeat === WATCH ? "A" : mySeat;
 let isProcessingCpu = false; 
 let lastLogCount = 0;
 let cpuTimer = null; 
-
 let showAllHands = false;
 let latestState = null;
 let latestLegal = [];
 let pending = null;
-
 let isGameStarted = false; 
-let activeRoomId = gid; 
-
 let socket = null;
 
+// ====== WebSocket 管理 ======
 function connectWS() {
     if (socket) {
         socket.onclose = null;
@@ -439,60 +475,113 @@ function connectWS() {
     };
 }
 
-const SEAT_ORDER = ["A","B","C","D"];
-
-function getPhysToSeat(){
-  const base = (!mySeat || isSpectator()) ? "A" : mySeat;
-  const s = SEAT_ORDER.indexOf(base);
-  return {
-    A: SEAT_ORDER[s],
-    B: SEAT_ORDER[(s+1)%4],
-    C: SEAT_ORDER[(s+2)%4],
-    D: SEAT_ORDER[(s+3)%4],
-  };
-}
-function getSeatToPhys(){
-  const p2s = getPhysToSeat();
-  const out = {};
-  for(const p of ["A","B","C","D"]) out[p2s[p]] = p;
-  return out;
+// ====== ルーム移動・ロビー管理 ======
+async function joinMainRoom() {
+    await enterRoom(MAIN_GID, "メインルーム");
 }
 
-const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
-const PRESET_TOTALS = {"1":10,"2":4,"3":4,"4":4,"5":4,"6":2,"7":2,"8":1,"9":1};
-const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
+async function tryJoinRoom(targetGid, isPrivate) {
+    if (isPrivate) {
+        const pass = prompt("合言葉（パスワード）を入力してください");
+        if (!pass) return; 
 
-function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
-function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
+        try {
+            const res = await fetch(`${API}/games/${targetGid}/verify_password`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ password: pass })
+            });
 
-function startGame() {
-    // 自分が「開始」を押したというフラグを立てて、直ちに更新を走らせる
-    isGameStarted = true;
-    const btn = document.getElementById("startGameBtn");
-    if(btn) btn.style.display = "none";
-    refresh(); 
+            if (!res.ok) {
+                alert("合言葉が正しくありません。");
+                return;
+            }
+        } catch (e) {
+            alert("通信エラーが発生しました。");
+            return;
+        }
+    }
+    // APIから取得した部屋名などを使いたい場合は引数で渡すように変更可能ですが、今回はIDをそのまま名前にします
+    await enterRoom(targetGid, targetGid);
 }
 
-function updateRoomUI() {
-    const isMain = (gid === MAIN_GID);
-    const isHost = (mySeat === "A"); 
-
-    const toggleBtn = document.getElementById("toggleHandsBtn");
-    const dealerDetails = document.getElementById("dealerDetails");
-    const presetDetails = document.getElementById("presetHandsDetails");
-    const actionsDetails = document.getElementById("actionsDetails"); 
-    const btnNewGame = document.getElementById("btnNewGame");
-    const btnResetAll = document.getElementById("btnResetAll");
+async function enterRoom(targetGid, roomName) {
+    // 現在の席を手放す
+    if(!isSpectator()){
+        await releaseSeat(mySeat);
+    }
+    mySeat = WATCH;
+    sessionStorage.setItem("goita_my_seat", mySeat);
     
-    if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
-    if (btnResetAll) btnResetAll.style.display = isHost ? "" : "none";
+    gid = targetGid;
+    sessionStorage.setItem("goita_current_gid", gid); // 部屋IDを記憶
+    isGameStarted = false; 
+    setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
     
-    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
-    if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
-    if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
-    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
+    // 画面の切り替え
+    document.getElementById("lobbyView").style.display = "none";
+    document.getElementById("gameView").style.display = "block";
+    document.getElementById("currentRoomName").textContent = roomName;
+    
+    connectWS(); 
+    await refresh();
 }
 
+async function returnToLobby() {
+    // 席を手放す
+    if(!isSpectator()){
+        await releaseSeat(mySeat);
+    }
+    mySeat = WATCH;
+    sessionStorage.setItem("goita_my_seat", mySeat);
+    sessionStorage.removeItem("goita_current_gid"); // 記憶した部屋IDを削除
+    
+    if (socket) {
+        socket.onclose = null;
+        socket.close();
+        socket = null;
+    }
+    
+    // 画面の切り替え
+    document.getElementById("gameView").style.display = "none";
+    document.getElementById("lobbyView").style.display = "block";
+    
+    fetchRoomList();
+}
+
+async function fetchRoomList() {
+    try {
+        const res = await fetch(`${API}/games/list`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const container = document.getElementById("lobbyRoomList");
+        if (!container) return;
+        
+        container.innerHTML = ""; 
+        
+        if (!data.rooms || data.rooms.length === 0) {
+            container.innerHTML = "<span class='small'>現在開設されている部屋はありません。</span>";
+            return;
+        }
+
+        data.rooms.forEach(room => {
+            const btn = document.createElement("button");
+            btn.className = "room-btn";
+            const lockIcon = room.is_private ? "🔒" : "🔓";
+            
+            btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b> <small>(${room.player_count}/4人)</small>`;
+            btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
+            
+            container.appendChild(btn);
+        });
+
+    } catch (e) {
+        console.error("部屋リストの取得に失敗:", e);
+    }
+}
+
+// ====== 席選択とUI更新 ======
 function updateSeatButtons(humanSeats) {
     const seats = ['A', 'B', 'C', 'D'];
     const btnW = document.getElementById('btnSeatW');
@@ -545,100 +634,73 @@ async function selectSeat(next) {
     updateNameInputVisibility();
 }
 
-async function fetchRoomList() {
-    try {
-        const res = await fetch(`${API}/games/list`);
-        if (!res.ok) return;
-        const data = await res.json();
-        
-        const container = document.getElementById("roomListContainer");
-        if (!container) return;
-        
-        container.innerHTML = ""; 
-        
-        if (!data.rooms || data.rooms.length === 0) {
-            container.innerHTML = "<span class='small'>現在開設されている部屋はありません。</span>";
-            return;
-        }
+function updateRoomUI() {
+    const isMain = (gid === MAIN_GID);
+    const isHost = (mySeat === "A"); 
 
-        if (gid !== MAIN_GID) {
-            const backBtn = document.createElement("button");
-            backBtn.textContent = "🏠 公開部屋(main)に戻る";
-            backBtn.style.fontWeight = "bold";
-            backBtn.onclick = async () => { 
-                if(!isSpectator()){
-                    await releaseSeat(mySeat);
-                }
-                mySeat = WATCH;
-                sessionStorage.setItem("goita_my_seat", mySeat);
-
-                gid = MAIN_GID; 
-                isGameStarted = false; 
-                setHint("公開部屋に戻りました。");
-                connectWS(); 
-                await refresh(); 
-                fetchRoomList(); 
-            };
-            container.appendChild(backBtn);
-        }
-
-        data.rooms.forEach(room => {
-            const btn = document.createElement("button");
-            const lockIcon = room.is_private ? "🔒" : "🔓";
-            
-            btn.innerHTML = `${lockIcon} <b>${room.owner_name}の部屋</b>`;
-            btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
-            
-            if (room.game_id === gid) {
-                btn.style.background = "#d1ab75";
-                btn.style.color = "#fff";
-                btn.style.borderColor = "#8b5a2b";
-                btn.disabled = true;
-                btn.innerHTML += " <small>(入室中)</small>";
-            }
-
-            container.appendChild(btn);
-        });
-
-    } catch (e) {
-        console.error("部屋リストの取得に失敗:", e);
-    }
+    const toggleBtn = document.getElementById("toggleHandsBtn");
+    const dealerDetails = document.getElementById("dealerDetails");
+    const presetDetails = document.getElementById("presetHandsDetails");
+    const actionsDetails = document.getElementById("actionsDetails"); 
+    const btnNewGame = document.getElementById("btnNewGame");
+    const btnResetAll = document.getElementById("btnResetAll");
+    
+    if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
+    if (btnResetAll) btnResetAll.style.display = isHost ? "" : "none";
+    
+    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
+    if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
+    if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
+    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
 
-async function tryJoinRoom(targetGid, isPrivate) {
-    if (isPrivate) {
-        const pass = prompt("合言葉（パスワード）を入力してください");
-        if (!pass) return; 
+function updateNameInputVisibility(){
+  const grid = document.getElementById("nameGrid");
+  if(!grid) return;
 
-        try {
-            const res = await fetch(`${API}/games/${targetGid}/verify_password`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({ password: pass })
-            });
+  const items = grid.querySelectorAll("[data-seat]");
+  if(mySeat === WATCH){
+    items.forEach(el => el.style.display = "none");
+    return;
+  }
+  items.forEach(el => {
+    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
+  });
+}
 
-            if (!res.ok) {
-                alert("合言葉が正しくありません。");
-                return;
-            }
-        } catch (e) {
-            alert("通信エラーが発生しました。");
-            return;
-        }
-    }
 
-    if(!isSpectator()){
-        await releaseSeat(mySeat);
-    }
-    mySeat = WATCH;
-    sessionStorage.setItem("goita_my_seat", mySeat);
+// ====== ゲームのロジック・描画系 ======
+const SEAT_ORDER = ["A","B","C","D"];
 
-    gid = targetGid;
-    isGameStarted = false; 
-    setHint(`${gid} に入室しました。手番をお待ち下さい。`);
-    connectWS(); 
-    await refresh();
-    fetchRoomList(); 
+function getPhysToSeat(){
+  const base = (!mySeat || isSpectator()) ? "A" : mySeat;
+  const s = SEAT_ORDER.indexOf(base);
+  return {
+    A: SEAT_ORDER[s],
+    B: SEAT_ORDER[(s+1)%4],
+    C: SEAT_ORDER[(s+2)%4],
+    D: SEAT_ORDER[(s+3)%4],
+  };
+}
+function getSeatToPhys(){
+  const p2s = getPhysToSeat();
+  const out = {};
+  for(const p of ["A","B","C","D"]) out[p2s[p]] = p;
+  return out;
+}
+
+const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
+const PRESET_TOTALS = {"1":10,"2":4,"3":4,"4":4,"5":4,"6":2,"7":2,"8":1,"9":1};
+const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
+
+function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
+function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
+
+function startGame() {
+    isGameStarted = true;
+    const btn = document.getElementById("startGameBtn");
+    if(btn) btn.style.display = "none";
+    refresh(); 
 }
 
 function getWinnerPoints(state){
@@ -1290,7 +1352,7 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  const qs = new URLSearchParams();
+  const qs = newSearchParams();
   qs.set("viewer", viewerSeat());
   if(showAllHands) qs.set("reveal_hands","1");
 
@@ -1308,20 +1370,17 @@ async function refresh(){
 
   const currentLogCount = state.log ? state.log.length : 0;
 
-  // 部屋が変わった時の初期化
   if (activeRoomId !== gid) {
     lastLogCount = currentLogCount;
     activeRoomId = gid;
     isGameStarted = false; 
   }
 
-  // ★ 修正：リセットを検知した時のみ未開始状態に戻す
   if (currentLogCount < lastLogCount) {
       isGameStarted = false;
-      lastLogCount = 0; // アニメーション用カウンタを初期化
+      lastLogCount = 0; 
   }
   
-  // ★ 修正：誰かが手を打ってログが増えたら開始済みとみなす
   if (currentLogCount > 1) {
       isGameStarted = true; 
   }
@@ -1329,7 +1388,6 @@ async function refresh(){
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
       const isHost = (mySeat === "A"); 
-      // まだゲームが始まっておらず、ログが1行目（配牌直後）の時だけAさんに開始ボタンを表示
       startGameBtn.style.display = (!isGameStarted && currentLogCount <= 1 && !state.finished && isHost) ? "inline-block" : "none";
   }
 
@@ -1401,20 +1459,6 @@ function bindNameInputs(){
   }
 }
 
-function updateNameInputVisibility(){
-  const grid = document.getElementById("nameGrid");
-  if(!grid) return;
-
-  const items = grid.querySelectorAll("[data-seat]");
-  if(mySeat === WATCH){
-    items.forEach(el => el.style.display = "none");
-    return;
-  }
-  items.forEach(el => {
-    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
-  });
-}
-
 window.addEventListener("load", async ()=>{
   presetLoad();
   presetSetEnabled(presetIsEnabled());
@@ -1427,15 +1471,23 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  if (mySeat !== WATCH) {
-      await claimSeat(mySeat);
+  const savedGid = sessionStorage.getItem("goita_current_gid");
+  if (savedGid) {
+     gid = savedGid;
+     document.getElementById("lobbyView").style.display = "none";
+     document.getElementById("gameView").style.display = "block";
+     document.getElementById("currentRoomName").textContent = (gid === MAIN_GID) ? "メインルーム" : gid;
+     if (mySeat !== WATCH) {
+         await claimSeat(mySeat);
+     }
+     await refresh();
+     updateNameInputVisibility();
+     connectWS();
+  } else {
+     document.getElementById("lobbyView").style.display = "block";
+     document.getElementById("gameView").style.display = "none";
+     fetchRoomList();
   }
-
-  await refresh();
-  updateNameInputVisibility();
-  
-  fetchRoomList();
-  connectWS(); 
 });
 </script>
 </body>
