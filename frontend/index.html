@@ -222,7 +222,6 @@
         margin: 0 auto;
     }
     
-    /* ★ 修正：独立させたヒントボックスのデザイン */
     .hint { 
       background: #fffdf5; 
       border: 2px solid #d35400; 
@@ -276,7 +275,6 @@
       .slot .val{ font-size: 16px; }
       .hand .val{ font-size: 16px; }
       .pass{ font-size: 12px; }
-      /* スマホ向けにヒントの文字を少し調整 */
       .hint { font-size: 13px; padding: 10px; }
     }
   
@@ -455,6 +453,9 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 const WATCH = "W";
 
+// ★ ロビー画面でのWebSocket接続先（グローバル）を記憶するための変数
+let currentWsGid = null;
+
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -475,15 +476,16 @@ let activeRoomId = null;
 let socket = null;
 
 // ====== WebSocket 管理 ======
-function connectWS() {
+function connectWS(targetGid) {
     if (socket) {
         socket.onclose = null;
         socket.close();
     }
 
+    currentWsGid = targetGid;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host || "localhost:8000"; 
-    const wsUrl = `${protocol}//${host}/ws/${gid}?client_id=${clientId}`;
+    const wsUrl = `${protocol}//${host}/ws/${targetGid}?client_id=${clientId}`;
     
     socket = new WebSocket(wsUrl);
 
@@ -491,7 +493,12 @@ function connectWS() {
         try {
             const data = JSON.parse(event.data);
             if (data.type === "update") {
-                refresh(); 
+                // ★ 修正：ロビーにいるときはfetchRoomListで人数だけ更新する
+                if (currentWsGid === "lobby") {
+                    fetchRoomList();
+                } else {
+                    refresh(); 
+                }
             }
         } catch (e) {
             console.error("WebSocket Message Error:", e);
@@ -500,7 +507,7 @@ function connectWS() {
 
     socket.onclose = () => {
         console.log("WebSocket disconnected. 3秒後に再接続します...");
-        setTimeout(connectWS, 3000);
+        setTimeout(() => connectWS(currentWsGid), 3000);
     };
 
     socket.onerror = (err) => {
@@ -557,7 +564,7 @@ async function enterRoom(targetGid, roomName) {
     document.getElementById("gameView").style.display = "block";
     document.getElementById("currentRoomName").textContent = roomName;
     
-    connectWS(); 
+    connectWS(gid); 
     await refresh();
 }
 
@@ -573,15 +580,11 @@ async function returnToLobby() {
     }
     mySeat = WATCH;
     
-    if (socket) {
-        socket.onclose = null;
-        socket.close();
-        socket = null;
-    }
-    
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
     
+    // ★ 修正：ロビー専用のWebSocketにつなぎ直す
+    connectWS("lobby");
     fetchRoomList();
 }
 
@@ -688,9 +691,7 @@ function updateRoomUI() {
     const btnNewGame = document.getElementById("btnNewGame");
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
-    
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
-    
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -1024,7 +1025,6 @@ async function downloadKifu(){
   URL.revokeObjectURL(url);
 }
 
-// サーバーに「全員公開モード」の切り替えをリクエストする
 async function toggleAllHands(){
   try{
     await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}`, {
@@ -1209,7 +1209,6 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
-        // サーバー側から送られてくる全員公開フラグ(reveal_hands)を判定に使う
         const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
 
         if(canShowSeat){
@@ -1505,7 +1504,8 @@ window.addEventListener("load", async ()=>{
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
   
-  // 部屋リストを取得
+  // ★ ロビー専用のWebSocketにつなぐ
+  connectWS("lobby");
   fetchRoomList();
 });
 </script>

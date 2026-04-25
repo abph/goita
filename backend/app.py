@@ -202,6 +202,8 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
                             removed = True
                     if removed:
                         await manager.broadcast_update(game_id)
+                        # ★ ロビーにも人数の変動を通知する
+                        await manager.broadcast_update("lobby")
 
 
 def _hand_to_kifu_string(hand: List[Any]) -> str:
@@ -435,7 +437,6 @@ def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
-# ★ 修正: プライベートルームの名前を変更
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "owner": "プライベートA"},
@@ -454,7 +455,6 @@ setup_supporter_rooms()
 
 @app.get("/games/list")
 def list_rooms():
-    # ★ 修正: メインルームの人数も返すようにする
     _ensure_main_game()
     main_game = GAMES[MAIN_GID]
     
@@ -536,6 +536,8 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     GAMES[game_id] = new_game
     
     await manager.broadcast_update(game_id)
+    # ★ ロビーに人数や状態変化を通知
+    await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer}
 
 
@@ -587,6 +589,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         GAMES[game_id] = new_game
 
     await manager.broadcast_update(game_id)
+    # ★ ロビーに人数や状態変化を通知
+    await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
 
@@ -610,6 +614,8 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         hs = game["human_seats"]
         
     await manager.broadcast_update(game_id)
+    # ★ 席が埋まったのでロビーの人数も更新
+    await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs.keys()))}
 
 
@@ -627,6 +633,8 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
             del hs[seat]
     
     await manager.broadcast_update(game_id)
+    # ★ 席が空いたのでロビーの人数も更新
+    await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id}
 
 
