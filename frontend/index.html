@@ -222,7 +222,20 @@
         margin: 0 auto;
     }
     
-    .hint { background:#fffdf5; border: 1px solid #d35400; padding: 8px; border-radius: 6px; margin: 10px 0; font-weight: bold; color: #b00000; }
+    /* ★ 修正：独立させたヒントボックスのデザイン */
+    .hint { 
+      background: #fffdf5; 
+      border: 2px solid #d35400; 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      margin: 16px 0; 
+      font-weight: bold; 
+      color: #b00000; 
+      text-align: center;
+      font-size: 15px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    
     .small { font-size: 12px; color: #555; }
     .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
     .card { border: 1px solid #c8a77a; border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.6); min-height: 120px; }
@@ -263,6 +276,8 @@
       .slot .val{ font-size: 16px; }
       .hand .val{ font-size: 16px; }
       .pass{ font-size: 12px; }
+      /* スマホ向けにヒントの文字を少し調整 */
+      .hint { font-size: 13px; padding: 10px; }
     }
   
     .preset-grid{
@@ -365,10 +380,11 @@
     <div id="board" class="board"></div>
   </div>
 
-  <div class="ui">
-    <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
+  <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
-    <div class="btns" style="margin-top:10px;">
+  <div class="ui">
+    
+    <div class="btns" style="margin-top:0;">
       <button onclick="startNewGame()" id="btnNewGame" style="display:none;">新規ゲーム</button>
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
       
@@ -590,7 +606,6 @@ async function fetchRoomList() {
             const btn = document.createElement("button");
             btn.className = "room-btn";
             
-            // ★ 修正：メインルームとプライベートルームでボタンの生成先を分ける
             if (room.game_id === MAIN_GID) {
                 btn.innerHTML = `🚪 メインルームに入る <small>(${room.player_count}/4人)</small>`;
                 btn.onclick = joinMainRoom;
@@ -676,10 +691,8 @@ function updateRoomUI() {
     
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     
-    // ★ 修正：親指定（dealerDetails）は、A席ならメイン・プライベート問わず表示する
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     
-    // 配牌指定とデバッグはプライベートルーム限定のまま
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
