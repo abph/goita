@@ -425,7 +425,6 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 const WATCH = "W";
 
-// クライアントIDの生成（ブラウザのタブごとに記憶する名札）
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -438,7 +437,6 @@ let lastSeat = "A";
 let isProcessingCpu = false; 
 let lastLogCount = 0;
 let cpuTimer = null; 
-let showAllHands = false;
 let latestState = null;
 let latestLegal = [];
 let pending = null;
@@ -523,7 +521,6 @@ async function enterRoom(targetGid, roomName) {
     
     gid = targetGid;
     isGameStarted = false; 
-    showAllHands = false; // 部屋移動時に手札公開状態をリセット
     setHint(`${roomName} に入室しました。手番をお待ち下さい。`);
     
     document.getElementById("lobbyView").style.display = "none";
@@ -654,8 +651,8 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     
-    // ★ 修正：プライベートルームなら誰でも「みんな手札公開」ボタンを押せるようにする
-    if (toggleBtn) toggleBtn.style.display = (!isMain) ? "" : "none";
+    // ★修正: 「みんな手札公開」ボタンはA席（ホスト）にのみ表示
+    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     
     if (dealerDetails) dealerDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -989,10 +986,13 @@ async function downloadKifu(){
   URL.revokeObjectURL(url);
 }
 
-function toggleAllHands(){
-  showAllHands = !showAllHands;
-  document.getElementById("toggleHandsBtn").textContent = showAllHands ? "手札表示を戻す" : "みんな手札公開";
-  refresh();
+// ★修正: サーバーに「全員公開モード」の切り替えをリクエストする
+async function toggleAllHands(){
+  try{
+    await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}`, {
+      method: "POST"
+    });
+  }catch(e){}
 }
 
 async function submitAction(actionObj){
@@ -1171,7 +1171,8 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
-        const canShowSeat = (!isSpectator() && hand.p===mySeat) || showAllHands;
+        // ★修正: サーバーから送られてくる状態（state.reveal_hands）に従って表示を切り替える
+        const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
 
         if(canShowSeat){
           const raw = state.hands?.[hand.p];
@@ -1318,8 +1319,8 @@ async function startNewGame(){
     await claimSeat(seatToKeep);
   }
 
-  pending=null; showAllHands=false; lastLogCount = 0;
-  document.getElementById("toggleHandsBtn").textContent="みんな手札公開";
+  pending=null; lastLogCount = 0;
+  // ★削除: ローカルでの表示切替（showAllHands）は使わないため削除
 }
 
 async function fetchLegal(){
@@ -1334,13 +1335,18 @@ async function refresh(){
 
   const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
-  if(showAllHands) qs.set("reveal_hands","1");
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
   latestState = state;
   
   updateRoomUI(); 
   updateSeatButtons(state.human_seats);
+  
+  // ★修正: ボタンのテキストを、サーバーの状態に合わせて動的に変える
+  const toggleBtn = document.getElementById("toggleHandsBtn");
+  if (toggleBtn) {
+      toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
+  }
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
@@ -1359,10 +1365,6 @@ async function refresh(){
   if (currentLogCount < lastLogCount) {
       isGameStarted = false;
       lastLogCount = 0; 
-      // ★ 追加：ゲームがリセットされたら、全員の手札公開状態を自動でオフに戻す
-      showAllHands = false;
-      const toggleBtn = document.getElementById("toggleHandsBtn");
-      if (toggleBtn) toggleBtn.textContent = "みんな手札公開";
   }
   
   if (currentLogCount > 1) {

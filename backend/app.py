@@ -182,7 +182,6 @@ def serve_index():
     return FileResponse(index_path)
 
 
-# ★ 修正: WebSocket切断時に、その人が座っていた席を自動で解放する
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
     await manager.connect(websocket, game_id)
@@ -197,7 +196,6 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
                 hs = game.get("human_seats", {})
                 if isinstance(hs, dict):
                     removed = False
-                    # そのclient_idが占有している席があれば全て削除
                     for s, cid in list(hs.items()):
                         if cid == client_id:
                             del hs[s]
@@ -400,6 +398,7 @@ def _state_public_view(
         "finished": state.finished,
         "winner": state.winner,
         "player_names": player_names or {p: "" for p in ALL_SEATS},
+        "reveal_hands": reveal_hands, # ★修正: サーバーの状態をクライアントに伝える
     }
     if human_seats is not None:
         if isinstance(human_seats, dict):
@@ -424,10 +423,11 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
-        "human_seats": {}, # ★修正: set() ではなく辞書でID管理する
+        "human_seats": {}, 
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
         "owner_name": "",
+        "reveal_hands": False, # ★修正: 部屋ごとに手札公開状態を記憶する
     }
 
 
@@ -481,6 +481,25 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 # ゲーム操作 API
 # =========================================================
 
+# ★追加: みんな手札公開のオン/オフを切り替えるAPI（A席のみ）
+@app.post("/games/{game_id}/toggle_reveal_hands")
+async def toggle_reveal_hands(game_id: str, requester: str = "W"):
+    if requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can toggle hands.")
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    
+    # 状態を反転させる
+    game["reveal_hands"] = not game.get("reveal_hands", False)
+    
+    # 全員に更新を通知
+    await manager.broadcast_update(game_id)
+    return {"ok": True, "reveal_hands": game["reveal_hands"]}
+
+
 @app.post("/games/{game_id}/reset")
 async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     if requester != "A":
@@ -502,6 +521,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     new_game["owner_name"] = owner_name
     new_game["human_seats"] = human_seats
     new_game["player_names"] = player_names
+    new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
     
     if game_id != MAIN_GID:
         new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
@@ -545,6 +565,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
+        new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
@@ -552,6 +573,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
+        new_game["reveal_hands"] = False # 新しいゲームでは手札を隠す
         if game_id != MAIN_GID:
             new_game["log"] = [f"Game start. dealer={dealer}, table={game_id}"]
         GAMES[game_id] = new_game
@@ -571,7 +593,6 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     
     hs = game.setdefault("human_seats", {})
     if isinstance(hs, dict):
-        # 既に他の席に座っていたら一度立ち上がらせる
         for k, v in list(hs.items()):
             if v == client_id:
                 del hs[k]
@@ -633,7 +654,7 @@ async def step(game_id: str, req: StepRequest):
     player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
 
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False))
         return {"ok": True, "state": payload}
 
     if state.turn != player:
@@ -651,7 +672,7 @@ async def step(game_id: str, req: StepRequest):
     _notify_public(agents, state, player, action)
 
     await manager.broadcast_update(game_id)
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names)
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False))
     return {"ok": True, "state": payload}
 
 
@@ -702,7 +723,11 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     state: GoitaState = game["state"]
     hs = game.get("human_seats", {})
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
-    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=bool(reveal_hands), human_seats=hs, player_names=pn)
+    
+    # ★ 修正: サーバーが記憶している手札公開状態を参照する
+    is_reveal = game.get("reveal_hands", False) or bool(reveal_hands)
+    
+    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=is_reveal, human_seats=hs, player_names=pn)
 
 
 @app.get("/games/{game_id}/legal_actions")
