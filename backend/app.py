@@ -202,7 +202,6 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
                             removed = True
                     if removed:
                         await manager.broadcast_update(game_id)
-                        # ★ ロビーにも人数の変動を通知する
                         await manager.broadcast_update("lobby")
 
 
@@ -452,29 +451,39 @@ def setup_supporter_rooms():
 
 setup_supporter_rooms()
 
-
+# ★ 修正: 各部屋の「全座席の状況（AIか人間か、名前は何か）」を抽出してロビーに送る
 @app.get("/games/list")
 def list_rooms():
     _ensure_main_game()
-    main_game = GAMES[MAIN_GID]
     
-    rooms = [
-        {
-            "game_id": MAIN_GID,
-            "is_private": False,
-            "owner_name": "メインルーム",
-            "player_count": len(main_game.get("human_seats", {}))
+    def build_room_info(gid: str, data: dict):
+        hs = data.get("human_seats", {})
+        pn = data.get("player_names", {})
+        seats_info = {}
+        
+        for s in ALL_SEATS:
+            is_human = s in hs
+            name = pn.get(s, "").strip()
+            if is_human:
+                seats_info[s] = name if name else "人間"
+            else:
+                seats_info[s] = "AI"
+
+        owner_name = "メインルーム" if gid == MAIN_GID else data.get("owner_name", "サポーター")
+
+        return {
+            "game_id": gid,
+            "is_private": data.get("password") is not None,
+            "owner_name": owner_name,
+            "player_count": len(hs),
+            "seats": seats_info
         }
-    ]
-    
+
+    rooms = [build_room_info(MAIN_GID, GAMES[MAIN_GID])]
     for gid, data in GAMES.items():
         if gid != MAIN_GID:
-            rooms.append({
-                "game_id": gid,
-                "is_private": data.get("password") is not None,
-                "owner_name": data.get("owner_name", "サポーター"),
-                "player_count": len(data.get("human_seats", {}))
-            })
+            rooms.append(build_room_info(gid, data))
+            
     return {"rooms": rooms}
 
 
@@ -536,7 +545,6 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     GAMES[game_id] = new_game
     
     await manager.broadcast_update(game_id)
-    # ★ ロビーに人数や状態変化を通知
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer}
 
@@ -589,7 +597,6 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         GAMES[game_id] = new_game
 
     await manager.broadcast_update(game_id)
-    # ★ ロビーに人数や状態変化を通知
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
@@ -614,7 +621,6 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         hs = game["human_seats"]
         
     await manager.broadcast_update(game_id)
-    # ★ 席が埋まったのでロビーの人数も更新
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs.keys()))}
 
@@ -633,7 +639,6 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
             del hs[seat]
     
     await manager.broadcast_update(game_id)
-    # ★ 席が空いたのでロビーの人数も更新
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id}
 
@@ -651,6 +656,7 @@ async def set_player_name(game_id: str, req: NameRequest):
     pn[seat] = name
 
     await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "player_names": pn}
 
 

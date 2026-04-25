@@ -199,24 +199,90 @@
       cursor: not-allowed;
     }
 
-    /* ロビー画面用のボタンスタイル */
-    .room-btn {
-        padding: 12px 20px;
-        font-size: 16px;
-        font-weight: bold;
-        border: 2px solid #8b5a2b;
+    /* ★ 追加：ロビーの正方形ルームカードデザイン */
+    .room-card-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+    }
+    .room-card {
+        width: 240px;
+        height: 240px;
         background: #fceeb5;
-        color: #2b2b2b;
-        border-radius: 8px;
+        border: 3px solid #8b5a2b;
+        border-radius: 12px;
         cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         transition: all 0.2s;
-        margin-bottom: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
+        align-items: center;
+        justify-items: center;
+        position: relative;
     }
-    .room-btn:hover {
-        background: #e6c875;
-        transform: translateY(-2px);
+    .room-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        background: #f8e182;
     }
+    .room-card .center-info {
+        grid-column: 2;
+        grid-row: 2;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .room-card .center-info .title { 
+        font-size: 16px; 
+        font-weight: bold; 
+        color: #b00000; 
+        margin-bottom: 4px; 
+        line-height: 1.2;
+    }
+    .room-card .center-info .count { 
+        font-size: 14px; 
+        color: #555; 
+        font-weight: bold;
+    }
+    .room-card .lock-icon { 
+        position: absolute; 
+        top: 10px; 
+        left: 10px; 
+        font-size: 18px; 
+    }
+
+    /* ロビーの各席バッジ */
+    .seat-badge {
+        font-size: 12px;
+        font-weight: bold;
+        background: #fffafa;
+        border: 2px solid #a67c00;
+        border-radius: 4px;
+        padding: 4px 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 80px; 
+        text-align: center;
+    }
+    .seat-badge.ai { 
+        color: #888; 
+        background: #e0d8c8; 
+        border-color: #bfa88f; 
+    }
+    .seat-badge.human { 
+        color: #2b2b2b; 
+    }
+
+    /* 席の配置指定（十字型） */
+    .seat-top { grid-column: 2; grid-row: 1; align-self: end; margin-bottom: 4px;} /* C */
+    .seat-bottom { grid-column: 2; grid-row: 3; align-self: start; margin-top: 4px;} /* A */
+    .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
+    .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
+
     #lobbyView {
         max-width: 800px;
         margin: 0 auto;
@@ -325,7 +391,7 @@
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
     <h2>🌐 公開部屋（メインルーム）</h2>
     <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
-    <div id="lobbyMainRoom" style="display: inline-block;">
+    <div id="lobbyMainRoom" class="room-card-container">
       </div>
   </div>
 
@@ -336,7 +402,7 @@
       <span style="font-size: 13px;">「全員の手札公開」「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
       <b>※いまはお試し期間で、自由に使えます。</b></span>
     </p>
-    <div id="lobbyRoomList" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+    <div id="lobbyRoomList" class="room-card-container">
       </div>
   </div>
 </div>
@@ -385,9 +451,7 @@
     <div class="btns" style="margin-top:0;">
       <button onclick="startNewGame()" id="btnNewGame" style="display:none;">新規ゲーム</button>
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
-      
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
-      
       <button onclick="downloadKifu()">棋譜GET</button>
     </div>
     
@@ -452,8 +516,6 @@ const MAIN_GID = "main";
 // 状態管理変数
 let gid = MAIN_GID;
 const WATCH = "W";
-
-// ★ ロビー画面でのWebSocket接続先（グローバル）を記憶するための変数
 let currentWsGid = null;
 
 let clientId = sessionStorage.getItem("goita_client_id");
@@ -493,7 +555,6 @@ function connectWS(targetGid) {
         try {
             const data = JSON.parse(event.data);
             if (data.type === "update") {
-                // ★ 修正：ロビーにいるときはfetchRoomListで人数だけ更新する
                 if (currentWsGid === "lobby") {
                     fetchRoomList();
                 } else {
@@ -583,7 +644,6 @@ async function returnToLobby() {
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
     
-    // ★ 修正：ロビー専用のWebSocketにつなぎ直す
     connectWS("lobby");
     fetchRoomList();
 }
@@ -606,18 +666,41 @@ async function fetchRoomList() {
         }
 
         data.rooms.forEach(room => {
-            const btn = document.createElement("button");
-            btn.className = "room-btn";
+            const card = document.createElement("div");
+            card.className = "room-card";
+            
+            const s = room.seats;
+            const makeBadge = (seatName, playerName) => {
+                const isAi = (playerName === "AI");
+                let text = "";
+                if (seatName === 'A') {
+                    text = `👑A: ${playerName}`;
+                } else {
+                    text = `${seatName}: ${playerName}`;
+                }
+                return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
+            };
+
+            const lockIcon = room.is_private ? `<div class="lock-icon">🔒</div>` : "";
+
+            card.innerHTML = `
+                ${lockIcon}
+                <div class="seat-top">${makeBadge('C', s['C'])}</div>
+                <div class="seat-left">${makeBadge('D', s['D'])}</div>
+                <div class="center-info">
+                    <div class="title">${room.owner_name}</div>
+                    <div class="count">(${room.player_count}/4人)</div>
+                </div>
+                <div class="seat-right">${makeBadge('B', s['B'])}</div>
+                <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
+            `;
             
             if (room.game_id === MAIN_GID) {
-                btn.innerHTML = `🚪 メインルームに入る <small>(${room.player_count}/4人)</small>`;
-                btn.onclick = joinMainRoom;
-                mainContainer.appendChild(btn);
+                card.onclick = joinMainRoom;
+                mainContainer.appendChild(card);
             } else {
-                const lockIcon = room.is_private ? "🔒" : "🔓";
-                btn.innerHTML = `${lockIcon} <b>${room.owner_name}</b> <small>(${room.player_count}/4人)</small>`;
-                btn.onclick = () => tryJoinRoom(room.game_id, room.is_private);
-                privateContainer.appendChild(btn);
+                card.onclick = () => tryJoinRoom(room.game_id, room.is_private);
+                privateContainer.appendChild(card);
             }
         });
 
@@ -693,7 +776,6 @@ function updateRoomUI() {
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
-    
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
 }
