@@ -492,11 +492,12 @@
         <details id="dealerDetails" style="display:none;">
           <summary><b>親（dealer）設定</b></summary>
           <div class="small" style="margin-top:6px;">
-            次の「新規ゲーム」で適用されます。random は毎回ランダムに親を選びます。
+            次の「新規ゲーム」で適用されます。winnerは前回の勝者（初回はランダム）になります。
           </div>
           <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
             <select id="dealerSelect">
-              <option value="random">random</option>
+              <option value="winner" selected>勝者 (winner)</option>
+              <option value="random">ランダム (random)</option>
               <option value="A">A</option>
               <option value="B">B</option>
               <option value="C">C</option>
@@ -924,7 +925,6 @@ function updateRoomUI() {
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
     
-    // 設定ボタンはプライベートルームなら誰でも表示
     if (settingsBtn) settingsBtn.style.display = (!isMain) ? "inline-block" : "none";
 }
 
@@ -975,7 +975,6 @@ function startGame() {
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
     
-    // ★ 修正：APIを叩いてサーバー側から手札を配る
     fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
         method: "POST"
     }).catch(e => console.error(e));
@@ -1441,7 +1440,6 @@ function renderBoard(state){
 
       const hand=HAND_MAP.get(k);
       if(hand){
-        // ★ 追加：ゲームが開始されていない時は手札エリア（空マス含む）を完全に非表示にする
         if (!state.is_started) {
             continue;
         }
@@ -1569,6 +1567,7 @@ function showPassAnimation(phys) {
   }, 2000);
 }
 
+// ★ 修正：新規ゲームの親決定ロジックを更新
 async function startNewGame(){
   if (cpuTimer) {
       clearTimeout(cpuTimer);
@@ -1580,8 +1579,18 @@ async function startNewGame(){
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
   const sel = document.getElementById("dealerSelect");
-  let dealer = sel ? sel.value : "random";
-  if(dealer === "random") dealer = _chooseRandomDealer();
+  let dealer = sel ? sel.value : "winner";
+  
+  // "winner" または "random" の場合の処理
+  if(dealer === "winner"){
+      if(latestState && latestState.finished && latestState.winner){
+          dealer = latestState.winner;
+      } else {
+          dealer = _chooseRandomDealer();
+      }
+  } else if(dealer === "random") {
+      dealer = _chooseRandomDealer();
+  }
 
   await resetWithPreset(dealer);
   for(const s of ["A","B","C","D"]){
@@ -1648,14 +1657,12 @@ async function refresh(){
       isGameStarted = true; 
   }
   
-  // ★ 修正：開始ボタンの表示制御
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
       const isHost = (mySeat === "A"); 
       startGameBtn.style.display = (!state.is_started && isHost) ? "inline-block" : "none";
   }
 
-  // ★ 修正：ヒントメッセージの制御
   if (!state.is_started) {
       if (mySeat === "A") {
           setHint("👑 あなたはホストです。設定や配牌を確認し、「開始」ボタンを押して対局を始めてください。");
