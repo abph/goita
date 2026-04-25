@@ -269,6 +269,13 @@ class ResetConfigBody(BaseModel):
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     requester: str = Field(default="W") 
 
+# ★ 追加：ルーム設定更新用のモデル
+class SettingsUpdateRequest(BaseModel):
+    admin_password: str
+    new_owner_name: str
+    update_password: bool = False
+    new_password: Optional[str] = None
+
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
     action_type, block, attack = action
@@ -369,6 +376,7 @@ def _state_public_view(
     reveal_hands: bool = False,
     human_seats: Optional[Any] = None,
     player_names: Optional[Dict[str, str]] = None,
+    owner_name: str = "",
 ) -> Dict[str, Any]:
     hands_view: Dict[str, Any] = {}
     for p in ALL_SEATS:
@@ -400,6 +408,7 @@ def _state_public_view(
         "winner": state.winner,
         "player_names": player_names or {p: "" for p in ALL_SEATS},
         "reveal_hands": reveal_hands,
+        "owner_name": owner_name,  # ルーム設定で変更された部屋名を渡す
     }
     if human_seats is not None:
         if isinstance(human_seats, dict):
@@ -427,6 +436,7 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "human_seats": {}, 
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
+        "admin_password": None, # ★ 管理用パスワード
         "owner_name": "",
         "reveal_hands": False,
     }
@@ -436,16 +446,17 @@ def _ensure_main_game(dealer: str = "A") -> None:
     if MAIN_GID not in GAMES:
         GAMES[MAIN_GID] = _create_game_obj(dealer=dealer)
 
-# ★ 修正: プライベートBのパスワードを "goita-ai" に設定
+# ★ 修正: プライベートA、Bにそれぞれ管理用パスワード（admin）を設定
 def setup_supporter_rooms():
     supporter_data = [
-        {"gid": "room-gold-01", "pass": None, "owner": "プライベートA"},
-        {"gid": "room-silver-02", "pass": "goita-ai", "owner": "プライベートB"},
+        {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
+        {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
             room = _create_game_obj(dealer="A")
             room["password"] = data["pass"]
+            room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
             room["log"] = [f"Game start. dealer=A, table={data['gid']}"]
             GAMES[data["gid"]] = room
@@ -499,6 +510,36 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
 
 
 # =========================================================
+# ルーム設定 API
+# =========================================================
+@app.post("/games/{game_id}/verify_admin")
+def verify_admin(game_id: str, password: str = Body(..., embed=True)):
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if game.get("admin_password") == password:
+        return {"ok": True}
+    raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+
+
+@app.post("/games/{game_id}/update_settings")
+async def update_settings(game_id: str, req: SettingsUpdateRequest):
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if game.get("admin_password") != req.admin_password:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    game["owner_name"] = _sanitize_player_name(req.new_owner_name)
+    if req.update_password:
+        game["password"] = req.new_password if req.new_password else None
+    
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {"ok": True}
+
+
+# =========================================================
 # ゲーム操作 API
 # =========================================================
 
@@ -530,12 +571,14 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
 
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
+    admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     
     new_game = _create_game_obj(dealer=dealer)
     new_game["password"] = password
+    new_game["admin_password"] = admin_password
     new_game["owner_name"] = owner_name
     new_game["human_seats"] = human_seats
     new_game["player_names"] = player_names
@@ -564,6 +607,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     preset = body.preset_counts or {}
     old_game = GAMES.get(game_id, {})
     password = old_game.get("password")
+    admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
@@ -581,6 +625,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["dealer"] = dealer
         new_game["kifu_moves"] = []
         new_game["password"] = password
+        new_game["admin_password"] = admin_password
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
@@ -589,6 +634,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     else:
         new_game = _create_game_obj(dealer=dealer)
         new_game["password"] = password
+        new_game["admin_password"] = admin_password
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["player_names"] = player_names
@@ -677,7 +723,7 @@ async def step(game_id: str, req: StepRequest):
     player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
 
     if state.finished:
-        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False))
+        payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False), owner_name=game.get("owner_name", ""))
         return {"ok": True, "state": payload}
 
     if state.turn != player:
@@ -695,7 +741,7 @@ async def step(game_id: str, req: StepRequest):
     _notify_public(agents, state, player, action)
 
     await manager.broadcast_update(game_id)
-    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False))
+    payload = _state_public_view(state, viewer=player, log=log, board_public=board, human_seats=human_seats, player_names=player_names, reveal_hands=game.get("reveal_hands", False), owner_name=game.get("owner_name", ""))
     return {"ok": True, "state": payload}
 
 
@@ -746,10 +792,11 @@ def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
     state: GoitaState = game["state"]
     hs = game.get("human_seats", {})
     pn: Dict[str, str] = game.get("player_names", {p: "" for p in ALL_SEATS})
+    owner = game.get("owner_name", "")
     
     is_reveal = game.get("reveal_hands", False) or bool(reveal_hands)
     
-    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=is_reveal, human_seats=hs, player_names=pn)
+    return _state_public_view(state, viewer=viewer, log=game.get("log", []), board_public=game.get("board", _new_board_snapshot()), reveal_hands=is_reveal, human_seats=hs, player_names=pn, owner_name=owner)
 
 
 @app.get("/games/{game_id}/legal_actions")

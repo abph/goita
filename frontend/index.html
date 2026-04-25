@@ -270,8 +270,6 @@
         color: #555; 
         font-weight: bold;
     }
-    
-    /* ★ 修正：鍵アイコンを右上に配置し、サイズを大きく */
     .room-card .lock-icon { 
         position: absolute; 
         top: 10px; 
@@ -293,14 +291,8 @@
         max-width: 115px; 
         text-align: center;
     }
-    .seat-badge.ai { 
-        color: #888; 
-        background: #e0d8c8; 
-        border-color: #bfa88f; 
-    }
-    .seat-badge.human { 
-        color: #2b2b2b; 
-    }
+    .seat-badge.ai { color: #888; background: #e0d8c8; border-color: #bfa88f; }
+    .seat-badge.human { color: #2b2b2b; }
 
     /* 席の配置指定（十字型） */
     .seat-top { grid-column: 2; grid-row: 1; align-self: end; margin-bottom: 4px;} /* C */
@@ -309,16 +301,8 @@
     .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
 
     .hint { 
-      background: #fffdf5; 
-      border: 2px solid #d35400; 
-      padding: 12px 16px; 
-      border-radius: 8px; 
-      margin: 16px 0; 
-      font-weight: bold; 
-      color: #b00000; 
-      text-align: center;
-      font-size: 15px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      background: #fffdf5; border: 2px solid #d35400; padding: 12px 16px; border-radius: 8px; 
+      margin: 16px 0; font-weight: bold; color: #b00000; text-align: center; font-size: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     
     .small { font-size: 12px; color: #555; }
@@ -327,15 +311,29 @@
     pre { background:#f4efdf; padding:10px; border-radius:6px; max-height: 420px; overflow:auto; margin: 0; border: 1px solid #c8a77a; font-family: monospace; }
 
     .name-grid{
-      display: grid;
-      grid-template-columns: 80px 15ch 64px;
-      gap: 8px 10px;
-      align-items: center;
-      margin-top: 6px;
-      margin-bottom: 6px;
+      display: grid; grid-template-columns: 80px 15ch 64px; gap: 8px 10px; align-items: center; margin-top: 6px; margin-bottom: 6px;
     }
     .name-grid button{ width: 64px; white-space: nowrap; }
     .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
+
+    /* ★ 追加：設定モーダルのスタイル */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
+      display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-content {
+      background: #f4efdf; padding: 24px; border-radius: 12px; border: 3px solid #8b5a2b;
+      width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    .modal-content h3 { margin-top: 0; color: #8b5a2b; border-bottom: 2px solid #8b5a2b; padding-bottom: 8px; font-size: 20px;}
+    .settings-row { margin-bottom: 16px; }
+    .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
+    .settings-row input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .gear-btn {
+      background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px 8px;
+      vertical-align: middle; transition: transform 0.3s;
+    }
+    .gear-btn:hover { transform: rotate(45deg); }
 
     @media (max-width: 980px){
       :root{ --gap: 4px; --cell: clamp(24px, calc((100vw - 40px - (9 * var(--gap)))/10), 52px); }
@@ -365,12 +363,8 @@
     }
   
     .preset-grid{
-      display: grid;
-      grid-template-columns: 22px repeat(9, 34px);
-      gap: 6px 6px;
-      align-items: center;
-      justify-content: start;
-      margin-top: 8px;
+      display: grid; grid-template-columns: 22px repeat(9, 34px); gap: 6px 6px;
+      align-items: center; justify-content: start; margin-top: 8px;
     }
     .preset-grid .hdr{ font-weight: 900; text-align: center; }
     .preset-grid .seat{ font-weight: 900; }
@@ -430,7 +424,10 @@
 <div id="gameView" style="display: none;">
 
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-    <h1 style="margin: 0; font-size: 24px;">そろうごいた <span style="font-size: 16px; color: #555; font-weight: normal;">- <span id="currentRoomName"></span></span></h1>
+    <h1 style="margin: 0; font-size: 24px;">そろうごいた 
+      <span style="font-size: 16px; color: #555; font-weight: normal;">- <span id="currentRoomName"></span></span>
+      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettings()" style="display:none;" title="ルーム設定">⚙️</button>
+    </h1>
     <button onclick="returnToLobby()" style="font-weight: bold; background: #fffafa; border: 2px solid #8b5a2b; color: #8b5a2b;">🏠 ロビーに戻る</button>
   </div>
 
@@ -529,7 +526,27 @@
     </div>
   </div>
 
-</div> <script>
+</div>
+
+<div id="settingsModal" class="modal-overlay">
+  <div class="modal-content">
+    <h3>⚙️ ルーム設定</h3>
+    <div class="settings-row">
+      <label>ルーム名（最大9文字）</label>
+      <input type="text" id="setRoomName" maxlength="9">
+    </div>
+    <div class="settings-row">
+      <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
+      <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
+    </div>
+    <div style="display: flex; gap: 8px; margin-top: 24px;">
+      <button onclick="saveSettings()" style="flex: 1; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px;">保存</button>
+      <button onclick="closeSettings()" style="flex: 1; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px;">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
 const API = "";
 const MAIN_GID = "main";
 
@@ -537,6 +554,7 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 const WATCH = "W";
 let currentWsGid = null;
+let currentAdminPass = ""; // ★ 追加：管理用パスワードを一時保持
 
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
@@ -707,7 +725,6 @@ async function fetchRoomList() {
                 return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
             };
 
-            // ★ 修正：鍵付きの場合は座席情報を出さずに注意書きのみ表示
             if (room.is_private) {
                 card.innerHTML = `
                     <div class="lock-icon">🔒</div>
@@ -742,6 +759,70 @@ async function fetchRoomList() {
         console.error("部屋リストの取得に失敗:", e);
     }
 }
+
+// ====== ルーム設定（モーダル）管理 ======
+function togglePassInput() {
+    const checked = document.getElementById("checkUpdatePass").checked;
+    document.getElementById("setRoomPass").style.display = checked ? "block" : "none";
+}
+
+async function openSettings() {
+    const pass = prompt("管理用パスワードを入力してください\n（初期パスワード: admin-a または admin-b）");
+    if (!pass) return;
+
+    try {
+        const res = await fetch(`${API}/games/${gid}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ password: pass })
+        });
+        if (res.ok) {
+            currentAdminPass = pass;
+            document.getElementById("setRoomName").value = latestState.owner_name || "";
+            document.getElementById("checkUpdatePass").checked = false;
+            document.getElementById("setRoomPass").style.display = "none";
+            document.getElementById("setRoomPass").value = "";
+            document.getElementById("settingsModal").style.display = "flex";
+        } else {
+            alert("パスワードが正しくありません。");
+        }
+    } catch (e) {
+        alert("通信エラーが発生しました。");
+    }
+}
+
+function closeSettings() {
+    document.getElementById("settingsModal").style.display = "none";
+    currentAdminPass = "";
+}
+
+async function saveSettings() {
+    const newName = document.getElementById("setRoomName").value;
+    const isUpdatePass = document.getElementById("checkUpdatePass").checked;
+    const newPass = document.getElementById("setRoomPass").value;
+
+    try {
+        const res = await fetch(`${API}/games/${gid}/update_settings`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                admin_password: currentAdminPass,
+                new_owner_name: newName,
+                update_password: isUpdatePass,
+                new_password: newPass
+            })
+        });
+        if (res.ok) {
+            alert("ルーム設定を保存しました。");
+            closeSettings();
+        } else {
+            alert("設定の保存に失敗しました。");
+        }
+    } catch (e) {
+        alert("通信エラーが発生しました。");
+    }
+}
+
 
 // ====== 席選択とUI更新 ======
 function updateSeatButtons(humanSeats) {
@@ -806,12 +887,16 @@ function updateRoomUI() {
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
+    const settingsBtn = document.getElementById("roomSettingsBtn"); // ★ 追加
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
+    
+    // 設定ボタンはプライベートルームのA席のみ
+    if (settingsBtn) settingsBtn.style.display = (!isMain && isHost) ? "inline-block" : "none";
 }
 
 function updateNameInputVisibility(){
@@ -1499,6 +1584,12 @@ async function refresh(){
       toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
   }
 
+  // ★ 修正：ヘッダーのルーム名もリアルタイムに反映させる
+  const currentRoomNameEl = document.getElementById("currentRoomName");
+  if(currentRoomNameEl) {
+      currentRoomNameEl.textContent = state.owner_name || "メインルーム";
+  }
+
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || "-"; }
@@ -1616,7 +1707,6 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
-  // 常にロビー画面を表示し、ゲーム画面は隠す
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
   
