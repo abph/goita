@@ -270,6 +270,24 @@
         color: #555; 
         font-weight: bold;
     }
+
+    /* ★ ロビーのカード左上の設定(歯車)アイコン */
+    .room-card .settings-icon { 
+        position: absolute; 
+        top: 10px; 
+        left: 10px; 
+        font-size: 20px; 
+        cursor: pointer;
+        transition: transform 0.2s;
+        z-index: 10;
+        padding: 4px;
+        line-height: 1;
+    }
+    .room-card .settings-icon:hover {
+        transform: rotate(45deg) scale(1.1);
+    }
+
+    /* 鍵アイコンは右上 */
     .room-card .lock-icon { 
         position: absolute; 
         top: 10px; 
@@ -316,7 +334,7 @@
     .name-grid button{ width: 64px; white-space: nowrap; }
     .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
 
-    /* ★ 追加：設定モーダルのスタイル */
+    /* 設定モーダルのスタイル */
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
       display: none; align-items: center; justify-content: center; z-index: 1000;
@@ -329,6 +347,7 @@
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    
     .gear-btn {
       background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px 8px;
       vertical-align: middle; transition: transform 0.3s;
@@ -426,7 +445,7 @@
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
     <h1 style="margin: 0; font-size: 24px;">そろうごいた 
       <span style="font-size: 16px; color: #555; font-weight: normal;">- <span id="currentRoomName"></span></span>
-      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettings()" style="display:none;" title="ルーム設定">⚙️</button>
+      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定">⚙️</button>
     </h1>
     <button onclick="returnToLobby()" style="font-weight: bold; background: #fffafa; border: 2px solid #8b5a2b; color: #8b5a2b;">🏠 ロビーに戻る</button>
   </div>
@@ -554,7 +573,8 @@ const MAIN_GID = "main";
 let gid = MAIN_GID;
 const WATCH = "W";
 let currentWsGid = null;
-let currentAdminPass = ""; // ★ 追加：管理用パスワードを一時保持
+let currentAdminPass = ""; 
+let settingTargetGid = null; // ★ 追加：どの部屋の設定を開いているか記憶する
 
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
@@ -725,8 +745,12 @@ async function fetchRoomList() {
                 return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
             };
 
+            // ★ 追加：ロビーのカード左上に設定アイコンを追加
+            const settingsIcon = `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event)" title="ルーム設定">⚙️</div>`;
+
             if (room.is_private) {
                 card.innerHTML = `
+                    ${settingsIcon}
                     <div class="lock-icon">🔒</div>
                     <div class="center-info">
                         <div class="title">${room.owner_name}</div>
@@ -735,6 +759,7 @@ async function fetchRoomList() {
                 `;
             } else {
                 card.innerHTML = `
+                    ${settingsIcon}
                     <div class="seat-top">${makeBadge('C', s['C'])}</div>
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
@@ -766,19 +791,27 @@ function togglePassInput() {
     document.getElementById("setRoomPass").style.display = checked ? "block" : "none";
 }
 
-async function openSettings() {
-    const pass = prompt("管理用パスワードを入力してください\n（初期パスワード: admin-a または admin-b）");
+// ★ 修正：ロビーからも部屋の中からも使えるように統一
+async function openSettingsModal(targetGid, event) {
+    if (event) {
+        event.stopPropagation(); // ロビーのカードクリック（入室）を防ぐ
+    }
+    
+    // ★ 修正：パスワードのヒントを削除
+    const pass = prompt("管理用パスワードを入力してください");
     if (!pass) return;
 
     try {
-        const res = await fetch(`${API}/games/${gid}/verify_admin`, {
+        const res = await fetch(`${API}/games/${targetGid}/verify_admin`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ password: pass })
         });
         if (res.ok) {
+            const data = await res.json();
+            settingTargetGid = targetGid;
             currentAdminPass = pass;
-            document.getElementById("setRoomName").value = latestState.owner_name || "";
+            document.getElementById("setRoomName").value = data.owner_name || "";
             document.getElementById("checkUpdatePass").checked = false;
             document.getElementById("setRoomPass").style.display = "none";
             document.getElementById("setRoomPass").value = "";
@@ -794,6 +827,7 @@ async function openSettings() {
 function closeSettings() {
     document.getElementById("settingsModal").style.display = "none";
     currentAdminPass = "";
+    settingTargetGid = null;
 }
 
 async function saveSettings() {
@@ -802,7 +836,7 @@ async function saveSettings() {
     const newPass = document.getElementById("setRoomPass").value;
 
     try {
-        const res = await fetch(`${API}/games/${gid}/update_settings`, {
+        const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
@@ -887,16 +921,17 @@ function updateRoomUI() {
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
-    const settingsBtn = document.getElementById("roomSettingsBtn"); // ★ 追加
+    const settingsBtn = document.getElementById("roomSettingsBtn");
     
+    // ★ 修正：A席のホスト権限（ゲーム進行機能）はそのまま
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
     
-    // 設定ボタンはプライベートルームのA席のみ
-    if (settingsBtn) settingsBtn.style.display = (!isMain && isHost) ? "inline-block" : "none";
+    // ★ 修正：設定ボタン（⚙️）は、プライベートルームなら誰でも（観戦でも）押せるようにする
+    if (settingsBtn) settingsBtn.style.display = (!isMain) ? "inline-block" : "none";
 }
 
 function updateNameInputVisibility(){
@@ -1584,7 +1619,6 @@ async function refresh(){
       toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
   }
 
-  // ★ 修正：ヘッダーのルーム名もリアルタイムに反映させる
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
       currentRoomNameEl.textContent = state.owner_name || "メインルーム";
@@ -1707,6 +1741,7 @@ window.addEventListener("load", async ()=>{
   });
   bindNameInputs();
 
+  // 常にロビー画面を表示し、ゲーム画面は隠す
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
   
