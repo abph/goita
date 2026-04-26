@@ -477,6 +477,7 @@ def _ensure_main_game(dealer: str = "A") -> None:
         game["owner_name"] = "メインルームA"
         GAMES[MAIN_GID] = game
 
+# ★ 修正：初期化時に log を書き込まないことで待機状態の親表示を「-」にする
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
@@ -488,21 +489,17 @@ def setup_supporter_rooms():
             room["password"] = data["pass"]
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
-            room["log"] = [f"Game start. dealer=A, table={data['gid']}"]
             GAMES[data["gid"]] = room
 
 setup_supporter_rooms()
 
 
-# ★ 修正：打ち止め、リーチの判定を追加
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]]) -> List[str]:
     effects = []
     action_type, block, attack = action
     
-    # 実行前（現在）の手札の枚数
     hand_len = len(state.hands[player])
     
-    # 今回のアクションで上がれるかどうか、及び実行後の手札枚数
     is_agari = False
     next_hand_len = hand_len
     if action_type == "attack":
@@ -516,24 +513,19 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
     
     if action_type in ("attack", "attack_after_block") and attack is not None:
         
-        # 盤面に出ている自分の攻め駒の数（今回出す前）
         attack_count = sum(1 for x in board_public.get(player, {}).get("attack", []) if x is not None)
         
-        # ★ 追加：打ち止め（3枚目の攻めに「し」を出す）
         if attack_count == 2 and attack == "1":
             effects.append("uchidome")
             
-        # ★ 追加：リーチ（3枚目の攻めを出して、残り2枚の状態）
         if attack_count == 2 and next_hand_len == 2:
             effects.append("reach")
             
-        # かかりごたえ（相方の公開されている攻め駒と同じ駒で攻める）
         partner = {"A":"C", "C":"A", "B":"D", "D":"B"}[player]
         if attack in board_public.get(partner, {}).get("attack", []):
             effects.append("kakarigotae")
             
         if is_agari:
-            # 上がりの場合の特別演出
             if action_type == "attack_after_block":
                 if (block == "8" and attack == "9") or (block == "9" and attack == "8"):
                     effects.append("damadama_agari")
@@ -545,7 +537,6 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
                 if attack in ("8", "9"):
                     effects.append("ou_agari")
         else:
-            # 上がりではない途中の場合のだまだま
             if attack in ("8", "9"):
                 other = "9" if attack == "8" else "8"
                 if other in state.hands[player]:
