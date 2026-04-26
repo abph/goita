@@ -168,17 +168,7 @@
     .special-anim-text.kakarigotae { text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000; }
     .special-anim-text.damadama { text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400; }
     
-    /* ★ 追加：打ち止め、リーチの特別な色 */
-    .special-anim-text.uchidome { 
-      color: #ffffff; 
-      text-shadow: 0 0 10px #95a5a6, 0 0 20px #7f8c8d, 0 0 40px #34495e; 
-    }
-    .special-anim-text.reach { 
-      color: #ff9ff3; 
-      text-shadow: 0 0 10px #f368e0, 0 0 20px #ff9ff3, 0 0 40px #e056fd; 
-      font-size: clamp(45px, 10vw, 90px);
-    }
-    
+    /* ★ 追加：倍付け、王あがり、だまだまあがりの特別な色 */
     .special-anim-text.baizuke { 
       color: #ffe600; 
       text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 40px #b00000; 
@@ -1723,7 +1713,7 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  const qs = newSearchParams();
+  const qs = new URLSearchParams();
   qs.set("viewer", viewerSeat());
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
@@ -1821,8 +1811,6 @@ async function refresh(){
       const isPass = entry.match(/^([ABCD]): pass/);
       const hasKakarigotae = entry.includes("[EFFECT:kakarigotae]");
       const hasDamadama = entry.includes("[EFFECT:damadama]");
-      const hasUchidome = entry.includes("[EFFECT:uchidome]");
-      const hasReach = entry.includes("[EFFECT:reach]");
       const hasBaizuke = entry.includes("[EFFECT:baizuke]");
       const hasDamadamaAgari = entry.includes("[EFFECT:damadama_agari]");
       const hasOuAgari = entry.includes("[EFFECT:ou_agari]");
@@ -1839,7 +1827,6 @@ async function refresh(){
       }
       
       if (seatMatch) {
-          // コンボで再生されるように順番に設定
           if (hasKakarigotae) {
               setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae"), animDelay);
               animDelay += 1200;
@@ -1848,15 +1835,8 @@ async function refresh(){
               setTimeout(() => showSpecialAnimation("だまだま！", "damadama"), animDelay);
               animDelay += 1200;
           }
-          if (hasUchidome) {
-              setTimeout(() => showSpecialAnimation("打ち止め！", "uchidome"), animDelay);
-              animDelay += 1200;
-          }
-          if (hasReach) {
-              setTimeout(() => showSpecialAnimation("リーチ！", "reach"), animDelay);
-              animDelay += 1200;
-          }
           
+          // 上がり役のコンボ演出
           if (hasBaizuke) {
               setTimeout(() => showSpecialAnimation("倍付け！", "baizuke"), animDelay);
               animDelay += 1400;

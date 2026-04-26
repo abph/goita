@@ -291,7 +291,7 @@ def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[st
         state.apply_attack(player, attack)
     elif action_type == "attack_after_block":
         if block is None or attack is None:
-            raise ValueError("attack_after_block には block と attack の両方が必要です")
+            raise ValueError("attack_after_block には block と attack 両方が必要です")
         state.apply_attack_after_block(player, block, attack)
     else:
         raise ValueError(f"未知の action_type: {action_type}")
@@ -494,7 +494,7 @@ def setup_supporter_rooms():
 setup_supporter_rooms()
 
 
-# ★ 修正：打ち止め、リーチの判定を追加
+# ★ 修正：上がり役（倍付け・王あがり・だまだまあがり）の判定を追加
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]]) -> List[str]:
     effects = []
     action_type, block, attack = action
@@ -502,48 +502,37 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
     # 実行前（現在）の手札の枚数
     hand_len = len(state.hands[player])
     
-    # 今回のアクションで上がれるかどうか、及び実行後の手札枚数
+    # 今回のアクションで上がれるかどうか
     is_agari = False
-    next_hand_len = hand_len
-    if action_type == "attack":
-        next_hand_len = hand_len - 1
-        if hand_len == 1:
-            is_agari = True
-    elif action_type == "attack_after_block":
-        next_hand_len = hand_len - 2
-        if hand_len == 2:
-            is_agari = True
+    if action_type == "attack" and hand_len == 1:
+        is_agari = True
+    elif action_type == "attack_after_block" and hand_len == 2:
+        is_agari = True
     
     if action_type in ("attack", "attack_after_block") and attack is not None:
-        
-        # 盤面に出ている自分の攻め駒の数（今回出す前）
-        attack_count = sum(1 for x in board_public.get(player, {}).get("attack", []) if x is not None)
-        
-        # ★ 追加：打ち止め（3枚目の攻めに「し」を出す）
-        if attack_count == 2 and attack == "1":
-            effects.append("uchidome")
-            
-        # ★ 追加：リーチ（3枚目の攻めを出して、残り2枚の状態）
-        if attack_count == 2 and next_hand_len == 2:
-            effects.append("reach")
-            
         # かかりごたえ（相方の公開されている攻め駒と同じ駒で攻める）
         partner = {"A":"C", "C":"A", "B":"D", "D":"B"}[player]
         if attack in board_public.get(partner, {}).get("attack", []):
             effects.append("kakarigotae")
             
         if is_agari:
-            # 上がりの場合の特別演出
+            # ★ 上がりの場合の特別演出
             if action_type == "attack_after_block":
+                # だまだまあがり（王と玉のペアで上がる）
                 if (block == "8" and attack == "9") or (block == "9" and attack == "8"):
                     effects.append("damadama_agari")
+                # 倍付け（同じ駒で上がる。※王と玉は1枚しかないので該当しない）
                 elif block == attack:
                     effects.append("baizuke")
+                # 王あがり（受けてからの攻めが王・玉）
                 elif attack in ("8", "9"):
                     effects.append("ou_agari")
+            
             elif action_type == "attack":
+                # 王あがり（最後の一枚が王・玉）
                 if attack in ("8", "9"):
                     effects.append("ou_agari")
+                    
         else:
             # 上がりではない途中の場合のだまだま
             if attack in ("8", "9"):
