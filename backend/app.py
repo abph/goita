@@ -471,13 +471,15 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     }
 
 
-def _ensure_main_game(dealer: str = "A") -> None:
+# ★ 修正：メインルーム作成時、親をランダムにする
+def _ensure_main_game(dealer: Optional[str] = None) -> None:
     if MAIN_GID not in GAMES:
-        game = _create_game_obj(dealer=dealer)
+        d = dealer if dealer else random.choice(["A", "B", "C", "D"])
+        game = _create_game_obj(dealer=d)
         game["owner_name"] = "メインルームA"
         GAMES[MAIN_GID] = game
 
-# ★ 修正：初期化時に log を書き込まないことで待機状態の親表示を「-」にする
+# ★ 修正：プライベートルームの作成時、最初の親をランダムにする
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
@@ -485,7 +487,8 @@ def setup_supporter_rooms():
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
-            room = _create_game_obj(dealer="A")
+            d = random.choice(["A", "B", "C", "D"])
+            room = _create_game_obj(dealer=d)
             room["password"] = data["pass"]
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
@@ -666,6 +669,8 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
 async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
+    
+    # ★ リセット時の指定がなければランダムにするなどの配慮
     if game_id == MAIN_GID:
         _ensure_main_game(dealer=dealer)
     elif game_id not in GAMES:
