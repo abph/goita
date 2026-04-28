@@ -68,7 +68,7 @@
       filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
     
-    /* ★修正：駒の文字を大きく（20px -> 28px） */
+    /* 駒の文字位置の微調整 */
     .slot .val, .hand .val { 
       font-size: 28px; 
       font-weight: 900; 
@@ -431,9 +431,9 @@
       .atk-label{ font-size: 12px; }
       .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
       
-      /* ★修正：スマホ時も駒の文字を大きく（16px -> 22px） */
-      .slot .val{ font-size: 22px; }
-      .hand .val{ font-size: 22px; }
+      /* ★修正：スマホ時は駒の文字を1段階小さく（22px -> 18px） */
+      .slot .val{ font-size: 18px; }
+      .hand .val{ font-size: 18px; }
       
       .pass{ font-size: 12px; }
       .hint { font-size: 13px; padding: 10px; }
@@ -1574,7 +1574,6 @@ function renderBoard(state){
 
             const val=document.createElement("div");
             val.className="val";
-            /* ★修正：裏向きの駒のテキストを空にする */
             val.textContent="";
             div.appendChild(val);
           }
@@ -1602,7 +1601,6 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-            /* ★修正：裏向きの駒のテキストを空にする */
             val.textContent = hidden ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
