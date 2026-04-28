@@ -21,8 +21,18 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
 
-# ★ 追加：上がり駒の基本点数定義
-PIECE_POINTS = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50, "6": 40, "7": 50, "8": 50, "9": 50}
+# ★ 修正：いただいた正しい配点に更新
+PIECE_POINTS = {
+    "1": 10, # し
+    "2": 20, # 香
+    "3": 20, # 馬
+    "4": 30, # 銀
+    "5": 30, # 金
+    "6": 40, # 角
+    "7": 40, # 飛
+    "8": 50, # 玉
+    "9": 50  # 王
+}
 
 # =========================================================
 # WebSocket 管理
@@ -266,7 +276,6 @@ class NameRequest(BaseModel):
     seat: str
     name: str = ""
 
-# ★ 修正：点数を引き継ぐための `keep_score` オプションを追加
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
@@ -440,8 +449,6 @@ def _state_public_view(
         "player_names": player_names,
         "reveal_hands": reveal_hands,
         "owner_name": owner_name,
-        
-        # ★ 追加：150点先取ルール用の各種データ
         "total_team_score": game_obj.get("total_team_score", {"AC": 0, "BD": 0}),
         "round_count": game_obj.get("round_count", 1),
         "match_finished": game_obj.get("match_finished", False),
@@ -478,8 +485,6 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "reveal_hands": False,
         "is_started": False,
         "enable_effects": True,
-        
-        # ★ 追加：150点先取ルール用の初期データ
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
         "match_finished": False,
@@ -567,7 +572,6 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
     return effects
 
 
-# ★ 追加：ゲーム終了時のスコア計算・加算・勝敗判定処理
 def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[str, Optional[str], Optional[str]], effects: List[str]):
     if state.finished and not game.get("current_round_finished"):
         game["current_round_finished"] = True
@@ -577,18 +581,14 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             team = "AC" if winner in ("A", "C") else "BD"
             attack_piece = action[2]
             
-            # 基本点数を取得
             base_score = PIECE_POINTS.get(str(attack_piece), 0)
             
-            # 倍付け等による点数の倍増
             multiplier = 2 if ("baizuke" in effects or "damadama_agari" in effects) else 1
             round_score = base_score * multiplier
             
-            # トータルスコアに加算
             game["total_team_score"][team] += round_score
             game["last_round_score"] = round_score
             
-            # 150点到達（マッチ終了）の判定
             if game["total_team_score"]["AC"] >= 150 or game["total_team_score"]["BD"] >= 150:
                 game["match_finished"] = True
                 game["match_winner"] = "AC" if game["total_team_score"]["AC"] >= 150 else "BD"
@@ -641,9 +641,6 @@ def verify_password(game_id: str, password: str = Body(..., embed=True)):
     raise HTTPException(status_code=401, detail="合言葉が違います")
 
 
-# =========================================================
-# ルーム設定 API
-# =========================================================
 @app.post("/games/{game_id}/verify_admin")
 def verify_admin(game_id: str, password: str = Body(..., embed=True)):
     game = GAMES.get(game_id)
@@ -676,10 +673,6 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     await manager.broadcast_update("lobby")
     return {"ok": True}
 
-
-# =========================================================
-# ゲーム操作 API
-# =========================================================
 
 @app.post("/games/{game_id}/start")
 async def start_game(game_id: str, requester: str = "W"):
@@ -716,7 +709,6 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     return {"ok": True, "reveal_hands": game["reveal_hands"]}
 
 
-# ★ 修正：次の一局のために keep_score を処理
 @app.post("/games/{game_id}/reset")
 async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep_score: bool = False):
     if requester != "A":
@@ -926,7 +918,6 @@ async def step(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
 
-    # ★ ターン終了時のスコア計算を呼び出し
     _handle_round_finish(game, state, action, effects)
 
     await manager.broadcast_update(game_id)
@@ -975,7 +966,6 @@ async def cpu_step(game_id: str):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
     _notify_public(agents, state, p, cpu_action)
 
-    # ★ ターン終了時のスコア計算を呼び出し
     _handle_round_finish(game, state, cpu_action, effects)
 
     await manager.broadcast_update(game_id)
@@ -1028,7 +1018,6 @@ def get_kifu_yaml(game_id: str):
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
     state: GoitaState = game["state"]
     
-    # 棋譜用のスコアは最終的な合計点を出すように修正
     score = [int(game.get("total_team_score", {}).get("AC", 0)), int(game.get("total_team_score", {}).get("BD", 0))]
     
     h = {
