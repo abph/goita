@@ -478,6 +478,7 @@ def _ensure_main_game(dealer: Optional[str] = None) -> None:
         game["owner_name"] = "メインルームA"
         GAMES[MAIN_GID] = game
 
+
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
@@ -495,7 +496,8 @@ def setup_supporter_rooms():
 setup_supporter_rooms()
 
 
-def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]]) -> List[str]:
+# ★ 修正：引数に dealer を追加し、エラーなく情報を取得できるように修正
+def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]], dealer: str) -> List[str]:
     effects = []
     action_type, block, attack = action
     
@@ -522,11 +524,11 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
         if attack_count == 2 and next_hand_len == 2:
             effects.append("reach")
             
-        # ★ 修正：かかりごたえ（親の1番目の4枚駒の攻めに、相方が1番目の攻めで同じ駒を出す）
-        partner_of_dealer = {"A":"C", "C":"A", "B":"D", "D":"B"}.get(state.dealer)
+        # ★ 修正：state.dealer ではなく引数 dealer を使う
+        partner_of_dealer = {"A":"C", "C":"A", "B":"D", "D":"B"}.get(dealer)
         if player == partner_of_dealer and attack_count == 0:
             if attack in ("2", "3", "4", "5"):
-                dealer_attacks = [x for x in board_public.get(state.dealer, {}).get("attack", []) if x is not None]
+                dealer_attacks = [x for x in board_public.get(dealer, {}).get("attack", []) if x is not None]
                 if len(dealer_attacks) > 0 and dealer_attacks[0] == attack:
                     effects.append("kakarigotae")
             
@@ -843,7 +845,8 @@ async def step(game_id: str, req: StepRequest):
     
     effects = []
     if game.get("enable_effects", True):
-        effects = _check_effects(state, player, action, board)
+        # ★ 修正：_check_effects に game.get("dealer", "A") を渡す
+        effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
 
     before_fd = len(state.face_down_hidden[player])
     try:
@@ -893,7 +896,8 @@ async def cpu_step(game_id: str):
     
     effects = []
     if game.get("enable_effects", True):
-        effects = _check_effects(state, p, cpu_action, board)
+        # ★ 修正：_check_effects に game.get("dealer", "A") を渡す
+        effects = _check_effects(state, p, cpu_action, board, game.get("dealer", "A"))
 
     before_fd_cpu = len(state.face_down_hidden[p])
     _apply_action(state, p, cpu_action)
