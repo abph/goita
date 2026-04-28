@@ -82,6 +82,7 @@
       color: #b00000; 
     }
 
+    /* 現在の攻め駒（アニメーションを消し、静的に目立たせる） */
     .slot.current-attack {
       background: linear-gradient(135deg, #f7e1a0, #f1c40f);
       border: 3px solid #d35400;
@@ -1005,12 +1006,12 @@ function updateSeatButtons(humanSeats) {
         if (mySeat === s) {
             btn.disabled = false;
             btn.classList.add('active');
-            /* ★ 修正：「(あなた)」を「(私)」に変更 */
             btn.textContent = displayName + " (私)";
         } else if (humanSeats && humanSeats.includes(s)) {
             btn.disabled = true;
             btn.classList.remove('active');
-            btn.textContent = displayName + " (使用中)";
+            // ★ 修正：他人が座っている席の「(使用中)」を削除し、文字を追加しない
+            btn.textContent = displayName;
         } else {
             btn.disabled = false;
             btn.classList.remove('active');
