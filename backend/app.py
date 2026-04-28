@@ -16,11 +16,13 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
-# ★定数・マッピング辞書は constants.py からインポートするように統一
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
+
+# ★ 追加：上がり駒の基本点数定義
+PIECE_POINTS = {"1": 10, "2": 20, "3": 30, "4": 40, "5": 50, "6": 40, "7": 50, "8": 50, "9": 50}
 
 # =========================================================
 # WebSocket 管理
@@ -264,10 +266,12 @@ class NameRequest(BaseModel):
     seat: str
     name: str = ""
 
+# ★ 修正：点数を引き継ぐための `keep_score` オプションを追加
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     requester: str = Field(default="W") 
+    keep_score: bool = Field(default=False)
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -428,7 +432,6 @@ def _state_public_view(
         "attacker": attacker,
         "current_attack": current_attack,
         "hands": hands_view,
-        "team_score": team_score,
         "scores": scores,
         "board_public": board_view,
         "log": log[-200:],
@@ -437,6 +440,13 @@ def _state_public_view(
         "player_names": player_names,
         "reveal_hands": reveal_hands,
         "owner_name": owner_name,
+        
+        # ★ 追加：150点先取ルール用の各種データ
+        "total_team_score": game_obj.get("total_team_score", {"AC": 0, "BD": 0}),
+        "round_count": game_obj.get("round_count", 1),
+        "match_finished": game_obj.get("match_finished", False),
+        "match_winner": game_obj.get("match_winner"),
+        "last_round_score": game_obj.get("last_round_score", 0),
     }
     if isinstance(human_seats, dict):
         payload["human_seats"] = sorted(list(human_seats.keys()))
@@ -468,6 +478,14 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
         "reveal_hands": False,
         "is_started": False,
         "enable_effects": True,
+        
+        # ★ 追加：150点先取ルール用の初期データ
+        "total_team_score": {"AC": 0, "BD": 0},
+        "round_count": 1,
+        "match_finished": False,
+        "match_winner": None,
+        "current_round_finished": False,
+        "last_round_score": 0,
     }
 
 
@@ -477,7 +495,6 @@ def _ensure_main_game(dealer: Optional[str] = None) -> None:
         game = _create_game_obj(dealer=d)
         game["owner_name"] = "メインルームA"
         GAMES[MAIN_GID] = game
-
 
 def setup_supporter_rooms():
     supporter_data = [
@@ -496,7 +513,6 @@ def setup_supporter_rooms():
 setup_supporter_rooms()
 
 
-# ★ 修正：引数に dealer を追加し、エラーなく情報を取得できるように修正
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]], dealer: str) -> List[str]:
     effects = []
     action_type, block, attack = action
@@ -524,7 +540,6 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
         if attack_count == 2 and next_hand_len == 2:
             effects.append("reach")
             
-        # ★ 修正：state.dealer ではなく引数 dealer を使う
         partner_of_dealer = {"A":"C", "C":"A", "B":"D", "D":"B"}.get(dealer)
         if player == partner_of_dealer and attack_count == 0:
             if attack in ("2", "3", "4", "5"):
@@ -550,6 +565,38 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
                     effects.append("damadama")
             
     return effects
+
+
+# ★ 追加：ゲーム終了時のスコア計算・加算・勝敗判定処理
+def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[str, Optional[str], Optional[str]], effects: List[str]):
+    if state.finished and not game.get("current_round_finished"):
+        game["current_round_finished"] = True
+        winner = state.winner
+        
+        if winner:
+            team = "AC" if winner in ("A", "C") else "BD"
+            attack_piece = action[2]
+            
+            # 基本点数を取得
+            base_score = PIECE_POINTS.get(str(attack_piece), 0)
+            
+            # 倍付け等による点数の倍増
+            multiplier = 2 if ("baizuke" in effects or "damadama_agari" in effects) else 1
+            round_score = base_score * multiplier
+            
+            # トータルスコアに加算
+            game["total_team_score"][team] += round_score
+            game["last_round_score"] = round_score
+            
+            # 150点到達（マッチ終了）の判定
+            if game["total_team_score"]["AC"] >= 150 or game["total_team_score"]["BD"] >= 150:
+                game["match_finished"] = True
+                game["match_winner"] = "AC" if game["total_team_score"]["AC"] >= 150 else "BD"
+                msg = f"Match finished! winner={game['match_winner']}, final_score={game['total_team_score']}"
+                game["log"].append(msg)
+            else:
+                msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
+                game["log"].append(msg)
 
 
 @app.get("/games/list")
@@ -669,8 +716,9 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     return {"ok": True, "reveal_hands": game["reveal_hands"]}
 
 
+# ★ 修正：次の一局のために keep_score を処理
 @app.post("/games/{game_id}/reset")
-async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
+async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep_score: bool = False):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
     if game_id == MAIN_GID:
@@ -695,6 +743,10 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
     new_game["enable_effects"] = enable_effects 
+    
+    if keep_score:
+        new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
+        new_game["round_count"] = old_game.get("round_count", 1) + 1
     
     GAMES[game_id] = new_game
     
@@ -742,6 +794,11 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        
+        if body.keep_score:
+            new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
+            new_game["round_count"] = old_game.get("round_count", 1) + 1
+
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(dealer=dealer)
@@ -753,6 +810,11 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        
+        if body.keep_score:
+            new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
+            new_game["round_count"] = old_game.get("round_count", 1) + 1
+            
         GAMES[game_id] = new_game
 
     await manager.broadcast_update(game_id)
@@ -845,7 +907,6 @@ async def step(game_id: str, req: StepRequest):
     
     effects = []
     if game.get("enable_effects", True):
-        # ★ 修正：_check_effects に game.get("dealer", "A") を渡す
         effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
 
     before_fd = len(state.face_down_hidden[player])
@@ -864,6 +925,9 @@ async def step(game_id: str, req: StepRequest):
     
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
+
+    # ★ ターン終了時のスコア計算を呼び出し
+    _handle_round_finish(game, state, action, effects)
 
     await manager.broadcast_update(game_id)
     return {"ok": True, "state": _state_public_view(state, viewer=player, game_obj=game)}
@@ -896,7 +960,6 @@ async def cpu_step(game_id: str):
     
     effects = []
     if game.get("enable_effects", True):
-        # ★ 修正：_check_effects に game.get("dealer", "A") を渡す
         effects = _check_effects(state, p, cpu_action, board, game.get("dealer", "A"))
 
     before_fd_cpu = len(state.face_down_hidden[p])
@@ -911,10 +974,9 @@ async def cpu_step(game_id: str):
     
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
     _notify_public(agents, state, p, cpu_action)
-    if state.finished:
-        msg = f"Game finished. winner={state.winner}, team_score={getattr(state, 'team_score', None)}"
-        if not log or log[-1] != msg:
-            log.append(msg)
+
+    # ★ ターン終了時のスコア計算を呼び出し
+    _handle_round_finish(game, state, cpu_action, effects)
 
     await manager.broadcast_update(game_id)
     return {"status": "ok"}
@@ -965,10 +1027,10 @@ def get_kifu_yaml(game_id: str):
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
     state: GoitaState = game["state"]
-    ts = getattr(state, "team_score", None)
-    score = [0, 0]
-    if isinstance(ts, dict):
-        score = [int(ts.get("AC", 0)), int(ts.get("BD", 0))]
+    
+    # 棋譜用のスコアは最終的な合計点を出すように修正
+    score = [int(game.get("total_team_score", {}).get("AC", 0)), int(game.get("total_team_score", {}).get("BD", 0))]
+    
     h = {
         "p0": _hand_to_kifu_string(init_hands.get("A", [])),
         "p1": _hand_to_kifu_string(init_hands.get("B", [])),
