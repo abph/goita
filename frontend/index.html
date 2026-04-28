@@ -6,7 +6,8 @@
   <title>そろうごいた</title>
   <style>
     /* ===== 和風テイストのビジュアル強化 ===== */
-    :root{ --gap: 6px; --cell: clamp(28px, calc((100vw - 60px - (9 * var(--gap)))/10), 58px); }
+    /* ★ 修正：8x8盤面に合わせてセルの大きさを自動拡大 */
+    :root{ --gap: 6px; --cell: clamp(30px, calc((100vw - 60px - (7 * var(--gap)))/8), 65px); }
     * , *::before, *::after { box-sizing: border-box; }
     
     /* ベースのフォントと背景（和紙調） */
@@ -32,8 +33,9 @@
     }
     .board {
       display: grid;
-      grid-template-columns: repeat(10, var(--cell));
-      grid-template-rows: repeat(10, var(--cell));
+      /* ★ 修正：10x10 から 8x8 に変更 */
+      grid-template-columns: repeat(8, var(--cell));
+      grid-template-rows: repeat(8, var(--cell));
       gap: var(--gap);
       user-select: none;
       margin: 0 auto;
@@ -164,36 +166,13 @@
       transform: scale(0);
       animation: specialPop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
-    /* 役ごとのカラーリング */
     .special-anim-text.kakarigotae { text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000; }
     .special-anim-text.damadama { text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400; }
-    
-    .special-anim-text.uchidome { 
-      color: #ffffff; 
-      text-shadow: 0 0 10px #95a5a6, 0 0 20px #7f8c8d, 0 0 40px #34495e; 
-    }
-    .special-anim-text.reach { 
-      color: #ff9ff3; 
-      text-shadow: 0 0 10px #f368e0, 0 0 20px #ff9ff3, 0 0 40px #e056fd; 
-      font-size: clamp(45px, 10vw, 90px);
-    }
-    
-    .special-anim-text.baizuke { 
-      color: #ffe600; 
-      text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 40px #b00000; 
-      font-size: clamp(40px, 9vw, 80px);
-    }
-    .special-anim-text.ou_agari { 
-      color: #ffffff; 
-      text-shadow: 0 0 10px #3498db, 0 0 20px #2980b9, 0 0 40px #8e44ad; 
-      font-size: clamp(40px, 9vw, 80px);
-    }
-    .special-anim-text.damadama_agari { 
-      color: #ffd700; 
-      text-shadow: 0 0 15px #e74c3c, 0 0 30px #c0392b, 0 0 50px #8e44ad; 
-      font-size: clamp(45px, 10vw, 90px);
-      letter-spacing: 2px;
-    }
+    .special-anim-text.uchidome { color: #ffffff; text-shadow: 0 0 10px #95a5a6, 0 0 20px #7f8c8d, 0 0 40px #34495e; }
+    .special-anim-text.reach { color: #ff9ff3; text-shadow: 0 0 10px #f368e0, 0 0 20px #ff9ff3, 0 0 40px #e056fd; font-size: clamp(45px, 10vw, 90px); }
+    .special-anim-text.baizuke { color: #ffe600; text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 40px #b00000; font-size: clamp(40px, 9vw, 80px); }
+    .special-anim-text.ou_agari { color: #ffffff; text-shadow: 0 0 10px #3498db, 0 0 20px #2980b9, 0 0 40px #8e44ad; font-size: clamp(40px, 9vw, 80px); }
+    .special-anim-text.damadama_agari { color: #ffd700; text-shadow: 0 0 15px #e74c3c, 0 0 30px #c0392b, 0 0 50px #8e44ad; font-size: clamp(45px, 10vw, 90px); letter-spacing: 2px; }
 
     @keyframes specialPop {
       0% { transform: scale(0) rotate(-10deg); opacity: 0; }
@@ -217,6 +196,60 @@
     .phase-label{ font-size: 14px; letter-spacing: 0px; }
     .atk-label{ font-size: 14px; letter-spacing: 0px; }
     .name-label{ font-size: 12px; line-height: 1.15; padding: 4px; white-space: pre-line; }
+
+    /* ★ 追加：盤面下の独立した手札エリア用スタイル */
+    .hands-area {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .hand-row {
+      display: flex;
+      align-items: center;
+      background: #d1ab75; 
+      border: 3px solid #8b5a2b; 
+      border-radius: 6px;
+      padding: 8px 12px;
+      min-height: 64px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .hand-row-title {
+      width: 70px;
+      font-weight: 900;
+      font-size: 16px;
+      color: #2b2b2b;
+      text-align: center;
+      margin-right: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: #f4efdf;
+      padding: 4px 8px;
+      border: 2px solid #8b5a2b;
+      border-radius: 4px;
+    }
+    .hand-row-pieces {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    /* 手札エリアの駒は独立してサイズを指定（回転なし） */
+    .hand-row-pieces .hand {
+      position: static;
+      width: clamp(36px, 9vw, 50px);
+      height: clamp(42px, 10.5vw, 60px);
+      margin: 0;
+      transform: none !important;
+    }
+    .hand-row-pieces .hand .val {
+      font-size: clamp(22px, 5vw, 28px);
+      transform: translateY(2px);
+    }
+    .hand-row-pieces .hand.clickable:hover {
+      transform: translateY(-4px) !important;
+      filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
+    }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
     .meta { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
@@ -341,7 +374,6 @@
         font-size: 24px; 
     }
 
-    /* ロビーの各席バッジ */
     .seat-badge {
         font-size: 12px;
         font-weight: bold;
@@ -358,7 +390,6 @@
     .seat-badge.ai { color: #888; background: #e0d8c8; border-color: #bfa88f; }
     .seat-badge.human { color: #2b2b2b; }
 
-    /* 席の配置指定（十字型） */
     .seat-top { grid-column: 2; grid-row: 1; align-self: end; margin-bottom: 4px;} /* C */
     .seat-bottom { grid-column: 2; grid-row: 3; align-self: start; margin-top: 4px;} /* A */
     .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
@@ -380,7 +411,6 @@
     .name-grid button{ width: 64px; white-space: nowrap; }
     .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
 
-    /* 設定モーダルのスタイル */
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
       display: none; align-items: center; justify-content: center; z-index: 1000;
@@ -400,7 +430,6 @@
     }
     .gear-btn:hover { transform: rotate(45deg); }
 
-    /* 得点板のスタイル */
     #scoreBoard {
       text-align: center; font-size: 18px; font-weight: 900; margin: 10px 0; padding: 8px; 
       background: #fffafa; border: 2px dashed #8b5a2b; border-radius: 8px; color: #2b2b2b;
@@ -410,7 +439,7 @@
     .score-bd { color: #2980b9; }
 
     @media (max-width: 980px){
-      :root{ --gap: 4px; --cell: clamp(24px, calc((100vw - 40px - (9 * var(--gap)))/10), 52px); }
+      :root{ --gap: 4px; --cell: clamp(26px, calc((100vw - 40px - (7 * var(--gap)))/8), 58px); }
       body { margin: 10px; }
       .board-wrap { padding: 8px; }
       .bottom-grid { grid-template-columns: 1fr; }
@@ -431,13 +460,16 @@
       .atk-label{ font-size: 12px; }
       .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
       
-      /* ★修正：スマホ時は駒の文字を1段階小さく（22px -> 18px） */
       .slot .val{ font-size: 18px; }
       .hand .val{ font-size: 18px; }
       
       .pass{ font-size: 12px; }
       .hint { font-size: 13px; padding: 10px; }
       #scoreBoard { font-size: 15px; padding: 6px; }
+      
+      /* 手札ボックスのスマホ用微調整 */
+      .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
+      .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
     }
   
     .preset-grid{
@@ -544,6 +576,8 @@
   <div class="board-wrap">
     <div id="board" class="board"></div>
   </div>
+  
+  <div id="handsArea" class="hands-area"></div>
 
   <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
@@ -1270,28 +1304,23 @@ function formatNameForBoard(s){
   return lines.join("\n");
 }
 
+/* ★修正：8x8盤面に合わせた座標定義 */
 const SLOTS = {
-  A: { receive:[[4,8],[5,8],[6,8],[7,8]], attack:[[4,9],[5,9],[6,9],[7,9]] },
-  C: { receive:[[7,3],[6,3],[5,3],[4,3]], attack:[[7,2],[6,2],[5,2],[4,2]] },
-  B: { receive:[[8,7],[8,6],[8,5],[8,4]], attack:[[9,7],[9,6],[9,5],[9,4]] },
-  D: { receive:[[3,4],[3,5],[3,6],[3,7]], attack:[[2,4],[2,5],[2,6],[2,7]] },
-};
-const HAND_POS = {
-  A: [[2,10],[3,10],[4,10],[5,10],[6,10],[7,10],[8,10],[9,10]],
-  C: [[2,1],[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1]],
-  B: [[10,2],[10,3],[10,4],[10,5],[10,6],[10,7],[10,8],[10,9]],
-  D: [[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[1,9]],
+  A: { receive:[[3,7],[4,7],[5,7],[6,7]], attack:[[3,8],[4,8],[5,8],[6,8]] },
+  C: { receive:[[6,2],[5,2],[4,2],[3,2]], attack:[[6,1],[5,1],[4,1],[3,1]] },
+  B: { receive:[[7,6],[7,5],[7,4],[7,3]], attack:[[8,6],[8,5],[8,4],[8,3]] },
+  D: { receive:[[2,3],[2,4],[2,5],[2,6]], attack:[[1,3],[1,4],[1,5],[1,6]] },
 };
 
-const PASS_POS = { col: 6, row: 6 };
-const SEAT_LABEL_POS = { A:{col:3,row:9}, B:{col:9,row:8}, C:{col:8,row:2}, D:{col:2,row:3} };
-const TURN_LABEL_POS = { col: 5, row: 5 };
-const PHASE_LABEL_POS = { col: 6, row: 5 };
-const ATK_LABEL_POS = { col: 5, row: 6 };
+const PASS_POS = { col: 5, row: 5 };
+const SEAT_LABEL_POS = { A:{col:2,row:8}, B:{col:8,row:7}, C:{col:7,row:1}, D:{col:1,row:2} };
+const TURN_LABEL_POS = { col: 4, row: 4 };
+const PHASE_LABEL_POS = { col: 5, row: 4 };
+const ATK_LABEL_POS = { col: 4, row: 5 };
 
 const NAME_POS = {
-  A: { col: 8, row: 9 }, B: { col: 9, row: 3 },
-  C: { col: 3, row: 2 }, D: { col: 2, row: 8 },
+  A: { col: 7, row: 8 }, B: { col: 8, row: 2 },
+  C: { col: 2, row: 1 }, D: { col: 1, row: 7 },
 };
 
 function buildSlotMap(physToSeat){
@@ -1300,15 +1329,6 @@ function buildSlotMap(physToSeat){
     const seat = physToSeat[phys];
     SLOTS[phys].receive.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"R",idx:i, phys:phys}));
     SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i, phys:phys}));
-  }
-  return m;
-}
-
-function buildHandMap(physToSeat){
-  const m=new Map();
-  for(const phys of ["A","B","C","D"]){
-    const seat = physToSeat[phys];
-    HAND_POS[phys].forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,idx:i, phys:phys}));
   }
   return m;
 }
@@ -1372,7 +1392,7 @@ async function onHandPieceClick(piece){
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
 
   if(pending){
     const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
@@ -1387,7 +1407,7 @@ async function onHandPieceClick(piece){
   }
 
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-  if(candidates.length === 0){ setHint("その駒は今は出せません。（パス：6列目6行目）"); return; }
+  if(candidates.length === 0){ setHint("その駒は今は出せません。（中央のパスボタン）"); return; }
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
@@ -1418,7 +1438,7 @@ async function onPassClick(){
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`); return; }
+  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
   if(!pass){ setHint("今はパスできません。"); return; }
@@ -1440,24 +1460,12 @@ function renderBoard(state){
   const physToSeat = getPhysToSeat();
   const seatToPhys = getSeatToPhys();
   const SLOT_MAP = buildSlotMap(physToSeat);
-  const HAND_MAP = buildHandMap(physToSeat);
-
-  const usable = new Set();
-  if(!isSpectator() && state.turn===mySeat && !state.finished){
-    if(pending && pending.candidates){
-      pending.candidates.forEach(a => {
-        if(pending.need==="attack" && a.attack) usable.add(a.attack);
-        if(pending.need==="block" && a.block) usable.add(a.block);
-      });
-    }else{
-      latestLegal.forEach(a => { if(a.block) usable.add(a.block); if(a.attack) usable.add(a.attack); });
-    }
-  }
 
   const names = state.player_names || {A:"",B:"",C:"",D:""};
 
-  for(let row=1;row<=10;row++){
-    for(let col=1;col<=10;col++){
+  /* ★修正：10x10 から 8x8 に変更 */
+  for(let row=1;row<=8;row++){
+    for(let col=1;col<=8;col++){
       const div=document.createElement("div");
       div.className="cell";
       div.style.gridColumn=col; div.style.gridRow=row;
@@ -1528,60 +1536,6 @@ function renderBoard(state){
         continue;
       }
 
-      const hand=HAND_MAP.get(k);
-      if(hand){
-        if (!state.is_started) {
-            continue;
-        }
-
-        const canShowSeat = (!isSpectator() && hand.p===mySeat) || state.reveal_hands;
-
-        if(canShowSeat){
-          const raw = state.hands?.[hand.p];
-          const arr = sortHandNumeric(raw);
-          const card = Array.isArray(arr) ? arr[hand.idx] : null;
-
-          if (card) {
-            div.classList.add("hand");
-            div.classList.add("phys-" + hand.phys);
-            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
-
-            const val=document.createElement("div");
-            val.className="val";
-            val.textContent = pieceToLabel(card);
-
-            if(!isSpectator() && hand.p===mySeat && state.turn===mySeat && !state.finished){
-              if(usable.has(card)){
-                div.classList.add("clickable");
-                div.onclick = () => onHandPieceClick(card);
-              }else{
-                div.classList.add("disabled");
-              }
-            }
-            div.appendChild(val);
-          }
-        }else{
-          const pAttack = state.board_public?.[hand.p]?.attack || [];
-          const pReceive = state.board_public?.[hand.p]?.receive || [];
-          const playedCount = pAttack.filter(x => x !== null && x !== undefined).length + 
-                              pReceive.filter(x => x !== null && x !== undefined).length;
-          const remainingCount = 8 - playedCount;
-
-          if (hand.idx < remainingCount) {
-            div.classList.add("hand");
-            div.classList.add("phys-" + hand.phys);
-            div.classList.add(seatIsHuman(state, hand.p) ? "human" : "ai");
-
-            const val=document.createElement("div");
-            val.className="val";
-            val.textContent="";
-            div.appendChild(val);
-          }
-        }
-        board.appendChild(div);
-        continue;
-      }
-
       const slot=SLOT_MAP.get(k);
       if(slot){
         const kindKey = slot.kind==="R" ? "receive" : "attack";
@@ -1601,6 +1555,7 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+            /* ★修正：裏向きの駒のテキストを空にする */
             val.textContent = hidden ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
@@ -1611,6 +1566,79 @@ function renderBoard(state){
       board.appendChild(div);
     }
   }
+}
+
+/* ★ 追加：盤面下の独立した手札エリアの描画関数 */
+function renderHands(state) {
+  const area = document.getElementById("handsArea");
+  if (!area) return;
+  area.innerHTML = "";
+
+  if (!state.is_started) {
+    return;
+  }
+
+  const seats = ["A", "B", "C", "D"];
+  const names = state.player_names || {A:"",B:"",C:"",D:""};
+
+  const usable = new Set();
+  if(!isSpectator() && state.turn===mySeat && !state.finished){
+    if(pending && pending.candidates){
+      pending.candidates.forEach(a => {
+        if(pending.need==="attack" && a.attack) usable.add(a.attack);
+        if(pending.need==="block" && a.block) usable.add(a.block);
+      });
+    }else{
+      latestLegal.forEach(a => { if(a.block) usable.add(a.block); if(a.attack) usable.add(a.attack); });
+    }
+  }
+
+  seats.forEach(seat => {
+    // 自分が参加者なら自分の手札を、公開中なら全員の手札を表示
+    const isVisible = state.reveal_hands || (!isSpectator() && mySeat === seat);
+    if (!isVisible) return; // 見えない手札（裏向き）は描画しない
+
+    const rowDiv = document.createElement("div");
+    rowDiv.className = "hand-row";
+
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "hand-row-title";
+    let displayName = names[seat] ? sanitizeName(names[seat]) : seat;
+    titleDiv.textContent = `${seat}: ${displayName}`;
+    rowDiv.appendChild(titleDiv);
+
+    const piecesDiv = document.createElement("div");
+    piecesDiv.className = "hand-row-pieces";
+
+    const raw = state.hands?.[seat];
+    if (Array.isArray(raw)) {
+      const arr = sortHandNumeric(raw);
+      arr.forEach(card => {
+        if (!card) return;
+        const pieceDiv = document.createElement("div");
+        pieceDiv.className = "hand";
+        pieceDiv.classList.add(seatIsHuman(state, seat) ? "human" : "ai");
+
+        const valDiv = document.createElement("div");
+        valDiv.className = "val";
+        valDiv.textContent = pieceToLabel(card);
+        pieceDiv.appendChild(valDiv);
+
+        if (seat === mySeat && state.turn === mySeat && !state.finished) {
+          if (usable.has(card)) {
+            pieceDiv.classList.add("clickable");
+            pieceDiv.onclick = () => onHandPieceClick(card);
+          } else {
+            pieceDiv.classList.add("disabled");
+          }
+        }
+
+        piecesDiv.appendChild(pieceDiv);
+      });
+    }
+    rowDiv.appendChild(piecesDiv);
+    area.appendChild(rowDiv);
+  });
 }
 
 async function renderActions(){
@@ -1636,10 +1664,11 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
-  if (phys === "A") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "8 / 10"; }
-  else if (phys === "B") { wrapper.style.gridColumn = "8 / 10"; wrapper.style.gridRow = "5 / 7"; }
-  else if (phys === "C") { wrapper.style.gridColumn = "5 / 7"; wrapper.style.gridRow = "2 / 4"; }
-  else if (phys === "D") { wrapper.style.gridColumn = "2 / 4"; wrapper.style.gridRow = "5 / 7"; }
+  /* ★修正：8x8盤面に合わせてパスアニメーションの位置をずらす (-1) */
+  if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
+  else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
+  else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
+  else if (phys === "D") { wrapper.style.gridColumn = "1 / 3"; wrapper.style.gridRow = "4 / 6"; }
   
   const inner = document.createElement("div");
   inner.className = "phys-" + phys;
@@ -1803,13 +1832,15 @@ async function refresh(){
     setHint("観戦中です。空いている席のボタンを押すと参加できます。");
     pending = null;
   } else if(state.turn !== mySeat){
-    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：6列目6行目）`);
+    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
     pending = null;
   } else if(!pending){
-    setHint("あなたの手番です。手札をクリックしてください。（パス：6列目6行目）");
+    setHint("あなたの手番です。手札をクリックしてください。（中央のパスボタン）");
   }
 
+  // ★ 盤面と手札エリアをそれぞれ描画
   renderBoard(state);
+  renderHands(state);
   await renderActions();
   updateNameInputVisibility();
 
