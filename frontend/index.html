@@ -68,9 +68,9 @@
       filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4));
     }
     
-    /* 駒の文字位置の微調整 */
+    /* ★修正：駒の文字を大きく（20px -> 28px） */
     .slot .val, .hand .val { 
-      font-size: 20px; 
+      font-size: 28px; 
       font-weight: 900; 
       color: #1a1a1a; 
       transform: translateY(4px); 
@@ -430,8 +430,11 @@
       .phase-label{ font-size: 11px; }
       .atk-label{ font-size: 12px; }
       .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
-      .slot .val{ font-size: 16px; }
-      .hand .val{ font-size: 16px; }
+      
+      /* ★修正：スマホ時も駒の文字を大きく（16px -> 22px） */
+      .slot .val{ font-size: 22px; }
+      .hand .val{ font-size: 22px; }
+      
       .pass{ font-size: 12px; }
       .hint { font-size: 13px; padding: 10px; }
       #scoreBoard { font-size: 15px; padding: 6px; }
@@ -1571,7 +1574,8 @@ function renderBoard(state){
 
             const val=document.createElement("div");
             val.className="val";
-            val.textContent="□";
+            /* ★修正：裏向きの駒のテキストを空にする */
+            val.textContent="";
             div.appendChild(val);
           }
         }
@@ -1598,7 +1602,8 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-            val.textContent = hidden ? "■" : pieceToLabel(piece);
+            /* ★修正：裏向きの駒のテキストを空にする */
+            val.textContent = hidden ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
           }
@@ -1722,7 +1727,7 @@ async function fetchLegal(){
 async function refresh(){
   if(isProcessingCpu) return;
 
-  const qs = new URLSearchParams(); // ★ ここを正しく修正しました
+  const qs = new URLSearchParams(); 
   qs.set("viewer", viewerSeat());
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
