@@ -84,16 +84,18 @@
       color: #b00000; 
     }
 
-    /* 現在の攻めの強調表示 */
+    /* ★ 修正：現在の攻め駒（一番目立つようにドクドク光らせる） */
     .slot.current-attack {
-      background: linear-gradient(135deg, #f7e1a0, #f1c40f);
-      animation: pulse 1.5s infinite;
+      background: linear-gradient(135deg, #ff9a9e, #ff7675);
+      border: 3px solid #b00000;
+      animation: pulse-attack 1.5s infinite;
+      z-index: 5;
     }
-    .slot.current-attack .val { color: #d35400; font-size: 22px; }
-    @keyframes pulse {
-      0%   { filter: drop-shadow(0 0 0 rgba(211,84,0,0.6)); }
-      70%  { filter: drop-shadow(0 0 10px rgba(211,84,0,0.8)); }
-      100% { filter: drop-shadow(0 0 0 rgba(211,84,0,0)); }
+    .slot.current-attack .val { color: #fff; font-size: 30px; text-shadow: 1px 1px 2px #b00000; }
+    @keyframes pulse-attack {
+      0%   { filter: drop-shadow(0 0 0 rgba(176,0,0,0.6)); transform: scale(1); }
+      50%  { filter: drop-shadow(0 0 15px rgba(176,0,0,1)); transform: scale(1.15); }
+      100% { filter: drop-shadow(0 0 0 rgba(176,0,0,0)); transform: scale(1); }
     }
 
     /* ===== 駒の向きを盤面中央に向ける ===== */
@@ -164,6 +166,7 @@
       transform: scale(0);
       animation: specialPop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
+    /* 役ごとのカラーリング */
     .special-anim-text.kakarigotae { text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000; }
     .special-anim-text.damadama { text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400; }
     .special-anim-text.uchidome { color: #ffffff; text-shadow: 0 0 10px #95a5a6, 0 0 20px #7f8c8d, 0 0 40px #34495e; }
@@ -180,20 +183,7 @@
       100% { transform: scale(1.5) opacity: 0; }
     }
 
-    /* ラベル類（中央のターンやフェーズ表示など） */
-    .turn-label, .phase-label, .atk-label {
-      border: 2px solid #8b5a2b;
-      background: #f4efdf;
-      color: #2b2b2b;
-      font-weight: 900;
-      text-align: center;
-      border-radius: 4px;
-    }
-    .turn-label{ font-size: 16px; letter-spacing: 0px; }
-    .phase-label{ font-size: 14px; letter-spacing: 0px; }
-    .atk-label{ font-size: 14px; letter-spacing: 0px; }
-
-    /* ★ 追加：プレイヤーの合体ラベル（名前と席が合体し、手番で光る） */
+    /* プレイヤーの合体ラベル（名前と席が合体し、手番で光る） */
     .combo-label {
       background: #f4efdf;
       border: 2px solid #8b5a2b;
@@ -226,7 +216,7 @@
       100% { box-shadow: 0 0 5px #e67e22, inset 0 0 5px #f1c40f; }
     }
 
-    /* ★ 盤面下の独立した手札エリア用スタイル */
+    /* 盤面下の独立した手札エリア用スタイル */
     .hands-area {
       display: flex;
       flex-direction: column;
@@ -236,12 +226,17 @@
     .hand-row {
       display: flex;
       align-items: center;
+      justify-content: space-between; /* ★ パスボタンを右端に配置 */
       background: #d1ab75; 
       border: 3px solid #8b5a2b; 
       border-radius: 6px;
       padding: 8px 12px;
       min-height: 64px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .hand-row-left {
+      display: flex;
+      align-items: center;
     }
     .hand-row-title {
       width: 40px;
@@ -255,7 +250,6 @@
       border: 2px solid #8b5a2b;
       border-radius: 6px;
     }
-    /* ★ 手札を4コマ×2行のグリッドにする */
     .hand-row-pieces {
       display: grid;
       grid-template-columns: repeat(4, auto);
@@ -277,6 +271,11 @@
     .hand-row-pieces .hand.clickable:hover {
       transform: translateY(-4px) !important;
       filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
+    }
+
+    /* ★ パスボタン用コンテナ */
+    .pass-btn-area {
+      margin-left: 10px;
     }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
@@ -482,10 +481,6 @@
   
     @media (max-width: 430px){
       input[type="text"], select, textarea{ font-size: 16px; }
-      .turn-label{ font-size: 12px; }
-      .phase-label{ font-size: 11px; }
-      .atk-label{ font-size: 12px; }
-      .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
       
       .slot .val{ font-size: 18px; }
       .hand .val{ font-size: 18px; }
@@ -494,11 +489,11 @@
       .hint { font-size: 13px; padding: 10px; }
       #scoreBoard { font-size: 15px; padding: 6px; }
       
-      /* 手札ボックスのスマホ用微調整 */
       .hand-row-title { width: 32px; font-size: 20px; padding: 6px 0; }
       .hand-row-pieces { gap: 4px; }
       .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
       .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
+      .pass-btn-area .pass { padding: 8px 12px; font-size: 14px; }
     }
   
     .preset-grid{
@@ -1325,7 +1320,6 @@ function formatNameForBoard(s){
   return lines.join("\n");
 }
 
-/* ★ 修正：8x8盤面でのスロット座標定義 */
 const SLOTS = {
   A: { receive:[[3,7],[4,7],[5,7],[6,7]], attack:[[3,8],[4,8],[5,8],[6,8]] },
   C: { receive:[[6,2],[5,2],[4,2],[3,2]], attack:[[6,1],[5,1],[4,1],[3,1]] },
@@ -1333,12 +1327,7 @@ const SLOTS = {
   D: { receive:[[2,3],[2,4],[2,5],[2,6]], attack:[[1,3],[1,4],[1,5],[1,6]] },
 };
 
-const PASS_POS = { col: 5, row: 5 };
-const TURN_LABEL_POS = { col: 4, row: 4 };
-const PHASE_LABEL_POS = { col: 5, row: 4 };
-const ATK_LABEL_POS = { col: 4, row: 5 };
-
-/* ★ 追加：2セル合体ラベルの座標と回転定義 */
+/* ★ コンボラベル用の座標（2マス分使用） */
 const COMBO_POS = {
   A: { col: 1, row: 8, gridColumn: "1 / 3", gridRow: "8", rotate: "0deg", w: "100%", h: "100%" },
   B: { col: 8, row: 7, gridColumn: "8", gridRow: "7 / 9", rotate: "-90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
@@ -1346,7 +1335,6 @@ const COMBO_POS = {
   D: { col: 1, row: 1, gridColumn: "1", gridRow: "1 / 3", rotate: "90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
 };
 
-// 結合されるためスキップするセルの座標
 const SKIP_CELLS = ["2,8", "8,8", "8,1", "1,2"];
 
 function buildSlotMap(physToSeat){
@@ -1433,7 +1421,7 @@ async function onHandPieceClick(piece){
   }
 
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
-  if(candidates.length === 0){ setHint("その駒は今は出せません。（中央のパスボタン）"); return; }
+  if(candidates.length === 0){ setHint("その駒は今は出せません。（パスは手札横のボタンから）"); return; }
 
   if(candidates.length === 1){
     await submitAction(candidates[0]);
@@ -1488,6 +1476,16 @@ function renderBoard(state){
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
 
+  // ★ 現在の攻め駒を特定するための準備
+  let currentAttackIndex = -1;
+  let currentAttacker = state.attacker;
+  if (currentAttacker && state.board_public?.[currentAttacker]?.attack) {
+      const atkArr = state.board_public[currentAttacker].attack;
+      for (let i = 0; i < atkArr.length; i++) {
+          if (atkArr[i] !== null) currentAttackIndex = i;
+      }
+  }
+
   for(let row=1;row<=8;row++){
     for(let col=1;col<=8;col++){
       const k = key(col,row);
@@ -1499,42 +1497,9 @@ function renderBoard(state){
       div.className="cell";
       div.style.gridColumn=col; div.style.gridRow=row;
 
-      if(col===PASS_POS.col && row===PASS_POS.row){
-        div.classList.add("pass");
-        div.textContent="パス";
-        if(!isSpectator() && state.turn===mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")){
-          div.onclick=onPassClick;
-        }else{
-          div.classList.add("disabled");
-        }
-        board.appendChild(div);
-        continue;
-      }
+      // ★ 中央のパスボタン、フェーズ・アタッカー・ターン表示をすべて削除（何も描画しない）
 
-      if(col===TURN_LABEL_POS.col && row===TURN_LABEL_POS.row){
-        div.classList.add("turn-label");
-        div.textContent = `手番${state.turn || ""}`;
-        board.appendChild(div);
-        continue;
-      }
-
-      if(col===PHASE_LABEL_POS.col && row===PHASE_LABEL_POS.row){
-        div.classList.add("phase-label");
-        div.textContent = phaseToJa(state.phase);
-        board.appendChild(div);
-        continue;
-      }
-
-      if(col===ATK_LABEL_POS.col && row===ATK_LABEL_POS.row){
-        div.classList.add("atk-label");
-        const atk = state.attacker || "";
-        const ca = state.current_attack ? pieceToLabel(state.current_attack) : "";
-        div.textContent = (atk && ca) ? `${atk}${ca}` : "";
-        board.appendChild(div);
-        continue;
-      }
-
-      // ★ 追加：名前と席の合体ラベル（2マス分使用）
+      // 名前と席の合体ラベル（2マス分使用）
       let placedCombo = false;
       for(const phys of ["A","B","C","D"]){
         const pos = COMBO_POS[phys];
@@ -1542,7 +1507,7 @@ function renderBoard(state){
           const seat = physToSeat[phys];
           
           div.classList.add("combo-label");
-          // ★ 手番のプレイヤーを光らせる
+          // 手番のプレイヤーを光らせる
           if (state.turn === seat && state.is_started && !state.finished) {
             div.classList.add("is-turn");
           }
@@ -1583,6 +1548,10 @@ function renderBoard(state){
           
           if(slot.kind==="A"){
             div.classList.add("attack");
+            // ★ 現在の攻め駒を光らせる
+            if (slot.p === currentAttacker && slot.idx === currentAttackIndex && !state.finished) {
+                div.classList.add("current-attack");
+            }
           }
           const val=document.createElement("div");
           val.className="val";
@@ -1601,7 +1570,7 @@ function renderBoard(state){
   }
 }
 
-// ★ 追加：盤面下の独立した手札エリアの描画
+// 盤面下の独立した手札エリアの描画
 function renderHands(state) {
   const area = document.getElementById("handsArea");
   if (!area) return;
@@ -1633,11 +1602,13 @@ function renderHands(state) {
     const rowDiv = document.createElement("div");
     rowDiv.className = "hand-row";
 
+    const leftWrap = document.createElement("div");
+    leftWrap.className = "hand-row-left";
+
     const titleDiv = document.createElement("div");
     titleDiv.className = "hand-row-title";
-    // ★ 名前は表示せず、A,B,C,Dのみ
     titleDiv.textContent = seat;
-    rowDiv.appendChild(titleDiv);
+    leftWrap.appendChild(titleDiv);
 
     const piecesDiv = document.createElement("div");
     piecesDiv.className = "hand-row-pieces";
@@ -1668,7 +1639,27 @@ function renderHands(state) {
         piecesDiv.appendChild(pieceDiv);
       });
     }
-    rowDiv.appendChild(piecesDiv);
+    leftWrap.appendChild(piecesDiv);
+    rowDiv.appendChild(leftWrap);
+
+    // ★ 自分の手札行の右側にパスボタンを配置
+    if (seat === mySeat && !isSpectator()) {
+      const passBtnWrap = document.createElement("div");
+      passBtnWrap.className = "pass-btn-area";
+
+      const passBtn = document.createElement("button");
+      passBtn.className = "pass";
+      passBtn.textContent = "パス";
+      
+      if (state.turn === mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")) {
+          passBtn.onclick = onPassClick;
+      } else {
+          passBtn.classList.add("disabled");
+      }
+      passBtnWrap.appendChild(passBtn);
+      rowDiv.appendChild(passBtnWrap);
+    }
+
     area.appendChild(rowDiv);
   });
 }
@@ -1696,7 +1687,6 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
-  /* ★ 修正：8x8盤面に合わせてアニメーション出現位置をずらす */
   if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
   else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
   else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
@@ -1864,10 +1854,10 @@ async function refresh(){
     setHint("観戦中です。空いている席のボタンを押すと参加できます。");
     pending = null;
   } else if(state.turn !== mySeat){
-    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：盤面中央のパスボタン）`);
+    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
     pending = null;
   } else if(!pending){
-    setHint("あなたの手番です。盤面下の手札をクリックしてください。（パス：盤面中央のパスボタン）");
+    setHint("あなたの手番です。手札をクリックしてください。");
   }
 
   renderBoard(state);
