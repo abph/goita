@@ -6,7 +6,6 @@
   <title>そろうごいた</title>
   <style>
     /* ===== 和風テイストのビジュアル強化 ===== */
-    /* ★ 修正：8x8盤面に合わせてセルの大きさを自動拡大 */
     :root{ --gap: 6px; --cell: clamp(30px, calc((100vw - 60px - (7 * var(--gap)))/8), 65px); }
     * , *::before, *::after { box-sizing: border-box; }
     
@@ -33,7 +32,6 @@
     }
     .board {
       display: grid;
-      /* ★ 修正：10x10 から 8x8 に変更 */
       grid-template-columns: repeat(8, var(--cell));
       grid-template-rows: repeat(8, var(--cell));
       gap: var(--gap);
@@ -182,8 +180,8 @@
       100% { transform: scale(1.5) opacity: 0; }
     }
 
-    /* ラベル類 */
-    .seat-label, .turn-label, .phase-label, .atk-label, .name-label {
+    /* ラベル類（中央のターンやフェーズ表示など） */
+    .turn-label, .phase-label, .atk-label {
       border: 2px solid #8b5a2b;
       background: #f4efdf;
       color: #2b2b2b;
@@ -191,13 +189,44 @@
       text-align: center;
       border-radius: 4px;
     }
-    .seat-label{ font-size: 22px; letter-spacing: 1px; }
     .turn-label{ font-size: 16px; letter-spacing: 0px; }
     .phase-label{ font-size: 14px; letter-spacing: 0px; }
     .atk-label{ font-size: 14px; letter-spacing: 0px; }
-    .name-label{ font-size: 12px; line-height: 1.15; padding: 4px; white-space: pre-line; }
 
-    /* ★ 追加：盤面下の独立した手札エリア用スタイル */
+    /* ★ 追加：プレイヤーの合体ラベル（名前と席が合体し、手番で光る） */
+    .combo-label {
+      background: #f4efdf;
+      border: 2px solid #8b5a2b;
+      border-radius: 4px;
+      color: #2b2b2b;
+      font-weight: 900;
+      font-size: clamp(14px, 3.5vw, 18px);
+      box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+    .combo-inner {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 4px;
+    }
+    
+    /* 手番のときの光るエフェクト */
+    .combo-label.is-turn {
+      background: #fffdf5;
+      color: #b00000;
+      border: 3px solid #d35400;
+      box-shadow: 0 0 15px #e67e22, inset 0 0 8px #f1c40f;
+      animation: pulse-turn 1.5s infinite;
+      z-index: 10;
+    }
+    @keyframes pulse-turn {
+      0% { box-shadow: 0 0 5px #e67e22, inset 0 0 5px #f1c40f; }
+      50% { box-shadow: 0 0 20px #d35400, inset 0 0 10px #f1c40f; }
+      100% { box-shadow: 0 0 5px #e67e22, inset 0 0 5px #f1c40f; }
+    }
+
+    /* ★ 盤面下の独立した手札エリア用スタイル */
     .hands-area {
       display: flex;
       flex-direction: column;
@@ -215,25 +244,24 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     .hand-row-title {
-      width: 70px;
+      width: 40px;
       font-weight: 900;
-      font-size: 16px;
-      color: #2b2b2b;
+      font-size: 24px;
+      color: #b00000;
       text-align: center;
       margin-right: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       background: #f4efdf;
-      padding: 4px 8px;
+      padding: 8px 0;
       border: 2px solid #8b5a2b;
-      border-radius: 4px;
+      border-radius: 6px;
     }
+    /* ★ 手札を4コマ×2行のグリッドにする */
     .hand-row-pieces {
-      display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 6px;
     }
+    
     /* 手札エリアの駒は独立してサイズを指定（回転なし） */
     .hand-row-pieces .hand {
       position: static;
@@ -454,11 +482,10 @@
   
     @media (max-width: 430px){
       input[type="text"], select, textarea{ font-size: 16px; }
-      .seat-label{ font-size: 18px; }
       .turn-label{ font-size: 12px; }
       .phase-label{ font-size: 11px; }
       .atk-label{ font-size: 12px; }
-      .seat-label, .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
+      .turn-label, .phase-label, .atk-label{ white-space: nowrap; }
       
       .slot .val{ font-size: 18px; }
       .hand .val{ font-size: 18px; }
@@ -468,6 +495,8 @@
       #scoreBoard { font-size: 15px; padding: 6px; }
       
       /* 手札ボックスのスマホ用微調整 */
+      .hand-row-title { width: 32px; font-size: 20px; padding: 6px 0; }
+      .hand-row-pieces { gap: 4px; }
       .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
       .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
     }
@@ -700,7 +729,6 @@ let isGameStarted = false;
 let activeRoomId = null;
 let socket = null;
 
-// ====== WebSocket 管理 ======
 function connectWS(targetGid) {
     if (socket) {
         socket.onclose = null;
@@ -739,7 +767,6 @@ function connectWS(targetGid) {
     };
 }
 
-// ====== 手札指定の自動オフ安全装置 ======
 function forceDisablePreset() {
     const box = document.getElementById("presetEnabled");
     if (box && box.checked) {
@@ -748,7 +775,6 @@ function forceDisablePreset() {
     }
 }
 
-// ====== ルーム移動・ロビー管理 ======
 async function joinMainRoom() {
     await enterRoom(MAIN_GID, "メインルームA");
 }
@@ -902,7 +928,6 @@ async function fetchRoomList() {
     }
 }
 
-// ====== ルーム設定（モーダル）管理 ======
 function togglePassInput() {
     const checked = document.getElementById("checkUpdatePass").checked;
     document.getElementById("setRoomPass").style.display = checked ? "block" : "none";
@@ -975,8 +1000,6 @@ async function saveSettings() {
     }
 }
 
-
-// ====== 席選択とUI更新 ======
 function updateSeatButtons(humanSeats) {
     const seats = ['A', 'B', 'C', 'D'];
     const btnW = document.getElementById('btnSeatW');
@@ -1066,8 +1089,6 @@ function updateNameInputVisibility(){
   });
 }
 
-
-// ====== ゲームのロジック・描画系 ======
 const SEAT_ORDER = ["A","B","C","D"];
 
 function getPhysToSeat(){
@@ -1304,7 +1325,7 @@ function formatNameForBoard(s){
   return lines.join("\n");
 }
 
-/* ★修正：8x8盤面に合わせた座標定義 */
+/* ★ 修正：8x8盤面でのスロット座標定義 */
 const SLOTS = {
   A: { receive:[[3,7],[4,7],[5,7],[6,7]], attack:[[3,8],[4,8],[5,8],[6,8]] },
   C: { receive:[[6,2],[5,2],[4,2],[3,2]], attack:[[6,1],[5,1],[4,1],[3,1]] },
@@ -1313,15 +1334,20 @@ const SLOTS = {
 };
 
 const PASS_POS = { col: 5, row: 5 };
-const SEAT_LABEL_POS = { A:{col:2,row:8}, B:{col:8,row:7}, C:{col:7,row:1}, D:{col:1,row:2} };
 const TURN_LABEL_POS = { col: 4, row: 4 };
 const PHASE_LABEL_POS = { col: 5, row: 4 };
 const ATK_LABEL_POS = { col: 4, row: 5 };
 
-const NAME_POS = {
-  A: { col: 7, row: 8 }, B: { col: 8, row: 2 },
-  C: { col: 2, row: 1 }, D: { col: 1, row: 7 },
+/* ★ 追加：2セル合体ラベルの座標と回転定義 */
+const COMBO_POS = {
+  A: { col: 1, row: 8, gridColumn: "1 / 3", gridRow: "8", rotate: "0deg", w: "100%", h: "100%" },
+  B: { col: 8, row: 7, gridColumn: "8", gridRow: "7 / 9", rotate: "-90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
+  C: { col: 7, row: 1, gridColumn: "7 / 9", gridRow: "1", rotate: "180deg", w: "100%", h: "100%" },
+  D: { col: 1, row: 1, gridColumn: "1", gridRow: "1 / 3", rotate: "90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
 };
+
+// 結合されるためスキップするセルの座標
+const SKIP_CELLS = ["2,8", "8,8", "8,1", "1,2"];
 
 function buildSlotMap(physToSeat){
   const m=new Map();
@@ -1460,17 +1486,18 @@ function renderBoard(state){
   const physToSeat = getPhysToSeat();
   const seatToPhys = getSeatToPhys();
   const SLOT_MAP = buildSlotMap(physToSeat);
-
   const names = state.player_names || {A:"",B:"",C:"",D:""};
 
-  /* ★修正：10x10 から 8x8 に変更 */
   for(let row=1;row<=8;row++){
     for(let col=1;col<=8;col++){
+      const k = key(col,row);
+      
+      // 合体ラベルの後半セルはスキップ
+      if(SKIP_CELLS.includes(k)) continue;
+
       const div=document.createElement("div");
       div.className="cell";
       div.style.gridColumn=col; div.style.gridRow=row;
-
-      const k = key(col,row);
 
       if(col===PASS_POS.col && row===PASS_POS.row){
         div.classList.add("pass");
@@ -1507,34 +1534,41 @@ function renderBoard(state){
         continue;
       }
 
-      let placedName = false;
+      // ★ 追加：名前と席の合体ラベル（2マス分使用）
+      let placedCombo = false;
       for(const phys of ["A","B","C","D"]){
-        const pos = NAME_POS[phys];
+        const pos = COMBO_POS[phys];
         if(pos.col === col && pos.row === row){
           const seat = physToSeat[phys];
-          div.classList.add("name-label");
-          div.textContent = formatNameForBoard(names[seat] || "");
-          board.appendChild(div);
-          placedName = true;
-          break;
-        }
-      }
-      if(placedName) continue;
+          
+          div.classList.add("combo-label");
+          // ★ 手番のプレイヤーを光らせる
+          if (state.turn === seat && state.is_started && !state.finished) {
+            div.classList.add("is-turn");
+          }
 
-      let label = null;
-      for(const phys of ["A","B","C","D"]){
-        const pos = SEAT_LABEL_POS[phys];
-        if(pos && pos.col===col && pos.row===row){
-          label = physToSeat[phys];
+          div.style.gridColumn = pos.gridColumn;
+          div.style.gridRow = pos.gridRow;
+          
+          const inner = document.createElement("div");
+          inner.className = "combo-inner";
+          inner.style.transform = `rotate(${pos.rotate})`;
+          inner.style.width = pos.w;
+          inner.style.height = pos.h;
+          inner.style.display = "flex";
+          inner.style.alignItems = "center";
+          inner.style.justifyContent = "center";
+          
+          let displayName = names[seat] ? sanitizeName(names[seat]) : "";
+          inner.textContent = displayName ? `${seat}: ${displayName}` : seat;
+          
+          div.appendChild(inner);
+          board.appendChild(div);
+          placedCombo = true;
           break;
         }
       }
-      if(label){
-        div.classList.add("seat-label");
-        div.textContent = label;
-        board.appendChild(div);
-        continue;
-      }
+      if(placedCombo) continue;
 
       const slot=SLOT_MAP.get(k);
       if(slot){
@@ -1555,7 +1589,6 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-            /* ★修正：裏向きの駒のテキストを空にする */
             val.textContent = hidden ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
@@ -1568,7 +1601,7 @@ function renderBoard(state){
   }
 }
 
-/* ★ 追加：盤面下の独立した手札エリアの描画関数 */
+// ★ 追加：盤面下の独立した手札エリアの描画
 function renderHands(state) {
   const area = document.getElementById("handsArea");
   if (!area) return;
@@ -1579,8 +1612,7 @@ function renderHands(state) {
   }
 
   const seats = ["A", "B", "C", "D"];
-  const names = state.player_names || {A:"",B:"",C:"",D:""};
-
+  
   const usable = new Set();
   if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
@@ -1596,15 +1628,15 @@ function renderHands(state) {
   seats.forEach(seat => {
     // 自分が参加者なら自分の手札を、公開中なら全員の手札を表示
     const isVisible = state.reveal_hands || (!isSpectator() && mySeat === seat);
-    if (!isVisible) return; // 見えない手札（裏向き）は描画しない
+    if (!isVisible) return; 
 
     const rowDiv = document.createElement("div");
     rowDiv.className = "hand-row";
 
     const titleDiv = document.createElement("div");
     titleDiv.className = "hand-row-title";
-    let displayName = names[seat] ? sanitizeName(names[seat]) : seat;
-    titleDiv.textContent = `${seat}: ${displayName}`;
+    // ★ 名前は表示せず、A,B,C,Dのみ
+    titleDiv.textContent = seat;
     rowDiv.appendChild(titleDiv);
 
     const piecesDiv = document.createElement("div");
@@ -1664,7 +1696,7 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
-  /* ★修正：8x8盤面に合わせてパスアニメーションの位置をずらす (-1) */
+  /* ★ 修正：8x8盤面に合わせてアニメーション出現位置をずらす */
   if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
   else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
   else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
@@ -1832,13 +1864,12 @@ async function refresh(){
     setHint("観戦中です。空いている席のボタンを押すと参加できます。");
     pending = null;
   } else if(state.turn !== mySeat){
-    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
+    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat} / パス：盤面中央のパスボタン）`);
     pending = null;
   } else if(!pending){
-    setHint("あなたの手番です。手札をクリックしてください。（中央のパスボタン）");
+    setHint("あなたの手番です。盤面下の手札をクリックしてください。（パス：盤面中央のパスボタン）");
   }
 
-  // ★ 盤面と手札エリアをそれぞれ描画
   renderBoard(state);
   renderHands(state);
   await renderActions();
