@@ -82,7 +82,7 @@
       color: #b00000; 
     }
 
-    /* 現在の攻め駒（アニメーションを消し、静的に目立たせる） */
+    /* 現在の攻め駒（静的に目立たせる） */
     .slot.current-attack {
       background: linear-gradient(135deg, #f7e1a0, #f1c40f);
       border: 3px solid #d35400;
@@ -203,6 +203,46 @@
       box-shadow: 0 0 10px rgba(230, 126, 34, 0.5);
       z-index: 10;
     }
+
+    /* ★ 追加：盤面中央のスコア表示 */
+    .center-score {
+      grid-column: 4 / 6;
+      grid-row: 4 / 6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #2b2b2b;
+      background: rgba(244, 239, 223, 0.85);
+      border: 2px dashed #8b5a2b;
+      border-radius: 8px;
+      padding: 4px 8px;
+      box-sizing: border-box;
+      z-index: 2;
+      box-shadow: inset 0 0 8px rgba(139, 90, 43, 0.1);
+    }
+    .score-round {
+      font-size: clamp(11px, 2.5vw, 14px);
+      color: #555;
+      margin-bottom: 4px;
+      border-bottom: 1px dotted #a67c00;
+      padding-bottom: 2px;
+      width: 100%;
+      text-align: center;
+    }
+    .score-line {
+      font-size: clamp(13px, 3.5vw, 18px);
+      white-space: nowrap;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1px 2px;
+      line-height: 1.2;
+    }
+    .score-ac { color: #d35400; }
+    .score-bd { color: #2980b9; }
 
     /* 盤面下の独立した手札エリア用スタイル */
     .hands-area {
@@ -446,14 +486,6 @@
     }
     .gear-btn:hover { transform: rotate(45deg); }
 
-    #scoreBoard {
-      text-align: center; font-size: 18px; font-weight: 900; margin: 10px 0; padding: 8px; 
-      background: #fffafa; border: 2px dashed #8b5a2b; border-radius: 8px; color: #2b2b2b;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: none;
-    }
-    .score-ac { color: #d35400; }
-    .score-bd { color: #2980b9; }
-
     @media (max-width: 980px){
       :root{ --gap: 4px; --cell: clamp(26px, calc((100vw - 40px - (7 * var(--gap)))/8), 58px); }
       body { margin: 10px; }
@@ -476,7 +508,6 @@
       
       .pass{ font-size: 12px; }
       .hint { font-size: 13px; padding: 10px; }
-      #scoreBoard { font-size: 15px; padding: 6px; }
       
       .hand-row-title { width: 32px; font-size: 20px; padding: 6px 0; }
       .hand-row-pieces { gap: 4px; }
@@ -577,13 +608,6 @@
       <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
       <button data-seat="D" type="button" onclick="applyName('D')">表示</button>
     </div>
-  </div>
-
-  <div id="scoreBoard">
-    <div style="font-size: 14px; color: #888; margin-bottom: 4px;">第 <span id="roundCount">1</span> 局 (150点先取)</div>
-    <span class="score-ac">A・Cペア</span>: <span id="scoreAC">0</span>点 
-    <span style="margin: 0 15px; color:#a67c00;">|</span> 
-    <span class="score-bd">B・Dペア</span>: <span id="scoreBD">0</span>点
   </div>
 
   <div class="board-wrap">
@@ -1010,7 +1034,6 @@ function updateSeatButtons(humanSeats) {
         } else if (humanSeats && humanSeats.includes(s)) {
             btn.disabled = true;
             btn.classList.remove('active');
-            // ★ 修正：他人が座っている席の「(使用中)」を削除し、文字を追加しない
             btn.textContent = displayName;
         } else {
             btn.disabled = false;
@@ -1553,8 +1576,26 @@ function renderBoard(state){
       board.appendChild(div);
     }
   }
+
+  // ★ 追加：盤面中央のスコア表示
+  if (state.is_started || state.finished) {
+      const scoreDiv = document.createElement("div");
+      scoreDiv.className = "center-score";
+      
+      const ac = state.total_team_score?.AC || 0;
+      const bd = state.total_team_score?.BD || 0;
+      const rc = state.round_count || 1;
+      
+      scoreDiv.innerHTML = `
+          <div class="score-round">第 ${rc} 局</div>
+          <div class="score-line"><span class="score-ac">AC:</span> <span>${ac}点</span></div>
+          <div class="score-line"><span class="score-bd">BD:</span> <span>${bd}点</span></div>
+      `;
+      board.appendChild(scoreDiv);
+  }
 }
 
+// 盤面下の独立した手札エリアの描画
 function renderHands(state) {
   const area = document.getElementById("handsArea");
   if (!area) return;
@@ -1669,6 +1710,7 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
+  /* 8x8盤面に合わせてアニメーション出現位置をずらす */
   if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
   else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
   else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
@@ -1777,16 +1819,10 @@ async function refresh(){
       currentRoomNameEl.textContent = state.owner_name || (gid === MAIN_GID ? "メインルームA" : "");
   }
 
-  const scoreBoard = document.getElementById("scoreBoard");
-  if (scoreBoard) {
-      if (state.is_started || state.finished) {
-          scoreBoard.style.display = "block";
-          document.getElementById("roundCount").textContent = state.round_count || 1;
-          document.getElementById("scoreAC").textContent = state.total_team_score?.AC || 0;
-          document.getElementById("scoreBD").textContent = state.total_team_score?.BD || 0;
-      } else {
-          scoreBoard.style.display = "none";
-      }
+  // 古い盤面上のスコアボードは不要になったため、非表示で固定
+  const oldScoreBoard = document.getElementById("scoreBoard");
+  if (oldScoreBoard) {
+      oldScoreBoard.style.display = "none";
   }
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
