@@ -160,6 +160,7 @@
       transform: scale(0);
       animation: specialPop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
+    /* 役ごとのカラーリング */
     .special-anim-text.kakarigotae { text-shadow: 0 0 10px #e67e22, 0 0 20px #d35400, 0 0 40px #b00000; }
     .special-anim-text.damadama { text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #d35400; }
     .special-anim-text.uchidome { color: #ffffff; text-shadow: 0 0 10px #95a5a6, 0 0 20px #7f8c8d, 0 0 40px #34495e; }
@@ -1004,7 +1005,8 @@ function updateSeatButtons(humanSeats) {
         if (mySeat === s) {
             btn.disabled = false;
             btn.classList.add('active');
-            btn.textContent = displayName + " (あなた)";
+            /* ★ 修正：「(あなた)」を「(私)」に変更 */
+            btn.textContent = displayName + " (私)";
         } else if (humanSeats && humanSeats.includes(s)) {
             btn.disabled = true;
             btn.classList.remove('active');
@@ -1253,7 +1255,7 @@ function presetValidateAndClamp(changed){
   presetSave();
 }
 
-async function resetWithPreset(dealer){
+async function resetWithPreset(dealer, keepScore){
   const usePreset = presetIsEnabled() && presetHasAny();
   
   if(usePreset){
@@ -1261,10 +1263,10 @@ async function resetWithPreset(dealer){
     await fetch(`${API}/games/${gid}/reset_config`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat })
+      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat, keep_score: keepScore })
     });
   }else{
-    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}`, {
+    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}&keep_score=${keepScore}`, {
       method:"POST",
     });
   }
@@ -1465,7 +1467,6 @@ function renderBoard(state){
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
 
-  // 現在の攻め駒を特定するための準備
   let currentAttackIndex = -1;
   let currentAttacker = state.attacker;
   if (currentAttacker && state.board_public?.[currentAttacker]?.attack) {
@@ -1485,7 +1486,6 @@ function renderBoard(state){
       div.className="cell";
       div.style.gridColumn=col; div.style.gridRow=row;
 
-      // 名前と席の合体ラベル（2マス分使用）
       let placedCombo = false;
       for(const phys of ["A","B","C","D"]){
         const pos = COMBO_POS[phys];
@@ -1493,7 +1493,6 @@ function renderBoard(state){
           const seat = physToSeat[phys];
           
           div.classList.add("combo-label");
-          // 手番のプレイヤーを光らせる
           if (state.turn === seat && state.is_started && !state.finished) {
             div.classList.add("is-turn");
           }
@@ -1534,7 +1533,6 @@ function renderBoard(state){
           
           if(slot.kind==="A"){
             div.classList.add("attack");
-            // 現在の攻め駒をハイライト
             if (slot.p === currentAttacker && slot.idx === currentAttackIndex && !state.finished) {
                 div.classList.add("current-attack");
             }
@@ -1556,7 +1554,6 @@ function renderBoard(state){
   }
 }
 
-// 盤面下の独立した手札エリアの描画
 function renderHands(state) {
   const area = document.getElementById("handsArea");
   if (!area) return;
@@ -1627,7 +1624,6 @@ function renderHands(state) {
     leftWrap.appendChild(piecesDiv);
     rowDiv.appendChild(leftWrap);
 
-    // 自分の手札行の右側（すぐ隣）にパスボタンを配置
     if (seat === mySeat && !isSpectator()) {
       const passBtnWrap = document.createElement("div");
       passBtnWrap.className = "pass-btn-area";
@@ -1672,7 +1668,6 @@ function showPassAnimation(phys) {
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
   
-  /* 8x8盤面に合わせてアニメーション出現位置をずらす */
   if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
   else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
   else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
