@@ -471,7 +471,6 @@ def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
     }
 
 
-# ★ 修正：メインルーム作成時、親をランダムにする
 def _ensure_main_game(dealer: Optional[str] = None) -> None:
     if MAIN_GID not in GAMES:
         d = dealer if dealer else random.choice(["A", "B", "C", "D"])
@@ -479,7 +478,6 @@ def _ensure_main_game(dealer: Optional[str] = None) -> None:
         game["owner_name"] = "メインルームA"
         GAMES[MAIN_GID] = game
 
-# ★ 修正：プライベートルームの作成時、最初の親をランダムにする
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
@@ -524,9 +522,13 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
         if attack_count == 2 and next_hand_len == 2:
             effects.append("reach")
             
-        partner = {"A":"C", "C":"A", "B":"D", "D":"B"}[player]
-        if attack in board_public.get(partner, {}).get("attack", []):
-            effects.append("kakarigotae")
+        # ★ 修正：かかりごたえ（親の1番目の4枚駒の攻めに、相方が1番目の攻めで同じ駒を出す）
+        partner_of_dealer = {"A":"C", "C":"A", "B":"D", "D":"B"}.get(state.dealer)
+        if player == partner_of_dealer and attack_count == 0:
+            if attack in ("2", "3", "4", "5"):
+                dealer_attacks = [x for x in board_public.get(state.dealer, {}).get("attack", []) if x is not None]
+                if len(dealer_attacks) > 0 and dealer_attacks[0] == attack:
+                    effects.append("kakarigotae")
             
         if is_agari:
             if action_type == "attack_after_block":
@@ -669,8 +671,6 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
 async def reset_game(game_id: str, dealer: str = "A", requester: str = "W"):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
-    
-    # ★ リセット時の指定がなければランダムにするなどの配慮
     if game_id == MAIN_GID:
         _ensure_main_game(dealer=dealer)
     elif game_id not in GAMES:
