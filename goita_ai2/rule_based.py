@@ -4,20 +4,8 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 from collections import Counter
 import copy
-import traceback
-import os
-import sys
-
-import torch
-import torch.nn.functional as F
 
 from goita_ai2.constants import POINTS
-
-# =========================================================
-# ★ DLモデルのグローバルキャッシュ（4人のCPUが同じ脳を共有してメモリを節約する仕組み）
-# =========================================================
-_GLOBAL_DL_MODEL = None
-_DL_MODEL_LOADED = False
 
 Action = Tuple[str, Optional[str], Optional[str]]
 TARGET_LAST1 = ("2", "3", "4", "5", "6", "7")
@@ -55,69 +43,6 @@ class RuleBasedAgent:
         self.TATEWARI_BONUS = 800.0
         self.CONTINUOUS_ATTACK_BONUS = 500.0
 
-        # =========================================================
-        # ★ ディープラーニング（ハイブリッドAI）の初期化
-        # =========================================================
-        global _GLOBAL_DL_MODEL, _DL_MODEL_LOADED
-        self.use_deep_learning = False
-        
-        # ▼▼ 注意：学習時（kifu_parser.py）のサイズに合わせて必ず変更してください ▼▼
-        self.input_size = 30
-        self.output_size = 78
-        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-        if not _DL_MODEL_LOADED:
-            _DL_MODEL_LOADED = True
-            try:
-                # このファイル(rule_based.py)の親の親（＝プロジェクトのルートフォルダ）の場所を自動取得
-                root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                
-                # model.py を見つけられるように、ルートフォルダを検索パスに追加
-                if root_dir not in sys.path:
-                    sys.path.append(root_dir)
-                
-                from model import GoitaNet
-                
-                # 重みファイル（goita_ai_weights.pth）の絶対パスを自動生成
-                weights_path = os.path.join(root_dir, "goita_ai_weights.pth")
-                
-                print(f"[HybridAI] 学習済みの脳をロードしています... (Path: {weights_path})")
-                _GLOBAL_DL_MODEL = GoitaNet(input_size=self.input_size, output_size=self.output_size)
-                _GLOBAL_DL_MODEL.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
-                _GLOBAL_DL_MODEL.eval()
-                print("[HybridAI] ★ 脳のロードが完了しました。ハイブリッドモードで稼働します！")
-            except Exception as e:
-                print(f"[HybridAI] ⚠ モデル読み込みスキップ: 従来のルールベースのみで稼働します。({e})")
-        
-        if _GLOBAL_DL_MODEL is not None:
-            self.model = _GLOBAL_DL_MODEL
-            self.use_deep_learning = True
-
-    # =========================================================
-    # ★ ディープラーニング用ヘルパー関数
-    # =========================================================
-    def _get_state_features(self, state, player: str) -> List[float]:
-        """
-        現在の盤面情報を学習時と同じ次元の数値配列に変換する
-        ※ kifu_parser.py で作成した extract_features と同じ処理を記述してください
-        """
-        features = []
-        # ここに特徴量抽出ロジックを追加
-        
-        if len(features) == 0:
-            features = [0.0] * self.input_size # 仮のダミーデータ
-        return features
-
-    def _action_to_id(self, action: Action) -> int:
-        """
-        アクションをID(0〜77など)に変換する
-        ※ kifu_parser.py と同じ変換ロジックを記述してください
-        """
-        return 0 # 仮のダミーデータ
-
-    # =========================================================
-    # 既存のルールベースメソッド
-    # =========================================================
     def bind_player(self, player: str) -> None:
         if self.me is None:
             self.me = player
@@ -375,7 +300,9 @@ class RuleBasedAgent:
         return False
 
     def _max_tsume_score(self, hand: List[str], state, player: str, tr: dict) -> float:
+        """確定上がりルートを探索し、そのルートでの最大打点を逆算して返す"""
         if len(hand) <= 2:
+            # 残り2枚（または1枚）なら確実に上がれるので、最大点を計算
             if len(hand) == 2:
                 p1, p2 = hand[0], hand[1]
                 if p1 == p2:
@@ -388,7 +315,7 @@ class RuleBasedAgent:
 
         safe_pieces = set(p for p in hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
         if not safe_pieces:
-            return -1.0 
+            return -1.0  # 確定上がりルートではない
             
         best_score = -1.0
         for atk in safe_pieces:
@@ -938,13 +865,14 @@ class RuleBasedAgent:
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                         return best
 
-        # --- 第8位：味方の「し」攻めに対するレスポンス ---
+        # --- 第8位：味方の「し」攻めに対するレスポンス（しシグナルへの返答） ---
         if tr is not None:
             ally = tr["ally"]
             if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
                 initial_shis = tr["my_init_count"].get("1", 0)
                 current_shis = state.hands[player].count("1")
 
+                # 1. 「現在の手札」に「し」が4枚以上ある場合（し受け・し攻め）
                 if current_shis >= 4:
                     for act in actions:
                         if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
@@ -954,15 +882,18 @@ class RuleBasedAgent:
                             if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                                 tr["kg_plan_active"] = False
                             return act
+                    # 「し受け・し攻め」が物理的にできない場合は、とりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
 
+                # 2. 「配牌時の手札」に「し」が3枚だった場合（パス）
                 elif initial_shis == 3:
                     for act in actions:
                         if act[0] == "pass":
                             return act
 
+                # 3. 「配牌時の手札」に「し」が1〜2枚だった場合（し受け・別の強い駒で攻め）
                 elif initial_shis in (1, 2):
                     cands = [act for act in actions if act[0] == "attack_after_block" and act[1] == "1" and act[2] is not None and act[2] != "1"]
                     if cands:
@@ -970,6 +901,7 @@ class RuleBasedAgent:
                         best = cands[0]
                         best_score = -1e18
                         for (t, b, a) in cands:
+                            # 第9位のスコア計算関数を流用して、最も強い駒を選ぶ
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king)
                             sc += self._score_receive_phase(state, player, "receive", b)
                             if sc > best_score:
@@ -983,53 +915,29 @@ class RuleBasedAgent:
                             tr["kg_plan_active"] = False
                         return best
                     
+                    # 別の駒で攻められない場合（残り1枚など）はとりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
                             return act
 
-        # =========================================================
-        # ★ 第9位：総合スコア評価（ハイブリッド推論）
-        # =========================================================
+
+        # --- 第9位：総合スコア評価（通常時の最適解計算） ---
         best_action = actions[0]
+        best_score = -1e18
 
-        if self.use_deep_learning:
-            # DLモデルによる推論（達人の直感）
-            try:
-                features = self._get_state_features(state, player)
-                input_tensor = torch.tensor([features], dtype=torch.float32)
+        for (t, block, attack) in actions:
+            if t == "attack_after_block":
+                score = self._score_receive_phase(state, player, "receive", block)
+                score += self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
+            elif t == "attack":
+                score = self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
+            else:
+                score = self._score_receive_phase(state, player, t, block)
 
-                with torch.no_grad():
-                    logits = self.model(input_tensor)
-                    probs = F.softmax(logits, dim=1).squeeze()
+            if score > best_score:
+                best_score = score
+                best_action = (t, block, attack)
 
-                best_prob = -1.0
-                for act in actions:
-                    act_id = self._action_to_id(act)
-                    act_prob = probs[act_id].item()
-                    if act_prob > best_prob:
-                        best_prob = act_prob
-                        best_action = act
-            except Exception as e:
-                print(f"[HybridAI] 推論エラーが発生しました。ルールベースにフォールバックします: {e}")
-                self.use_deep_learning = False # 今回はエラーとして次からルールベースに切り替え
-                
-        # DLがオフ（またはエラー）の場合は従来のルールベースで計算
-        if not self.use_deep_learning:
-            best_score = -1e18
-            for (t, block, attack) in actions:
-                if t == "attack_after_block":
-                    score = self._score_receive_phase(state, player, "receive", block)
-                    score += self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
-                elif t == "attack":
-                    score = self._score_attack_phase(state, player, t, block, attack, has_non_king_attack_option=has_non_king_attack_option)
-                else:
-                    score = self._score_receive_phase(state, player, t, block)
-
-                if score > best_score:
-                    best_score = score
-                    best_action = (t, block, attack)
-
-        # 最後にトラッキング状態を更新して終了
         if tr is not None:
             if best_action[0] in ("attack", "attack_after_block"):
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
