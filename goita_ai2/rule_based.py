@@ -528,7 +528,9 @@ class RuleBasedAgent:
                     else:
                         score += self.TATEWARI_BONUS
 
-        if state.attacker is None and state.current_attack is None and attack == "1":
+        # ★ 修正箇所：初期手札「し」が3枚以上の場合はペナルティを0点とし、空回りを恐れずに攻められるように緩和
+        # （ゲーム全体を通して、すべての「打ち出し」ターンに適用）
+        if action_type == "attack" and attack == "1":
             my_shis = tr["my_init_count"].get("1", 0) if tr is not None else 0
             has_kg = tr is not None and tr.get("kg_plan_active", False)
             if my_shis >= 3 or has_kg:
@@ -545,18 +547,13 @@ class RuleBasedAgent:
             penalty_table = {"9": 100, "8": 100, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
             base_penalty = float(penalty_table.get(block, 0))
             
-            # --- 新規追加：し攻め協力時の「し」温存ロジック ---
-            if tr is not None and block == "1" and tr.get("ally_first_attack") == "1":
-                if tr["my_init_count"].get("1", 0) >= 3:
+            # --- 新規追加：打ち出し（伏せ札）時の「し」温存ロジック ---
+            # action_type == "attack" は、親の最初の手番、または他3人パスによる新たな攻めのターン（打ち出し）を指します
+            if tr is not None and block == "1" and action_type == "attack":
+                init_shi = tr["my_init_count"].get("1", 0)
+                # 自分が3しの場合、または味方が「し」シグナルを出していて自分が3し以上の場合
+                if init_shi == 3 or (tr.get("ally_first_attack") == "1" and init_shi >= 3):
                     base_penalty = 15.0
-            # ----------------------------------------------
-            
-            # --- 新規追加：親（打ち出し）での「し」温存ロジック ---
-            if tr is not None and block == "1" and state.attacker is None and state.current_attack is None:
-                # 親で初期手札が3しの場合は「し」を伏せない（ペナルティを上げる）
-                if tr["my_init_count"].get("1", 0) == 3:
-                    base_penalty = 15.0
-                # 親で初期手札が4し以上の場合は「し」を伏せる（デフォルトの1.0のまま）
             # ----------------------------------------------
             
             context_penalty = 0.0
