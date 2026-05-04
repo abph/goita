@@ -302,7 +302,6 @@ class RuleBasedAgent:
     def _max_tsume_score(self, hand: List[str], state, player: str, tr: dict) -> float:
         """確定上がりルートを探索し、そのルートでの最大打点を逆算して返す"""
         if len(hand) <= 2:
-            # 残り2枚（または1枚）なら確実に上がれるので、最大点を計算
             if len(hand) == 2:
                 p1, p2 = hand[0], hand[1]
                 if p1 == p2:
@@ -315,7 +314,7 @@ class RuleBasedAgent:
 
         safe_pieces = set(p for p in hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
         if not safe_pieces:
-            return -1.0  # 確定上がりルートではない
+            return -1.0
             
         best_score = -1.0
         for atk in safe_pieces:
@@ -547,6 +546,13 @@ class RuleBasedAgent:
         if action_type in ("attack", "attack_after_block") and block is not None:
             penalty_table = {"9": 100, "8": 100, "7": 4, "6": 4, "5": 4, "4": 4, "3": 3, "2": 8, "1": 1}
             base_penalty = float(penalty_table.get(block, 0))
+            
+            # --- 新規追加：し攻め協力時の「し」温存ロジック ---
+            if tr is not None and block == "1" and tr.get("ally_first_attack") == "1":
+                if tr["my_init_count"].get("1", 0) >= 3:
+                    base_penalty = 15.0
+            # ----------------------------------------------
+            
             context_penalty = 0.0
             
             if tr is not None and block != "1":
