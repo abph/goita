@@ -528,13 +528,12 @@ class RuleBasedAgent:
                     else:
                         score += self.TATEWARI_BONUS
 
+        # ★ 修正箇所：初期手札「し」が3枚以上の場合はペナルティを0点とし、空回りを恐れずに攻められるように緩和
         if state.attacker is None and state.current_attack is None and attack == "1":
             my_shis = tr["my_init_count"].get("1", 0) if tr is not None else 0
             has_kg = tr is not None and tr.get("kg_plan_active", False)
-            if my_shis >= 4 or has_kg:
+            if my_shis >= 3 or has_kg:
                 score -= 0.0
-            elif my_shis == 3:
-                score -= 30.0
             else:
                 score -= 100.0
 
