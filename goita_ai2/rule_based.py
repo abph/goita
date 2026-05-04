@@ -529,7 +529,6 @@ class RuleBasedAgent:
                         score += self.TATEWARI_BONUS
 
         # ★ 修正箇所：初期手札「し」が3枚以上の場合はペナルティを0点とし、空回りを恐れずに攻められるように緩和
-        # （ゲーム全体を通して、すべての「打ち出し」ターンに適用）
         if action_type == "attack" and attack == "1":
             my_shis = tr["my_init_count"].get("1", 0) if tr is not None else 0
             has_kg = tr is not None and tr.get("kg_plan_active", False)
@@ -548,8 +547,9 @@ class RuleBasedAgent:
             base_penalty = float(penalty_table.get(block, 0))
             
             # --- 新規追加：打ち出し（伏せ札）時の「し」温存ロジック ---
-            # action_type == "attack" は、親の最初の手番、または他3人パスによる新たな攻めのターン（打ち出し）を指します
-            if tr is not None and block == "1" and action_type == "attack":
+            # state.current_attack is None は、親の最初の手番、または他3人パスによる新たな攻めのターン（打ち出し）を指します
+            is_uchidashi = (state.current_attack is None)
+            if tr is not None and block == "1" and is_uchidashi:
                 init_shi = tr["my_init_count"].get("1", 0)
                 # 自分が3しの場合、または味方が「し」シグナルを出していて自分が3し以上の場合
                 if init_shi == 3 or (tr.get("ally_first_attack") == "1" and init_shi >= 3):
