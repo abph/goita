@@ -736,18 +736,6 @@
         </details>
       </div>
 
-      <div class="card">
-        <details id="kifuArchiveDetails">
-          <summary><b>棋譜アーカイブ</b></summary>
-          <div class="kifu-archive-controls">
-            <button type="button" onclick="loadKifuArchive()">棋譜データを読み込む</button>
-            <div id="kifuArchiveMeta" class="kifu-archive-meta">未読み込み</div>
-            <select id="kifuMatchSelect" onchange="onKifuMatchChange()"></select>
-            <select id="kifuRoundSelect" onchange="renderKifuArchiveRound()"></select>
-            <pre id="kifuArchiveView"></pre>
-          </div>
-        </details>
-      </div>
     </div>
   </div>
 
@@ -805,7 +793,6 @@ let pending = null;
 let isGameStarted = false; 
 let activeRoomId = null;
 let socket = null;
-let kifuArchiveData = null;
 let fixedHandMemory = {};
 let setupApplyTimer = null;
 let startRequestInFlight = false;
@@ -1658,112 +1645,6 @@ async function downloadKifu(){
   a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}.yaml`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-}
-
-async function loadKifuArchive(){
-  const meta = document.getElementById("kifuArchiveMeta");
-  const view = document.getElementById("kifuArchiveView");
-  if(meta) meta.textContent = "読み込み中...";
-  if(view) view.textContent = "";
-
-  try{
-    const res = await fetch(`${API}/static/kifu_data.json`, {cache: "no-store"});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    kifuArchiveData = await res.json();
-  }catch(e){
-    if(meta) meta.textContent = "棋譜データを読み込めませんでした。tools/build_kifu_archive.py を実行してください。";
-    if(view) view.textContent = String(e);
-    return;
-  }
-
-  populateKifuMatchSelect();
-  if(meta){
-    const matches = Number(kifuArchiveData.match_count || 0);
-    const rounds = Number(kifuArchiveData.round_count || 0);
-    const moves = Number(kifuArchiveData.move_count || 0);
-    meta.textContent = `読み込み完了: ${matches}対戦 / ${rounds}局 / ${moves}手`;
-  }
-  onKifuMatchChange();
-}
-
-function populateKifuMatchSelect(){
-  const sel = document.getElementById("kifuMatchSelect");
-  if(!sel || !kifuArchiveData || !Array.isArray(kifuArchiveData.matches)) return;
-  sel.innerHTML = "";
-
-  kifuArchiveData.matches.forEach((match, idx) => {
-    const opt = document.createElement("option");
-    opt.value = String(idx);
-    const playedAt = String(match.played_at || "").trim();
-    const matchId = String(match.id || "").trim();
-    const label = playedAt || matchId || `#${idx + 1}`;
-    opt.textContent = `${idx + 1}. ${label} (${match.round_count || 0}局)`;
-    sel.appendChild(opt);
-  });
-}
-
-function onKifuMatchChange(){
-  const matchSel = document.getElementById("kifuMatchSelect");
-  const roundSel = document.getElementById("kifuRoundSelect");
-  if(!matchSel || !roundSel || !kifuArchiveData) return;
-
-  const match = kifuArchiveData.matches?.[Number(matchSel.value || 0)];
-  roundSel.innerHTML = "";
-  if(!match || !Array.isArray(match.rounds)) {
-    renderKifuArchiveRound();
-    return;
-  }
-
-  match.rounds.forEach((round, idx) => {
-    const opt = document.createElement("option");
-    opt.value = String(idx);
-    const score = Array.isArray(round.score) ? ` score ${round.score.join("-")}` : "";
-    opt.textContent = `${idx + 1}局目 親:p${round.uchidashi ?? "-"}${score}`;
-    roundSel.appendChild(opt);
-  });
-  renderKifuArchiveRound();
-}
-
-function renderKifuArchiveRound(){
-  const view = document.getElementById("kifuArchiveView");
-  const matchSel = document.getElementById("kifuMatchSelect");
-  const roundSel = document.getElementById("kifuRoundSelect");
-  if(!view || !matchSel || !roundSel || !kifuArchiveData) return;
-
-  const match = kifuArchiveData.matches?.[Number(matchSel.value || 0)];
-  const round = match?.rounds?.[Number(roundSel.value || 0)];
-  if(!match || !round){
-    view.textContent = "表示できる棋譜がありません。";
-    return;
-  }
-
-  const players = match.players || {};
-  const hand = round.hand || {};
-  const score = Array.isArray(round.score) ? round.score.join("-") : "";
-  const lines = [];
-  lines.push(`id: ${String(match.id || "").trim()}`);
-  lines.push(`file: ${match.file || ""}`);
-  lines.push(`date: ${match.played_at || ""}`);
-  lines.push(`round: ${round.round_index || Number(roundSel.value || 0) + 1} / ${match.round_count || ""}`);
-  lines.push(`score: ${score}`);
-  lines.push(`dealer: p${round.uchidashi ?? "-"}`);
-  lines.push("");
-  lines.push(`p0 ${players.p0 || ""}: ${hand.p0 || ""}`);
-  lines.push(`p1 ${players.p1 || ""}: ${hand.p1 || ""}`);
-  lines.push(`p2 ${players.p2 || ""}: ${hand.p2 || ""}`);
-  lines.push(`p3 ${players.p3 || ""}: ${hand.p3 || ""}`);
-  lines.push("");
-  lines.push("game:");
-
-  const moves = Array.isArray(round.game) ? round.game : [];
-  moves.forEach((mv, idx) => {
-    const p = mv?.[0] ?? "";
-    const receive = mv?.[1] || "-";
-    const attack = mv?.[2] || "-";
-    lines.push(`${String(idx + 1).padStart(2, "0")}. p${p} 受:${receive} 攻:${attack}`);
-  });
-
-  view.textContent = lines.join("\n");
 }
 
 async function toggleAllHands(){

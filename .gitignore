@@ -7,4 +7,5 @@ __pycache__/
 kifu/
 results/
 tools/
+frontend/kifu_data.json
 frontend/kifu_data_raw.json
