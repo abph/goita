@@ -92,6 +92,10 @@
     .slot.current-attack .val { 
       color: #b00000; 
     }
+    .slot.pending-preview {
+      outline: 2px solid rgba(176, 0, 0, 0.55);
+      outline-offset: 2px;
+    }
 
     /* ===== 駒の向きを盤面中央に向ける ===== */
     .phys-A { transform: rotate(0deg); }
@@ -130,6 +134,24 @@
     }
     .pass:hover { background: #ffebeb; }
     .pass.disabled { opacity: 0.35; cursor: default; }
+    .auto-play {
+      border: 2px solid #4f6b2a;
+      background: #f7fbef;
+      color: #3f5d1f;
+      border-radius: 8px;
+      font-family: sans-serif;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .auto-play.active {
+      background: #3f6f35;
+      color: #fff;
+      border-color: #2c5423;
+    }
+    .auto-play:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
 
     /* ===== アニメーション群 ===== */
     .pass-anim-wrapper {
@@ -302,9 +324,28 @@
       transform: translateY(-4px) !important;
       filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
     }
+    .hand-row-pieces .hand.face-down {
+      background: linear-gradient(135deg, #8b5a2b, #4f2f16);
+      border: 2px solid rgba(45, 25, 10, 0.55);
+      cursor: default;
+    }
+    .hand-row-pieces .hand.face-down::after {
+      content: none;
+    }
+    .hand-row-pieces .hand.face-down .val {
+      display: none;
+    }
+    .hand-row-pieces .hand.pending-hidden {
+      outline: 2px solid rgba(176, 0, 0, 0.55);
+      outline-offset: 2px;
+      cursor: pointer;
+    }
 
     .pass-btn-area {
       margin-left: 10px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
     }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
@@ -538,6 +579,20 @@
       display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-weight: 600; font-size: 13px;
     }
     .preset-toggle input{ transform: translateY(1px); }
+    .kifu-archive-controls{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .kifu-archive-controls select{
+      width: 100%;
+    }
+    .kifu-archive-meta{
+      font-size: 12px;
+      color: #555;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -680,6 +735,19 @@
           <pre id="log" style="margin-top:8px;"></pre>
         </details>
       </div>
+
+      <div class="card">
+        <details id="kifuArchiveDetails">
+          <summary><b>棋譜アーカイブ</b></summary>
+          <div class="kifu-archive-controls">
+            <button type="button" onclick="loadKifuArchive()">棋譜データを読み込む</button>
+            <div id="kifuArchiveMeta" class="kifu-archive-meta">未読み込み</div>
+            <select id="kifuMatchSelect" onchange="onKifuMatchChange()"></select>
+            <select id="kifuRoundSelect" onchange="renderKifuArchiveRound()"></select>
+            <pre id="kifuArchiveView"></pre>
+          </div>
+        </details>
+      </div>
     </div>
   </div>
 
@@ -737,6 +805,11 @@ let pending = null;
 let isGameStarted = false; 
 let activeRoomId = null;
 let socket = null;
+let kifuArchiveData = null;
+let fixedHandMemory = {};
+let setupApplyTimer = null;
+let startRequestInFlight = false;
+let autoPlayEnabled = false;
 
 function connectWS(targetGid) {
     if (socket) {
@@ -784,6 +857,29 @@ function forceDisablePreset() {
     }
 }
 
+function setAutoPlayEnabled(on){
+    autoPlayEnabled = !!on && !isSpectator();
+    if(!autoPlayEnabled){
+        pending = null;
+    }
+    updateAutoButtons();
+}
+
+function updateAutoButtons(){
+    document.querySelectorAll(".auto-play").forEach(btn => {
+        btn.classList.toggle("active", autoPlayEnabled);
+        btn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
+    });
+}
+
+async function toggleAutoPlay(){
+    setAutoPlayEnabled(!autoPlayEnabled);
+    if(autoPlayEnabled && latestState && latestState.turn === mySeat && latestState.is_started && !latestState.finished){
+        pending = null;
+        await refresh();
+    }
+}
+
 async function joinMainRoom() {
     await enterRoom(MAIN_GID, "メインルームA");
 }
@@ -822,6 +918,7 @@ async function enterRoom(targetGid, roomName) {
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
+    setAutoPlayEnabled(false);
     mySeat = WATCH;
     gid = targetGid;
     isGameStarted = false; 
@@ -848,6 +945,7 @@ async function returnToLobby() {
     if(!isSpectator()){
         await releaseSeat(mySeat);
     }
+    setAutoPlayEnabled(false);
     mySeat = WATCH;
     
     if (socket) {
@@ -1053,6 +1151,7 @@ async function selectSeat(next) {
     forceDisablePreset();
 
     pending = null;
+    setAutoPlayEnabled(false);
     mySeat = next;
     
     if (next !== WATCH) {
@@ -1124,14 +1223,105 @@ const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
+function countPieces(arr){
+  const counts = {};
+  if(!Array.isArray(arr)) return counts;
+  arr.forEach(piece => {
+    const key = String(piece);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return counts;
+}
+
+function fixedHandBase(state, seat){
+  const init = state.init_hands?.[seat];
+  if(Array.isArray(init) && init.length > 0) return sortHandNumeric(init).map(String);
+  const raw = state.hands?.[seat];
+  if(Array.isArray(raw)) return sortHandNumeric(raw).map(String);
+  return [];
+}
+
+function fixedHandKey(state, seat, base){
+  return `${gid}:${state.round_count || 1}:${seat}:${base.join(",")}`;
+}
+
+function reconcileFixedHandMemory(mem, current){
+  const currentCounts = countPieces(current);
+  const totalCounts = countPieces(mem.slots.map(slot => slot.piece));
+  Object.keys(totalCounts).forEach(piece => {
+    const desiredUsed = Math.max(0, totalCounts[piece] - (currentCounts[piece] || 0));
+    const pieceSlots = mem.slots
+      .map((slot, index) => ({slot, index}))
+      .filter(item => item.slot.piece === piece);
+    let used = pieceSlots.filter(item => item.slot.used).length;
+
+    if(used < desiredUsed){
+      for(let i = pieceSlots.length - 1; i >= 0 && used < desiredUsed; i--){
+        if(!pieceSlots[i].slot.used){
+          pieceSlots[i].slot.used = true;
+          used++;
+        }
+      }
+    }else if(used > desiredUsed){
+      for(let i = 0; i < pieceSlots.length && used > desiredUsed; i++){
+        if(pieceSlots[i].slot.used){
+          pieceSlots[i].slot.used = false;
+          used--;
+        }
+      }
+    }
+  });
+}
+
+function fixedHandSlots(state, seat){
+  const base = fixedHandBase(state, seat);
+  const key = fixedHandKey(state, seat, base);
+  if(!fixedHandMemory[key]){
+    fixedHandMemory[key] = {
+      slots: base.map((piece, index) => ({ piece, index, used: false }))
+    };
+  }
+  const mem = fixedHandMemory[key];
+  reconcileFixedHandMemory(mem, Array.isArray(state.hands?.[seat]) ? state.hands[seat].map(String) : []);
+  return mem.slots;
+}
+
+function markFixedHandSlotUsed(state, seat, slotIndex, piece){
+  if(!state || slotIndex == null) return;
+  const base = fixedHandBase(state, seat);
+  const key = fixedHandKey(state, seat, base);
+  if(!fixedHandMemory[key]){
+    fixedHandMemory[key] = {
+      slots: base.map((slotPiece, index) => ({ piece: slotPiece, index, used: false }))
+    };
+  }
+  const slot = fixedHandMemory[key].slots.find(item => item.index === slotIndex && item.piece === String(piece));
+  if(slot) slot.used = true;
+}
+
 function startGame() {
     isGameStarted = true;
+    startRequestInFlight = true;
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
+    if(setupApplyTimer){
+      clearTimeout(setupApplyTimer);
+      setupApplyTimer = null;
+    }
     
-    fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
-        method: "POST"
-    }).catch(e => console.error(e));
+    (async () => {
+      try{
+        await applyCurrentSetupToWaitingGame({ refreshAfter: false });
+        await fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
+            method: "POST"
+        });
+        await refresh();
+      }catch(e){
+        console.error(e);
+        startRequestInFlight = false;
+        await refresh();
+      }
+    })();
 }
 
 function getWinnerPoints(state){
@@ -1296,6 +1486,36 @@ async function resetWithPreset(dealer, keepScore){
   }
 }
 
+async function applyCurrentSetupToWaitingGame(options = {}){
+  if(mySeat !== "A") return false;
+  if(!latestState || latestState.is_started || latestState.finished) return false;
+
+  const dealer = resolveDealerSelection();
+  await resetWithPreset(dealer, false);
+  fixedHandMemory = {};
+  pending = null;
+  await claimSeat(mySeat);
+  if(options.refreshAfter !== false){
+    await refresh();
+  }
+  return true;
+}
+
+function scheduleApplyCurrentSetup(){
+  if(setupApplyTimer){
+    clearTimeout(setupApplyTimer);
+    setupApplyTimer = null;
+  }
+  setupApplyTimer = setTimeout(async () => {
+    setupApplyTimer = null;
+    try{
+      await applyCurrentSetupToWaitingGame();
+    }catch(e){
+      console.error(e);
+    }
+  }, 250);
+}
+
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 
 function _extractDealerFromLog(logArr){
@@ -1309,9 +1529,52 @@ function _chooseRandomDealer(){
   const seats = ["A","B","C","D"];
   return seats[Math.floor(Math.random()*seats.length)];
 }
+
+function currentDealerFromState(){
+  return latestState?.dealer || _extractDealerFromLog(latestState?.log || []) || "A";
+}
+
+function resolveDealerSelection(){
+  const sel = document.getElementById("dealerSelect");
+  let dealer = sel ? sel.value : "winner";
+  if(dealer === "winner"){
+    if(latestState && latestState.finished && latestState.winner){
+      return latestState.winner;
+    }
+    return currentDealerFromState();
+  }
+  if(dealer === "random"){
+    return _chooseRandomDealer();
+  }
+  return dealer;
+}
+
 function key(col,row){ return `${col},${row}`; }
 function isSpectator(){ return mySeat === WATCH; }
 function viewerSeat(){ return isSpectator() ? "A" : mySeat; }
+
+function firstEmptyIndex(arr, limit = 4){
+  for(let i=0;i<limit;i++){
+    if(!Array.isArray(arr) || arr[i] == null) return i;
+  }
+  return -1;
+}
+
+function pendingBlockPreview(state){
+  if(!pending || pending.need !== "attack" || !pending.block || pending.player !== mySeat) return null;
+  if(!state || state.turn !== mySeat || state.finished) return null;
+
+  const receive = state.board_public?.[mySeat]?.receive;
+  const idx = firstEmptyIndex(receive);
+  if(idx < 0) return null;
+  return { seat: mySeat, idx, piece: pending.block };
+}
+
+function rerenderPendingPreview(){
+  if(!latestState) return;
+  renderBoard(latestState);
+  renderHands(latestState);
+}
 
 function sanitizeName(s){
   s = (s ?? "").toString().replace(/\r?\n/g, "");
@@ -1397,6 +1660,112 @@ async function downloadKifu(){
   URL.revokeObjectURL(url);
 }
 
+async function loadKifuArchive(){
+  const meta = document.getElementById("kifuArchiveMeta");
+  const view = document.getElementById("kifuArchiveView");
+  if(meta) meta.textContent = "読み込み中...";
+  if(view) view.textContent = "";
+
+  try{
+    const res = await fetch(`${API}/static/kifu_data.json`, {cache: "no-store"});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    kifuArchiveData = await res.json();
+  }catch(e){
+    if(meta) meta.textContent = "棋譜データを読み込めませんでした。tools/build_kifu_archive.py を実行してください。";
+    if(view) view.textContent = String(e);
+    return;
+  }
+
+  populateKifuMatchSelect();
+  if(meta){
+    const matches = Number(kifuArchiveData.match_count || 0);
+    const rounds = Number(kifuArchiveData.round_count || 0);
+    const moves = Number(kifuArchiveData.move_count || 0);
+    meta.textContent = `読み込み完了: ${matches}対戦 / ${rounds}局 / ${moves}手`;
+  }
+  onKifuMatchChange();
+}
+
+function populateKifuMatchSelect(){
+  const sel = document.getElementById("kifuMatchSelect");
+  if(!sel || !kifuArchiveData || !Array.isArray(kifuArchiveData.matches)) return;
+  sel.innerHTML = "";
+
+  kifuArchiveData.matches.forEach((match, idx) => {
+    const opt = document.createElement("option");
+    opt.value = String(idx);
+    const playedAt = String(match.played_at || "").trim();
+    const matchId = String(match.id || "").trim();
+    const label = playedAt || matchId || `#${idx + 1}`;
+    opt.textContent = `${idx + 1}. ${label} (${match.round_count || 0}局)`;
+    sel.appendChild(opt);
+  });
+}
+
+function onKifuMatchChange(){
+  const matchSel = document.getElementById("kifuMatchSelect");
+  const roundSel = document.getElementById("kifuRoundSelect");
+  if(!matchSel || !roundSel || !kifuArchiveData) return;
+
+  const match = kifuArchiveData.matches?.[Number(matchSel.value || 0)];
+  roundSel.innerHTML = "";
+  if(!match || !Array.isArray(match.rounds)) {
+    renderKifuArchiveRound();
+    return;
+  }
+
+  match.rounds.forEach((round, idx) => {
+    const opt = document.createElement("option");
+    opt.value = String(idx);
+    const score = Array.isArray(round.score) ? ` score ${round.score.join("-")}` : "";
+    opt.textContent = `${idx + 1}局目 親:p${round.uchidashi ?? "-"}${score}`;
+    roundSel.appendChild(opt);
+  });
+  renderKifuArchiveRound();
+}
+
+function renderKifuArchiveRound(){
+  const view = document.getElementById("kifuArchiveView");
+  const matchSel = document.getElementById("kifuMatchSelect");
+  const roundSel = document.getElementById("kifuRoundSelect");
+  if(!view || !matchSel || !roundSel || !kifuArchiveData) return;
+
+  const match = kifuArchiveData.matches?.[Number(matchSel.value || 0)];
+  const round = match?.rounds?.[Number(roundSel.value || 0)];
+  if(!match || !round){
+    view.textContent = "表示できる棋譜がありません。";
+    return;
+  }
+
+  const players = match.players || {};
+  const hand = round.hand || {};
+  const score = Array.isArray(round.score) ? round.score.join("-") : "";
+  const lines = [];
+  lines.push(`id: ${String(match.id || "").trim()}`);
+  lines.push(`file: ${match.file || ""}`);
+  lines.push(`date: ${match.played_at || ""}`);
+  lines.push(`round: ${round.round_index || Number(roundSel.value || 0) + 1} / ${match.round_count || ""}`);
+  lines.push(`score: ${score}`);
+  lines.push(`dealer: p${round.uchidashi ?? "-"}`);
+  lines.push("");
+  lines.push(`p0 ${players.p0 || ""}: ${hand.p0 || ""}`);
+  lines.push(`p1 ${players.p1 || ""}: ${hand.p1 || ""}`);
+  lines.push(`p2 ${players.p2 || ""}: ${hand.p2 || ""}`);
+  lines.push(`p3 ${players.p3 || ""}: ${hand.p3 || ""}`);
+  lines.push("");
+  lines.push("game:");
+
+  const moves = Array.isArray(round.game) ? round.game : [];
+  moves.forEach((mv, idx) => {
+    const p = mv?.[0] ?? "";
+    const receive = mv?.[1] || "-";
+    const attack = mv?.[2] || "-";
+    lines.push(`${String(idx + 1).padStart(2, "0")}. p${p} 受:${receive} 攻:${attack}`);
+  });
+
+  view.textContent = lines.join("\n");
+}
+
 async function toggleAllHands(){
   try{
     await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}`, {
@@ -1405,15 +1774,19 @@ async function toggleAllHands(){
   }catch(e){}
 }
 
-async function submitAction(actionObj){
-  await fetch(`${API}/games/${gid}/step`, {
+async function submitAction(actionObj, usedSlots = []){
+  const res = await fetch(`${API}/games/${gid}/step`, {
     method:"POST",
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify({ player: mySeat, action: actionObj })
   });
+  if(res.ok){
+    usedSlots.forEach(item => markFixedHandSlotUsed(latestState, item.seat || mySeat, item.slotIndex, item.piece));
+  }
+  return res.ok;
 }
 
-async function onHandPieceClick(piece){
+async function onHandPieceClick(piece, slotIndex){
   if(!latestState || !latestState.is_started) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
@@ -1424,9 +1797,19 @@ async function onHandPieceClick(piece){
   if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
 
   if(pending){
+    if(pending.blockSlot === slotIndex && pending.block === piece){
+      pending = null;
+      rerenderPendingPreview();
+      setHint("選択をキャンセルしました。");
+      return;
+    }
     const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
     if(matched.length === 1){
-      await submitAction(matched[0]);
+      const usedSlots = [
+        { seat: mySeat, slotIndex: pending.blockSlot, piece: pending.block },
+        { seat: mySeat, slotIndex, piece },
+      ].filter(item => item.slotIndex != null);
+      await submitAction(matched[0], usedSlots);
       pending = null;
       return;
     }
@@ -1438,22 +1821,23 @@ async function onHandPieceClick(piece){
   const candidates = latestLegal.filter(a => (a.block === piece) || (a.attack === piece));
   if(candidates.length === 0){ setHint("その駒は今は出せません。（パスは手札横のボタンから）"); return; }
 
-  if(candidates.length === 1){
-    await submitAction(candidates[0]);
-    return;
-  }
-
   const aab = candidates.filter(a => a.action_type === "attack_after_block");
   const asBlock = aab.filter(a => a.block === piece);
   if(asBlock.length >= 1){
-    pending = { need: "attack", candidates: asBlock };
+    pending = { need: "attack", candidates: asBlock, block: piece, blockSlot: slotIndex, player: mySeat };
     setHint(`伏せに ${pieceToLabel(piece)}。次に攻めを選んでください。`);
+    rerenderPendingPreview();
     return;
   }
+
   const asAttack = aab.filter(a => a.attack === piece);
   if(asAttack.length >= 1){
-    pending = { need: "block", candidates: asAttack };
-    setHint(`攻めに ${pieceToLabel(piece)}。次に伏せを選んでください。`);
+    setHint("まず伏せの駒を選んでください。次に攻めを選びます。");
+    return;
+  }
+
+  if(candidates.length === 1){
+    await submitAction(candidates[0], [{ seat: mySeat, slotIndex, piece }]);
     return;
   }
   setHint("複数候補があり確定できません。デバッグ用ボタンから選んでください。");
@@ -1490,6 +1874,7 @@ function renderBoard(state){
   const seatToPhys = getSeatToPhys();
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
+  const pendingReceive = pendingBlockPreview(state);
 
   let currentAttackIndex = -1;
   let currentAttacker = state.attacker;
@@ -1547,11 +1932,19 @@ function renderBoard(state){
       const slot=SLOT_MAP.get(k);
       if(slot){
         const kindKey = slot.kind==="R" ? "receive" : "attack";
-        const piece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+        const boardPiece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+        const isPendingReceive = (
+          pendingReceive &&
+          kindKey === "receive" &&
+          slot.p === pendingReceive.seat &&
+          slot.idx === pendingReceive.idx
+        );
+        const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : null);
 
         if (piece) {
           div.classList.add("slot");
           div.classList.add("phys-" + slot.phys);
+          if(isPendingReceive) div.classList.add("pending-preview");
           
           div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
           
@@ -1565,7 +1958,7 @@ function renderBoard(state){
           val.className="val";
 
           if(kindKey==="receive"){
-            const hidden = state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+            const hidden = isPendingReceive || state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
             val.textContent = hidden ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
@@ -1615,7 +2008,14 @@ function renderHands(state) {
         if(pending.need==="block" && a.block) usable.add(a.block);
       });
     }else{
-      latestLegal.forEach(a => { if(a.block) usable.add(a.block); if(a.attack) usable.add(a.attack); });
+      latestLegal.forEach(a => {
+        if(a.action_type === "attack_after_block"){
+          if(a.block) usable.add(a.block);
+          return;
+        }
+        if(a.block) usable.add(a.block);
+        if(a.attack) usable.add(a.attack);
+      });
     }
   }
 
@@ -1639,22 +2039,33 @@ function renderHands(state) {
 
     const raw = state.hands?.[seat];
     if (Array.isArray(raw)) {
-      const arr = sortHandNumeric(raw);
-      arr.forEach(card => {
-        if (!card) return;
+      fixedHandSlots(state, seat).forEach(slot => {
+        const card = slot.piece;
+        const isPendingHidden = (
+          pending &&
+          pending.player === seat &&
+          pending.blockSlot === slot.index &&
+          pending.block === card
+        );
+        const isFaceDown = slot.used || isPendingHidden;
+
         const pieceDiv = document.createElement("div");
         pieceDiv.className = "hand";
         pieceDiv.classList.add(seatIsHuman(state, seat) ? "human" : "ai");
+        if(isFaceDown) pieceDiv.classList.add("face-down");
+        if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
 
         const valDiv = document.createElement("div");
         valDiv.className = "val";
-        valDiv.textContent = pieceToLabel(card);
+        valDiv.textContent = isFaceDown ? "" : pieceToLabel(card);
         pieceDiv.appendChild(valDiv);
 
-        if (seat === mySeat && state.turn === mySeat && !state.finished) {
+        if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
+          pieceDiv.onclick = () => onHandPieceClick(card, slot.index);
+        }else if (!isFaceDown && seat === mySeat && state.turn === mySeat && !state.finished) {
           if (usable.has(card)) {
             pieceDiv.classList.add("clickable");
-            pieceDiv.onclick = () => onHandPieceClick(card);
+            pieceDiv.onclick = () => onHandPieceClick(card, slot.index);
           } else {
             pieceDiv.classList.add("disabled");
           }
@@ -1680,6 +2091,14 @@ function renderHands(state) {
           passBtn.classList.add("disabled");
       }
       passBtnWrap.appendChild(passBtn);
+
+      const autoBtn = document.createElement("button");
+      autoBtn.className = "auto-play";
+      if(autoPlayEnabled) autoBtn.classList.add("active");
+      autoBtn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
+      autoBtn.onclick = toggleAutoPlay;
+      passBtnWrap.appendChild(autoBtn);
+
       rowDiv.appendChild(passBtnWrap);
     }
 
@@ -1827,7 +2246,7 @@ async function refresh(){
 
   document.getElementById("log").textContent = (state.log||[]).join("\n");
   const dn = document.getElementById("dealerNow");
-  if(dn){ dn.textContent = _extractDealerFromLog(state.log||[]) || "-"; }
+  if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
   latestLegal = await fetchLegal();
 
@@ -1837,11 +2256,13 @@ async function refresh(){
     lastLogCount = currentLogCount;
     activeRoomId = gid;
     isGameStarted = false; 
+    fixedHandMemory = {};
   }
 
   if (currentLogCount < lastLogCount) {
       isGameStarted = false;
       lastLogCount = 0; 
+      fixedHandMemory = {};
   }
   
   if (currentLogCount > 1) {
@@ -1866,7 +2287,10 @@ async function refresh(){
   
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
-      startGameBtn.style.display = (!state.is_started && isHost) ? "inline-block" : "none";
+      startGameBtn.style.display = (!state.is_started && isHost && !startRequestInFlight) ? "inline-block" : "none";
+  }
+  if (state.is_started || state.finished) {
+      startRequestInFlight = false;
   }
 
   if (!state.is_started) {
@@ -1972,7 +2396,22 @@ async function refresh(){
   }
   lastLogCount = currentLogCount;
 
-  if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
+  if(isGameStarted && !state.finished && autoPlayEnabled && !isSpectator() && state.turn === mySeat && !isProcessingCpu){
+    pending = null;
+    isProcessingCpu = true;
+    cpuTimer = setTimeout(async () => {
+      try {
+        if(autoPlayEnabled && latestState && latestState.turn === mySeat && latestState.is_started && !latestState.finished){
+          await fetch(`${API}/games/${gid}/auto_step?player=${encodeURIComponent(mySeat)}`, { method: "POST" });
+        }
+      } catch(e) {
+        console.error("Auto step error:", e);
+      }
+      isProcessingCpu = false;
+      cpuTimer = null;
+      refresh();
+    }, 700);
+  } else if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     cpuTimer = setTimeout(async () => {
       try {
@@ -2004,11 +2443,21 @@ window.addEventListener("load", async ()=>{
   presetSetEnabled(presetIsEnabled());
   const presetEnabledBox = document.getElementById("presetEnabled");
   if(presetEnabledBox){
-    presetEnabledBox.addEventListener("change", ()=> presetSetEnabled(presetEnabledBox.checked));
+    presetEnabledBox.addEventListener("change", ()=> {
+      presetSetEnabled(presetEnabledBox.checked);
+      scheduleApplyCurrentSetup();
+    });
   }
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
-    inp.addEventListener("input", ()=> presetValidateAndClamp(inp));
+    inp.addEventListener("input", ()=> {
+      presetValidateAndClamp(inp);
+      scheduleApplyCurrentSetup();
+    });
   });
+  const dealerSelect = document.getElementById("dealerSelect");
+  if(dealerSelect){
+    dealerSelect.addEventListener("change", ()=> scheduleApplyCurrentSetup());
+  }
   bindNameInputs();
 
   document.getElementById("lobbyView").style.display = "block";

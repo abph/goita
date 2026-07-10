@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+
+.codex_deps/
+.codex_server_*.log
+
+kifu/
+results/
+tools/
+frontend/kifu_data_raw.json

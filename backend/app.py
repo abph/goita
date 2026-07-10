@@ -323,6 +323,20 @@ def _format_action(player: str, action: Tuple[str, Optional[str], Optional[str]]
     return f"{player}: {t} (block={b}, attack={a})"
 
 
+def _format_ai_decision(agent: Any, max_detail_len: int = 140) -> str:
+    reason = str(getattr(agent, "last_decision_reason", "") or "").strip()
+    detail = str(getattr(agent, "last_score_fallback_detail", "") or "").strip()
+    if not reason and not detail:
+        return ""
+    if detail and len(detail) > max_detail_len:
+        detail = detail[: max_detail_len - 3] + "..."
+    if reason and detail:
+        return f" [AI:{reason}/{detail}]"
+    if reason:
+        return f" [AI:{reason}]"
+    return f" [AI:{detail}]"
+
+
 def _actions_to_json(actions: List[Tuple[str, Optional[str], Optional[str]]]) -> List[Dict[str, Any]]:
     return [{"action_type": t, "block": b, "attack": a} for (t, b, a) in actions]
 
@@ -380,6 +394,13 @@ def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_typ
     return len(state.face_down_hidden[player]) > before_len
 
 
+def _visible_receive_for_score_effect(action: Tuple[str, Optional[str], Optional[str]], effects: List[str]) -> bool:
+    action_type, _, _ = action
+    if action_type != "attack_after_block":
+        return False
+    return "baizuke" in effects or "damadama_agari" in effects
+
+
 def _state_public_view(
     state: GoitaState,
     *,
@@ -396,10 +417,12 @@ def _state_public_view(
     is_started = game_obj.get("is_started", False)
 
     hands_view: Dict[str, Any] = {}
+    init_hands_view: Dict[str, Any] = {}
     
     if not is_started:
         for p in ALL_SEATS:
             hands_view[p] = {"count": 0}
+            init_hands_view[p] = {"count": 0}
         board_view = _new_board_snapshot()
         turn = None
         phase = ""
@@ -413,8 +436,10 @@ def _state_public_view(
         for p in ALL_SEATS:
             if reveal_hands or p == viewer:
                 hands_view[p] = list(state.hands[p])
+                init_hands_view[p] = list((game_obj.get("init_hands") or {}).get(p, []))
             else:
                 hands_view[p] = {"count": len(state.hands[p])}
+                init_hands_view[p] = {"count": 8}
 
         if reveal_hands:
             board_view = copy.deepcopy(board_public)
@@ -440,7 +465,9 @@ def _state_public_view(
         "phase": phase,
         "attacker": attacker,
         "current_attack": current_attack,
+        "dealer": game_obj.get("dealer", "A"),
         "hands": hands_view,
+        "init_hands": init_hands_view,
         "scores": scores,
         "board_public": board_view,
         "log": log[-200:],
@@ -597,6 +624,48 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             else:
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
+
+
+def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
+    state: GoitaState = game["state"]
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    log: List[str] = game.setdefault("log", [])
+    board = game.setdefault("board", _new_board_snapshot())
+
+    if state.finished:
+        return {"status": "ignored"}
+    if state.turn != player:
+        return {"status": "ignored", "turn": state.turn}
+
+    acts = state.legal_actions(player)
+    if not acts:
+        return {"status": "no_legal_actions"}
+
+    agent = agents[player]
+    agent_action = agent.select_action(state, player, acts)
+
+    effects = []
+    if game.get("enable_effects", True):
+        effects = _check_effects(state, player, agent_action, board, game.get("dealer", "A"))
+
+    before_fd = len(state.face_down_hidden[player])
+    _apply_action(state, player, agent_action)
+    hidden_receive = _is_hidden_receive_by_state_delta(state, player, agent_action[0], before_fd)
+    if _visible_receive_for_score_effect(agent_action, effects):
+        hidden_receive = False
+    _update_board_snapshot(board, player, agent_action, hidden_receive=hidden_receive)
+
+    log_str = _format_action(player, agent_action) + (" (hidden)" if hidden_receive else "")
+    for ef in effects:
+        log_str += f" [EFFECT:{ef}]"
+    log_str += _format_ai_decision(agent)
+    log.append(log_str)
+
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
+    _notify_public(agents, state, player, agent_action)
+
+    _handle_round_finish(game, state, agent_action, effects)
+    return {"status": "ok", "player": player}
 
 
 @app.get("/games/list")
@@ -908,6 +977,8 @@ async def step(game_id: str, req: StepRequest):
         raise HTTPException(status_code=400, detail=f"invalid action: {e}")
         
     hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
+    if _visible_receive_for_score_effect(action, effects):
+        hidden_receive = False
     _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
     
     log_str = _format_action(player, action) + (" (hidden)" if hidden_receive else "")
@@ -938,38 +1009,34 @@ async def cpu_step(game_id: str):
     human_seats = game.get("human_seats", {})
     if state.finished or (state.turn in human_seats):
         return {"status": "ignored"}
-        
-    agents: Dict[str, RuleBasedAgent] = game["agents"]
-    log: List[str] = game.setdefault("log", [])
-    board = game.setdefault("board", _new_board_snapshot())
-    p = state.turn
-    acts = state.legal_actions(p)
-    if not acts:
-        return {"status": "no_legal_actions"}
-        
-    cpu_action = agents[p].select_action(state, p, acts)
-    
-    effects = []
-    if game.get("enable_effects", True):
-        effects = _check_effects(state, p, cpu_action, board, game.get("dealer", "A"))
 
-    before_fd_cpu = len(state.face_down_hidden[p])
-    _apply_action(state, p, cpu_action)
-    hidden_receive_cpu = _is_hidden_receive_by_state_delta(state, p, cpu_action[0], before_fd_cpu)
-    _update_board_snapshot(board, p, cpu_action, hidden_receive=hidden_receive_cpu)
-    
-    log_str = _format_action(p, cpu_action) + (" (hidden)" if hidden_receive_cpu else "")
-    for ef in effects:
-        log_str += f" [EFFECT:{ef}]"
-    log.append(log_str)
-    
-    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(p, cpu_action))
-    _notify_public(agents, state, p, cpu_action)
-
-    _handle_round_finish(game, state, cpu_action, effects)
+    result = _apply_agent_turn(game, state.turn)
+    if result.get("status") != "ok":
+        return result
 
     await manager.broadcast_update(game_id)
-    return {"status": "ok"}
+    return result
+
+
+@app.post("/games/{game_id}/auto_step")
+async def auto_step(game_id: str, player: str = "A"):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    player = _validate_seat(player, name="player")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if not game.get("is_started"):
+        return {"status": "ignored"}
+
+    state: GoitaState = game["state"]
+    if state.finished or state.turn != player:
+        return {"status": "ignored", "turn": state.turn}
+
+    result = _apply_agent_turn(game, player)
+    if result.get("status") == "ok":
+        await manager.broadcast_update(game_id)
+    return result
 
 # =========================================================
 
