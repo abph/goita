@@ -347,6 +347,13 @@
       gap: 6px;
       align-items: center;
     }
+    .preset-copy-btn {
+      flex: 0 0 auto;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
     .meta { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
@@ -558,18 +565,25 @@
     }
   
     .preset-grid{
-      display: grid; grid-template-columns: 22px repeat(9, 34px); gap: 6px 6px;
+      display: grid; grid-template-columns: 22px repeat(9, 34px) auto; gap: 6px 6px;
       align-items: center; justify-content: start; margin-top: 8px;
     }
     .preset-grid .hdr{ font-weight: 900; text-align: center; }
     .preset-grid .seat{ font-weight: 900; }
     .preset-grid input{ width: 34px; padding: 6px 6px; text-align: center; }
+    .preset-seat-reset{
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
 
     @media (max-width: 430px){
-      .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
+      .preset-grid{ grid-template-columns: 22px repeat(9, 28px) auto; gap: 5px 5px; }
       .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } 
+      .preset-seat-reset{ padding: 6px 5px; font-size: 11px; }
     }
 
     .preset-disabled #presetGrid,
@@ -757,6 +771,14 @@
       <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
       <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
     </div>
+    <div class="settings-row">
+      <label for="setAiProfile">AI</label>
+      <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+        <option value="current">強化中AI</option>
+        <option value="beginner_upper">初級者（上）</option>
+      </select>
+    </div>
+
     <div style="display: flex; gap: 8px; margin-top: 24px;">
       <button onclick="saveSettings()" style="flex: 1; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px;">保存</button>
       <button onclick="closeSettings()" style="flex: 1; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px;">閉じる</button>
@@ -1027,6 +1049,25 @@ function togglePassInput() {
     document.getElementById("setRoomPass").style.display = checked ? "block" : "none";
 }
 
+function populateAiProfileSelect(profiles, selected) {
+    const sel = document.getElementById("setAiProfile");
+    if (!sel) return;
+    const fallback = {
+        current: "強化中AI",
+        beginner_upper: "初級者（上）"
+    };
+    const src = profiles && typeof profiles === "object" ? profiles : fallback;
+    sel.innerHTML = "";
+    Object.entries(src).forEach(([value, label]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        sel.appendChild(opt);
+    });
+    sel.value = selected || "current";
+    if (!sel.value) sel.value = "current";
+}
+
 async function openSettingsModal(targetGid, event) {
     if (event) {
         event.stopPropagation();
@@ -1047,6 +1088,7 @@ async function openSettingsModal(targetGid, event) {
             currentAdminPass = pass;
             document.getElementById("setRoomName").value = data.owner_name || "";
             document.getElementById("checkEnableEffects").checked = data.enable_effects !== false;
+            populateAiProfileSelect(data.ai_profiles, data.ai_profile);
             document.getElementById("checkUpdatePass").checked = false;
             document.getElementById("setRoomPass").style.display = "none";
             document.getElementById("setRoomPass").value = "";
@@ -1070,6 +1112,7 @@ async function saveSettings() {
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
     const enableEffects = document.getElementById("checkEnableEffects").checked;
+    const aiProfile = document.getElementById("setAiProfile")?.value || "current";
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
@@ -1080,7 +1123,8 @@ async function saveSettings() {
                 new_owner_name: newName,
                 update_password: isUpdatePass,
                 new_password: newPass,
-                enable_effects: enableEffects
+                enable_effects: enableEffects,
+                ai_profile: aiProfile
             })
         });
         if (res.ok) {
@@ -1384,6 +1428,55 @@ function presetClear(){
   const err = document.getElementById("presetErr");
   if(err){ err.style.display="none"; err.textContent=""; }
   try{ localStorage.removeItem("goita_preset_counts"); }catch(e){}
+}
+
+function presetResetSeat(seat){
+  if(!seat) return;
+  document.querySelectorAll(`#presetGrid input.ph[data-seat="${seat}"]`).forEach(inp=> inp.value = "");
+  presetValidateAndClamp();
+  scheduleApplyCurrentSetup();
+}
+
+function setupPresetSeatResetButtons(){
+  const grid = document.getElementById("presetGrid");
+  if(!grid || grid.dataset.resetButtonsReady === "1") return;
+  grid.dataset.resetButtonsReady = "1";
+
+  const headerSpacer = document.createElement("div");
+  headerSpacer.className = "hdr";
+  grid.insertBefore(headerSpacer, grid.children[10] || null);
+
+  ["A","B","C","D"].forEach(seat => {
+    const lastInput = grid.querySelector(`input.ph[data-seat="${seat}"][data-piece="9"]`);
+    if(!lastInput) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "preset-seat-reset";
+    btn.textContent = "リセット";
+    btn.onclick = () => presetResetSeat(seat);
+    lastInput.insertAdjacentElement("afterend", btn);
+  });
+}
+
+function setPresetHandFromVisibleSeat(seat, hand){
+  if(!seat || !Array.isArray(hand) || hand.length === 0) return;
+
+  const details = document.getElementById("presetHandsDetails");
+  if(details) details.open = true;
+
+  presetSetEnabled(true);
+
+  const counts = countPieces(hand.map(String));
+  PRESET_PIECES.forEach(piece => {
+    const input = document.querySelector(`#presetGrid input.ph[data-seat="${seat}"][data-piece="${piece}"]`);
+    if(input){
+      const n = counts[piece] || 0;
+      input.value = n > 0 ? String(n) : "";
+    }
+  });
+
+  presetValidateAndClamp();
+  scheduleApplyCurrentSetup();
 }
 
 function presetGet(){
@@ -1958,6 +2051,18 @@ function renderHands(state) {
     leftWrap.appendChild(piecesDiv);
     rowDiv.appendChild(leftWrap);
 
+    if (state.reveal_hands && mySeat === "A" && gid !== MAIN_GID) {
+      const presetHand = fixedHandBase(state, seat);
+      if (presetHand.length > 0) {
+        const presetBtn = document.createElement("button");
+        presetBtn.type = "button";
+        presetBtn.className = "preset-copy-btn";
+        presetBtn.textContent = "この手駒を指定";
+        presetBtn.onclick = () => setPresetHandFromVisibleSeat(seat, presetHand);
+        rowDiv.appendChild(presetBtn);
+      }
+    }
+
     if (seat === mySeat && !isSpectator()) {
       const passBtnWrap = document.createElement("div");
       passBtnWrap.className = "pass-btn-area";
@@ -2320,6 +2425,7 @@ function bindNameInputs(){
 }
 
 window.addEventListener("load", async ()=>{
+  setupPresetSeatResetButtons();
   presetLoad();
   presetSetEnabled(presetIsEnabled());
   const presetEnabledBox = document.getElementById("presetEnabled");

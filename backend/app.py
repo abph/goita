@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from goita_ai2.state import GoitaState
 from goita_ai2.rule_based import RuleBasedAgent
+from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperRuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
@@ -20,6 +21,11 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
+DEFAULT_AI_PROFILE = "current"
+AI_PROFILES: Dict[str, Dict[str, Any]] = {
+    "current": {"label": "強化中AI", "class": RuleBasedAgent},
+    "beginner_upper": {"label": "初級者（上）", "class": BeginnerUpperRuleBasedAgent},
+}
 
 # ★ 修正：いただいた正しい配点に更新
 PIECE_POINTS = {
@@ -171,6 +177,25 @@ def _sanitize_player_name(s: str) -> str:
     return s
 
 
+def _normalize_ai_profile(profile: Optional[str]) -> str:
+    profile = (profile or DEFAULT_AI_PROFILE).strip()
+    return profile if profile in AI_PROFILES else DEFAULT_AI_PROFILE
+
+
+def _ai_profile_label(profile: Optional[str]) -> str:
+    profile = _normalize_ai_profile(profile)
+    return str(AI_PROFILES[profile]["label"])
+
+
+def _create_agents(ai_profile: Optional[str]) -> Dict[str, Any]:
+    profile = _normalize_ai_profile(ai_profile)
+    agent_cls = AI_PROFILES[profile]["class"]
+    agents = {seat: agent_cls(name=f"{AI_PROFILES[profile]['label']}-{seat}") for seat in ALL_SEATS}
+    for seat, agent in agents.items():
+        agent.bind_player(seat)
+    return agents
+
+
 app = FastAPI(title="Goita FastAPI (Render-ready)")
 
 app.add_middleware(
@@ -288,6 +313,7 @@ class SettingsUpdateRequest(BaseModel):
     update_password: bool = False
     new_password: Optional[str] = None
     enable_effects: bool = True 
+    ai_profile: str = DEFAULT_AI_PROFILE
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -481,6 +507,8 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
+        "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
     }
     if isinstance(human_seats, dict):
         payload["human_seats"] = sorted(list(human_seats.keys()))
@@ -489,16 +517,16 @@ def _state_public_view(
     return payload
 
 
-def _create_game_obj(dealer: str = "A") -> Dict[str, Any]:
+def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
+    ai_profile = _normalize_ai_profile(ai_profile)
     hands = create_random_hands_no_five_shi()
     state = GoitaState(hands=hands, dealer=dealer)
-    agents: Dict[str, RuleBasedAgent] = {s: RuleBasedAgent(name=f"CPU-{s}") for s in ALL_SEATS}
-    for seat, ag in agents.items():
-        ag.bind_player(seat)
+    agents = _create_agents(ai_profile)
     return {
         "state": state,
         "agents": agents,
+        "ai_profile": ai_profile,
         "log": [],
         "board": _new_board_snapshot(),
         "init_hands": hands,
@@ -688,6 +716,8 @@ def list_rooms():
             "game_id": gid,
             "is_private": data.get("password") is not None,
             "owner_name": owner_name,
+            "ai_profile": _normalize_ai_profile(data.get("ai_profile")),
+            "ai_profile_label": _ai_profile_label(data.get("ai_profile")),
             "player_count": len(hs),
             "seats": seats_info
         }
@@ -720,7 +750,12 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "ok": True, 
             "owner_name": game.get("owner_name", ""),
             "is_private": game.get("password") is not None,
-            "enable_effects": game.get("enable_effects", True)
+            "enable_effects": game.get("enable_effects", True),
+            "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+            "ai_profiles": {
+                key: str(info["label"])
+                for key, info in AI_PROFILES.items()
+            },
         }
     raise HTTPException(status_code=401, detail="管理用パスワードが違います")
 
@@ -735,6 +770,12 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
     game["enable_effects"] = req.enable_effects
+    next_ai_profile = _normalize_ai_profile(req.ai_profile)
+    if game.get("ai_profile") != next_ai_profile:
+        game["ai_profile"] = next_ai_profile
+        state = game.get("state")
+        if not game.get("is_started") or bool(getattr(state, "finished", False)):
+            game["agents"] = _create_agents(next_ai_profile)
     if req.update_password:
         game["password"] = req.new_password if req.new_password else None
     
@@ -794,8 +835,9 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
+    ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     
-    new_game = _create_game_obj(dealer=dealer)
+    new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
     new_game["password"] = password
     new_game["admin_password"] = admin_password
     new_game["owner_name"] = owner_name
@@ -804,6 +846,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
     new_game["enable_effects"] = enable_effects 
+    new_game["ai_profile"] = ai_profile
     
     if keep_score:
         new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
@@ -834,13 +877,14 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
+    ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
 
     if preset:
         try:
             hands = build_hands_from_preset_counts(preset, dealer=dealer)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        new_game = _create_game_obj(dealer=dealer)
+        new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
         new_game["state"] = GoitaState(hands=hands, dealer=dealer)
         new_game["board"] = _new_board_snapshot()
         new_game["log"] = []
@@ -855,6 +899,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
             new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
@@ -862,7 +907,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
 
         GAMES[game_id] = new_game
     else:
-        new_game = _create_game_obj(dealer=dealer)
+        new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
         new_game["password"] = password
         new_game["admin_password"] = admin_password
         new_game["owner_name"] = owner_name
@@ -871,6 +916,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
             new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))

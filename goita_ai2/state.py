@@ -16,6 +16,7 @@ class GoitaState:
                駒は "1"〜"9" の文字列
         dealer: 親プレイヤー（"A"〜"D"）
         """
+        self.dealer: str = dealer
         self.hands: Dict[str, List[str]] = {
             p: list(hands[p]) for p in ALL_SEATS
         }
