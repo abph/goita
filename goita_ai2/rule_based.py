@@ -103,6 +103,7 @@ class RuleBasedAgent:
         self.LOWER_ATTACK_SHAPE_ATTACK_PENALTY = 70.0
         self.TOP_ATTACK_SHAPE_BLOCK_PENALTY = 35.0
         self.SAME_PIECE_PAIR_SPEND_PENALTY = 75.0
+        self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY = 220.0
         self.ALLY_GUARANTEED_WIN_GIVE_WAY_MAX_SCORE = 30.0
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
@@ -175,6 +176,9 @@ class RuleBasedAgent:
             ally_passed_enemy_dealer_first_attack=False,
             ally_passed_enemy_dealer_first_attack_piece=None,
             pending_ally_force_king_attack_piece=None,
+            my_last_receive_piece=None,
+            enemy_pending_shi_receive_players=set(),
+            enemy_team_rejected_shi_attack=False,
             public_hand_models={
                 p: dict(
                     strength=0.0,
@@ -1043,6 +1047,26 @@ class RuleBasedAgent:
             return 0.0
         return self.SAME_PIECE_PAIR_SPEND_PENALTY
 
+    def _single_middle_after_big_receive_first_attack_penalty(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        attack: Optional[str],
+    ) -> float:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or attack not in ("3", "4", "5")
+            or int(tr.get("my_attack_count", 0)) != 0
+            or tr.get("my_last_receive_piece") not in ("6", "7")
+            or state.hands[player].count("1") < 4
+            or state.hands[player].count(attack) != 1
+        ):
+            return 0.0
+        return self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY
+
     def _initial_hand_axes_for_state(self, state, player: str) -> Dict[str, object]:
         tr = self._track.get(id(state))
         hand = list(tr.get("my_init_count", Counter()).elements()) if tr is not None else list(state.hands[player])
@@ -1733,6 +1757,9 @@ class RuleBasedAgent:
         if enemy_shi_attackers >= 2 or enemy_shi_attacks >= 2:
             return True
 
+        if enemy_shi_attacks == 1 and tr.get("enemy_team_rejected_shi_attack"):
+            return False
+
         ally = self._ally_of(player)
         ally_pass_count = int(models.get(ally, {}).get("pass_count", 0))
         return enemy_shi_attacks > 0 and ally_pass_count > 0
@@ -1774,9 +1801,9 @@ class RuleBasedAgent:
         # しは基本的には伏せやすい。ただし敵方のし攻めが濃い時と、
         # 2枚目以降に最後のしを消す時は守備価値が上がる。
         if block == "1":
-            if self._enemy_shi_attack_threat_for_fuse(tr, player):
-                value -= self.FUSE_ENEMY_SHI_THREAT_BLOCK_PENALTY
             remaining_shi = after_hand.count("1")
+            if remaining_shi < 2 and self._enemy_shi_attack_threat_for_fuse(tr, player):
+                value -= self.FUSE_ENEMY_SHI_THREAT_BLOCK_PENALTY
             has_king_after = any(p in ("8", "9") for p in after_hand)
             if block_no >= 2 and remaining_shi <= 0 and not has_king_after:
                 value -= self.FUSE_KEEP_LAST_SHI_PENALTY
@@ -1881,11 +1908,55 @@ class RuleBasedAgent:
 
         pass_action = next((act for act in actions if act[0] == "pass"), None)
         if pass_action is not None and absolute_rank in ("D", "E", "F", "X"):
+            if current_attack == "1":
+                if state.hands[player].count("1") >= 2:
+                    self._set_decision_reason("score_fallback")
+                    self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_two_shi_receive")
+                    return same_piece_receive
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_one_shi_pass")
+                return pass_action
             self._set_decision_reason("score_fallback")
             self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_pass")
             return pass_action
 
         return None
+
+    def _early_big_piece_same_receive_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.current_attack not in ("6", "7")
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+        ):
+            return None
+
+        same_piece_receive = next(
+            (
+                act
+                for act in actions
+                if act[0] == "receive" and act[1] == state.current_attack
+            ),
+            None,
+        )
+        if same_piece_receive is None:
+            return None
+
+        public_seen = sum(int(v) for v in tr.get("public_seen_counts", {}).values())
+        attacker_count = tr.get("enemy_attack_counts", {}).get(state.attacker, 1)
+        if public_seen > 8 and attacker_count != 1:
+            return None
+
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail("early_big_piece_same_receive")
+        return same_piece_receive
 
     def _early_enemy_first_king_receive_penalty(
         self,
@@ -2331,6 +2402,73 @@ class RuleBasedAgent:
                 continue
         return 0.0
 
+    def _guaranteed_finish_score_after_attack_action(
+        self,
+        state,
+        player: str,
+        action: Action,
+    ) -> Optional[float]:
+        action_type, block, attack = action
+        if action_type not in ("attack", "attack_after_block") or attack is None:
+            return None
+
+        finish_score = self._finish_score_after_action(state, player, action)
+        if finish_score is not None:
+            return finish_score
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return None
+        if not self._is_absolute_safe_for_tsume(state, player, attack, tr):
+            return None
+
+        temp_hand = list(state.hands[player])
+        if block is not None and block in temp_hand:
+            temp_hand.remove(block)
+        if attack in temp_hand:
+            temp_hand.remove(attack)
+        if not temp_hand:
+            return finish_score
+
+        score = self._max_tsume_score(temp_hand, state, player, tr)
+        return score if score >= 0 else None
+
+    def _high_score_tsume_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        has_non_king_attack_option: bool,
+    ) -> Optional[Tuple[Action, float, bool]]:
+        candidates: List[Tuple[float, int, float, Action]] = []
+        for action in actions:
+            action_type, block, attack = action
+            if action_type not in ("attack", "attack_after_block") or attack is None:
+                continue
+
+            route_score = self._guaranteed_finish_score_after_attack_action(state, player, action)
+            if route_score is None:
+                continue
+
+            immediate = 1 if self._finish_score_after_action(state, player, action) is not None else 0
+            heuristic = self._score_attack_phase(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+                has_non_king_attack_option=has_non_king_attack_option,
+            )
+            candidates.append((route_score, immediate, heuristic, action))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+        route_score, immediate, _heuristic, action = candidates[0]
+        return action, route_score, bool(immediate)
+
     def _finish_score_after_action(self, state, player: str, action: Action) -> Optional[float]:
         team = "AC" if player in ("A", "C") else "BD"
         before_score = float(state.team_score.get(team, 0))
@@ -2427,6 +2565,37 @@ class RuleBasedAgent:
             return pass_action
         return None
 
+    def _king_gyoku_opening_keep_receive_width_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or not tr.get("kg_plan_active")
+            or int(tr.get("my_attack_count", 0)) != 0
+            or state.phase != "attack"
+            or state.attacker is not None
+            or state.current_attack is not None
+        ):
+            return None
+
+        counts = tr["my_init_count"]
+        if counts.get("1", 0) < 3:
+            return None
+        if self._has_strong_repeat_attack(counts):
+            return None
+
+        for act in actions:
+            if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail("king_gyoku_keep_receive_width")
+                return act
+        return None
+
     def _preserve_current_attack_for_win_value(self, state, player: str) -> float:
         tr = self._track.get(id(state))
         attack = state.current_attack
@@ -2519,10 +2688,21 @@ class RuleBasedAgent:
 
         if player == self.me and action_type in ("attack", "attack_after_block"):
             tr["pending_ally_force_king_attack_piece"] = None
+            tr["my_last_receive_piece"] = None
 
         if action_type in ("receive", "attack_after_block") and visible_block is not None:
             if visible_block in tr["public_seen_counts"]:
                 tr["public_seen_counts"][visible_block] += 1
+            if player == self.me and action_type == "receive":
+                tr["my_last_receive_piece"] = visible_block
+            if (
+                player is not None
+                and player != self.me
+                and not self._same_team(player, self.me)
+                and action_type == "receive"
+                and visible_block == "1"
+            ):
+                tr.setdefault("enemy_pending_shi_receive_players", set()).add(player)
             if (
                 visible_block == "1"
                 and state.current_attack == "1"
@@ -2559,6 +2739,12 @@ class RuleBasedAgent:
                         if past_attack != attack and past_attack not in tr["ally_responded_to_my_attacks"]:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
+                pending_shi_receivers = tr.setdefault("enemy_pending_shi_receive_players", set())
+                if player in pending_shi_receivers:
+                    if attack != "1":
+                        tr["enemy_team_rejected_shi_attack"] = True
+                    pending_shi_receivers.discard(player)
+
                 tr["enemy_past_attacks"].add(attack)
                 if "enemy_attack_counts" not in tr:
                     tr["enemy_attack_counts"] = {}
@@ -2778,6 +2964,12 @@ class RuleBasedAgent:
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.hands[player].count(attack) == 1:
             if attack not in ("8", "9", "1"):
                 score -= 30.0
+        score -= self._single_middle_after_big_receive_first_attack_penalty(
+            state,
+            player,
+            action_type,
+            attack,
+        )
 
         if tr is not None and attack != "1" and attack == tr.get("my_last_attack"):
             if tr.get("ally_attacked_since_my_last_attack"):
@@ -3183,6 +3375,15 @@ class RuleBasedAgent:
             if self._same_piece_pair_spend_penalty(state, player, action_type, block, attack) > 0:
                 return "block_spends_attack_pair"
 
+            if (
+                attack == "1"
+                and int(tr.get("my_attack_count", 0)) == 0
+                and tr.get("my_last_receive_piece") in ("6", "7")
+                and state.hands[player].count("1") >= 4
+                and any(state.hands[player].count(p) == 1 for p in ("3", "4", "5"))
+            ):
+                return "attack_four_shi_over_single_middle"
+
             if self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_high_point_after_weak_shi"
 
@@ -3341,6 +3542,11 @@ class RuleBasedAgent:
         if give_way_action is not None:
             return give_way_action
 
+        if state.phase == "receive" and state.current_attack == "1":
+            rank_policy_action = self._enemy_first_same_piece_rank_policy_action(state, player, actions)
+            if rank_policy_action is not None:
+                return rank_policy_action
+
         finish_after_receive_actions: List[Tuple[float, str, Action]] = []
         if state.phase == "receive":
             for act in actions:
@@ -3379,9 +3585,17 @@ class RuleBasedAgent:
             
         actions = filtered_actions
 
+        early_big_receive_action = self._early_big_piece_same_receive_action(state, player, actions)
+        if early_big_receive_action is not None:
+            return early_big_receive_action
+
         rank_policy_action = self._enemy_first_same_piece_rank_policy_action(state, player, actions)
         if rank_policy_action is not None:
             return rank_policy_action
+
+        kg_keep_width_action = self._king_gyoku_opening_keep_receive_width_action(state, player, actions)
+        if kg_keep_width_action is not None:
+            return kg_keep_width_action
 
         if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
             if tr.get("perfect_plan") is None:
@@ -3401,6 +3615,24 @@ class RuleBasedAgent:
                         tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                         self._set_decision_reason("perfect_plan")
                         return act
+
+        high_score_tsume = self._high_score_tsume_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if high_score_tsume is not None:
+            chosen, route_score, immediate = high_score_tsume
+            if tr is not None and chosen[0] in ("attack", "attack_after_block"):
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and chosen[2] in ("8", "9") and tr.get("kg_second") is None:
+                    tr["kg_second"] = chosen[2]
+                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                    tr["kg_plan_active"] = False
+            self._set_decision_reason("win_now" if immediate else "tsume")
+            self._set_score_fallback_detail(f"high_score_{int(route_score)}")
+            return chosen
 
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
