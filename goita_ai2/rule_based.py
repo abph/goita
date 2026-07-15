@@ -175,6 +175,9 @@ class RuleBasedAgent:
             inherit_ally_shi_attack=False,
             ally_passed_enemy_dealer_first_attack=False,
             ally_passed_enemy_dealer_first_attack_piece=None,
+            ally_passed_enemy_first_attack=False,
+            ally_passed_enemy_first_attack_attacker=None,
+            ally_passed_enemy_first_attack_piece=None,
             pending_ally_force_king_attack_piece=None,
             my_last_receive_piece=None,
             enemy_pending_shi_receive_players=set(),
@@ -1864,10 +1867,6 @@ class RuleBasedAgent:
         ):
             return None
 
-        dealer = getattr(state, "dealer", None)
-        if dealer is None or state.attacker != dealer:
-            return None
-
         attacker_count = tr.get("enemy_attack_counts", {}).get(state.attacker, 1)
         if attacker_count != 1:
             return None
@@ -1884,26 +1883,54 @@ class RuleBasedAgent:
         if same_piece_receive is None:
             return None
 
-        next_after_dealer = state.next_player(dealer)
+        if current_attack == "1":
+            axes = self._initial_hand_axes_for_state(state, player)
+            absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+            if absolute_rank in ("SS", "S", "A", "B", "C"):
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(f"enemy_first_shi_abs{absolute_rank}_same_piece_receive")
+                return same_piece_receive
+
+            pass_action = next((act for act in actions if act[0] == "pass"), None)
+            if pass_action is not None and absolute_rank in ("D", "E", "F", "X"):
+                if state.hands[player].count("1") >= 2:
+                    self._set_decision_reason("score_fallback")
+                    self._set_score_fallback_detail(f"enemy_first_shi_abs{absolute_rank}_two_shi_receive")
+                    return same_piece_receive
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(f"enemy_first_shi_abs{absolute_rank}_one_shi_pass")
+                return pass_action
+
+        attacker = state.attacker
+        next_after_attacker = state.next_player(attacker)
         ally = self._ally_of(player)
         ally_passed_to_me = (
-            ally == next_after_dealer
-            and bool(tr.get("ally_passed_enemy_dealer_first_attack"))
-            and tr.get("ally_passed_enemy_dealer_first_attack_piece") == current_attack
+            ally == next_after_attacker
+            and bool(tr.get("ally_passed_enemy_first_attack"))
+            and tr.get("ally_passed_enemy_first_attack_attacker") == attacker
+            and tr.get("ally_passed_enemy_first_attack_piece") == current_attack
         )
         if ally_passed_to_me:
+            dealer = getattr(state, "dealer", None)
             self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail("enemy_dealer_first_ally_passed_same_piece_receive")
+            if dealer is not None and attacker == dealer:
+                self._set_score_fallback_detail("enemy_dealer_first_ally_passed_same_piece_receive")
+            else:
+                self._set_score_fallback_detail("enemy_first_ally_passed_same_piece_receive")
             return same_piece_receive
 
-        if player != next_after_dealer:
+        if player != next_after_attacker:
             return None
 
         axes = self._initial_hand_axes_for_state(state, player)
         absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
         if absolute_rank in ("SS", "S", "A", "B", "C"):
             self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_receive")
+            dealer = getattr(state, "dealer", None)
+            if dealer is not None and attacker == dealer:
+                self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_receive")
+            else:
+                self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_same_piece_receive")
             return same_piece_receive
 
         pass_action = next((act for act in actions if act[0] == "pass"), None)
@@ -1911,13 +1938,25 @@ class RuleBasedAgent:
             if current_attack == "1":
                 if state.hands[player].count("1") >= 2:
                     self._set_decision_reason("score_fallback")
-                    self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_two_shi_receive")
+                    dealer = getattr(state, "dealer", None)
+                    if dealer is not None and attacker == dealer:
+                        self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_two_shi_receive")
+                    else:
+                        self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_two_shi_receive")
                     return same_piece_receive
                 self._set_decision_reason("score_fallback")
-                self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_one_shi_pass")
+                dealer = getattr(state, "dealer", None)
+                if dealer is not None and attacker == dealer:
+                    self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_one_shi_pass")
+                else:
+                    self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_one_shi_pass")
                 return pass_action
             self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_pass")
+            dealer = getattr(state, "dealer", None)
+            if dealer is not None and attacker == dealer:
+                self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_pass")
+            else:
+                self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_same_piece_pass")
             return pass_action
 
         return None
@@ -2005,6 +2044,20 @@ class RuleBasedAgent:
                 pairs.append(piece)
         return pairs
 
+    def _kakari_saturation_followup_pieces(self, hand: List[str]) -> List[str]:
+        counts = Counter(hand)
+        profiles = [
+            profile
+            for profile in self._attack_shape_profiles(counts)
+            if int(profile.get("value", 0)) >= 3
+        ]
+        pieces = {
+            str(piece)
+            for profile in profiles
+            for piece in profile.get("pieces", [])
+        }
+        return sorted(pieces, key=lambda piece: (POINTS.get(piece, 0), piece), reverse=True)
+
     def _strong_ally_receive_followup_pieces(self, hand: List[str]) -> List[str]:
         counts = Counter(hand)
         pieces: List[str] = []
@@ -2076,12 +2129,12 @@ class RuleBasedAgent:
         after_return = list(state.hands[player])
         after_return.remove(block)
         after_return.remove(block)
-        follow_pairs = self._strong_attack_pair_pieces(after_return)
-        if not follow_pairs:
+        followups = self._kakari_saturation_followup_pieces(after_return)
+        if not followups:
             return 0.0
 
         bonus = self.KAKARI_SATURATION_RECEIVE_BONUS
-        bonus += max(float(POINTS.get(piece, 0)) for piece in follow_pairs) / 2.0
+        bonus += max(float(POINTS.get(piece, 0)) for piece in followups) / 2.0
 
         ally = state.attacker
         remaining_min, remaining_max = self._estimate_remaining_range(tr, ally, block)
@@ -2102,12 +2155,12 @@ class RuleBasedAgent:
 
         after_attack = list(state.hands[player])
         after_attack.remove(attack)
-        follow_pairs = self._strong_attack_pair_pieces(after_attack)
-        if not follow_pairs:
+        followups = self._kakari_saturation_followup_pieces(after_attack)
+        if not followups:
             return 0.0
 
         bonus = self.KAKARI_SATURATION_ATTACK_BONUS
-        bonus += max(float(POINTS.get(piece, 0)) for piece in follow_pairs) / 3.0
+        bonus += max(float(POINTS.get(piece, 0)) for piece in followups) / 3.0
         ally = self._ally_of(player)
         remaining_min, remaining_max = self._estimate_remaining_range(tr, ally, attack)
         if remaining_min > 0 or remaining_max > 0:
@@ -2672,6 +2725,24 @@ class RuleBasedAgent:
             and state.current_attack == "1"
         ):
             tr["i_passed_ally_shi"] = True
+
+        if (
+            action_type == "pass"
+            and player == tr.get("ally")
+            and state.attacker is not None
+            and state.current_attack is not None
+            and not self._same_team(state.attacker, self.me)
+            and tr.get("enemy_attack_counts", {}).get(state.attacker, 1) == 1
+            and player == state.next_player(state.attacker)
+        ):
+            tr["ally_passed_enemy_first_attack"] = True
+            tr["ally_passed_enemy_first_attack_attacker"] = state.attacker
+            tr["ally_passed_enemy_first_attack_piece"] = str(state.current_attack)
+
+            dealer = getattr(state, "dealer", None)
+            if dealer is not None and state.attacker == dealer:
+                tr["ally_passed_enemy_dealer_first_attack"] = True
+                tr["ally_passed_enemy_dealer_first_attack_piece"] = str(state.current_attack)
 
         dealer = getattr(state, "dealer", None)
         if (
