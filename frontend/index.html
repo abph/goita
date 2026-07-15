@@ -820,6 +820,99 @@ let setupApplyTimer = null;
 let startRequestInFlight = false;
 let autoPlayEnabled = false;
 let keepScoreForPendingSetup = false;
+let audioUnlocked = false;
+const voiceSeat = "C";
+const effectSound = new Audio("/static/sounds/effect.mp3");
+const winSound = new Audio("/static/sounds/win.mp3");
+const passSound = new Audio("/static/sounds/pass.mp3");
+const pieceSound = new Audio("/static/sounds/piece.mp3");
+const nextRoundSound = new Audio("/static/sounds/next_round.mp3");
+const cVoiceHeavySound = new Audio("/static/sounds/voice_c_heavy.mp3");
+const cVoiceKuoSound = new Audio("/static/sounds/voice_c_kuo.mp3");
+const cVoiceUwaaSound = new Audio("/static/sounds/voice_c_uwaa.mp3");
+const cVoiceKakugoSound = new Audio("/static/sounds/voice_c_kakugo.mp3");
+const cVoiceAttack1Sound = new Audio("/static/sounds/voice_c_attack1.mp3");
+const cVoiceAttack2Sound = new Audio("/static/sounds/voice_c_attack2.mp3");
+const cVoiceAttack3Sound = new Audio("/static/sounds/voice_c_attack3.mp3");
+const cVoiceWinSound = new Audio("/static/sounds/voice_c_win.mp3");
+effectSound.preload = "auto";
+winSound.preload = "auto";
+passSound.preload = "auto";
+pieceSound.preload = "auto";
+nextRoundSound.preload = "auto";
+cVoiceHeavySound.preload = "auto";
+cVoiceKuoSound.preload = "auto";
+cVoiceUwaaSound.preload = "auto";
+cVoiceKakugoSound.preload = "auto";
+cVoiceAttack1Sound.preload = "auto";
+cVoiceAttack2Sound.preload = "auto";
+cVoiceAttack3Sound.preload = "auto";
+cVoiceWinSound.preload = "auto";
+effectSound.volume = 0.65;
+winSound.volume = 0.75;
+passSound.volume = 0.55;
+pieceSound.volume = 0.6;
+nextRoundSound.volume = 0.65;
+cVoiceHeavySound.volume = 0.85;
+cVoiceKuoSound.volume = 0.85;
+cVoiceUwaaSound.volume = 0.85;
+cVoiceKakugoSound.volume = 0.85;
+cVoiceAttack1Sound.volume = 0.85;
+cVoiceAttack2Sound.volume = 0.85;
+cVoiceAttack3Sound.volume = 0.85;
+cVoiceWinSound.volume = 0.85;
+
+function unlockAudio(){
+    if(audioUnlocked) return;
+    audioUnlocked = true;
+    for(const audio of [effectSound, winSound, passSound, pieceSound, nextRoundSound, cVoiceHeavySound, cVoiceKuoSound, cVoiceUwaaSound, cVoiceKakugoSound, cVoiceAttack1Sound, cVoiceAttack2Sound, cVoiceAttack3Sound, cVoiceWinSound]){
+        try{
+            const probe = audio.cloneNode();
+            probe.volume = 0;
+            const p = probe.play();
+            if(p && typeof p.then === "function"){
+                p.then(() => {
+                    probe.pause();
+                    probe.currentTime = 0;
+                }).catch(() => {});
+            }else{
+                probe.pause();
+                probe.currentTime = 0;
+            }
+        }catch(e){}
+    }
+}
+
+function playSound(audio){
+    try{
+        audio.currentTime = 0;
+        const p = audio.play();
+        if(p && typeof p.catch === "function") p.catch(() => {});
+    }catch(e){}
+}
+
+function playEffectSound(){ playSound(effectSound); }
+function playWinSound(){ playSound(winSound); }
+function playPassSound(){ playSound(passSound); }
+function playPieceSound(){ playSound(pieceSound); }
+function playNextRoundSound(){ playSound(nextRoundSound); }
+function playCVoice(kind){
+    const table = {
+        heavy: cVoiceHeavySound,
+        kuo: cVoiceKuoSound,
+        uwaa: cVoiceUwaaSound,
+        kakugo: cVoiceKakugoSound,
+        attack1: cVoiceAttack1Sound,
+        attack2: cVoiceAttack2Sound,
+        attack3: cVoiceAttack3Sound,
+        win: cVoiceWinSound,
+    };
+    const audio = table[kind];
+    if(audio) playSound(audio);
+}
+
+document.addEventListener("pointerdown", unlockAudio, { once: true });
+document.addEventListener("keydown", unlockAudio, { once: true });
 
 function connectWS(targetGid) {
     if (socket) {
@@ -1860,6 +1953,99 @@ function seatIsHuman(state, seat){
   return seat === mySeat;
 }
 
+function sameTeamSeat(a, b){
+  return ((a === "A" || a === "C") && (b === "A" || b === "C")) ||
+         ((a === "B" || a === "D") && (b === "B" || b === "D"));
+}
+
+function parseLogMove(entry){
+  const s = String(entry || "");
+  let m = s.match(/^([ABCD]): block (\d+) -> attack (\d+)/);
+  if(m) return { seat: m[1], type: "attack_after_block", block: m[2], attack: m[3] };
+  m = s.match(/^([ABCD]): attack (\d+)/);
+  if(m) return { seat: m[1], type: "attack", attack: m[2] };
+  m = s.match(/^([ABCD]): receive (\d+)/);
+  if(m) return { seat: m[1], type: "receive", block: m[2] };
+  m = s.match(/^([ABCD]): pass/);
+  if(m) return { seat: m[1], type: "pass" };
+  return null;
+}
+
+function logContextBefore(log, index){
+  const attackCounts = {A:0, B:0, C:0, D:0};
+  let currentAttacker = null;
+  let currentAttack = null;
+  const list = Array.isArray(log) ? log : [];
+  for(let i = 0; i < index; i++){
+    const move = parseLogMove(list[i]);
+    if(!move) continue;
+    if(move.type === "attack" || move.type === "attack_after_block"){
+      attackCounts[move.seat] = (attackCounts[move.seat] || 0) + 1;
+      currentAttacker = move.seat;
+      currentAttack = move.attack;
+    }
+  }
+  return {
+    currentAttacker,
+    currentAttack,
+    currentAttackNo: currentAttacker ? attackCounts[currentAttacker] || 0 : 0,
+  };
+}
+
+function cAiEnemyPassVoiceAlreadyUsed(log, index, attackNo){
+  const list = Array.isArray(log) ? log : [];
+  for(let i = 0; i < index; i++){
+    const move = parseLogMove(list[i]);
+    if(!move || move.seat !== voiceSeat || move.type !== "pass") continue;
+    const ctx = logContextBefore(list, i);
+    if(ctx.currentAttacker && !sameTeamSeat(ctx.currentAttacker, voiceSeat) && ctx.currentAttackNo === attackNo){
+      return true;
+    }
+  }
+  return false;
+}
+
+function cAiVoiceForLogEntry(state, index, entry){
+  if(!state || seatIsHuman(state, voiceSeat)) return null;
+  const move = parseLogMove(entry);
+  if(!move || move.seat !== voiceSeat) return null;
+
+  if(move.type === "receive" || move.type === "attack_after_block"){
+    if(move.block === "8" || move.block === "9") return "kakugo";
+  }
+
+  if(move.type === "pass"){
+    const ctx = logContextBefore(state.log || [], index);
+    if(ctx.currentAttacker && !sameTeamSeat(ctx.currentAttacker, voiceSeat)){
+      if(cAiEnemyPassVoiceAlreadyUsed(state.log || [], index, ctx.currentAttackNo)) return null;
+      if(ctx.currentAttackNo === 1) return "heavy";
+      if(ctx.currentAttackNo === 2) return "kuo";
+      if(ctx.currentAttackNo === 3) return "uwaa";
+    }
+  }
+
+  return null;
+}
+
+function cAttackVoiceForLogEntry(state, index, entry){
+  if(!state || seatIsHuman(state, voiceSeat)) return null;
+  const move = parseLogMove(entry);
+  if(!move || move.seat !== voiceSeat) return null;
+  if(move.type !== "attack" && move.type !== "attack_after_block") return null;
+
+  const ctx = logContextBefore(state.log || [], index + 1);
+  if(ctx.currentAttacker !== voiceSeat) return null;
+  if(ctx.currentAttackNo === 1) return "attack1";
+  if(ctx.currentAttackNo === 2) return "attack2";
+  if(ctx.currentAttackNo === 3) return "attack3";
+  return null;
+}
+
+function cWinsInLogEntry(state, entry){
+  if(!state || seatIsHuman(state, voiceSeat)) return false;
+  return new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(String(entry || ""));
+}
+
 function renderBoard(state){
   const board=document.getElementById("board");
   board.innerHTML="";
@@ -2157,7 +2343,8 @@ function showPassAnimation(phys) {
   }, 2000);
 }
 
-function showSpecialAnimation(text, typeClass) {
+function showSpecialAnimation(text, typeClass, options = {}) {
+  if(options.sound !== false) playEffectSound();
   const wrap = document.querySelector(".board-wrap");
   if (!wrap) return;
 
@@ -2178,6 +2365,9 @@ function showSpecialAnimation(text, typeClass) {
 }
 
 async function startNewGame(keepScore = false){
+  if(keepScore){
+      playNextRoundSound();
+  }
   if (cpuTimer) {
       clearTimeout(cpuTimer);
       cpuTimer = null;
@@ -2349,6 +2539,9 @@ async function refresh(){
       const entry = state.log[i];
       
       const isPass = entry.match(/^([ABCD]): pass/);
+      const isRoundFinished = /^Round finished\.|^Match finished!/.test(entry);
+      const nextEntryIsRoundFinished = /^Round finished\.|^Match finished!/.test(String(state.log[i + 1] || ""));
+      const isPieceAction = /^([ABCD]): (?:receive \d|attack \d|block \d+ -> attack \d)/.test(entry);
       const hasKakarigotae = entry.includes("[EFFECT:kakarigotae]");
       const hasDamadama = entry.includes("[EFFECT:damadama]");
       const hasUchidome = entry.includes("[EFFECT:uchidome]");
@@ -2356,6 +2549,10 @@ async function refresh(){
       const hasBaizuke = entry.includes("[EFFECT:baizuke]");
       const hasDamadamaAgari = entry.includes("[EFFECT:damadama_agari]");
       const hasOuAgari = entry.includes("[EFFECT:ou_agari]");
+      const hasAnyEffect = hasKakarigotae || hasDamadama || hasUchidome || hasReach || hasBaizuke || hasDamadamaAgari || hasOuAgari;
+      const cVoiceKind = cAiVoiceForLogEntry(state, i, entry);
+      const cAttackVoiceKind = nextEntryIsRoundFinished ? null : cAttackVoiceForLogEntry(state, i, entry);
+      const cWinVoice = cWinsInLogEntry(state, entry);
       
       const seatMatch = entry.match(/^([ABCD]):/);
 
@@ -2363,41 +2560,61 @@ async function refresh(){
         const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
         setTimeout(() => {
+          playPassSound();
+          if(cVoiceKind) setTimeout(() => playCVoice(cVoiceKind), 120);
           showPassAnimation(physSeat);
         }, animDelay);
         animDelay += 800; 
       }
+
+      if (cVoiceKind && !isPass) {
+        setTimeout(() => playCVoice(cVoiceKind), animDelay + 100);
+      }
+
+      if (cAttackVoiceKind) {
+        setTimeout(() => playCVoice(cAttackVoiceKind), animDelay + 100);
+      }
+
+      if (isPieceAction && !hasAnyEffect && !nextEntryIsRoundFinished) {
+        setTimeout(playPieceSound, animDelay);
+        animDelay += 160;
+      }
       
       if (seatMatch) {
           if (hasKakarigotae) {
-              setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae"), animDelay);
+              setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasDamadama) {
-              setTimeout(() => showSpecialAnimation("だまだま！", "damadama"), animDelay);
+              setTimeout(() => showSpecialAnimation("だまだま！", "damadama", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasUchidome) {
-              setTimeout(() => showSpecialAnimation("打ち止め！", "uchidome"), animDelay);
+              setTimeout(() => showSpecialAnimation("打ち止め！", "uchidome", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasReach) {
-              setTimeout(() => showSpecialAnimation("リーチ！", "reach"), animDelay);
+              setTimeout(() => showSpecialAnimation("リーチ！", "reach", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           
           if (hasBaizuke) {
-              setTimeout(() => showSpecialAnimation("倍付け！", "baizuke"), animDelay);
+              setTimeout(() => showSpecialAnimation("倍付け！", "baizuke", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
           if (hasDamadamaAgari) {
-              setTimeout(() => showSpecialAnimation("だまだまあがり！", "damadama_agari"), animDelay);
+              setTimeout(() => showSpecialAnimation("だまだまあがり！", "damadama_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1500;
           }
           if (hasOuAgari) {
-              setTimeout(() => showSpecialAnimation("王あがり！", "ou_agari"), animDelay);
+              setTimeout(() => showSpecialAnimation("王あがり！", "ou_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
+      }
+      if (isRoundFinished) {
+          setTimeout(playWinSound, animDelay);
+          if(cWinVoice) setTimeout(() => playCVoice("win"), animDelay + 180);
+          animDelay += 500;
       }
     }
   }

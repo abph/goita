@@ -92,6 +92,9 @@ class RuleBasedAgent:
         self.ENDGAME_PAIR_SCORE_WEIGHT = 1.6
         self.ENDGAME_PAIR_KING_RECEIVE_BONUS = 18.0
         self.ENDGAME_PAIR_UNCERTAIN_PENALTY = 16.0
+        self.ENDGAME_MIXED_SHI_PAIR_BONUS = 180.0
+        self.ENDGAME_SHI_PAIR_PENALTY = 180.0
+        self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS = 180.0
         self.PRESERVE_WIN_ATTACK_PASS_BONUS = 26000.0
         self.PRESERVE_WIN_ATTACK_RECEIVE_PENALTY = 12000.0
         self.FUSE_KYOSHA_BLOCK_PENALTY = 90.0
@@ -1342,6 +1345,8 @@ class RuleBasedAgent:
                 and hand.count("1") >= 4
             ):
                 return self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS
+            if remaining_len == 2 and remaining_shi == 1:
+                return self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS
             return 60.0 if shi_is_surplus else -700.0
         if block in ("2", "8", "9"):
             return -260.0
@@ -2533,7 +2538,13 @@ class RuleBasedAgent:
         hand.remove(attack)
         if len(hand) != 2:
             return 0.0
-        return self._endgame_pair_score(state, player, hand) * self.ENDGAME_PAIR_SCORE_WEIGHT
+        score = self._endgame_pair_score(state, player, hand) * self.ENDGAME_PAIR_SCORE_WEIGHT
+        shi_count = hand.count("1")
+        if shi_count == 1:
+            score += self.ENDGAME_MIXED_SHI_PAIR_BONUS
+        elif shi_count == 2:
+            score -= self.ENDGAME_SHI_PAIR_PENALTY
+        return score
 
     def _public_attack_safety_bonus(self, state, player: str, attack: str) -> float:
         tr = self._track.get(id(state))
