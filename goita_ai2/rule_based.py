@@ -104,6 +104,7 @@ class RuleBasedAgent:
         self.TOP_ATTACK_SHAPE_BLOCK_PENALTY = 35.0
         self.SAME_PIECE_PAIR_SPEND_PENALTY = 75.0
         self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY = 220.0
+        self.FOURTH_MIDDLE_FIRST_ATTACK_DELAY_PENALTY = 950.0
         self.ALLY_GUARANTEED_WIN_GIVE_WAY_MAX_SCORE = 30.0
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
@@ -169,6 +170,7 @@ class RuleBasedAgent:
             
             ally_responded_to_my_attacks=set(),
             ally_ignored_my_attacks=set(),
+            ally_pending_response_piece=None,
             ally_passed_my_shi_count=0,
             ally_shi_signal="unknown",
             i_passed_ally_shi=False,
@@ -1417,6 +1419,32 @@ class RuleBasedAgent:
             return 2
         return 1
 
+    def _is_fourth_middle_attack(self, state, player: str, attack: Optional[str]) -> bool:
+        if attack not in ("3", "4", "5"):
+            return False
+        tr = self._track.get(id(state))
+        if tr is None:
+            return False
+        seen_and_mine = int(tr.get("public_seen_counts", {}).get(attack, 0)) + state.hands[player].count(attack)
+        return seen_and_mine >= self._piece_total(attack)
+
+    def _fourth_middle_first_attack_delay_penalty(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        attack: Optional[str],
+    ) -> float:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or int(tr.get("my_attack_count", 0)) != 0
+            or not self._is_fourth_middle_attack(state, player, attack)
+        ):
+            return 0.0
+        return self.FOURTH_MIDDLE_FIRST_ATTACK_DELAY_PENALTY
+
     def _infer_first_attack_strategy(self, attack: Optional[str]) -> Optional[Dict[str, object]]:
         if attack is None:
             return None
@@ -1604,6 +1632,80 @@ class RuleBasedAgent:
             )
             self._reconcile_piece_count_estimates(state, tr, other_king)
         self._reconcile_piece_count_estimates(state, tr, attack)
+
+    def _infer_single_remaining_unique_piece_holder(
+        self,
+        state,
+        tr: dict,
+        piece: str,
+        *,
+        source: str,
+    ) -> None:
+        if self.me is None or self._piece_total(piece) != 1:
+            return
+        if state.hands[self.me].count(piece) > 0:
+            return
+        if int(tr.get("public_seen_counts", {}).get(piece, 0)) > 0:
+            return
+
+        candidates: List[str] = []
+        for other in ("A", "B", "C", "D"):
+            if other == self.me:
+                continue
+            observed = self._observed_piece_count_for_player(tr, other, piece)
+            if observed > 0:
+                return
+            est = self._piece_count_estimate(tr, other, piece)
+            max_count = self._piece_total(piece) if est is None else int(est.get("max", self._piece_total(piece)))
+            if max_count > 0:
+                candidates.append(other)
+
+        if len(candidates) != 1:
+            return
+
+        self._set_piece_count_estimate(
+            tr,
+            candidates[0],
+            piece,
+            min_count=1,
+            max_count=1,
+            source=source,
+        )
+        self._reconcile_piece_count_estimates(state, tr, piece)
+
+    def _infer_missing_kings_from_third_visible_attack(
+        self,
+        state,
+        tr: dict,
+        player: str,
+        action_type: str,
+        attack: Optional[str],
+    ) -> None:
+        if player == self.me or action_type != "attack" or attack in ("8", "9"):
+            return
+
+        model = tr.get("public_hand_models", {}).get(player, {})
+        if int(model.get("attack_count", 0)) != 3:
+            return
+
+        for king in ("8", "9"):
+            if self._observed_piece_count_for_player(tr, player, king) > 0:
+                continue
+            self._set_piece_count_estimate(
+                tr,
+                player,
+                king,
+                min_count=0,
+                max_count=0,
+                source="third_attack_no_king",
+            )
+            self._reconcile_piece_count_estimates(state, tr, king)
+            self._infer_single_remaining_unique_piece_holder(
+                state,
+                tr,
+                king,
+                source="single_remaining_after_third_attack",
+            )
 
     def _opponent_first_attack_strategy_penalty(self, tr: dict, player: str, attack: str) -> float:
         penalty = 0.0
@@ -1883,6 +1985,28 @@ class RuleBasedAgent:
         if same_piece_receive is None:
             return None
 
+        if current_attack == "2":
+            pass_action = next((act for act in actions if act[0] == "pass"), None)
+            if pass_action is None:
+                return None
+
+            attacker = state.attacker
+            next_after_attacker = state.next_player(attacker)
+            axes = self._initial_hand_axes_for_state(state, player)
+            absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+
+            if player == next_after_attacker and absolute_rank in ("SS", "S", "A", "B"):
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(f"enemy_first_kyosha_next_abs{absolute_rank}_receive")
+                return same_piece_receive
+
+            self._set_decision_reason("score_fallback")
+            if player == next_after_attacker:
+                self._set_score_fallback_detail(f"enemy_first_kyosha_next_abs{absolute_rank}_pass")
+            else:
+                self._set_score_fallback_detail("enemy_first_kyosha_later_pass")
+            return pass_action
+
         if current_attack == "1":
             axes = self._initial_hand_axes_for_state(state, player)
             absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
@@ -1960,6 +2084,36 @@ class RuleBasedAgent:
             return pass_action
 
         return None
+
+    def _guaranteed_finish_receive_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        if state.phase != "receive":
+            return None
+
+        finish_after_receive_actions: List[Tuple[float, str, Action]] = []
+        for act in actions:
+            if act[0] != "receive":
+                continue
+            score = self._score_receive_phase(state, player, act[0], act[1])
+            if score < 1e8:
+                continue
+            detail = "receive_win_after"
+            if self._win_after_receive_bonus(state, player, act) <= 0:
+                detail = "receive_tsume_after"
+            finish_after_receive_actions.append((score, detail, act))
+
+        if not finish_after_receive_actions:
+            return None
+
+        finish_after_receive_actions.sort(key=lambda x: x[0], reverse=True)
+        _score, detail, chosen = finish_after_receive_actions[0]
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail(detail)
+        return chosen
 
     def _early_big_piece_same_receive_action(
         self,
@@ -2147,6 +2301,8 @@ class RuleBasedAgent:
             return 0.0
         tr = self._track.get(id(state))
         if tr is None:
+            return 0.0
+        if self._is_fourth_middle_attack(state, player, attack):
             return 0.0
         if not (attack == tr.get("ally_first_attack") or attack in tr.get("ally_past_attacks", set())):
             return 0.0
@@ -2766,6 +2922,11 @@ class RuleBasedAgent:
                 tr["public_seen_counts"][visible_block] += 1
             if player == self.me and action_type == "receive":
                 tr["my_last_receive_piece"] = visible_block
+            if player == tr.get("ally") and action_type == "receive":
+                if visible_block in tr.get("my_past_attacks", set()):
+                    tr["ally_pending_response_piece"] = visible_block
+                else:
+                    tr["ally_pending_response_piece"] = None
             if (
                 player is not None
                 and player != self.me
@@ -2799,7 +2960,15 @@ class RuleBasedAgent:
                 tr["ally_past_attacks"].add(attack)
                 tr["ally_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = True
-                
+
+                pending_response = tr.get("ally_pending_response_piece")
+                if pending_response is not None and action_type == "attack":
+                    if attack == pending_response and attack in tr["my_past_attacks"]:
+                        tr["ally_responded_to_my_attacks"].add(attack)
+                    elif pending_response in tr["my_past_attacks"] and pending_response not in tr["ally_responded_to_my_attacks"]:
+                        tr["ally_ignored_my_attacks"].add(pending_response)
+                    tr["ally_pending_response_piece"] = None
+
                 if action_type == "attack_after_block":
                     if visible_block == "1" and "1" in tr["my_past_attacks"]:
                         tr["ally_shi_signal"] = "returned_shi" if attack == "1" else "weak"
@@ -2821,6 +2990,14 @@ class RuleBasedAgent:
                     tr["enemy_attack_counts"] = {}
                 previous_count = tr["enemy_attack_counts"].get(player, 0)
                 tr["enemy_attack_counts"][player] = previous_count + 1
+
+            self._infer_missing_kings_from_third_visible_attack(
+                state,
+                tr,
+                player,
+                action_type,
+                attack,
+            )
 
     def _public_attack_evidence(self, attack: str) -> float:
         if attack in ("8", "9"):
@@ -3041,6 +3218,12 @@ class RuleBasedAgent:
             action_type,
             attack,
         )
+        score -= self._fourth_middle_first_attack_delay_penalty(
+            state,
+            player,
+            action_type,
+            attack,
+        )
 
         if tr is not None and attack != "1" and attack == tr.get("my_last_attack"):
             if tr.get("ally_attacked_since_my_last_attack"):
@@ -3054,15 +3237,16 @@ class RuleBasedAgent:
 
         if tr is not None and attack != "1":
             ally_first = tr.get("ally_first_attack")
+            is_fourth_middle = self._is_fourth_middle_attack(state, player, attack)
             if ally_first is not None and attack == ally_first:
-                is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
+                is_unreasonable_block = is_fourth_middle or (action_type == "attack_after_block" and block in ("8", "9"))
                 if not is_unreasonable_block:
                     if tr.get("my_attack_count", 0) == 1:
                         score += self.KAKARI_GOTAE_BONUS * 10.0
                     else:
                         score += self.KAKARI_GOTAE_BONUS
             elif attack in tr.get("ally_past_attacks", set()):
-                is_unreasonable_block = (action_type == "attack_after_block" and block in ("8", "9"))
+                is_unreasonable_block = is_fourth_middle or (action_type == "attack_after_block" and block in ("8", "9"))
                 if not is_unreasonable_block:
                     score += self.KAKARI_GOTAE_BONUS
 
@@ -3406,8 +3590,11 @@ class RuleBasedAgent:
                 return "attack_kakari_saturation"
             if self._ally_force_king_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_force_enemy_king"
+            if self._fourth_middle_first_attack_delay_penalty(state, player, action_type, attack) > 0:
+                return "attack_delay_fourth_middle"
             if attack != "1" and (attack == ally_first or attack in tr.get("ally_past_attacks", set())):
-                return "attack_kakari_score"
+                if not self._is_fourth_middle_attack(state, player, attack):
+                    return "attack_kakari_score"
 
             if attack != "1" and attack == tr.get("my_last_attack"):
                 return "attack_continuous_score"
@@ -3565,7 +3752,10 @@ class RuleBasedAgent:
             ally_past = tr.get("ally_past_attacks", set())
             for (t, b, a) in actions:
                 if t in ("attack", "attack_after_block") and a is not None and a != "1":
-                    is_unreasonable_block = (t == "attack_after_block" and b in ("8", "9"))
+                    is_unreasonable_block = (
+                        self._is_fourth_middle_attack(state, player, a)
+                        or (t == "attack_after_block" and b in ("8", "9"))
+                    )
                     if not is_unreasonable_block:
                         if (ally_first is not None and a == ally_first) or (a in ally_past):
                             sc = self._score_attack_phase(state, player, t, b, a, has_non_king_attack_option=has_non_king_attack_option)
@@ -3613,28 +3803,14 @@ class RuleBasedAgent:
         if give_way_action is not None:
             return give_way_action
 
-        if state.phase == "receive" and state.current_attack == "1":
+        guaranteed_finish_receive = self._guaranteed_finish_receive_action(state, player, actions)
+        if guaranteed_finish_receive is not None:
+            return guaranteed_finish_receive
+
+        if state.phase == "receive" and state.current_attack in ("1", "2"):
             rank_policy_action = self._enemy_first_same_piece_rank_policy_action(state, player, actions)
             if rank_policy_action is not None:
                 return rank_policy_action
-
-        finish_after_receive_actions: List[Tuple[float, str, Action]] = []
-        if state.phase == "receive":
-            for act in actions:
-                if act[0] == "receive":
-                    score = self._score_receive_phase(state, player, act[0], act[1])
-                    if score >= 1e8:
-                        detail = "receive_win_after"
-                        if self._win_after_receive_bonus(state, player, act) <= 0:
-                            detail = "receive_tsume_after"
-                        finish_after_receive_actions.append((score, detail, act))
-
-        if finish_after_receive_actions:
-            finish_after_receive_actions.sort(key=lambda x: x[0], reverse=True)
-            _score, detail, chosen = finish_after_receive_actions[0]
-            self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail(detail)
-            return chosen
 
         filtered_actions = []
         if tr is not None:
