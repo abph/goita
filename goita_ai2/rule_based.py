@@ -54,6 +54,8 @@ class RuleBasedAgent:
         self.USE_WEAK_SHI_ATTACK_STRATEGY = True
         self.USE_ENEMY_SHI_RESPONSE = False
         self.WEAK_SHI_ATTACK_BONUS = 120.0
+        self.SHI_ATTACK_MODE_BONUS = 520.0
+        self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS = 220.0
         self.NON_WEAK_SHI_ATTACK_PENALTY = 220.0
         self.WEAK_SHI_FALLBACK_HIGH_POINT_WEIGHT = 2.0
         self.SHI_ATTACK_PREPARE_PASS_BONUS = 180.0
@@ -105,6 +107,7 @@ class RuleBasedAgent:
         self.SAME_PIECE_PAIR_SPEND_PENALTY = 75.0
         self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY = 220.0
         self.FOURTH_MIDDLE_FIRST_ATTACK_DELAY_PENALTY = 950.0
+        self.SINGLE_MIDDLE_OVER_FOUR_SHI_SIGNAL_PENALTY = 260.0
         self.ALLY_GUARANTEED_WIN_GIVE_WAY_MAX_SCORE = 30.0
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
@@ -173,6 +176,8 @@ class RuleBasedAgent:
             ally_pending_response_piece=None,
             ally_passed_my_shi_count=0,
             ally_shi_signal="unknown",
+            shi_attack_mode=False,
+            shi_attack_mode_source=None,
             i_passed_ally_shi=False,
             inherit_ally_shi_attack=False,
             ally_passed_enemy_dealer_first_attack=False,
@@ -1159,7 +1164,10 @@ class RuleBasedAgent:
         if attack in plan_pieces:
             value += self.DEALER_OPENING_PLAN_ATTACK_BONUS
         if block in plan_pieces:
-            value -= self.DEALER_OPENING_PLAN_BLOCK_PENALTY
+            if not (block == "1" and attack == "1" and state.hands[player].count("1") >= 4):
+                value -= self.DEALER_OPENING_PLAN_BLOCK_PENALTY
+            else:
+                value += self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS
         return value
 
     def _weak_shi_attack_plan_value(self, state, player: str) -> float:
@@ -1177,15 +1185,33 @@ class RuleBasedAgent:
         if tr.get("ally_shi_signal") == "weak" and not tr.get("inherit_ally_shi_attack"):
             return 0.0
 
+        mode_active = bool(tr.get("shi_attack_mode")) and state.hands[player].count("1") > 0
+        if mode_active and not self._has_strong_repeat_attack(counts):
+            value = self.SHI_ATTACK_MODE_BONUS
+            ally_signal = str(tr.get("ally_shi_signal", "unknown"))
+            if ally_signal == "passed":
+                value += 120.0
+            elif ally_signal == "returned_shi":
+                value += 260.0
+            if tr.get("inherit_ally_shi_attack"):
+                value += 280.0
+            return value
+
         axes = self._initial_hand_axes_for_state(state, player)
         rank = self._strategy_rank_from_axes(axes)
-        if rank not in ("C", "D") and not tr.get("inherit_ally_shi_attack"):
+        four_shi_signal_attack = (
+            counts.get("1", 0) >= 4
+            and state.hands[player].count("1") >= 3
+            and rank not in ("S", "A", "B")
+            and not self._has_strong_repeat_attack(counts)
+        )
+        if rank not in ("C", "D") and not tr.get("inherit_ally_shi_attack") and not four_shi_signal_attack:
             return 0.0
 
         if self._has_strong_repeat_attack(counts):
             return 0.0
 
-        if int(axes.get("receive_type", 0)) < 5:
+        if int(axes.get("receive_type", 0)) < 5 and not four_shi_signal_attack:
             return 0.0
 
         if "1" in tr.get("enemy_past_attacks", set()) and not tr.get("inherit_ally_shi_attack"):
@@ -1198,7 +1224,7 @@ class RuleBasedAgent:
 
         if already_used_shi_attack and ally_signal not in ("passed", "returned_shi"):
             return 0.0
-        if not already_used_shi_attack and not is_early and not tr.get("inherit_ally_shi_attack"):
+        if not already_used_shi_attack and not is_early and not tr.get("inherit_ally_shi_attack") and not four_shi_signal_attack:
             return 0.0
 
         ally = tr.get("ally")
@@ -1206,6 +1232,8 @@ class RuleBasedAgent:
             return 0.0
 
         value = self.WEAK_SHI_ATTACK_BONUS
+        if four_shi_signal_attack:
+            value += 120.0
         if ally_signal == "passed":
             value += 100.0
         elif ally_signal == "returned_shi":
@@ -1213,6 +1241,27 @@ class RuleBasedAgent:
         if tr.get("inherit_ally_shi_attack"):
             value += 280.0
         return value
+
+    def _single_middle_over_four_shi_signal_penalty(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        attack: Optional[str],
+    ) -> float:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or attack not in ("3", "4", "5")
+            or int(tr.get("my_attack_count", 0)) != 0
+            or state.hands[player].count(attack) != 1
+            or state.hands[player].count("1") < 3
+            or tr.get("my_init_count", Counter()).get("1", 0) < 4
+            or self._weak_shi_attack_plan_value(state, player) <= 0
+        ):
+            return 0.0
+        return self.SINGLE_MIDDLE_OVER_FOUR_SHI_SIGNAL_PENALTY
 
     def _shi_attack_score_adjustment(self, state, player: str) -> float:
         tr = self._track.get(id(state))
@@ -1287,6 +1336,12 @@ class RuleBasedAgent:
         shi_is_surplus = remaining_shi > future_attack_slots
 
         if block == "1":
+            if (
+                attack == "1"
+                and self._is_dealer_opening_attack(state, player)
+                and hand.count("1") >= 4
+            ):
+                return self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS
             return 60.0 if shi_is_surplus else -700.0
         if block in ("2", "8", "9"):
             return -260.0
@@ -2952,8 +3007,15 @@ class RuleBasedAgent:
                 tr["my_past_attacks"].add(attack)
                 tr["my_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = False
-                if attack == "1" and tr.get("inherit_ally_shi_attack"):
-                    tr["inherit_ally_shi_attack"] = False
+                if attack == "1":
+                    if tr.get("my_init_count", Counter()).get("1", 0) >= 3:
+                        tr["shi_attack_mode"] = True
+                        tr["shi_attack_mode_source"] = "self"
+                    if tr.get("inherit_ally_shi_attack"):
+                        tr["inherit_ally_shi_attack"] = False
+                elif tr.get("shi_attack_mode") and state.hands[player].count("1") > 0:
+                    tr["shi_attack_mode"] = False
+                    tr["shi_attack_mode_source"] = None
             elif self._same_team(player, self.me):
                 if not tr["ally_past_attacks"]:
                     tr["ally_first_attack"] = attack
@@ -2963,6 +3025,14 @@ class RuleBasedAgent:
 
                 pending_response = tr.get("ally_pending_response_piece")
                 if pending_response is not None and action_type == "attack":
+                    if pending_response == "1" and "1" in tr["my_past_attacks"]:
+                        if attack == "1":
+                            tr["ally_shi_signal"] = "returned_shi"
+                            tr["shi_attack_mode"] = True
+                        else:
+                            tr["ally_shi_signal"] = "weak"
+                            tr["shi_attack_mode"] = False
+                            tr["shi_attack_mode_source"] = None
                     if attack == pending_response and attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
                     elif pending_response in tr["my_past_attacks"] and pending_response not in tr["ally_responded_to_my_attacks"]:
@@ -2972,6 +3042,11 @@ class RuleBasedAgent:
                 if action_type == "attack_after_block":
                     if visible_block == "1" and "1" in tr["my_past_attacks"]:
                         tr["ally_shi_signal"] = "returned_shi" if attack == "1" else "weak"
+                        if attack == "1":
+                            tr["shi_attack_mode"] = True
+                        else:
+                            tr["shi_attack_mode"] = False
+                            tr["shi_attack_mode_source"] = None
                     if attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
                         
@@ -3213,6 +3288,12 @@ class RuleBasedAgent:
             if attack not in ("8", "9", "1"):
                 score -= 30.0
         score -= self._single_middle_after_big_receive_first_attack_penalty(
+            state,
+            player,
+            action_type,
+            attack,
+        )
+        score -= self._single_middle_over_four_shi_signal_penalty(
             state,
             player,
             action_type,
@@ -3642,6 +3723,9 @@ class RuleBasedAgent:
             ):
                 return "attack_four_shi_over_single_middle"
 
+            if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
+                return "attack_avoid_single_middle_over_four_shi"
+
             if self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_high_point_after_weak_shi"
 
@@ -4019,12 +4103,19 @@ class RuleBasedAgent:
             if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
                 initial_shis = tr["my_init_count"].get("1", 0)
                 current_shis = state.hands[player].count("1")
+                can_show_four_shi_signal = (
+                    current_shis >= 4
+                    or (current_shis >= 3 and "1" in tr.get("my_past_attacks", set()))
+                    or (current_shis >= 2 and tr.get("shi_attack_mode"))
+                )
 
                 # 1. 「現在の手札」に「し」が4枚以上ある場合（し受け・し攻め）
-                if current_shis >= 4:
+                if can_show_four_shi_signal:
                     for act in actions:
                         if act[0] == "attack_after_block" and act[1] == "1" and act[2] == "1":
                             tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                            tr["shi_attack_mode"] = True
+                            tr["shi_attack_mode_source"] = "ally_signal"
                             if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and act[2] in ("8", "9") and tr.get("kg_second") is None:
                                 tr["kg_second"] = act[2]
                             if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
@@ -4034,6 +4125,8 @@ class RuleBasedAgent:
                     # 「し受け・し攻め」が物理的にできない場合は、とりあえず「し」で受ける
                     for act in actions:
                         if act[0] == "receive" and act[1] == "1":
+                            tr["shi_attack_mode"] = True
+                            tr["shi_attack_mode_source"] = "ally_signal_receive"
                             self._set_decision_reason("shi_signal")
                             return act
 

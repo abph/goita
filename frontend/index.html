@@ -819,6 +819,7 @@ let fixedHandMemory = {};
 let setupApplyTimer = null;
 let startRequestInFlight = false;
 let autoPlayEnabled = false;
+let keepScoreForPendingSetup = false;
 
 function connectWS(targetGid) {
     if (socket) {
@@ -1346,6 +1347,7 @@ function startGame() {
         await fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
             method: "POST"
         });
+        keepScoreForPendingSetup = false;
         await refresh();
       }catch(e){
         console.error(e);
@@ -1566,12 +1568,30 @@ async function resetWithPreset(dealer, keepScore){
   }
 }
 
+function stateHasTotalScore(state){
+  const score = state && state.total_team_score ? state.total_team_score : null;
+  if(!score) return false;
+  const ac = Number(score.AC || 0);
+  const bd = Number(score.BD || 0);
+  return (Number.isFinite(ac) ? ac : 0) > 0 || (Number.isFinite(bd) ? bd : 0) > 0;
+}
+
+function shouldKeepScoreForWaitingSetup(options = {}){
+  if(Object.prototype.hasOwnProperty.call(options, "keepScore")){
+    return !!options.keepScore;
+  }
+  if(keepScoreForPendingSetup) return true;
+  if(!latestState || latestState.match_finished) return false;
+  return stateHasTotalScore(latestState);
+}
+
 async function applyCurrentSetupToWaitingGame(options = {}){
   if(mySeat !== "A") return false;
   if(!latestState || latestState.is_started || latestState.finished) return false;
 
   const dealer = resolveDealerSelection();
-  await resetWithPreset(dealer, false);
+  const keepScore = shouldKeepScoreForWaitingSetup(options);
+  await resetWithPreset(dealer, keepScore);
   fixedHandMemory = {};
   pending = null;
   await claimSeat(mySeat);
@@ -2165,6 +2185,7 @@ async function startNewGame(keepScore = false){
   isProcessingCpu = false;
 
   isGameStarted = false; 
+  keepScoreForPendingSetup = !!keepScore;
   const savedNames = (latestState && latestState.player_names) ? latestState.player_names : {A:"",B:"",C:"",D:""};
   const seatToKeep = mySeat; 
   const sel = document.getElementById("dealerSelect");

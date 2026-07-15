@@ -549,6 +549,17 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
     }
 
 
+def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
+    new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
+    try:
+        old_round = int(old_game.get("round_count", 1))
+    except (TypeError, ValueError):
+        old_round = 1
+    old_state = old_game.get("state")
+    should_advance_round = bool(old_game.get("is_started")) or bool(getattr(old_state, "finished", False))
+    new_game["round_count"] = old_round + (1 if should_advance_round else 0)
+
+
 def _ensure_main_game(dealer: Optional[str] = None) -> None:
     if MAIN_GID not in GAMES:
         d = dealer if dealer else random.choice(["A", "B", "C", "D"])
@@ -849,8 +860,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["ai_profile"] = ai_profile
     
     if keep_score:
-        new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
-        new_game["round_count"] = old_game.get("round_count", 1) + 1
+        _preserve_match_progress(new_game, old_game)
     
     GAMES[game_id] = new_game
     
@@ -902,8 +912,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
-            new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
-            new_game["round_count"] = old_game.get("round_count", 1) + 1
+            _preserve_match_progress(new_game, old_game)
 
         GAMES[game_id] = new_game
     else:
@@ -919,8 +928,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
-            new_game["total_team_score"] = copy.deepcopy(old_game.get("total_team_score", {"AC": 0, "BD": 0}))
-            new_game["round_count"] = old_game.get("round_count", 1) + 1
+            _preserve_match_progress(new_game, old_game)
             
         GAMES[game_id] = new_game
 
