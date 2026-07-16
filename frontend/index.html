@@ -808,6 +808,9 @@ let lastSeat = "A";
 
 let isProcessingCpu = false; 
 let lastLogCount = 0;
+let logAudioPrimed = false;
+let suppressLogAudioUntil = Date.now() + 1200;
+const MAX_LOG_AUDIO_CATCHUP = 8;
 let cpuTimer = null; 
 let latestState = null;
 let latestLegal = [];
@@ -865,30 +868,21 @@ cVoiceWinSound.volume = 0.85;
 function unlockAudio(){
     if(audioUnlocked) return;
     audioUnlocked = true;
-    for(const audio of [effectSound, winSound, passSound, pieceSound, nextRoundSound, cVoiceHeavySound, cVoiceKuoSound, cVoiceUwaaSound, cVoiceKakugoSound, cVoiceAttack1Sound, cVoiceAttack2Sound, cVoiceAttack3Sound, cVoiceWinSound]){
-        try{
-            const probe = audio.cloneNode();
-            probe.volume = 0;
-            const p = probe.play();
-            if(p && typeof p.then === "function"){
-                p.then(() => {
-                    probe.pause();
-                    probe.currentTime = 0;
-                }).catch(() => {});
-            }else{
-                probe.pause();
-                probe.currentTime = 0;
-            }
-        }catch(e){}
-    }
 }
 
 function playSound(audio){
+    if(!audioUnlocked) return;
     try{
         audio.currentTime = 0;
         const p = audio.play();
         if(p && typeof p.catch === "function") p.catch(() => {});
     }catch(e){}
+}
+
+function resetLogAudioSync(currentLogCount = 0){
+    lastLogCount = currentLogCount;
+    logAudioPrimed = false;
+    suppressLogAudioUntil = Date.now() + 1200;
 }
 
 function playEffectSound(){ playSound(effectSound); }
@@ -2403,7 +2397,7 @@ async function startNewGame(keepScore = false){
     await claimSeat(seatToKeep);
   }
 
-  pending=null; lastLogCount = 0;
+  pending=null; resetLogAudioSync(0);
 }
 
 async function fetchLegal(){
@@ -2450,7 +2444,7 @@ async function refresh(){
   const currentLogCount = state.log ? state.log.length : 0;
 
   if (activeRoomId !== gid) {
-    lastLogCount = currentLogCount;
+    resetLogAudioSync(currentLogCount);
     activeRoomId = gid;
     isGameStarted = false; 
     fixedHandMemory = {};
@@ -2458,7 +2452,7 @@ async function refresh(){
 
   if (currentLogCount < lastLogCount) {
       isGameStarted = false;
-      lastLogCount = 0; 
+      resetLogAudioSync(currentLogCount);
       fixedHandMemory = {};
   }
   
@@ -2531,7 +2525,16 @@ async function refresh(){
   await renderActions();
   updateNameInputVisibility();
 
-  if (lastLogCount > 0 && currentLogCount > lastLogCount) {
+  const logDelta = currentLogCount - lastLogCount;
+  const shouldPlayLogAudio = (
+    logAudioPrimed &&
+    audioUnlocked &&
+    Date.now() >= suppressLogAudioUntil &&
+    logDelta > 0 &&
+    logDelta <= MAX_LOG_AUDIO_CATCHUP
+  );
+
+  if (shouldPlayLogAudio) {
     const seatToPhys = getSeatToPhys();
     let animDelay = 0; 
     
@@ -2619,6 +2622,7 @@ async function refresh(){
     }
   }
   lastLogCount = currentLogCount;
+  logAudioPrimed = true;
 
   if(isGameStarted && !state.finished && autoPlayEnabled && !isSpectator() && state.turn === mySeat && !isProcessingCpu){
     pending = null;
