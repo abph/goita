@@ -96,6 +96,8 @@ class RuleBasedAgent:
         self.ENDGAME_SHI_PAIR_PENALTY = 180.0
         self.SHI_SASHIKOMI_WAIT_BONUS = 180.0
         self.SHI_SASHIKOMI_ATTACK_BONUS = 520.0
+        self.SHI_EXHAUST_RECEIVE_BONUS = 760.0
+        self.SHI_EXHAUST_ATTACK_BONUS = 620.0
         self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS = 180.0
         self.PRESERVE_WIN_ATTACK_PASS_BONUS = 26000.0
         self.PRESERVE_WIN_ATTACK_RECEIVE_PENALTY = 12000.0
@@ -173,6 +175,7 @@ class RuleBasedAgent:
             ally_past_attacks=set(),
             enemy_past_attacks=set(),
             enemy_attack_counts={},
+            hidden_block_counts={p: 0 for p in ("A", "B", "C", "D")},
             other_first_attack_strategy_by_player={},
             other_piece_count_estimates={},
             
@@ -1279,6 +1282,10 @@ class RuleBasedAgent:
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
 
+        exhaust_bonus = self._shi_exhaust_attack_bonus(state, player)
+        if exhaust_bonus > 0:
+            return exhaust_bonus
+
         sashikomi_bonus = self._shi_sashikomi_attack_bonus(state, player)
         if sashikomi_bonus > 0:
             return sashikomi_bonus
@@ -1940,6 +1947,54 @@ class RuleBasedAgent:
         ally = self._ally_of(player)
         ally_pass_count = int(models.get(ally, {}).get("pass_count", 0))
         return enemy_shi_attacks > 0 and ally_pass_count > 0
+
+    def _next_enemy_likely_shi_exhausted(self, state, player: str) -> bool:
+        tr = self._track.get(id(state))
+        if tr is None:
+            return False
+        if "1" not in tr.get("my_past_attacks", set()):
+            return False
+        if state.hands[player].count("1") <= 0:
+            return False
+
+        next_enemy = state.next_player(player)
+        if self._same_team(next_enemy, player):
+            return False
+
+        models = tr.get("public_hand_models", {})
+        model = models.get(next_enemy, {})
+        attacks = model.get("attacks", Counter())
+        blocks = model.get("blocks", Counter())
+        visible_shi_spent = int(attacks.get("1", 0)) + int(blocks.get("1", 0))
+        hidden_blocks = int(tr.get("hidden_block_counts", {}).get(next_enemy, 0))
+
+        if visible_shi_spent <= 0 or hidden_blocks < 2:
+            return False
+
+        first_attack = model.get("first_attack")
+        if first_attack == "1" and int(attacks.get("1", 0)) >= 1:
+            return False
+
+        return visible_shi_spent + min(hidden_blocks, 2) >= 3
+
+    def _ally_shi_exhaust_receive_bonus(self, state, player: str, block: Optional[str]) -> float:
+        if (
+            block is None
+            or block not in ("3", "4", "5", "6", "7")
+            or state.phase != "receive"
+            or state.attacker is None
+            or not self._same_team(state.attacker, player)
+            or state.current_attack != block
+        ):
+            return 0.0
+        if not self._next_enemy_likely_shi_exhausted(state, player):
+            return 0.0
+        return self.SHI_EXHAUST_RECEIVE_BONUS
+
+    def _shi_exhaust_attack_bonus(self, state, player: str) -> float:
+        if not self._next_enemy_likely_shi_exhausted(state, player):
+            return 0.0
+        return self.SHI_EXHAUST_ATTACK_BONUS
 
     def _fuse_strategy_hidden_block_adjustment(
         self,
@@ -3010,6 +3065,10 @@ class RuleBasedAgent:
 
         self._update_public_hand_model(state, tr, player, action_type, visible_block, attack)
 
+        if action_type == "attack_after_block":
+            hidden_counts = tr.setdefault("hidden_block_counts", {p: 0 for p in ("A", "B", "C", "D")})
+            hidden_counts[player] = int(hidden_counts.get(player, 0)) + 1
+
         if player == tr.get("ally"):
             consumed = 0
             if action_type == "attack_after_block":
@@ -3574,12 +3633,14 @@ class RuleBasedAgent:
                 saturation_bonus = self._kakari_saturation_receive_bonus(state, player, block)
                 force_king_bonus = self._ally_force_king_receive_bonus(state, player, action_type, block)
                 strong_followup_bonus = self._ally_strong_followup_receive_bonus(state, player, action_type, block)
+                shi_exhaust_bonus = self._ally_shi_exhaust_receive_bonus(state, player, block)
                 return (
                     -100.0
                     - min(220.0, ally_strength * 8.0)
                     + saturation_bonus
                     + force_king_bonus
                     + strong_followup_bonus
+                    + shi_exhaust_bonus
                 )
             base = 1.0 if block in ("8", "9") else 5.0
 
@@ -3778,6 +3839,8 @@ class RuleBasedAgent:
                     return "enemy_later_receive_king"
                 return "enemy_later_receive"
             if state.attacker is not None and self._same_team(state.attacker, player):
+                if self._ally_shi_exhaust_receive_bonus(state, player, block) > 0:
+                    return "ally_shi_exhaust_receive"
                 if self._ally_force_king_receive_bonus(state, player, action_type, block) > 0:
                     return "ally_force_king_receive"
                 if self._ally_strong_followup_receive_bonus(state, player, action_type, block) > 0:
@@ -3868,6 +3931,9 @@ class RuleBasedAgent:
 
             if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
                 return "attack_avoid_single_middle_over_four_shi"
+
+            if attack == "1" and self._shi_exhaust_attack_bonus(state, player) > 0:
+                return "attack_shi_exhaust_enemy"
 
             if self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_high_point_after_weak_shi"
