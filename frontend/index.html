@@ -565,7 +565,7 @@
     }
   
     .preset-grid{
-      display: grid; grid-template-columns: 22px repeat(9, 34px) auto; gap: 6px 6px;
+      display: grid; grid-template-columns: 22px repeat(9, 34px); gap: 6px 6px;
       align-items: center; justify-content: start; margin-top: 8px;
     }
     .preset-grid .hdr{ font-weight: 900; text-align: center; }
@@ -583,11 +583,21 @@
       gap: 6px;
       margin-top: 8px;
     }
+    .preset-seat-control{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .preset-seat-control .seat{
+      font-weight: 900;
+      margin-right: 2px;
+    }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
 
     @media (max-width: 430px){
-      .preset-grid{ grid-template-columns: 22px repeat(9, 28px) auto; gap: 5px 5px; }
+      .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
       .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } 
       .preset-seat-reset{ padding: 6px 5px; font-size: 11px; }
       .preset-copy-area .preset-copy-btn{ font-size: 11px; padding: 6px 5px; }
@@ -1545,6 +1555,7 @@ function setupPresetSeatResetButtons(){
   const grid = document.getElementById("presetGrid");
   if(!grid || grid.dataset.resetButtonsReady === "1") return;
   grid.dataset.resetButtonsReady = "1";
+  return;
 
   const headerSpacer = document.createElement("div");
   headerSpacer.className = "hdr";
@@ -1608,6 +1619,50 @@ function renderPresetCopyButtons(state){
     btn.textContent = `${seat}: この手駒を指定`;
     btn.onclick = () => setPresetHandFromVisibleSeat(seat, presetHand);
     area.appendChild(btn);
+  });
+}
+
+function renderPresetControls(state){
+  const area = document.getElementById("presetCopyArea");
+  if(!area) return;
+  area.innerHTML = "";
+
+  const canShow = mySeat === "A" && gid !== MAIN_GID;
+  const canCopy = !!(state && state.is_started && state.reveal_hands && canShow);
+  area.style.display = canShow ? "flex" : "none";
+  if(!canShow) return;
+
+  ["A","B","C","D"].forEach(seat => {
+    const group = document.createElement("div");
+    group.className = "preset-seat-control";
+
+    const label = document.createElement("span");
+    label.className = "seat";
+    label.textContent = `${seat}：`;
+    group.appendChild(label);
+
+    const presetHand = fixedHandBase(state, seat);
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "preset-copy-btn";
+    copyBtn.textContent = "今の手駒を指定";
+    if(canCopy && presetHand.length > 0){
+      copyBtn.onclick = () => setPresetHandFromVisibleSeat(seat, presetHand);
+    }else{
+      copyBtn.disabled = true;
+      copyBtn.classList.add("disabled");
+    }
+    group.appendChild(copyBtn);
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "preset-seat-reset";
+    resetBtn.textContent = "リセット";
+    resetBtn.onclick = () => presetResetSeat(seat);
+    group.appendChild(resetBtn);
+
+    area.appendChild(group);
   });
 }
 
@@ -2553,7 +2608,7 @@ async function refresh(){
 
   renderBoard(state);
   renderHands(state);
-  renderPresetCopyButtons(state);
+  renderPresetControls(state);
   await renderActions();
   updateNameInputVisibility();
 
