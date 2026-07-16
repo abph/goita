@@ -63,6 +63,7 @@ class RuleBasedAgent:
         self.ENEMY_SHI_RECEIVE_PENALTY = 180.0
         self.DEALER_OPENING_PLAN_ATTACK_BONUS = 220.0
         self.DEALER_OPENING_PLAN_BLOCK_PENALTY = 700.0
+        self.DEALER_SURPLUS_FOUR_MIDDLE_BLOCK_BONUS = 260.0
         self.OPPONENT_FIRST_ATTACK_STRATEGY_SAFE_PENALTY = {
             "1": 40.0,
             "2": 80.0,
@@ -1157,6 +1158,19 @@ class RuleBasedAgent:
             return set(str(p) for p in profile["pieces"])
         return set()
 
+    def _can_block_surplus_four_middle(
+        self,
+        state,
+        player: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> bool:
+        if block is None or attack is None or block != attack:
+            return False
+        if attack not in ("3", "4", "5"):
+            return False
+        return state.hands[player].count(attack) >= 4
+
     def _dealer_opening_plan_adjustment(
         self,
         state,
@@ -1178,7 +1192,9 @@ class RuleBasedAgent:
         if attack in plan_pieces:
             value += self.DEALER_OPENING_PLAN_ATTACK_BONUS
         if block in plan_pieces:
-            if not (block == "1" and attack == "1" and state.hands[player].count("1") >= 4):
+            if self._can_block_surplus_four_middle(state, player, block, attack):
+                value += self.DEALER_SURPLUS_FOUR_MIDDLE_BLOCK_BONUS
+            elif not (block == "1" and attack == "1" and state.hands[player].count("1") >= 4):
                 value -= self.DEALER_OPENING_PLAN_BLOCK_PENALTY
             else:
                 value += self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS
@@ -3962,6 +3978,8 @@ class RuleBasedAgent:
                 return "attack_kakari_saturation"
             if self._ally_force_king_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_force_enemy_king"
+            if self._can_block_surplus_four_middle(state, player, block, attack):
+                return "block_surplus_four_middle"
             if self._fourth_middle_first_attack_delay_penalty(state, player, action_type, attack) > 0:
                 return "attack_delay_fourth_middle"
             if attack != "1" and (attack == ally_first or attack in tr.get("ally_past_attacks", set())):
