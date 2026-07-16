@@ -577,6 +577,12 @@
       font-weight: 800;
       white-space: nowrap;
     }
+    .preset-copy-area{
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
 
@@ -584,6 +590,7 @@
       .preset-grid{ grid-template-columns: 22px repeat(9, 28px) auto; gap: 5px 5px; }
       .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } 
       .preset-seat-reset{ padding: 6px 5px; font-size: 11px; }
+      .preset-copy-area .preset-copy-btn{ font-size: 11px; padding: 6px 5px; }
     }
 
     .preset-disabled #presetGrid,
@@ -733,6 +740,7 @@
             <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
             <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
           </div>
+          <div class="preset-copy-area" id="presetCopyArea"></div>
           <div class="preset-err" id="presetErr" style="display:none;"></div>
         </details>
 
@@ -1575,6 +1583,34 @@ function setPresetHandFromVisibleSeat(seat, hand){
   scheduleApplyCurrentSetup();
 }
 
+function renderPresetCopyButtons(state){
+  const area = document.getElementById("presetCopyArea");
+  if(!area) return;
+  area.innerHTML = "";
+
+  const canCopy = (
+    state &&
+    state.is_started &&
+    state.reveal_hands &&
+    mySeat === "A" &&
+    gid !== MAIN_GID
+  );
+  area.style.display = canCopy ? "flex" : "none";
+  if(!canCopy) return;
+
+  ["A","B","C","D"].forEach(seat => {
+    const presetHand = fixedHandBase(state, seat);
+    if(presetHand.length <= 0) return;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "preset-copy-btn";
+    btn.textContent = `${seat}: この手駒を指定`;
+    btn.onclick = () => setPresetHandFromVisibleSeat(seat, presetHand);
+    area.appendChild(btn);
+  });
+}
+
 function presetGet(){
   const out = {A:{},B:{},C:{},D:{}};
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
@@ -2258,18 +2294,6 @@ function renderHands(state) {
     leftWrap.appendChild(piecesDiv);
     rowDiv.appendChild(leftWrap);
 
-    if (state.reveal_hands && mySeat === "A" && gid !== MAIN_GID) {
-      const presetHand = fixedHandBase(state, seat);
-      if (presetHand.length > 0) {
-        const presetBtn = document.createElement("button");
-        presetBtn.type = "button";
-        presetBtn.className = "preset-copy-btn";
-        presetBtn.textContent = "この手駒を指定";
-        presetBtn.onclick = () => setPresetHandFromVisibleSeat(seat, presetHand);
-        rowDiv.appendChild(presetBtn);
-      }
-    }
-
     if (seat === mySeat && !isSpectator()) {
       const passBtnWrap = document.createElement("div");
       passBtnWrap.className = "pass-btn-area";
@@ -2529,6 +2553,7 @@ async function refresh(){
 
   renderBoard(state);
   renderHands(state);
+  renderPresetCopyButtons(state);
   await renderActions();
   updateNameInputVisibility();
 
