@@ -797,7 +797,12 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
-    return {"ok": True}
+    return {
+        "ok": True,
+        "enable_effects": bool(game.get("enable_effects", True)),
+        "enable_c_voice": bool(game.get("enable_c_voice", False)),
+        "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+    }
 
 
 @app.post("/games/{game_id}/start")

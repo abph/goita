@@ -1242,8 +1242,23 @@ async function saveSettings() {
             })
         });
         if (res.ok) {
+            const saved = await res.json();
+            const savedEnableCVoice = (saved && typeof saved.enable_c_voice === "boolean")
+                ? saved.enable_c_voice
+                : enableCVoice;
+            const savedEnableEffects = (saved && typeof saved.enable_effects === "boolean")
+                ? saved.enable_effects
+                : enableEffects;
+            if (latestState) {
+                latestState.enable_c_voice = savedEnableCVoice;
+                latestState.enable_effects = savedEnableEffects;
+                if (saved && saved.ai_profile) latestState.ai_profile = saved.ai_profile;
+            }
+            document.getElementById("checkEnableCVoice").checked = savedEnableCVoice;
+            document.getElementById("checkEnableEffects").checked = savedEnableEffects;
             alert("ルーム設定を保存しました。");
             closeSettings();
+            await refresh();
         } else {
             alert("設定の保存に失敗しました。");
         }
