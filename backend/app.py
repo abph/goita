@@ -313,6 +313,7 @@ class SettingsUpdateRequest(BaseModel):
     update_password: bool = False
     new_password: Optional[str] = None
     enable_effects: bool = True 
+    enable_c_voice: bool = False
     ai_profile: str = DEFAULT_AI_PROFILE
 
 
@@ -507,6 +508,7 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "enable_c_voice": bool(game_obj.get("enable_c_voice", False)),
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
     }
@@ -540,6 +542,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "reveal_hands": False,
         "is_started": False,
         "enable_effects": True,
+        "enable_c_voice": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
         "match_finished": False,
@@ -762,6 +765,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "owner_name": game.get("owner_name", ""),
             "is_private": game.get("password") is not None,
             "enable_effects": game.get("enable_effects", True),
+            "enable_c_voice": bool(game.get("enable_c_voice", False)),
             "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
             "ai_profiles": {
                 key: str(info["label"])
@@ -781,6 +785,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
     game["enable_effects"] = req.enable_effects
+    game["enable_c_voice"] = req.enable_c_voice
     next_ai_profile = _normalize_ai_profile(req.ai_profile)
     if game.get("ai_profile") != next_ai_profile:
         game["ai_profile"] = next_ai_profile
@@ -846,6 +851,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
+    enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
@@ -857,6 +863,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
     new_game["enable_effects"] = enable_effects 
+    new_game["enable_c_voice"] = enable_c_voice
     new_game["ai_profile"] = ai_profile
     
     if keep_score:
@@ -887,6 +894,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     human_seats = old_game.get("human_seats", {})
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
+    enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
 
     if preset:
@@ -909,6 +917,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        new_game["enable_c_voice"] = enable_c_voice
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
@@ -925,6 +934,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
+        new_game["enable_c_voice"] = enable_c_voice
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:

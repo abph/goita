@@ -771,6 +771,10 @@
       <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
       <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
     </div>
+    <div class="settings-row" style="margin-bottom: 20px;">
+      <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
+    </div>
+
     <div class="settings-row">
       <label for="setAiProfile">AI</label>
       <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
@@ -1176,6 +1180,7 @@ async function openSettingsModal(targetGid, event) {
             currentAdminPass = pass;
             document.getElementById("setRoomName").value = data.owner_name || "";
             document.getElementById("checkEnableEffects").checked = data.enable_effects !== false;
+            document.getElementById("checkEnableCVoice").checked = data.enable_c_voice === true;
             populateAiProfileSelect(data.ai_profiles, data.ai_profile);
             document.getElementById("checkUpdatePass").checked = false;
             document.getElementById("setRoomPass").style.display = "none";
@@ -1200,6 +1205,7 @@ async function saveSettings() {
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
     const enableEffects = document.getElementById("checkEnableEffects").checked;
+    const enableCVoice = document.getElementById("checkEnableCVoice").checked;
     const aiProfile = document.getElementById("setAiProfile")?.value || "current";
 
     try {
@@ -1212,6 +1218,7 @@ async function saveSettings() {
                 update_password: isUpdatePass,
                 new_password: newPass,
                 enable_effects: enableEffects,
+                enable_c_voice: enableCVoice,
                 ai_profile: aiProfile
             })
         });
@@ -2000,7 +2007,7 @@ function cAiEnemyPassVoiceAlreadyUsed(log, index, attackNo){
 }
 
 function cAiVoiceForLogEntry(state, index, entry){
-  if(!state || seatIsHuman(state, voiceSeat)) return null;
+  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
 
@@ -2022,7 +2029,7 @@ function cAiVoiceForLogEntry(state, index, entry){
 }
 
 function cAttackVoiceForLogEntry(state, index, entry){
-  if(!state || seatIsHuman(state, voiceSeat)) return null;
+  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
   if(move.type !== "attack" && move.type !== "attack_after_block") return null;
@@ -2036,7 +2043,7 @@ function cAttackVoiceForLogEntry(state, index, entry){
 }
 
 function cWinsInLogEntry(state, entry){
-  if(!state || seatIsHuman(state, voiceSeat)) return false;
+  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return false;
   return new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(String(entry || ""));
 }
 
