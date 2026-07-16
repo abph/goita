@@ -2771,6 +2771,86 @@ class RuleBasedAgent:
                     best_score = score
         return best_score
 
+    def _pair_finish_score(self, pair: List[str]) -> float:
+        if len(pair) != 2:
+            return -1.0
+        p1, p2 = pair[0], pair[1]
+        if p1 == p2:
+            return float(POINTS.get(p1, 0)) * 2.0
+        if set([p1, p2]) == {"8", "9"}:
+            return 100.0
+        return max(float(POINTS.get(p1, 0)), float(POINTS.get(p2, 0)))
+
+    def _best_pair_finish_score_from_hand(self, hand: List[str]) -> float:
+        if len(hand) < 2:
+            return -1.0
+        best = -1.0
+        for i in range(len(hand)):
+            for j in range(i + 1, len(hand)):
+                score = self._pair_finish_score([hand[i], hand[j]])
+                if score > best:
+                    best = score
+        return best
+
+    def _best_safe_pair_pressure_finish_score(self, hand: List[str], state, player: str, tr: dict) -> float:
+        best = -1.0
+        counts = Counter(hand)
+        for piece, count in counts.items():
+            if count < 2 or piece in ("1", "2", "8", "9"):
+                continue
+            if not self._is_absolute_safe_for_tsume(state, player, piece, tr):
+                continue
+            rest = list(hand)
+            rest.remove(piece)
+            rest.remove(piece)
+            score = self._best_pair_finish_score_from_hand(rest)
+            if score > best:
+                best = score
+        return best
+
+    def _kyosha_probe_expected_score_after_attack_action(
+        self,
+        state,
+        player: str,
+        action: Action,
+        tr: dict,
+    ) -> Optional[float]:
+        action_type, block, attack = action
+        if action_type != "attack" or block is not None or attack != "2":
+            return None
+        if state.hands[player].count("2") != 1:
+            return None
+
+        known_kyosha_before = int(tr.get("public_seen_counts", {}).get("2", 0)) + state.hands[player].count("2")
+        if known_kyosha_before < 3:
+            return None
+
+        after_hand = list(state.hands[player])
+        after_hand.remove("2")
+        if "1" not in after_hand or not any(p in ("8", "9") for p in after_hand):
+            return None
+
+        pass_score = self._best_safe_pair_pressure_finish_score(after_hand, state, player, tr)
+        if pass_score < 0:
+            return None
+
+        receive_scores: List[float] = []
+        after_shi_receive = list(after_hand)
+        after_shi_receive.remove("1")
+        receive_scores.append(self._best_safe_pair_pressure_finish_score(after_shi_receive, state, player, tr))
+        for king in ("9", "8"):
+            if king in after_hand:
+                after_king_receive = list(after_hand)
+                after_king_receive.remove(king)
+                receive_scores.append(self._best_safe_pair_pressure_finish_score(after_king_receive, state, player, tr))
+
+        receive_scores = [score for score in receive_scores if score >= 0]
+        if not receive_scores:
+            return None
+
+        receive_score = min(receive_scores)
+        return max(receive_score, (pass_score + receive_score) / 2.0)
+
     def _apply_action_on_copy(self, state, player: str, action: Action):
         s = copy.deepcopy(state)
         t, block, attack = action
@@ -2829,6 +2909,11 @@ class RuleBasedAgent:
         tr = self._track.get(id(state))
         if tr is None:
             return None
+
+        kyosha_probe_score = self._kyosha_probe_expected_score_after_attack_action(state, player, action, tr)
+        if kyosha_probe_score is not None:
+            return kyosha_probe_score
+
         if not self._is_absolute_safe_for_tsume(state, player, attack, tr):
             return None
 
@@ -3931,6 +4016,12 @@ class RuleBasedAgent:
 
             if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
                 return "attack_avoid_single_middle_over_four_shi"
+
+            if (
+                attack == "2"
+                and self._kyosha_probe_expected_score_after_attack_action(state, player, action, tr) is not None
+            ):
+                return "attack_kyosha_probe_high_score"
 
             if attack == "1" and self._shi_exhaust_attack_bonus(state, player) > 0:
                 return "attack_shi_exhaust_enemy"
