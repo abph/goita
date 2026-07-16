@@ -94,6 +94,8 @@ class RuleBasedAgent:
         self.ENDGAME_PAIR_UNCERTAIN_PENALTY = 16.0
         self.ENDGAME_MIXED_SHI_PAIR_BONUS = 180.0
         self.ENDGAME_SHI_PAIR_PENALTY = 180.0
+        self.SHI_SASHIKOMI_WAIT_BONUS = 180.0
+        self.SHI_SASHIKOMI_ATTACK_BONUS = 520.0
         self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS = 180.0
         self.PRESERVE_WIN_ATTACK_PASS_BONUS = 26000.0
         self.PRESERVE_WIN_ATTACK_RECEIVE_PENALTY = 12000.0
@@ -178,11 +180,17 @@ class RuleBasedAgent:
             ally_ignored_my_attacks=set(),
             ally_pending_response_piece=None,
             ally_passed_my_shi_count=0,
+            enemy_passed_my_shi_count=0,
             ally_shi_signal="unknown",
             shi_attack_mode=False,
             shi_attack_mode_source=None,
             i_passed_ally_shi=False,
             inherit_ally_shi_attack=False,
+            my_open_shi_attack_pending=False,
+            ally_open_shi_attack_pending=False,
+            ally_shi_passed_by_enemy=False,
+            ally_shi_sashikomi_candidate=False,
+            ally_consumed_count=0,
             ally_passed_enemy_dealer_first_attack=False,
             ally_passed_enemy_dealer_first_attack_piece=None,
             ally_passed_enemy_first_attack=False,
@@ -1270,6 +1278,10 @@ class RuleBasedAgent:
         tr = self._track.get(id(state))
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
+
+        sashikomi_bonus = self._shi_sashikomi_attack_bonus(state, player)
+        if sashikomi_bonus > 0:
+            return sashikomi_bonus
 
         plan_value = self._weak_shi_attack_plan_value(state, player)
         if plan_value > 0:
@@ -2519,6 +2531,80 @@ class RuleBasedAgent:
                 score -= self.ENDGAME_PAIR_UNCERTAIN_PENALTY
         return max(0.0, score)
 
+    def _remaining_hand_after_attack_action(
+        self,
+        state,
+        player: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> Optional[List[str]]:
+        if attack is None:
+            return None
+        hand = list(state.hands[player])
+        if block is not None:
+            if block not in hand:
+                return None
+            hand.remove(block)
+        if attack not in hand:
+            return None
+        hand.remove(attack)
+        return hand
+
+    def _shi_sashikomi_wait_bonus_for_pair(self, state, player: str, pair: List[str]) -> float:
+        if len(pair) != 2 or pair.count("1") != 1:
+            return 0.0
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return 0.0
+
+        if not tr.get("ally_shi_passed_by_enemy"):
+            return 0.0
+        if "1" not in tr.get("ally_past_attacks", set()):
+            return 0.0
+
+        finisher = next((p for p in pair if p != "1"), None)
+        if finisher is None:
+            return 0.0
+
+        bonus = self.SHI_SASHIKOMI_WAIT_BONUS
+        if finisher in ("8", "9"):
+            bonus += 60.0
+        elif finisher in ("6", "7"):
+            bonus += 40.0
+        elif finisher in ("2", "3", "4", "5"):
+            bonus += 20.0
+        return bonus
+
+    def _shi_sashikomi_wait_bonus(
+        self,
+        state,
+        player: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        hand = self._remaining_hand_after_attack_action(state, player, block, attack)
+        if hand is None or len(hand) != 2:
+            return 0.0
+        return self._shi_sashikomi_wait_bonus_for_pair(state, player, hand)
+
+    def _shi_sashikomi_attack_bonus(self, state, player: str) -> float:
+        tr = self._track.get(id(state))
+        if tr is None:
+            return 0.0
+        if not tr.get("ally_shi_sashikomi_candidate"):
+            return 0.0
+        if state.hands[player].count("1") <= 0:
+            return 0.0
+        if int(tr.get("enemy_passed_my_shi_count", 0)) <= 0:
+            return 0.0
+
+        ally_remaining = max(0, 8 - int(tr.get("ally_consumed_count", 0)))
+        if ally_remaining > 2:
+            return 0.0
+
+        return self.SHI_SASHIKOMI_ATTACK_BONUS
+
     def _endgame_remaining_pair_adjustment(
         self,
         state,
@@ -2526,22 +2612,16 @@ class RuleBasedAgent:
         block: Optional[str],
         attack: Optional[str],
     ) -> float:
-        if attack is None:
+        hand = self._remaining_hand_after_attack_action(state, player, block, attack)
+        if hand is None:
             return 0.0
-        hand = list(state.hands[player])
-        if block is not None:
-            if block not in hand:
-                return 0.0
-            hand.remove(block)
-        if attack not in hand:
-            return 0.0
-        hand.remove(attack)
         if len(hand) != 2:
             return 0.0
         score = self._endgame_pair_score(state, player, hand) * self.ENDGAME_PAIR_SCORE_WEIGHT
         shi_count = hand.count("1")
         if shi_count == 1:
             score += self.ENDGAME_MIXED_SHI_PAIR_BONUS
+            score += self._shi_sashikomi_wait_bonus_for_pair(state, player, hand)
         elif shi_count == 2:
             score -= self.ENDGAME_SHI_PAIR_PENALTY
         return score
@@ -2930,6 +3010,15 @@ class RuleBasedAgent:
 
         self._update_public_hand_model(state, tr, player, action_type, visible_block, attack)
 
+        if player == tr.get("ally"):
+            consumed = 0
+            if action_type == "attack_after_block":
+                consumed = 2
+            elif action_type in ("receive", "attack"):
+                consumed = 1
+            if consumed:
+                tr["ally_consumed_count"] = min(8, int(tr.get("ally_consumed_count", 0)) + consumed)
+
         if (
             action_type == "pass"
             and player == tr.get("ally")
@@ -2947,6 +3036,24 @@ class RuleBasedAgent:
             and state.current_attack == "1"
         ):
             tr["i_passed_ally_shi"] = True
+
+        if (
+            action_type == "pass"
+            and player != self.me
+            and not self._same_team(player, self.me)
+            and state.attacker == self.me
+            and state.current_attack == "1"
+        ):
+            tr["enemy_passed_my_shi_count"] = int(tr.get("enemy_passed_my_shi_count", 0)) + 1
+
+        if (
+            action_type == "pass"
+            and player != self.me
+            and not self._same_team(player, self.me)
+            and state.attacker == tr.get("ally")
+            and state.current_attack == "1"
+        ):
+            tr["ally_shi_passed_by_enemy"] = True
 
         if (
             action_type == "pass"
@@ -3019,20 +3126,27 @@ class RuleBasedAgent:
                 tr["my_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = False
                 if attack == "1":
+                    tr["my_open_shi_attack_pending"] = True
                     if tr.get("my_init_count", Counter()).get("1", 0) >= 3:
                         tr["shi_attack_mode"] = True
                         tr["shi_attack_mode_source"] = "self"
                     if tr.get("inherit_ally_shi_attack"):
                         tr["inherit_ally_shi_attack"] = False
-                elif tr.get("shi_attack_mode") and state.hands[player].count("1") > 0:
-                    tr["shi_attack_mode"] = False
-                    tr["shi_attack_mode_source"] = None
+                else:
+                    tr["my_open_shi_attack_pending"] = False
+                    if tr.get("shi_attack_mode") and state.hands[player].count("1") > 0:
+                        tr["shi_attack_mode"] = False
+                        tr["shi_attack_mode_source"] = None
             elif self._same_team(player, self.me):
                 if not tr["ally_past_attacks"]:
                     tr["ally_first_attack"] = attack
                 tr["ally_past_attacks"].add(attack)
                 tr["ally_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = True
+                if attack == "1":
+                    tr["ally_open_shi_attack_pending"] = True
+                else:
+                    tr["ally_open_shi_attack_pending"] = False
 
                 pending_response = tr.get("ally_pending_response_piece")
                 if pending_response is not None and action_type == "attack":
@@ -3040,24 +3154,39 @@ class RuleBasedAgent:
                         if attack == "1":
                             tr["ally_shi_signal"] = "returned_shi"
                             tr["shi_attack_mode"] = True
+                            tr["ally_shi_sashikomi_candidate"] = False
                         else:
-                            tr["ally_shi_signal"] = "weak"
+                            if int(tr.get("enemy_passed_my_shi_count", 0)) > 0:
+                                tr["ally_shi_signal"] = "sashikomi"
+                                tr["ally_shi_sashikomi_candidate"] = True
+                            else:
+                                tr["ally_shi_signal"] = "weak"
                             tr["shi_attack_mode"] = False
                             tr["shi_attack_mode_source"] = None
                     if attack == pending_response and attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
                     elif pending_response in tr["my_past_attacks"] and pending_response not in tr["ally_responded_to_my_attacks"]:
                         tr["ally_ignored_my_attacks"].add(pending_response)
+                    if pending_response == "1":
+                        tr["my_open_shi_attack_pending"] = False
                     tr["ally_pending_response_piece"] = None
 
                 if action_type == "attack_after_block":
-                    if visible_block == "1" and "1" in tr["my_past_attacks"]:
-                        tr["ally_shi_signal"] = "returned_shi" if attack == "1" else "weak"
+                    if block == "1" and tr.get("my_open_shi_attack_pending"):
+                        if attack == "1":
+                            tr["ally_shi_signal"] = "returned_shi"
+                            tr["ally_shi_sashikomi_candidate"] = False
+                        elif int(tr.get("enemy_passed_my_shi_count", 0)) > 0:
+                            tr["ally_shi_signal"] = "sashikomi"
+                            tr["ally_shi_sashikomi_candidate"] = True
+                        else:
+                            tr["ally_shi_signal"] = "weak"
                         if attack == "1":
                             tr["shi_attack_mode"] = True
                         else:
                             tr["shi_attack_mode"] = False
                             tr["shi_attack_mode_source"] = None
+                        tr["my_open_shi_attack_pending"] = False
                     if attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
                         
@@ -3065,6 +3194,9 @@ class RuleBasedAgent:
                         if past_attack != attack and past_attack not in tr["ally_responded_to_my_attacks"]:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
+                if action_type in ("receive", "attack_after_block") and block == "1" and tr.get("my_open_shi_attack_pending"):
+                    tr["my_open_shi_attack_pending"] = False
+
                 pending_shi_receivers = tr.setdefault("enemy_pending_shi_receive_players", set())
                 if player in pending_shi_receivers:
                     if attack != "1":
@@ -3739,6 +3871,12 @@ class RuleBasedAgent:
 
             if self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack) > 0:
                 return "attack_high_point_after_weak_shi"
+
+            if attack == "1" and self._shi_sashikomi_attack_bonus(state, player) > 0:
+                return "attack_shi_sashikomi"
+
+            if self._shi_sashikomi_wait_bonus(state, player, block, attack) > 0:
+                return "attack_keep_shi_sashikomi"
 
             if self._occupancy_priority_bonus(state, attack) > 0:
                 return "attack_occupancy"
