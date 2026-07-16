@@ -833,6 +833,7 @@ let lastLogCount = 0;
 let logAudioPrimed = false;
 let suppressLogAudioUntil = Date.now() + 1200;
 const MAX_LOG_AUDIO_CATCHUP = 8;
+let logAnimationGeneration = 0;
 let cpuTimer = null; 
 let latestState = null;
 let latestLegal = [];
@@ -2613,6 +2614,9 @@ async function refresh(){
   updateNameInputVisibility();
 
   const logDelta = currentLogCount - lastLogCount;
+  if (logDelta > 0) {
+    logAnimationGeneration += 1;
+  }
   const shouldPlayLogAudio = (
     logAudioPrimed &&
     audioUnlocked &&
@@ -2624,6 +2628,12 @@ async function refresh(){
   if (shouldPlayLogAudio) {
     const seatToPhys = getSeatToPhys();
     let animDelay = 0; 
+    const animationGeneration = logAnimationGeneration;
+    const scheduleLogAnimation = (fn, delay) => {
+      setTimeout(() => {
+        if(animationGeneration === logAnimationGeneration) fn();
+      }, delay);
+    };
     
     for (let i = lastLogCount; i < currentLogCount; i++) {
       const entry = state.log[i];
@@ -2645,11 +2655,13 @@ async function refresh(){
       const cWinVoice = cWinsInLogEntry(state, entry);
       
       const seatMatch = entry.match(/^([ABCD]):/);
+      const isNewestLogEntry = i === currentLogCount - 1;
+      const shouldShowSpecialEffects = isNewestLogEntry || nextEntryIsRoundFinished || isRoundFinished;
 
       if (isPass) {
         const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
-        setTimeout(() => {
+        scheduleLogAnimation(() => {
           playPassSound();
           if(cVoiceKind) setTimeout(() => playCVoice(cVoiceKind), 120);
           showPassAnimation(physSeat);
@@ -2658,52 +2670,52 @@ async function refresh(){
       }
 
       if (cVoiceKind && !isPass) {
-        setTimeout(() => playCVoice(cVoiceKind), animDelay + 100);
+        scheduleLogAnimation(() => playCVoice(cVoiceKind), animDelay + 100);
       }
 
       if (cAttackVoiceKind) {
-        setTimeout(() => playCVoice(cAttackVoiceKind), animDelay + 100);
+        scheduleLogAnimation(() => playCVoice(cAttackVoiceKind), animDelay + 100);
       }
 
       if (isPieceAction && !hasAnyEffect && !nextEntryIsRoundFinished) {
-        setTimeout(playPieceSound, animDelay);
+        scheduleLogAnimation(playPieceSound, animDelay);
         animDelay += 160;
       }
       
-      if (seatMatch) {
+      if (seatMatch && shouldShowSpecialEffects) {
           if (hasKakarigotae) {
-              setTimeout(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasDamadama) {
-              setTimeout(() => showSpecialAnimation("だまだま！", "damadama", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("だまだま！", "damadama", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasUchidome) {
-              setTimeout(() => showSpecialAnimation("打ち止め！", "uchidome", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("打ち止め！", "uchidome", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasReach) {
-              setTimeout(() => showSpecialAnimation("リーチ！", "reach", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("リーチ！", "reach", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           
           if (hasBaizuke) {
-              setTimeout(() => showSpecialAnimation("倍付け！", "baizuke", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("倍付け！", "baizuke", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
           if (hasDamadamaAgari) {
-              setTimeout(() => showSpecialAnimation("だまだまあがり！", "damadama_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("だまだまあがり！", "damadama_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1500;
           }
           if (hasOuAgari) {
-              setTimeout(() => showSpecialAnimation("王あがり！", "ou_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("王あがり！", "ou_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
       }
       if (isRoundFinished) {
-          setTimeout(playWinSound, animDelay);
-          if(cWinVoice) setTimeout(() => playCVoice("win"), animDelay + 180);
+          scheduleLogAnimation(playWinSound, animDelay);
+          if(cWinVoice) scheduleLogAnimation(() => playCVoice("win"), animDelay + 180);
           animDelay += 500;
       }
     }
