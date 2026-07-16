@@ -225,6 +225,9 @@
       box-shadow: 0 0 10px rgba(230, 126, 34, 0.5);
       z-index: 10;
     }
+    .combo-label.combo-side {
+      font-size: clamp(12px, 2.8vw, 16px);
+    }
 
     /* ★ 追加：盤面中央のスコア表示 */
     .center-score {
@@ -1909,9 +1912,9 @@ const SLOTS = {
 /* 名前コンボラベルの座標 */
 const COMBO_POS = {
   A: { col: 4, row: 6, gridColumn: "4 / 6", gridRow: "6", rotate: "0deg", w: "100%", h: "100%" },
-  B: { col: 6, row: 4, gridColumn: "6", gridRow: "4 / 6", rotate: "-90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
+  B: { col: 6, row: 4, gridColumn: "6", gridRow: "3 / 7", rotate: "-90deg", w: "calc(var(--cell) * 4 + var(--gap) * 3)", h: "var(--cell)" },
   C: { col: 4, row: 3, gridColumn: "4 / 6", gridRow: "3", rotate: "180deg", w: "100%", h: "100%" },
-  D: { col: 3, row: 4, gridColumn: "3", gridRow: "4 / 6", rotate: "90deg", w: "calc(var(--cell) * 2 + var(--gap))", h: "var(--cell)" },
+  D: { col: 3, row: 4, gridColumn: "3", gridRow: "3 / 7", rotate: "90deg", w: "calc(var(--cell) * 4 + var(--gap) * 3)", h: "var(--cell)" },
 };
 
 const SKIP_CELLS = ["5,6", "6,5", "5,3", "3,5"];
@@ -2190,6 +2193,7 @@ function renderBoard(state){
           const seat = physToSeat[phys];
           
           div.classList.add("combo-label");
+          if (phys === "B" || phys === "D") div.classList.add("combo-side");
           if (state.turn === seat && state.is_started && !state.finished) {
             div.classList.add("is-turn");
           }
