@@ -333,8 +333,10 @@
       filter: drop-shadow(0px 8px 6px rgba(176, 0, 0, 0.6)); 
     }
     .hand-row-pieces .hand.face-down {
-      background: linear-gradient(135deg, #8b5a2b, #4f2f16);
-      border: 2px solid rgba(45, 25, 10, 0.55);
+      background: transparent;
+      border: 0;
+      clip-path: none;
+      filter: none;
       cursor: default;
     }
     .hand-row-pieces .hand.face-down::after {
@@ -344,8 +346,6 @@
       display: none;
     }
     .hand-row-pieces .hand.pending-hidden {
-      outline: 2px solid rgba(176, 0, 0, 0.55);
-      outline-offset: 2px;
       cursor: pointer;
     }
 
