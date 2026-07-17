@@ -196,6 +196,28 @@ def _create_agents(ai_profile: Optional[str]) -> Dict[str, Any]:
     return agents
 
 
+def _seat_set(value: Any) -> Set[str]:
+    if isinstance(value, dict):
+        src = value.keys()
+    elif isinstance(value, (list, tuple, set)):
+        src = value
+    else:
+        src = []
+    return {str(s).upper() for s in src if str(s).upper() in ALL_SEATS}
+
+
+def _human_seat_set(game: Dict[str, Any]) -> Set[str]:
+    return _seat_set(game.get("human_seats", {}))
+
+
+def _ai_seat_set(game: Dict[str, Any]) -> Set[str]:
+    return _seat_set(game.get("ai_seats", []))
+
+
+def _store_ai_seats(game: Dict[str, Any], seats: Set[str]) -> None:
+    game["ai_seats"] = sorted(s for s in seats if s in ALL_SEATS)
+
+
 app = FastAPI(title="Goita FastAPI (Render-ready)")
 
 app.add_middleware(
@@ -439,6 +461,7 @@ def _state_public_view(
     board_public = game_obj.get("board", _new_board_snapshot())
     reveal_hands = game_obj.get("reveal_hands", False)
     human_seats = game_obj.get("human_seats", {})
+    ai_seats = _ai_seat_set(game_obj)
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
@@ -512,10 +535,8 @@ def _state_public_view(
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
     }
-    if isinstance(human_seats, dict):
-        payload["human_seats"] = sorted(list(human_seats.keys()))
-    else:
-        payload["human_seats"] = sorted(list(human_seats))
+    payload["human_seats"] = sorted(_seat_set(human_seats))
+    payload["ai_seats"] = sorted(ai_seats)
     return payload
 
 
@@ -535,6 +556,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "dealer": dealer,
         "kifu_moves": [],
         "human_seats": {}, 
+        "ai_seats": [],
         "player_names": {p: "" for p in ALL_SEATS},
         "password": None,
         "admin_password": None,
@@ -715,15 +737,19 @@ def list_rooms():
     _ensure_main_game()
     def build_room_info(gid: str, data: dict):
         hs = data.get("human_seats", {})
+        human_set = _seat_set(hs)
+        ai_set = _ai_seat_set(data)
         pn = data.get("player_names", {})
         seats_info = {}
         for s in ALL_SEATS:
-            is_human = s in hs
+            is_human = s in human_set
             name = pn.get(s, "").strip()
             if is_human:
                 seats_info[s] = name if name else "人間"
-            else:
+            elif s in ai_set:
                 seats_info[s] = "AI"
+            else:
+                seats_info[s] = "Empty"
 
         owner_name = "メインルームA" if gid == MAIN_GID else data.get("owner_name", "サポーター")
         return {
@@ -732,7 +758,7 @@ def list_rooms():
             "owner_name": owner_name,
             "ai_profile": _normalize_ai_profile(data.get("ai_profile")),
             "ai_profile_label": _ai_profile_label(data.get("ai_profile")),
-            "player_count": len(hs),
+            "player_count": len(human_set | ai_set),
             "seats": seats_info
         }
 
@@ -854,6 +880,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
+    ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
     enable_c_voice = bool(old_game.get("enable_c_voice", False))
@@ -864,6 +891,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["admin_password"] = admin_password
     new_game["owner_name"] = owner_name
     new_game["human_seats"] = human_seats
+    new_game["ai_seats"] = ai_seats
     new_game["player_names"] = player_names
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
@@ -897,6 +925,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
+    ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     enable_effects = old_game.get("enable_effects", True)
     enable_c_voice = bool(old_game.get("enable_c_voice", False))
@@ -918,6 +947,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["admin_password"] = admin_password
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
+        new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
@@ -935,6 +965,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["admin_password"] = admin_password
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
+        new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
@@ -970,10 +1001,20 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     else:
         game["human_seats"] = {seat: client_id}
         hs = game["human_seats"]
+
+    ai_seats = _ai_seat_set(game)
+    if seat in ai_seats:
+        ai_seats.remove(seat)
+        _store_ai_seats(game, ai_seats)
         
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
-    return {"ok": True, "game_id": game_id, "human_seats": sorted(list(hs.keys()))}
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "human_seats": sorted(_seat_set(hs)),
+        "ai_seats": sorted(_ai_seat_set(game)),
+    }
 
 
 @app.post("/games/{game_id}/release")
@@ -991,7 +1032,43 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
     
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
-    return {"ok": True, "game_id": game_id}
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "human_seats": sorted(_seat_set(hs)),
+        "ai_seats": sorted(_ai_seat_set(game)),
+    }
+
+
+@app.post("/games/{game_id}/set_ai")
+async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: str = ""):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    elif game_id not in GAMES:
+        raise HTTPException(status_code=404, detail="game not found")
+    seat = _validate_seat(seat, name="seat")
+    game = GAMES[game_id]
+
+    ai_seats = _ai_seat_set(game)
+    hs = game.setdefault("human_seats", {})
+
+    if enabled:
+        ai_seats.add(seat)
+        if isinstance(hs, dict) and seat in hs:
+            del hs[seat]
+    else:
+        ai_seats.discard(seat)
+
+    _store_ai_seats(game, ai_seats)
+
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "human_seats": sorted(_seat_set(hs)),
+        "ai_seats": sorted(_ai_seat_set(game)),
+    }
 
 
 @app.post("/games/{game_id}/set_name")
@@ -1075,8 +1152,8 @@ async def cpu_step(game_id: str):
         return {"status": "ignored"}
 
     state: GoitaState = game["state"]
-    human_seats = game.get("human_seats", {})
-    if state.finished or (state.turn in human_seats):
+    ai_seats = _ai_seat_set(game)
+    if state.finished or (state.turn not in ai_seats):
         return {"status": "ignored"}
 
     result = _apply_agent_turn(game, state.turn)
@@ -1099,7 +1176,7 @@ async def auto_step(game_id: str, player: str = "A"):
         return {"status": "ignored"}
 
     state: GoitaState = game["state"]
-    if state.finished or state.turn != player:
+    if state.finished or state.turn != player or player not in _ai_seat_set(game):
         return {"status": "ignored", "turn": state.turn}
 
     result = _apply_agent_turn(game, player)

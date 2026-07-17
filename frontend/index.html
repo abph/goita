@@ -387,6 +387,14 @@
       background: #8b5a2b;
       color: #fff;
     }
+    .seat-btn.ai-mode {
+      background: #3f6f35;
+      color: #fff;
+      border-color: #2c5423;
+    }
+    .seat-btn.empty-seat {
+      opacity: 0.8;
+    }
     .seat-btn:disabled {
       background: #e0d8c8;
       color: #999;
@@ -501,6 +509,7 @@
     }
     .seat-badge.ai { color: #888; background: #e0d8c8; border-color: #bfa88f; }
     .seat-badge.human { color: #2b2b2b; }
+    .seat-badge.empty { color: #777; background: #f4efdf; border-color: #d1ab75; }
 
     .seat-top { grid-column: 2; grid-row: 1; align-self: end; margin-bottom: 4px;} /* C */
     .seat-bottom { grid-column: 2; grid-row: 3; align-self: start; margin-top: 4px;} /* A */
@@ -683,11 +692,12 @@
       <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
-        <button id="btnSeatA" onclick="selectSeat('A')" class="seat-btn">👑 A</button>
-        <button id="btnSeatB" onclick="selectSeat('B')" class="seat-btn">B</button>
-        <button id="btnSeatC" onclick="selectSeat('C')" class="seat-btn">C</button>
-        <button id="btnSeatD" onclick="selectSeat('D')" class="seat-btn">D</button>
+        <button id="btnSeatA" onclick="openSeatMenu('A')" class="seat-btn">👑 A</button>
+        <button id="btnSeatB" onclick="openSeatMenu('B')" class="seat-btn">B</button>
+        <button id="btnSeatC" onclick="openSeatMenu('C')" class="seat-btn">C</button>
+        <button id="btnSeatD" onclick="openSeatMenu('D')" class="seat-btn">D</button>
       </span>
+      <span class="small">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</span>
     </div>
     <div class="name-grid" id="nameGrid">
       <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
@@ -1113,13 +1123,16 @@ async function fetchRoomList() {
             const s = room.seats;
             const makeBadge = (seatName, playerName) => {
                 const isAi = (playerName === "AI");
+                const isEmpty = (playerName === "Empty");
+                const displayName = isEmpty ? "空席" : playerName;
                 let text = "";
                 if (seatName === 'A') {
-                    text = `👑A: ${playerName}`;
+                    text = `👑A: ${displayName}`;
                 } else {
-                    text = `${seatName}: ${playerName}`;
+                    text = `${seatName}: ${displayName}`;
                 }
-                return `<div class="seat-badge ${isAi ? 'ai' : 'human'}" title="${text}">${text}</div>`;
+                const badgeClass = isAi ? "ai" : (isEmpty ? "empty" : "human");
+                return `<div class="seat-badge ${badgeClass}" title="${text}">${text}</div>`;
             };
 
             const settingsIcon = (room.game_id !== MAIN_GID) 
@@ -1275,16 +1288,14 @@ async function saveSettings() {
     }
 }
 
-function updateSeatButtons(humanSeats) {
+function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
+    const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
+    const aiSeats = Array.isArray(state?.ai_seats) ? state.ai_seats : [];
     const btnW = document.getElementById('btnSeatW');
     
     if (btnW) {
-        if (mySeat === WATCH) {
-            btnW.classList.add('active');
-        } else {
-            btnW.classList.remove('active');
-        }
+        btnW.classList.toggle('active', mySeat === WATCH);
     }
 
     seats.forEach(s => {
@@ -1292,23 +1303,26 @@ function updateSeatButtons(humanSeats) {
         if (!btn) return;
 
         const displayName = (s === 'A') ? '👑 A' : s;
+        const isHuman = humanSeats.includes(s);
+        const isAi = aiSeats.includes(s);
+        const occupiedByOther = isHuman && mySeat !== s;
+
+        btn.classList.toggle('active', mySeat === s);
+        btn.classList.toggle('ai-mode', isAi);
+        btn.classList.toggle('empty-seat', !isHuman && !isAi);
+        btn.disabled = occupiedByOther;
 
         if (mySeat === s) {
-            btn.disabled = false;
-            btn.classList.add('active');
-            btn.textContent = displayName + " (私)";
-        } else if (humanSeats && humanSeats.includes(s)) {
-            btn.disabled = true;
-            btn.classList.remove('active');
-            btn.textContent = displayName;
+            btn.textContent = `${displayName} (自分)`;
+        } else if (isAi) {
+            btn.textContent = `${displayName} [AI]`;
+        } else if (isHuman) {
+            btn.textContent = `${displayName} [人]`;
         } else {
-            btn.disabled = false;
-            btn.classList.remove('active');
             btn.textContent = displayName;
         }
     });
 }
-
 async function selectSeat(next) {
     if (next === mySeat) return;
 
@@ -1329,6 +1343,63 @@ async function selectSeat(next) {
     
     await refresh();
     updateNameInputVisibility();
+}
+
+async function setSeatAiMode(seat, enabled) {
+    if (!seat || seat === WATCH) return;
+    pending = null;
+    setAutoPlayEnabled(false);
+
+    try {
+        await fetch(`${API}/games/${gid}/set_ai?seat=${encodeURIComponent(seat)}&enabled=${enabled ? "true" : "false"}&client_id=${encodeURIComponent(clientId)}`, {
+            method: "POST"
+        });
+    } catch(e) {}
+
+    if (enabled && mySeat === seat) {
+        mySeat = WATCH;
+    }
+    await refresh();
+    updateNameInputVisibility();
+}
+
+async function clearSeatMode(seat) {
+    if (!seat || seat === WATCH) return;
+    pending = null;
+    setAutoPlayEnabled(false);
+
+    if (mySeat === seat) {
+        await releaseSeat(seat);
+        mySeat = WATCH;
+    }
+    await setSeatAiMode(seat, false);
+}
+
+async function openSeatMenu(seat) {
+    if (!seat || seat === WATCH) return;
+    const isHuman = seatIsHuman(latestState, seat);
+    const isAi = seatIsAi(latestState, seat);
+
+    if (isHuman && mySeat !== seat) {
+        alert(`${seat} は他の人が座っています。`);
+        return;
+    }
+
+    const current = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
+    const choice = prompt(
+        `${seat} の設定を選んでください\n${current}\n\n1: 席に着く\n2: AIモードにする\n3: 空席にする`,
+        isAi ? "3" : "1"
+    );
+    if (choice == null) return;
+    const v = String(choice).trim().toLowerCase();
+
+    if (v === "1" || v === "席" || v === "席に着く") {
+        await selectSeat(seat);
+    } else if (v === "2" || v === "ai" || v === "aiモード") {
+        await setSeatAiMode(seat, true);
+    } else if (v === "3" || v === "空" || v === "空席") {
+        await clearSeatMode(seat);
+    }
 }
 
 function updateRoomUI() {
@@ -2069,6 +2140,11 @@ function seatIsHuman(state, seat){
   return seat === mySeat;
 }
 
+function seatIsAi(state, seat){
+  const ai = state?.ai_seats;
+  return Array.isArray(ai) && ai.includes(seat);
+}
+
 function sameTeamSeat(a, b){
   return ((a === "A" || a === "C") && (b === "A" || b === "C")) ||
          ((a === "B" || a === "D") && (b === "B" || b === "D"));
@@ -2122,7 +2198,7 @@ function cAiEnemyPassVoiceAlreadyUsed(log, index, attackNo){
 }
 
 function cAiVoiceForLogEntry(state, index, entry){
-  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return null;
+  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
 
@@ -2144,7 +2220,7 @@ function cAiVoiceForLogEntry(state, index, entry){
 }
 
 function cAttackVoiceForLogEntry(state, index, entry){
-  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return null;
+  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
   if(move.type !== "attack" && move.type !== "attack_after_block") return null;
@@ -2158,7 +2234,7 @@ function cAttackVoiceForLogEntry(state, index, entry){
 }
 
 function cWinsInLogEntry(state, entry){
-  if(!state || state.enable_c_voice !== true || seatIsHuman(state, voiceSeat)) return false;
+  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return false;
   return new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(String(entry || ""));
 }
 
@@ -2243,7 +2319,7 @@ function renderBoard(state){
           div.classList.add("phys-" + slot.phys);
           if(isPendingReceive) div.classList.add("pending-preview");
           
-          div.classList.add(seatIsHuman(state, slot.p) ? "human" : "ai");
+          div.classList.add(seatIsAi(state, slot.p) ? "ai" : "human");
           
           if(slot.kind==="A"){
             div.classList.add("attack");
@@ -2348,7 +2424,7 @@ function renderHands(state) {
 
         const pieceDiv = document.createElement("div");
         pieceDiv.className = "hand";
-        pieceDiv.classList.add(seatIsHuman(state, seat) ? "human" : "ai");
+        pieceDiv.classList.add(seatIsAi(state, seat) ? "ai" : "human");
         if(isFaceDown) pieceDiv.classList.add("face-down");
         if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
 
@@ -2388,13 +2464,6 @@ function renderHands(state) {
           passBtn.classList.add("disabled");
       }
       passBtnWrap.appendChild(passBtn);
-
-      const autoBtn = document.createElement("button");
-      autoBtn.className = "auto-play";
-      if(autoPlayEnabled) autoBtn.classList.add("active");
-      autoBtn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
-      autoBtn.onclick = toggleAutoPlay;
-      passBtnWrap.appendChild(autoBtn);
 
       rowDiv.appendChild(passBtnWrap);
     }
@@ -2528,7 +2597,7 @@ async function refresh(){
   latestState = state;
   
   updateRoomUI(); 
-  updateSeatButtons(state.human_seats);
+  updateSeatButtons(state);
   
   const toggleBtn = document.getElementById("toggleHandsBtn");
   if (toggleBtn) {
@@ -2747,22 +2816,7 @@ async function refresh(){
   lastLogCount = currentLogCount;
   logAudioPrimed = true;
 
-  if(isGameStarted && !state.finished && autoPlayEnabled && !isSpectator() && state.turn === mySeat && !isProcessingCpu){
-    pending = null;
-    isProcessingCpu = true;
-    cpuTimer = setTimeout(async () => {
-      try {
-        if(autoPlayEnabled && latestState && latestState.turn === mySeat && latestState.is_started && !latestState.finished){
-          await fetch(`${API}/games/${gid}/auto_step?player=${encodeURIComponent(mySeat)}`, { method: "POST" });
-        }
-      } catch(e) {
-        console.error("Auto step error:", e);
-      }
-      isProcessingCpu = false;
-      cpuTimer = null;
-      refresh();
-    }, 700);
-  } else if(isGameStarted && !state.finished && !seatIsHuman(state, state.turn) && !isProcessingCpu){
+  if(isGameStarted && !state.finished && seatIsAi(state, state.turn) && !isProcessingCpu){
     isProcessingCpu = true;
     cpuTimer = setTimeout(async () => {
       try {
