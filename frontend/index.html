@@ -172,6 +172,9 @@
       color: #fff;
       border-color: #2c5423;
     }
+    .auto-play.active::after {
+      content: " ON";
+    }
     .auto-play:disabled {
       opacity: 0.35;
       cursor: default;
@@ -796,7 +799,7 @@
     }
     @media (max-width: 701px) {
       :root {
-        --chat-panel-width: min(200px, calc(100vw - 28px));
+        --chat-panel-width: min(var(--mobile-chat-width, 160px), calc(100vw - 28px));
         --chat-panel-height: min(340px, calc(100vh - 120px));
       }
       .play-layout {
@@ -846,7 +849,7 @@
         background: transparent;
       }
       .chat-messages {
-        padding: 6px 32px 6px 7px;
+        padding: 6px 6px 6px 7px;
         background: rgba(244, 239, 223, 0.08);
       }
       .chat-message {
@@ -880,6 +883,22 @@
       .chat-form button {
         padding: 6px 7px;
         font-size: 12px;
+      }
+      body.mobile-chat-width-narrow .chat-sender {
+        font-size: 10px;
+      }
+      body.mobile-chat-width-narrow .chat-time {
+        font-size: 9px;
+      }
+      body.mobile-chat-width-narrow .chat-text {
+        font-size: 11px;
+        line-height: 1.3;
+      }
+      body.mobile-chat-width-narrow .chat-form input {
+        font-size: 12px;
+      }
+      body.mobile-chat-width-narrow .chat-form button {
+        font-size: 11px;
       }
     }
 
@@ -992,7 +1011,17 @@
       .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
       .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
       .pass-btn-area .pass { padding: 8px 12px; font-size: 14px; }
-      .pass-btn-area .auto-play { padding: 8px 10px; font-size: 13px; }
+      .pass-btn-area .auto-play {
+        width: 52px;
+        height: 48px;
+        padding: 4px 8px;
+        font-size: 13px;
+        line-height: 1.1;
+      }
+      .pass-btn-area .auto-play.active::after {
+        content: "ON";
+        display: block;
+      }
     }
   
     .preset-grid{
@@ -1247,8 +1276,16 @@
         </select>
       </div>
       <div class="settings-row">
-        <label for="mobileChatTransparency">モバイル版のチャットの透明度（<span id="mobileChatTransparencyValue">74%</span>）</label>
-        <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="74" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
+        <label for="mobileChatWidth">モバイル版のチャットの幅</label>
+        <select id="mobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+          <option value="wide">太い</option>
+          <option value="normal">普通</option>
+          <option value="narrow">細い</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label for="mobileChatTransparency">モバイル版のチャットの透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
+        <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
       </div>
       <div class="settings-row">
         <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
@@ -1315,7 +1352,7 @@ const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
 function loadPersonalSettings() {
     try {
         const saved = JSON.parse(localStorage.getItem(PERSONAL_SETTINGS_KEY) || "{}");
-        const defaultMobileChatTransparency = saved.mobileChatPlacement === "top" ? 0 : 74;
+        const defaultMobileChatTransparency = 0;
         const savedMobileChatTransparency = Number(saved.mobileChatTransparency);
         return {
             playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
@@ -1323,6 +1360,9 @@ function loadPersonalSettings() {
             enableSoundEffects: saved.enableSoundEffects !== false,
             enableCVoice: saved.enableCVoice === true,
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
+            mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
+                ? saved.mobileChatWidth
+                : "narrow",
             mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
                 ? Math.max(0, Math.min(90, savedMobileChatTransparency))
                 : defaultMobileChatTransparency,
@@ -1334,7 +1374,8 @@ function loadPersonalSettings() {
             enableSoundEffects: true,
             enableCVoice: false,
             mobileChatPlacement: "right",
-            mobileChatTransparency: 74,
+            mobileChatWidth: "narrow",
+            mobileChatTransparency: 0,
         };
     }
 }
@@ -1342,9 +1383,18 @@ let personalSettings = loadPersonalSettings();
 
 function applyPersonalSettingsAppearance() {
     const transparency = Math.max(0, Math.min(90, Number(personalSettings.mobileChatTransparency) || 0));
+    const mobileChatWidths = { wide: "260px", normal: "200px", narrow: "160px" };
+    document.body.classList.toggle(
+        "mobile-chat-width-narrow",
+        personalSettings.mobileChatWidth === "narrow"
+    );
     document.body.classList.toggle(
         "mobile-chat-placement-top",
         personalSettings.mobileChatPlacement === "top"
+    );
+    document.documentElement.style.setProperty(
+        "--mobile-chat-width",
+        mobileChatWidths[personalSettings.mobileChatWidth] || mobileChatWidths.narrow
     );
     document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
 }
@@ -1535,7 +1585,7 @@ function setAutoPlayEnabled(on){
 function updateAutoButtons(){
     document.querySelectorAll(".auto-play").forEach(btn => {
         btn.classList.toggle("active", autoPlayEnabled);
-        btn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
+        btn.textContent = "Auto";
     });
 }
 
@@ -1758,6 +1808,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
+    document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "narrow";
     document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
@@ -1792,6 +1843,9 @@ async function savePersonalSettings() {
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
+        mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("mobileChatWidth").value)
+            ? document.getElementById("mobileChatWidth").value
+            : "narrow",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("checkEnableEffects").checked,
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
@@ -3377,7 +3431,7 @@ function renderHands(state) {
       const autoBtn = document.createElement("button");
       autoBtn.className = "auto-play";
       autoBtn.type = "button";
-      autoBtn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
+      autoBtn.textContent = "Auto";
       autoBtn.classList.toggle("active", autoPlayEnabled);
       autoBtn.disabled = state.finished || !state.is_started;
       autoBtn.onclick = toggleAutoPlay;

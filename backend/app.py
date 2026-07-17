@@ -24,7 +24,7 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
 CHAT_MAX_LEN = 200
-DISCONNECT_SEAT_GRACE_SECONDS = 120
+DISCONNECT_SEAT_GRACE_SECONDS = 60
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
