@@ -3303,6 +3303,11 @@ class RuleBasedAgent:
                 tr["ally_past_attacks"].add(attack)
                 tr["ally_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = True
+                # An ally replaying one of my earlier attack pieces is a response
+                # (including kakarigotae), even when it follows another receive.
+                if attack in tr["my_past_attacks"]:
+                    tr["ally_responded_to_my_attacks"].add(attack)
+                    tr["ally_ignored_my_attacks"].discard(attack)
                 if attack == "1":
                     tr["ally_open_shi_attack_pending"] = True
                 else:
@@ -4220,13 +4225,22 @@ class RuleBasedAgent:
             if rank_policy_action is not None:
                 return rank_policy_action
 
+        # A stale ally-response estimate must not hide a guaranteed scoring route.
+        prefilter_high_score_tsume = self._high_score_tsume_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        protected_tsume_action = prefilter_high_score_tsume[0] if prefilter_high_score_tsume is not None else None
+
         filtered_actions = []
         if tr is not None:
             ignored = tr.get("ally_ignored_my_attacks", set())
             for act in actions:
                 t, b, a = act
                 if t in ("attack", "attack_after_block") and a is not None:
-                    if a in ignored:
+                    if a in ignored and act != protected_tsume_action:
                         if a == "1":
                             continue
                         elif a in ("2", "3", "4", "5") and tr["my_init_count"].get(a, 0) == 2:
