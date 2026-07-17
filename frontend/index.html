@@ -718,7 +718,6 @@
     <div class="meta">
       <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button id="btnSeatW" onclick="selectSeat('W')" class="seat-btn active">観戦</button>
         <button id="btnSeatA" onclick="openSeatMenu('A')" class="seat-btn">👑 A</button>
         <button id="btnSeatB" onclick="openSeatMenu('B')" class="seat-btn">B</button>
         <button id="btnSeatC" onclick="openSeatMenu('C')" class="seat-btn">C</button>
@@ -824,6 +823,7 @@
     <div id="seatModeStatus" class="seat-mode-status"></div>
     <div class="seat-mode-actions">
       <button type="button" class="primary" onclick="chooseSeatMode('human')">席に着く</button>
+      <button type="button" id="seatModeLeaveBtn" onclick="chooseSeatMode('leave')" style="display:none;">席を離れる</button>
       <button type="button" class="ai" onclick="chooseSeatMode('ai')">AIモードにする</button>
       <button type="button" onclick="chooseSeatMode('empty')">空席にする</button>
       <button type="button" onclick="closeSeatMenu()">閉じる</button>
@@ -1333,11 +1333,6 @@ function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
     const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
     const aiSeats = Array.isArray(state?.ai_seats) ? state.ai_seats : [];
-    const btnW = document.getElementById('btnSeatW');
-    
-    if (btnW) {
-        btnW.classList.toggle('active', mySeat === WATCH);
-    }
 
     seats.forEach(s => {
         const btn = document.getElementById('btnSeat' + s);
@@ -1416,6 +1411,16 @@ async function clearSeatMode(seat) {
     await setSeatAiMode(seat, false);
 }
 
+async function leaveSeat(seat) {
+    if (!seat || seat === WATCH || mySeat !== seat) return;
+    pending = null;
+    setAutoPlayEnabled(false);
+    await releaseSeat(seat);
+    mySeat = WATCH;
+    await refresh();
+    updateNameInputVisibility();
+}
+
 async function openSeatMenu(seat) {
     if (!seat || seat === WATCH) return;
     const isHuman = seatIsHuman(latestState, seat);
@@ -1429,11 +1434,13 @@ async function openSeatMenu(seat) {
     seatModeTarget = seat;
     const title = document.getElementById("seatModeTitle");
     const status = document.getElementById("seatModeStatus");
+    const leaveBtn = document.getElementById("seatModeLeaveBtn");
     const modal = document.getElementById("seatModeModal");
     if(title) title.textContent = `${seat} の設定`;
     if(status){
         status.textContent = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
     }
+    if(leaveBtn) leaveBtn.style.display = (mySeat === seat) ? "" : "none";
     if(modal) modal.style.display = "flex";
 }
 
@@ -1450,6 +1457,8 @@ async function chooseSeatMode(mode) {
 
     if (mode === "human") {
         await selectSeat(seat);
+    } else if (mode === "leave") {
+        await leaveSeat(seat);
     } else if (mode === "ai") {
         await setSeatAiMode(seat, true);
     } else if (mode === "empty") {
