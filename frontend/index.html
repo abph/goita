@@ -1953,6 +1953,17 @@ function scheduleApplyCurrentSetup(){
 
 function setHint(msg){ document.getElementById("handHint").textContent = msg; }
 
+function seatTurnLabel(state, seat){
+  if(!seat) return "";
+  if(seatIsAi(state, seat)) return `${seat}（AI）`;
+  const name = sanitizeName(state?.player_names?.[seat] || "");
+  return name ? `${seat}（${name}）` : seat;
+}
+
+function turnWaitHint(state){
+  return `いまは${seatTurnLabel(state, state?.turn)}の手番です。（あなたは:${mySeat}）`;
+}
+
 function _extractDealerFromLog(logArr){
   if(!Array.isArray(logArr) || logArr.length===0) return "";
   const s = String(logArr[0] ?? "");
@@ -2123,7 +2134,7 @@ async function onHandPieceClick(piece, slotIndex){
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
+  if(latestState.turn !== mySeat){ setHint(turnWaitHint(latestState)); return; }
 
   if(pending){
     if(pending.blockSlot === slotIndex && pending.block === piece){
@@ -2180,7 +2191,7 @@ async function onPassClick(){
 
   if(isSpectator()){ setHint("観戦中は操作できません。A/B/C/Dを選んでください。"); return; }
   if(latestState.finished){ setHint("この局は終了しています。"); return; }
-  if(latestState.turn !== mySeat){ setHint(`いまは ${latestState.turn} の手番です。（あなた: ${mySeat}）`); return; }
+  if(latestState.turn !== mySeat){ setHint(turnWaitHint(latestState)); return; }
 
   const pass = latestLegal.find(a => a.action_type === "pass");
   if(!pass){ setHint("今はパスできません。"); return; }
@@ -2749,7 +2760,7 @@ async function refresh(){
     setHint("観戦中です。空いている席のボタンを押すと参加できます。");
     pending = null;
   } else if(state.turn !== mySeat){
-    setHint(`いまは ${state.turn} の手番です。（あなた: ${mySeat}）`);
+    setHint(turnWaitHint(state));
     pending = null;
   } else if(!pending){
     setHint("あなたの手番です。手札をクリックしてください。");
