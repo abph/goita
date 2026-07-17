@@ -364,7 +364,7 @@
     }
 
     .ui { margin-top: 14px; border: 1px solid #c8a77a; border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.6); }
-    .meta { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
+    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
     .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
     
     button, select, input[type="text"] { 
@@ -544,6 +544,33 @@
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .seat-ai-note {
+      flex-basis: 100%;
+      margin-top: 4px;
+    }
+    .seat-mode-status {
+      color: #555;
+      font-weight: 700;
+      margin: 10px 0 16px;
+    }
+    .seat-mode-actions {
+      display: grid;
+      gap: 8px;
+    }
+    .seat-mode-actions button {
+      width: 100%;
+      padding: 10px;
+      font-weight: 900;
+    }
+    .seat-mode-actions .primary {
+      background: #8b5a2b;
+      color: #fff;
+    }
+    .seat-mode-actions .ai {
+      background: #3f6f35;
+      color: #fff;
+      border-color: #2c5423;
+    }
     
     .gear-btn {
       background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px 8px;
@@ -697,7 +724,7 @@
         <button id="btnSeatC" onclick="openSeatMenu('C')" class="seat-btn">C</button>
         <button id="btnSeatD" onclick="openSeatMenu('D')" class="seat-btn">D</button>
       </span>
-      <span class="small">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</span>
+      <div class="small seat-ai-note">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</div>
     </div>
     <div class="name-grid" id="nameGrid">
       <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
@@ -791,6 +818,19 @@
 
 </div>
 
+<div id="seatModeModal" class="modal-overlay">
+  <div class="modal-content">
+    <h3 id="seatModeTitle">席の設定</h3>
+    <div id="seatModeStatus" class="seat-mode-status"></div>
+    <div class="seat-mode-actions">
+      <button type="button" class="primary" onclick="chooseSeatMode('human')">席に着く</button>
+      <button type="button" class="ai" onclick="chooseSeatMode('ai')">AIモードにする</button>
+      <button type="button" onclick="chooseSeatMode('empty')">空席にする</button>
+      <button type="button" onclick="closeSeatMenu()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="settingsModal" class="modal-overlay">
   <div class="modal-content">
     <h3>⚙️ ルーム設定</h3>
@@ -836,6 +876,7 @@ const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
 let settingTargetGid = null; 
+let seatModeTarget = null;
 
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
@@ -1385,19 +1426,33 @@ async function openSeatMenu(seat) {
         return;
     }
 
-    const current = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
-    const choice = prompt(
-        `${seat} の設定を選んでください\n${current}\n\n1: 席に着く\n2: AIモードにする\n3: 空席にする`,
-        isAi ? "3" : "1"
-    );
-    if (choice == null) return;
-    const v = String(choice).trim().toLowerCase();
+    seatModeTarget = seat;
+    const title = document.getElementById("seatModeTitle");
+    const status = document.getElementById("seatModeStatus");
+    const modal = document.getElementById("seatModeModal");
+    if(title) title.textContent = `${seat} の設定`;
+    if(status){
+        status.textContent = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
+    }
+    if(modal) modal.style.display = "flex";
+}
 
-    if (v === "1" || v === "席" || v === "席に着く") {
+function closeSeatMenu() {
+    seatModeTarget = null;
+    const modal = document.getElementById("seatModeModal");
+    if(modal) modal.style.display = "none";
+}
+
+async function chooseSeatMode(mode) {
+    const seat = seatModeTarget;
+    if (!seat) return;
+    closeSeatMenu();
+
+    if (mode === "human") {
         await selectSeat(seat);
-    } else if (v === "2" || v === "ai" || v === "aiモード") {
+    } else if (mode === "ai") {
         await setSeatAiMode(seat, true);
-    } else if (v === "3" || v === "空" || v === "空席") {
+    } else if (mode === "empty") {
         await clearSeatMode(seat);
     }
 }
