@@ -6,7 +6,12 @@
   <title>そろうごいた</title>
   <style>
     /* ===== 和風テイストのビジュアル強化 ===== */
-    :root{ --gap: 6px; --cell: clamp(30px, calc((100vw - 60px - (7 * var(--gap)))/8), 65px); }
+    :root{
+      --gap: 6px;
+      --cell: clamp(30px, calc((100vw - 60px - (7 * var(--gap)))/8), 65px);
+      --chat-panel-width: min(240px, calc(100vw - 28px));
+      --chat-panel-height: min(430px, calc(100vh - 90px));
+    }
     * , *::before, *::after { box-sizing: border-box; }
     
     /* ベースのフォントと背景（和紙調） */
@@ -80,6 +85,25 @@
     }
     .slot.ai .val, .hand.ai .val { 
       color: #b00000; 
+    }
+    .slot.revealed-hand {
+      background: linear-gradient(135deg, #e4e4e4, #bcbcbc);
+      border: 1px solid rgba(90, 90, 90, 0.45);
+      filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.25));
+      opacity: 0.82;
+    }
+    .slot.revealed-hand .val {
+      color: #555;
+    }
+    .slot.revealed-hidden {
+      opacity: 0.48;
+      filter: saturate(0.75) drop-shadow(1px 2px 2px rgba(0,0,0,0.18));
+    }
+    .slot.revealed-hidden .val {
+      color: rgba(26, 26, 26, 0.72);
+    }
+    .slot.ai.revealed-hidden .val {
+      color: rgba(176, 0, 0, 0.66);
     }
 
     /* 現在の攻め駒（静的に目立たせる） */
@@ -360,6 +384,10 @@
       gap: 6px;
       align-items: center;
     }
+    .pass-btn-area .auto-play {
+      padding: 8px 12px;
+      white-space: nowrap;
+    }
     .preset-copy-btn {
       flex: 0 0 auto;
       padding: 6px 8px;
@@ -525,6 +553,9 @@
       background: #fffdf5; border: 2px solid #d35400; padding: 12px 16px; border-radius: 8px; 
       margin: 16px 0; font-weight: bold; color: #b00000; text-align: center; font-size: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
+    #handHint {
+      display: none;
+    }
     
     .small { font-size: 12px; color: #555; }
     .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
@@ -536,6 +567,249 @@
     }
     .name-grid button{ width: 64px; white-space: nowrap; }
     .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
+
+    .chat-toggle {
+      position: fixed;
+      right: 0;
+      top: 46%;
+      transform: translateY(-50%);
+      z-index: 900;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      padding: 8px 5px;
+      border: 2px solid #8b5a2b;
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      background: #fffdf5;
+      color: #8b5a2b;
+      font-size: 13px;
+      font-weight: 900;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.22);
+      cursor: pointer;
+    }
+    .chat-toggle.open {
+      display: none !important;
+      background: #8b5a2b;
+      color: #fff;
+    }
+    .chat-panel {
+      position: fixed;
+      top: 94px;
+      right: 0;
+      bottom: auto;
+      width: var(--chat-panel-width);
+      height: var(--chat-panel-height);
+      z-index: 899;
+      display: none;
+      flex-direction: column;
+      background: #fffdf5;
+      border: 3px solid #8b5a2b;
+      border-right: none;
+      border-radius: 10px 0 0 10px;
+      box-shadow: -8px 8px 22px rgba(0,0,0,0.24);
+      transform: translateX(calc(100% + 8px));
+      transition: transform 0.18s ease, opacity 0.18s ease;
+      opacity: 0;
+      overflow: hidden;
+    }
+    .chat-panel.open {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .chat-header {
+      position: absolute;
+      top: 4px;
+      right: 7px;
+      z-index: 2;
+      padding: 0;
+      background: transparent;
+    }
+    .chat-close {
+      width: auto;
+      height: auto;
+      border: 0;
+      background: transparent;
+      color: #8b5a2b;
+      font-size: 24px;
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 34px 8px 9px;
+      background: rgba(244,239,223,0.6);
+    }
+    .chat-empty {
+      color: #777;
+      text-align: center;
+      margin-top: 24px;
+      font-size: 13px;
+    }
+    .chat-message {
+      margin-bottom: 7px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(139,90,43,0.18);
+    }
+    .chat-message.mine .chat-sender {
+      color: #b00000;
+    }
+    .chat-message.notice {
+      background: rgba(255, 255, 255, 0.42);
+      border-left: 3px solid rgba(139, 90, 43, 0.46);
+      padding-left: 6px;
+    }
+    .chat-message.notice .chat-sender {
+      color: rgba(85, 85, 85, 0.74);
+    }
+    .chat-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      margin-bottom: 3px;
+    }
+    .chat-sender {
+      font-size: 12px;
+      font-weight: 900;
+      color: #6d461f;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .chat-time {
+      font-size: 11px;
+      color: rgba(85, 85, 85, 0.55);
+      font-weight: 700;
+    }
+    .chat-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.45;
+      font-size: 13px;
+    }
+    .chat-form {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+      border-top: 2px solid #d1ab75;
+      background: #fffdf5;
+    }
+    .chat-form input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid #c8a77a;
+      border-radius: 6px;
+      font-size: 14px;
+      background: #fff;
+    }
+    .chat-form button {
+      padding: 8px 9px;
+      border-radius: 6px;
+      background: #8b5a2b;
+      color: #fff;
+      font-weight: 900;
+    }
+    .chat-toast {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translate(-50%, -14px);
+      z-index: 950;
+      width: min(520px, calc(100vw - 28px));
+      padding: 10px 14px;
+      border: 2px solid #8b5a2b;
+      border-radius: 8px;
+      background: rgba(255, 253, 245, 0.96);
+      box-shadow: 0 8px 22px rgba(0,0,0,0.26);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.16s ease, transform 0.16s ease;
+    }
+    .chat-toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    .chat-toast-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 3px;
+      font-weight: 900;
+      color: #6d461f;
+      font-size: 13px;
+    }
+    .chat-toast-time {
+      color: rgba(85, 85, 85, 0.55);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .chat-toast-text {
+      color: #2b2b2b;
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (max-width: 700px) {
+      :root {
+        --chat-panel-width: min(200px, calc(100vw - 28px));
+        --chat-panel-height: min(340px, calc(100vh - 120px));
+      }
+      .chat-panel {
+        top: 84px;
+        background: rgba(255, 253, 245, 0.44);
+        border-color: rgba(139, 90, 43, 0.46);
+        box-shadow: -4px 6px 14px rgba(0,0,0,0.13);
+      }
+      .chat-panel:focus-within {
+        background: rgba(255, 253, 245, 0.82);
+        border-color: rgba(139, 90, 43, 0.78);
+      }
+      .chat-header {
+        top: 3px;
+        right: 7px;
+        background: transparent;
+      }
+      .chat-messages {
+        padding: 6px 32px 6px 7px;
+        background: rgba(244, 239, 223, 0.18);
+      }
+      .chat-message {
+        margin-bottom: 5px;
+        padding-bottom: 5px;
+      }
+      .chat-meta {
+        gap: 5px;
+        margin-bottom: 1px;
+      }
+      .chat-sender {
+        font-size: 11px;
+      }
+      .chat-time {
+        font-size: 10px;
+      }
+      .chat-text {
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .chat-form {
+        gap: 4px;
+        padding: 6px;
+        background: rgba(255, 253, 245, 0.48);
+      }
+      .chat-form input {
+        padding: 6px;
+        font-size: 13px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .chat-form button {
+        padding: 6px 7px;
+        font-size: 12px;
+      }
+    }
 
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
@@ -611,6 +885,7 @@
       .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
       .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
       .pass-btn-area .pass { padding: 8px 12px; font-size: 14px; }
+      .pass-btn-area .auto-play { padding: 8px 10px; font-size: 13px; }
     }
   
     .preset-grid{
@@ -822,6 +1097,25 @@
 
 </div>
 
+<button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
+<div id="chatPanel" class="chat-panel" aria-live="polite">
+  <div class="chat-header">
+    <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
+  </div>
+  <div id="chatMessages" class="chat-messages"></div>
+  <form class="chat-form" onsubmit="sendChatMessage(event)">
+    <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
+    <button type="submit">送信</button>
+  </form>
+</div>
+<div id="chatToast" class="chat-toast" aria-live="polite">
+  <div class="chat-toast-meta">
+    <span id="chatToastSender"></span>
+    <span id="chatToastTime" class="chat-toast-time"></span>
+  </div>
+  <div id="chatToastText" class="chat-toast-text"></div>
+</div>
+
 <div id="seatModeModal" class="modal-overlay">
   <div class="modal-content">
     <h3 id="seatModeTitle">席の設定</h3>
@@ -904,6 +1198,13 @@ let latestLegal = [];
 let pending = null;
 let isGameStarted = false; 
 let activeRoomId = null;
+let chatOpen = false;
+let lastChatCount = 0;
+let lastChatToastCount = 0;
+let chatSending = false;
+let chatToastTimer = null;
+let localChatNotices = [];
+let lastHintNoticeKey = "";
 let socket = null;
 let fixedHandMemory = {};
 let setupApplyTimer = null;
@@ -1103,6 +1404,12 @@ async function enterRoom(targetGid, roomName) {
         await releaseSeat(mySeat);
     }
     setAutoPlayEnabled(false);
+    toggleChatPanel(false);
+    hideChatToast();
+    renderChat.roomId = null;
+    lastChatToastCount = 0;
+    localChatNotices = [];
+    lastHintNoticeKey = "";
     mySeat = WATCH;
     gid = targetGid;
     isGameStarted = false; 
@@ -1130,6 +1437,12 @@ async function returnToLobby() {
         await releaseSeat(mySeat);
     }
     setAutoPlayEnabled(false);
+    toggleChatPanel(false);
+    hideChatToast();
+    renderChat.roomId = null;
+    lastChatToastCount = 0;
+    localChatNotices = [];
+    lastHintNoticeKey = "";
     mySeat = WATCH;
     
     if (socket) {
@@ -1392,10 +1705,19 @@ async function setSeatAiMode(seat, enabled) {
     setAutoPlayEnabled(false);
 
     try {
-        await fetch(`${API}/games/${gid}/set_ai?seat=${encodeURIComponent(seat)}&enabled=${enabled ? "true" : "false"}&client_id=${encodeURIComponent(clientId)}`, {
+        const res = await fetch(`${API}/games/${gid}/set_ai?seat=${encodeURIComponent(seat)}&enabled=${enabled ? "true" : "false"}&client_id=${encodeURIComponent(clientId)}`, {
             method: "POST"
         });
-    } catch(e) {}
+        if (!res.ok) {
+            setHint("AIモードの変更に失敗しました。サーバーを再起動してから、もう一度試してください。");
+            alert("AIモードの変更に失敗しました。サーバーを再起動してから、もう一度試してください。");
+            return;
+        }
+    } catch(e) {
+        setHint("AIモードの変更に失敗しました。通信状態を確認してください。");
+        alert("AIモードの変更に失敗しました。通信状態を確認してください。");
+        return;
+    }
 
     if (enabled && mySeat === seat) {
         mySeat = WATCH;
@@ -1965,7 +2287,228 @@ function scheduleApplyCurrentSetup(){
   }, 250);
 }
 
-function setHint(msg){ document.getElementById("handHint").textContent = msg; }
+function recordHintNotice(msg){
+  const text = String(msg ?? "").trim();
+  const gameView = document.getElementById("gameView");
+  if(!text || !gameView || gameView.style.display === "none") return;
+
+  const keyText = `${gid}|${mySeat}|${text}`;
+  if(keyText === lastHintNoticeKey) return;
+  lastHintNoticeKey = keyText;
+
+  localChatNotices.push({
+    seat: "notice",
+    sender: "連絡",
+    message: text,
+    ts: Date.now(),
+    local_notice: true
+  });
+  if(localChatNotices.length > 40){
+    localChatNotices.splice(0, localChatNotices.length - 40);
+  }
+}
+
+function setHint(msg){
+  document.getElementById("handHint").textContent = msg;
+  recordHintNotice(msg);
+  if(latestState) renderChat(latestState);
+}
+
+function toggleChatPanel(open){
+  chatOpen = (typeof open === "boolean") ? open : !chatOpen;
+  const panel = document.getElementById("chatPanel");
+  const btn = document.getElementById("chatToggle");
+  if(panel) panel.classList.toggle("open", chatOpen);
+  if(btn) {
+    btn.classList.toggle("open", chatOpen);
+    btn.textContent = "チャット";
+  }
+  if(chatOpen){
+    const messages = Array.isArray(latestState?.chat_messages) ? latestState.chat_messages : [];
+    lastChatCount = messages.length;
+    setTimeout(() => {
+      const box = document.getElementById("chatMessages");
+      const input = document.getElementById("chatInput");
+      if(box) box.scrollTop = box.scrollHeight;
+      if(input) input.focus();
+    }, 0);
+  }
+}
+
+function formatChatTime(ts){
+  const n = Number(ts);
+  if(!Number.isFinite(n)) return "";
+  const d = new Date(n);
+  if(Number.isNaN(d.getTime())) return "";
+  const hh = d.getHours();
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}時${mm}分${ss}秒`;
+}
+
+function showChatToast(item){
+  const toast = document.getElementById("chatToast");
+  const sender = document.getElementById("chatToastSender");
+  const time = document.getElementById("chatToastTime");
+  const text = document.getElementById("chatToastText");
+  if(!toast || !sender || !time || !text) return;
+
+  sender.textContent = String(item?.sender || item?.seat || "観戦");
+  time.textContent = formatChatTime(item?.ts);
+  text.textContent = String(item?.message || "");
+
+  toast.classList.add("show");
+  if(chatToastTimer){
+    clearTimeout(chatToastTimer);
+    chatToastTimer = null;
+  }
+  chatToastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+    chatToastTimer = null;
+  }, 4000);
+}
+
+function hideChatToast(){
+  const toast = document.getElementById("chatToast");
+  if(toast) toast.classList.remove("show");
+  if(chatToastTimer){
+    clearTimeout(chatToastTimer);
+    chatToastTimer = null;
+  }
+}
+
+function chatItemTimeValue(item){
+  const n = Number(item?.ts);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mergedChatMessages(serverMessages){
+  return [
+    ...serverMessages,
+    ...localChatNotices
+  ].sort((a, b) => chatItemTimeValue(a) - chatItemTimeValue(b));
+}
+
+function renderChat(state){
+  const panel = document.getElementById("chatPanel");
+  const btn = document.getElementById("chatToggle");
+  const box = document.getElementById("chatMessages");
+  if(!panel || !btn || !box) return;
+
+  const inRoom = document.getElementById("gameView")?.style.display !== "none";
+  btn.style.display = inRoom ? "block" : "none";
+  panel.style.display = inRoom ? "flex" : "none";
+  if(!inRoom){
+    chatOpen = false;
+    panel.classList.remove("open");
+    btn.classList.remove("open");
+    hideChatToast();
+    lastChatToastCount = 0;
+    return;
+  }
+
+  const serverMessages = Array.isArray(state?.chat_messages) ? state.chat_messages : [];
+  const messages = mergedChatMessages(serverMessages);
+  const roomChanged = renderChat.roomId !== gid;
+  if(roomChanged){
+    renderChat.roomId = gid;
+    lastChatCount = serverMessages.length;
+    lastChatToastCount = serverMessages.length;
+  } else if(serverMessages.length > lastChatToastCount) {
+    showChatToast(serverMessages[serverMessages.length - 1]);
+    lastChatToastCount = serverMessages.length;
+  } else if(serverMessages.length < lastChatToastCount) {
+    lastChatToastCount = serverMessages.length;
+  }
+
+  const unread = Math.max(0, serverMessages.length - lastChatCount);
+  btn.textContent = (!chatOpen && unread > 0) ? `チャット ${unread}` : "チャット";
+
+  const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.replaceChildren();
+  if(messages.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "chat-empty";
+    empty.textContent = "まだメッセージはありません";
+    box.appendChild(empty);
+  } else {
+    const frag = document.createDocumentFragment();
+    for(const item of messages){
+      const row = document.createElement("div");
+      row.className = "chat-message";
+      if(item?.seat === mySeat && !isSpectator()) row.classList.add("mine");
+      if(item?.local_notice) row.classList.add("notice");
+
+      const sender = document.createElement("div");
+      sender.className = "chat-sender";
+      sender.textContent = String(item?.sender || item?.seat || "観戦");
+
+      const meta = document.createElement("div");
+      meta.className = "chat-meta";
+      meta.appendChild(sender);
+
+      const timeText = formatChatTime(item?.ts);
+      if(timeText){
+        const time = document.createElement("span");
+        time.className = "chat-time";
+        time.textContent = timeText;
+        meta.appendChild(time);
+      }
+
+      const text = document.createElement("div");
+      text.className = "chat-text";
+      text.textContent = String(item?.message || "");
+
+      row.appendChild(meta);
+      row.appendChild(text);
+      frag.appendChild(row);
+    }
+    box.appendChild(frag);
+  }
+
+  if(chatOpen){
+    lastChatCount = serverMessages.length;
+    if(wasNearBottom || unread > 0){
+      setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
+    }
+  }
+}
+
+async function sendChatMessage(event){
+  event.preventDefault();
+  if(chatSending) return;
+  const input = document.getElementById("chatInput");
+  if(!input) return;
+  const message = input.value.trim();
+  if(!message) return;
+
+  chatSending = true;
+  input.disabled = true;
+  try{
+    const res = await fetch(`${API}/games/${gid}/chat`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        seat: isSpectator() ? WATCH : mySeat,
+        client_id: clientId,
+        message
+      })
+    });
+    if(!res.ok){
+      setHint("チャットの送信に失敗しました。");
+    } else {
+      input.value = "";
+      await refresh();
+    }
+  }catch(e){
+    console.error("Chat send error:", e);
+    setHint("チャットの送信に失敗しました。通信状態を確認してください。");
+  }finally{
+    chatSending = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
 
 function seatTurnLabel(state, seat){
   if(!seat) return "";
@@ -2083,6 +2626,48 @@ function buildSlotMap(physToSeat){
     SLOTS[phys].attack.forEach((c,i)=>m.set(key(c[0],c[1]),{p:seat,kind:"A",idx:i, phys:phys}));
   }
   return m;
+}
+
+function removeFirstPiece(list, piece){
+  const idx = list.indexOf(String(piece));
+  if(idx >= 0) list.splice(idx, 1);
+}
+
+function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
+  const out = new Map();
+  if(!state?.reveal_hands) return out;
+
+  for(const phys of ["A","B","C","D"]){
+    const seat = physToSeat[phys];
+    const hand = state.hands?.[seat];
+    if(!Array.isArray(hand)) continue;
+
+    const pieces = sortHandNumeric(hand.map(String));
+    if(pendingReceive && pendingReceive.seat === seat){
+      removeFirstPiece(pieces, pendingReceive.piece);
+    }
+
+    const emptyCoords = [];
+    for(const kindKey of ["receive", "attack"]){
+      SLOTS[phys][kindKey].forEach((coord, idx) => {
+        const occupied = state.board_public?.[seat]?.[kindKey]?.[idx] != null;
+        const pendingOccupied = (
+          pendingReceive &&
+          kindKey === "receive" &&
+          pendingReceive.seat === seat &&
+          pendingReceive.idx === idx
+        );
+        if(!occupied && !pendingOccupied) emptyCoords.push(coord);
+      });
+    }
+
+    for(let i = 0; i < pieces.length && i < emptyCoords.length; i++){
+      const coord = emptyCoords[i];
+      out.set(key(coord[0], coord[1]), pieces[i]);
+    }
+  }
+
+  return out;
 }
 
 async function claimSeat(seat){ try{ await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
@@ -2327,6 +2912,7 @@ function renderBoard(state){
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
   const pendingReceive = pendingBlockPreview(state);
+  const revealedBoardHands = buildRevealedBoardHandMap(state, physToSeat, pendingReceive);
 
   let currentAttackIndex = -1;
   let currentAttacker = state.attacker;
@@ -2386,20 +2972,29 @@ function renderBoard(state){
       if(slot){
         const kindKey = slot.kind==="R" ? "receive" : "attack";
         const boardPiece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+        const revealedHandPiece = revealedBoardHands.get(k);
         const isPendingReceive = (
           pendingReceive &&
           kindKey === "receive" &&
           slot.p === pendingReceive.seat &&
           slot.idx === pendingReceive.idx
         );
-        const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : null);
+        const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+        const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+        const isRevealedHand = !boardPiece && !isPendingReceive && !!revealedHandPiece;
+        const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : revealedHandPiece);
 
         if (piece) {
           div.classList.add("slot");
           div.classList.add("phys-" + slot.phys);
           if(isPendingReceive) div.classList.add("pending-preview");
           
-          div.classList.add(seatIsAi(state, slot.p) ? "ai" : "human");
+          if(isRevealedHand){
+            div.classList.add("revealed-hand");
+          }else{
+            div.classList.add(seatIsAi(state, slot.p) ? "ai" : "human");
+          }
+          if(isRevealedHidden) div.classList.add("revealed-hidden");
           
           if(slot.kind==="A"){
             div.classList.add("attack");
@@ -2411,8 +3006,8 @@ function renderBoard(state){
           val.className="val";
 
           if(kindKey==="receive"){
-            const hidden = isPendingReceive || state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-            val.textContent = hidden ? "" : pieceToLabel(piece);
+            const hidden = isPendingReceive || isHiddenReceive;
+            val.textContent = (hidden && !isRevealedHidden) ? "" : pieceToLabel(piece);
           }else{
             val.textContent = pieceToLabel(piece);
           }
@@ -2473,7 +3068,7 @@ function renderHands(state) {
   }
 
   seats.forEach(seat => {
-    const isVisible = state.reveal_hands || (!isSpectator() && mySeat === seat);
+    const isVisible = !isSpectator() && mySeat === seat;
     if (!isVisible) return; 
 
     const rowDiv = document.createElement("div");
@@ -2544,6 +3139,15 @@ function renderHands(state) {
           passBtn.classList.add("disabled");
       }
       passBtnWrap.appendChild(passBtn);
+
+      const autoBtn = document.createElement("button");
+      autoBtn.className = "auto-play";
+      autoBtn.type = "button";
+      autoBtn.textContent = autoPlayEnabled ? "Auto ON" : "Auto";
+      autoBtn.classList.toggle("active", autoPlayEnabled);
+      autoBtn.disabled = state.finished || !state.is_started;
+      autoBtn.onclick = toggleAutoPlay;
+      passBtnWrap.appendChild(autoBtn);
 
       rowDiv.appendChild(passBtnWrap);
     }
@@ -2787,6 +3391,7 @@ async function refresh(){
   renderPresetControls(state);
   await renderActions();
   updateNameInputVisibility();
+  renderChat(state);
 
   const logDelta = currentLogCount - lastLogCount;
   if (logDelta > 0) {
@@ -2819,12 +3424,11 @@ async function refresh(){
       const isPieceAction = /^([ABCD]): (?:receive \d|attack \d|block \d+ -> attack \d)/.test(entry);
       const hasKakarigotae = entry.includes("[EFFECT:kakarigotae]");
       const hasDamadama = entry.includes("[EFFECT:damadama]");
-      const hasUchidome = entry.includes("[EFFECT:uchidome]");
       const hasReach = entry.includes("[EFFECT:reach]");
       const hasBaizuke = entry.includes("[EFFECT:baizuke]");
       const hasDamadamaAgari = entry.includes("[EFFECT:damadama_agari]");
       const hasOuAgari = entry.includes("[EFFECT:ou_agari]");
-      const hasAnyEffect = hasKakarigotae || hasDamadama || hasUchidome || hasReach || hasBaizuke || hasDamadamaAgari || hasOuAgari;
+      const hasVisibleEffect = hasKakarigotae || hasDamadama || hasReach || hasBaizuke || hasDamadamaAgari || hasOuAgari;
       const cVoiceKind = cAiVoiceForLogEntry(state, i, entry);
       const cAttackVoiceKind = nextEntryIsRoundFinished ? null : cAttackVoiceForLogEntry(state, i, entry);
       const cWinVoice = cWinsInLogEntry(state, entry);
@@ -2852,7 +3456,7 @@ async function refresh(){
         scheduleLogAnimation(() => playCVoice(cAttackVoiceKind), animDelay + 100);
       }
 
-      if (isPieceAction && !hasAnyEffect && !nextEntryIsRoundFinished) {
+      if (isPieceAction && !hasVisibleEffect && !nextEntryIsRoundFinished) {
         scheduleLogAnimation(playPieceSound, animDelay);
         animDelay += 160;
       }
@@ -2864,10 +3468,6 @@ async function refresh(){
           }
           if (hasDamadama) {
               scheduleLogAnimation(() => showSpecialAnimation("だまだま！", "damadama", { sound: !nextEntryIsRoundFinished }), animDelay);
-              animDelay += 1200;
-          }
-          if (hasUchidome) {
-              scheduleLogAnimation(() => showSpecialAnimation("打ち止め！", "uchidome", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasReach) {
@@ -2898,18 +3498,33 @@ async function refresh(){
   lastLogCount = currentLogCount;
   logAudioPrimed = true;
 
-  if(isGameStarted && !state.finished && seatIsAi(state, state.turn) && !isProcessingCpu){
-    isProcessingCpu = true;
-    cpuTimer = setTimeout(async () => {
-      try {
-        await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
-      } catch(e) {
-        console.error("CPU step error:", e);
-      }
-      isProcessingCpu = false;
-      cpuTimer = null; 
-      refresh(); 
-    }, 1000); 
+  if(isGameStarted && !state.finished && !isProcessingCpu){
+    if(seatIsAi(state, state.turn)){
+      isProcessingCpu = true;
+      cpuTimer = setTimeout(async () => {
+        try {
+          await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
+        } catch(e) {
+          console.error("CPU step error:", e);
+        }
+        isProcessingCpu = false;
+        cpuTimer = null;
+        refresh();
+      }, 1000);
+    }else if(autoPlayEnabled && state.turn === mySeat && !isSpectator()){
+      isProcessingCpu = true;
+      pending = null;
+      cpuTimer = setTimeout(async () => {
+        try {
+          await fetch(`${API}/games/${gid}/auto_step?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`, { method: "POST" });
+        } catch(e) {
+          console.error("Auto step error:", e);
+        }
+        isProcessingCpu = false;
+        cpuTimer = null;
+        refresh();
+      }, 450);
+    }
   }
 }
 

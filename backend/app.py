@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import random
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 
@@ -21,6 +22,7 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
+CHAT_MAX_LEN = 200
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
@@ -39,6 +41,7 @@ PIECE_POINTS = {
     "8": 50, # 玉
     "9": 50  # 王
 }
+PARTNER_SEAT = {"A": "C", "C": "A", "B": "D", "D": "B"}
 
 # =========================================================
 # WebSocket 管理
@@ -175,6 +178,27 @@ def _sanitize_player_name(s: str) -> str:
     if len(s) > 9:
         s = s[:9]
     return s
+
+
+def _sanitize_chat_message(s: str) -> str:
+    s = (s or "").replace("\r", " ").replace("\n", " ").strip()
+    if len(s) > CHAT_MAX_LEN:
+        s = s[:CHAT_MAX_LEN]
+    return s
+
+
+def _normalize_chat_seat(s: str) -> str:
+    s = (s or "").strip().upper()
+    if s in ALL_SEATS:
+        return s
+    return "W"
+
+
+def _chat_sender_label(game_obj: Dict[str, Any], seat: str) -> str:
+    if seat in ALL_SEATS:
+        name = _sanitize_player_name((game_obj.get("player_names") or {}).get(seat, ""))
+        return f"{seat}: {name}" if name else seat
+    return "観戦"
 
 
 def _normalize_ai_profile(profile: Optional[str]) -> str:
@@ -323,6 +347,11 @@ class NameRequest(BaseModel):
     seat: str
     name: str = ""
 
+class ChatRequest(BaseModel):
+    seat: str = "W"
+    client_id: str = ""
+    message: str
+
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
@@ -465,6 +494,7 @@ def _state_public_view(
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
+    chat_messages = list(game_obj.get("chat_messages", []))[-100:]
 
     hands_view: Dict[str, Any] = {}
     init_hands_view: Dict[str, Any] = {}
@@ -493,10 +523,6 @@ def _state_public_view(
 
         if reveal_hands:
             board_view = copy.deepcopy(board_public)
-            for p in ALL_SEATS:
-                rh = board_view.get(p, {}).get("receive_hidden")
-                if isinstance(rh, list):
-                    board_view[p]["receive_hidden"] = [False for _ in rh]
         else:
             board_view = board_public
             
@@ -534,6 +560,7 @@ def _state_public_view(
         "enable_c_voice": bool(game_obj.get("enable_c_voice", False)),
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
+        "chat_messages": chat_messages,
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["ai_seats"] = sorted(ai_seats)
@@ -558,6 +585,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "human_seats": {}, 
         "ai_seats": [],
         "player_names": {p: "" for p in ALL_SEATS},
+        "chat_messages": [],
         "password": None,
         "admin_password": None,
         "owner_name": "",
@@ -636,11 +664,11 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
         if attack_count == 2 and next_hand_len == 2:
             effects.append("reach")
             
-        partner_of_dealer = {"A":"C", "C":"A", "B":"D", "D":"B"}.get(dealer)
-        if player == partner_of_dealer and attack_count == 0:
+        partner = PARTNER_SEAT.get(player)
+        if partner and attack_count == 0:
             if attack in ("2", "3", "4", "5"):
-                dealer_attacks = [x for x in board_public.get(dealer, {}).get("attack", []) if x is not None]
-                if len(dealer_attacks) > 0 and dealer_attacks[0] == attack:
+                partner_attacks = [x for x in board_public.get(partner, {}).get("attack", []) if x is not None]
+                if len(partner_attacks) > 0 and partner_attacks[0] == attack:
                     effects.append("kakarigotae")
             
         if is_agari:
@@ -882,6 +910,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
+    chat_messages = list(old_game.get("chat_messages", []))[-100:]
     enable_effects = old_game.get("enable_effects", True)
     enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
@@ -893,6 +922,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["human_seats"] = human_seats
     new_game["ai_seats"] = ai_seats
     new_game["player_names"] = player_names
+    new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
     new_game["enable_effects"] = enable_effects 
@@ -927,6 +957,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
+    chat_messages = list(old_game.get("chat_messages", []))[-100:]
     enable_effects = old_game.get("enable_effects", True)
     enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
@@ -949,6 +980,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
+        new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
@@ -967,6 +999,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
+        new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["enable_effects"] = enable_effects
@@ -1088,6 +1121,33 @@ async def set_player_name(game_id: str, req: NameRequest):
     return {"ok": True, "game_id": game_id, "player_names": pn}
 
 
+@app.post("/games/{game_id}/chat")
+async def post_chat_message(game_id: str, req: ChatRequest):
+    if game_id == MAIN_GID:
+        _ensure_main_game()
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+
+    message = _sanitize_chat_message(req.message)
+    chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
+    if not message:
+        return {"ok": False, "chat_messages": chat_messages[-100:]}
+
+    seat = _normalize_chat_seat(req.seat)
+    chat_messages.append({
+        "seat": seat,
+        "sender": _chat_sender_label(game, seat),
+        "message": message,
+        "ts": int(time.time() * 1000),
+    })
+    if len(chat_messages) > 100:
+        del chat_messages[:-100]
+
+    await manager.broadcast_update(game_id)
+    return {"ok": True, "chat_messages": chat_messages[-100:]}
+
+
 @app.post("/games/{game_id}/step")
 async def step(game_id: str, req: StepRequest):
     if game_id == MAIN_GID:
@@ -1165,7 +1225,7 @@ async def cpu_step(game_id: str):
 
 
 @app.post("/games/{game_id}/auto_step")
-async def auto_step(game_id: str, player: str = "A"):
+async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
     if game_id == MAIN_GID:
         _ensure_main_game()
     player = _validate_seat(player, name="player")
@@ -1176,7 +1236,10 @@ async def auto_step(game_id: str, player: str = "A"):
         return {"status": "ignored"}
 
     state: GoitaState = game["state"]
-    if state.finished or state.turn != player or player not in _ai_seat_set(game):
+    ai_seats = _ai_seat_set(game)
+    human_seats = game.get("human_seats", {})
+    owns_human_seat = isinstance(human_seats, dict) and human_seats.get(player) == client_id
+    if state.finished or state.turn != player or (player not in ai_seats and not owns_human_seat):
         return {"status": "ignored", "turn": state.turn}
 
     result = _apply_agent_turn(game, player)

@@ -3,6 +3,7 @@ __pycache__/
 
 .codex_deps/
 .server_deps/
+.server_deps_*/
 .codex_server_*.log
 
 kifu/
