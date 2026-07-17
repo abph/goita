@@ -194,11 +194,12 @@ def _normalize_chat_seat(s: str) -> str:
     return "W"
 
 
-def _chat_sender_label(game_obj: Dict[str, Any], seat: str) -> str:
+def _chat_sender_label(game_obj: Dict[str, Any], seat: str, spectator_name: str = "") -> str:
     if seat in ALL_SEATS:
         name = _sanitize_player_name((game_obj.get("player_names") or {}).get(seat, ""))
         return f"{seat}: {name}" if name else seat
-    return "観戦"
+    name = _sanitize_player_name(spectator_name)
+    return f"観戦: {name}" if name else "観戦"
 
 
 def _normalize_ai_profile(profile: Optional[str]) -> str:
@@ -350,6 +351,7 @@ class NameRequest(BaseModel):
 class ChatRequest(BaseModel):
     seat: str = "W"
     client_id: str = ""
+    name: str = ""
     message: str
 
 class ResetConfigBody(BaseModel):
@@ -363,8 +365,6 @@ class SettingsUpdateRequest(BaseModel):
     new_owner_name: str
     update_password: bool = False
     new_password: Optional[str] = None
-    enable_effects: bool = True 
-    enable_c_voice: bool = False
     ai_profile: str = DEFAULT_AI_PROFILE
 
 
@@ -557,7 +557,6 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
-        "enable_c_voice": bool(game_obj.get("enable_c_voice", False)),
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
         "chat_messages": chat_messages,
@@ -591,8 +590,6 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "owner_name": "",
         "reveal_hands": False,
         "is_started": False,
-        "enable_effects": True,
-        "enable_c_voice": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
         "match_finished": False,
@@ -736,9 +733,7 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
     agent = agents[player]
     agent_action = agent.select_action(state, player, acts)
 
-    effects = []
-    if game.get("enable_effects", True):
-        effects = _check_effects(state, player, agent_action, board, game.get("dealer", "A"))
+    effects = _check_effects(state, player, agent_action, board, game.get("dealer", "A"))
 
     before_fd = len(state.face_down_hidden[player])
     _apply_action(state, player, agent_action)
@@ -818,8 +813,6 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "ok": True, 
             "owner_name": game.get("owner_name", ""),
             "is_private": game.get("password") is not None,
-            "enable_effects": game.get("enable_effects", True),
-            "enable_c_voice": bool(game.get("enable_c_voice", False)),
             "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
             "ai_profiles": {
                 key: str(info["label"])
@@ -838,8 +831,6 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
-    game["enable_effects"] = req.enable_effects
-    game["enable_c_voice"] = req.enable_c_voice
     next_ai_profile = _normalize_ai_profile(req.ai_profile)
     if game.get("ai_profile") != next_ai_profile:
         game["ai_profile"] = next_ai_profile
@@ -853,8 +844,6 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     await manager.broadcast_update("lobby")
     return {
         "ok": True,
-        "enable_effects": bool(game.get("enable_effects", True)),
-        "enable_c_voice": bool(game.get("enable_c_voice", False)),
         "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
     }
 
@@ -911,8 +900,6 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
-    enable_effects = old_game.get("enable_effects", True)
-    enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
@@ -925,8 +912,6 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
     new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
-    new_game["enable_effects"] = enable_effects 
-    new_game["enable_c_voice"] = enable_c_voice
     new_game["ai_profile"] = ai_profile
     
     if keep_score:
@@ -958,8 +943,6 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
-    enable_effects = old_game.get("enable_effects", True)
-    enable_c_voice = bool(old_game.get("enable_c_voice", False))
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
 
     if preset:
@@ -983,8 +966,6 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
-        new_game["enable_effects"] = enable_effects
-        new_game["enable_c_voice"] = enable_c_voice
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
@@ -1002,8 +983,6 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
-        new_game["enable_effects"] = enable_effects
-        new_game["enable_c_voice"] = enable_c_voice
         new_game["ai_profile"] = ai_profile
         
         if body.keep_score:
@@ -1137,7 +1116,7 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     seat = _normalize_chat_seat(req.seat)
     chat_messages.append({
         "seat": seat,
-        "sender": _chat_sender_label(game, seat),
+        "sender": _chat_sender_label(game, seat, req.name),
         "message": message,
         "ts": int(time.time() * 1000),
     })
@@ -1172,9 +1151,7 @@ async def step(game_id: str, req: StepRequest):
     
     action = req.action.to_tuple()
     
-    effects = []
-    if game.get("enable_effects", True):
-        effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
+    effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
 
     before_fd = len(state.face_down_hidden[player])
     try:

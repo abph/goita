@@ -377,6 +377,12 @@
     .hand-row-pieces .hand.pending-hidden {
       cursor: pointer;
     }
+    .hand-row-pieces .hand.pending-hidden .val {
+      display: block;
+      color: #8b5a2b;
+      font-weight: 900;
+      transform: none;
+    }
 
     .pass-btn-area {
       margin-left: 10px;
@@ -561,12 +567,6 @@
     .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
     .card { border: 1px solid #c8a77a; border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.6); min-height: 120px; }
     pre { background:#f4efdf; padding:10px; border-radius:6px; max-height: 420px; overflow:auto; margin: 0; border: 1px solid #c8a77a; font-family: monospace; }
-
-    .name-grid{
-      display: grid; grid-template-columns: 80px 15ch 64px; gap: 8px 10px; align-items: center; margin-top: 6px; margin-bottom: 6px;
-    }
-    .name-grid button{ width: 64px; white-space: nowrap; }
-    .name-grid input[type="text"]{ width: 15ch; box-sizing: content-box; }
 
     .chat-toggle {
       position: fixed;
@@ -753,22 +753,74 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    @media (max-width: 700px) {
+    @media (min-width: 702px) {
+      #gameView {
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 48px + var(--chat-panel-width));
+        max-width: 100%;
+        margin-inline: auto;
+      }
+      .play-layout {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 16px;
+        min-width: 0;
+      }
+      .play-layout .board-wrap {
+        flex: 0 0 auto;
+        width: fit-content;
+      }
+      .play-layout .chat-panel {
+        position: static;
+        flex: 0 0 var(--chat-panel-width);
+        width: var(--chat-panel-width);
+        height: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);
+        min-height: 0;
+        z-index: auto;
+        border: 3px solid #8b5a2b;
+        border-radius: 6px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        transform: none;
+        transition: none;
+        opacity: 1;
+      }
+      .play-layout .chat-header {
+        display: none;
+      }
+      .play-layout .chat-messages {
+        padding: 9px;
+      }
+      .chat-toggle {
+        display: none !important;
+      }
+    }
+    @media (max-width: 701px) {
       :root {
         --chat-panel-width: min(200px, calc(100vw - 28px));
         --chat-panel-height: min(340px, calc(100vh - 120px));
       }
+      .play-layout {
+        position: relative;
+      }
       .chat-toggle {
+        position: absolute;
+        top: calc(12px + (var(--cell) * 0.5));
+        right: 0;
+        transform: translateY(-50%);
         background: rgba(255, 253, 245, 0.56);
         border-color: rgba(139, 90, 43, 0.58);
         color: rgba(109, 70, 31, 0.82);
         box-shadow: 0 3px 9px rgba(0,0,0,0.12);
       }
       .chat-panel {
-        top: 84px;
+        top: 0;
         background: rgba(255, 253, 245, 0.26);
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
+      }
+      .chat-toast {
+        top: 8px;
+        z-index: 950;
       }
       .chat-panel:focus-within {
         background: rgba(255, 253, 245, 0.48);
@@ -828,7 +880,32 @@
     .modal-content h3 { margin-top: 0; color: #8b5a2b; border-bottom: 2px solid #8b5a2b; padding-bottom: 8px; font-size: 20px;}
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
-    .settings-row input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .settings-modal-content { max-height: min(680px, calc(100vh - 32px)); overflow-y: auto; }
+    .settings-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #c8a77a;
+    }
+    .settings-tab {
+      border: 0;
+      border-radius: 6px 6px 0 0;
+      padding: 9px 8px;
+      background: rgba(255,255,255,0.42);
+      color: #6d461f;
+      font-weight: 900;
+    }
+    .settings-tab.active { background: #8b5a2b; color: #fff; }
+    .settings-panel { display: none; }
+    .settings-panel.active { display: block; }
+    .settings-inline-action { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
+    .settings-inline-action button { white-space: nowrap; }
+    .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
+    .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
+    .settings-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(139,90,43,0.25); }
+    .settings-footer button { width: 100%; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px; }
     .seat-ai-note {
       flex-basis: 100%;
       margin-top: 4px;
@@ -873,8 +950,18 @@
       .card{ min-width: 0; }
       pre{ width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
       #dealerSelect{ width: 100%; }
-      .name-grid{ grid-template-columns: 70px 15ch 56px; justify-content: start; }
-      .name-grid button{ width: 56px; }
+    }
+
+    @media (min-width: 702px) and (max-width: 980px) {
+      :root {
+        --chat-panel-width: clamp(150px, calc(100vw - 552px), 240px);
+      }
+      #gameView {
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 40px + var(--chat-panel-width));
+      }
+      .play-layout .chat-panel {
+        height: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
+      }
     }
   
     @media (max-width: 430px){
@@ -1011,23 +1098,23 @@
       </span>
       <div class="small seat-ai-note">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</div>
     </div>
-    <div class="name-grid" id="nameGrid">
-      <b data-seat="A">A名前</b><input data-seat="A" id="nameA" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="A" type="button" onclick="applyName('A')">表示</button>
-
-      <b data-seat="B">B名前</b><input data-seat="B" id="nameB" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="B" type="button" onclick="applyName('B')">表示</button>
-
-      <b data-seat="C">C名前</b><input data-seat="C" id="nameC" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="C" type="button" onclick="applyName('C')">表示</button>
-
-      <b data-seat="D">D名前</b><input data-seat="D" id="nameD" type="text" maxlength="9" size="15" autocomplete="off" placeholder="最大9文字" />
-      <button data-seat="D" type="button" onclick="applyName('D')">表示</button>
-    </div>
   </div>
 
-  <div class="board-wrap">
-    <div id="board" class="board"></div>
+  <div class="play-layout">
+    <div class="board-wrap">
+      <div id="board" class="board"></div>
+    </div>
+    <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
+    <div id="chatPanel" class="chat-panel" aria-live="polite">
+      <div class="chat-header">
+        <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <form class="chat-form" onsubmit="sendChatMessage(event)">
+        <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
+        <button type="submit">送信</button>
+      </form>
+    </div>
   </div>
   
   <div id="handsArea" class="hands-area"></div>
@@ -1103,17 +1190,6 @@
 
 </div>
 
-<button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
-<div id="chatPanel" class="chat-panel" aria-live="polite">
-  <div class="chat-header">
-    <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
-  </div>
-  <div id="chatMessages" class="chat-messages"></div>
-  <form class="chat-form" onsubmit="sendChatMessage(event)">
-    <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
-    <button type="submit">送信</button>
-  </form>
-</div>
 <div id="chatToast" class="chat-toast" aria-live="polite">
   <div class="chat-toast-meta">
     <span id="chatToastSender"></span>
@@ -1137,36 +1213,63 @@
 </div>
 
 <div id="settingsModal" class="modal-overlay">
-  <div class="modal-content">
-    <h3>⚙️ ルーム設定</h3>
-    <div class="settings-row">
-      <label>ルーム名（最大9文字）</label>
-      <input type="text" id="setRoomName" maxlength="9">
-    </div>
-    
-    <div class="settings-row" style="margin-bottom: 20px;">
-      <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
+  <div class="modal-content settings-modal-content">
+    <h3>⚙️ 設定</h3>
+    <div class="settings-tabs" role="tablist" aria-label="設定の種類">
+      <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
+      <button id="roomManagementTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('management')">ルーム管理</button>
     </div>
 
-    <div class="settings-row">
-      <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
-      <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
-    </div>
-    <div class="settings-row" style="margin-bottom: 20px;">
-      <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
-    </div>
+    <section id="personalSettingsPanel" class="settings-panel active" role="tabpanel">
+      <div class="settings-row">
+        <label for="personalPlayerName">名前（最大9文字）</label>
+        <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+      </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
+      </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="checkEnableSoundEffects" style="width:auto;"> 効果音（駒を出す音など）を有効にする</label>
+      </div>
+      <div class="settings-row">
+        <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
+      </div>
+      <button class="settings-save-button" type="button" onclick="savePersonalSettings()">個人設定を保存</button>
+      <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
+    </section>
 
-    <div class="settings-row">
-      <label for="setAiProfile">AI</label>
-      <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-        <option value="current">強化中AI</option>
-        <option value="beginner_upper">初級者（上）</option>
-      </select>
-    </div>
+    <section id="roomManagementPanel" class="settings-panel" role="tabpanel">
+      <div id="adminAuthArea" class="settings-row">
+        <label for="setAdminPassword">管理用パスワード</label>
+        <div class="settings-inline-action">
+          <input type="password" id="setAdminPassword" autocomplete="current-password">
+          <button type="button" onclick="unlockRoomManagement()">確認</button>
+        </div>
+        <div id="adminAuthStatus" class="settings-status" aria-live="polite"></div>
+      </div>
 
-    <div style="display: flex; gap: 8px; margin-top: 24px;">
-      <button onclick="saveSettings()" style="flex: 1; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px;">保存</button>
-      <button onclick="closeSettings()" style="flex: 1; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px;">閉じる</button>
+      <div id="roomManagementFields" style="display:none;">
+        <div class="settings-row">
+          <label for="setRoomName">ルーム名（最大9文字）</label>
+          <input type="text" id="setRoomName" maxlength="9">
+        </div>
+        <div class="settings-row">
+          <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
+          <input type="text" id="setRoomPass" style="display:none; margin-top: 4px;" placeholder="空欄にすると誰でも入れる公開部屋になります">
+        </div>
+        <div class="settings-row">
+          <label for="setAiProfile">AIの選択</label>
+          <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+            <option value="current">強化中AI</option>
+            <option value="beginner_upper">初級者（上）</option>
+          </select>
+        </div>
+        <button class="settings-save-button" type="button" onclick="saveRoomManagement()">ルーム管理を保存</button>
+      </div>
+    </section>
+
+    <div class="settings-footer">
+      <button type="button" onclick="closeSettings()">閉じる</button>
     </div>
   </div>
 </div>
@@ -1182,6 +1285,22 @@ let currentWsGid = null;
 let currentAdminPass = ""; 
 let settingTargetGid = null; 
 let seatModeTarget = null;
+
+const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
+function loadPersonalSettings() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(PERSONAL_SETTINGS_KEY) || "{}");
+        return {
+            playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
+            enableEffects: saved.enableEffects !== false,
+            enableSoundEffects: saved.enableSoundEffects !== false,
+            enableCVoice: saved.enableCVoice === true,
+        };
+    } catch (e) {
+        return { playerName: "", enableEffects: true, enableSoundEffects: true, enableCVoice: false };
+    }
+}
+let personalSettings = loadPersonalSettings();
 
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
@@ -1279,11 +1398,14 @@ function resetLogAudioSync(currentLogCount = 0){
     suppressLogAudioUntil = Date.now() + 1200;
 }
 
-function playEffectSound(){ playSound(effectSound); }
-function playWinSound(){ playSound(winSound); }
-function playPassSound(){ playSound(passSound); }
-function playPieceSound(){ playSound(pieceSound); }
-function playNextRoundSound(){ playSound(nextRoundSound); }
+function playGameSound(audio){
+    if(personalSettings.enableSoundEffects !== false) playSound(audio);
+}
+function playEffectSound(){ playGameSound(effectSound); }
+function playWinSound(){ playGameSound(winSound); }
+function playPassSound(){ playGameSound(passSound); }
+function playPieceSound(){ playGameSound(pieceSound); }
+function playNextRoundSound(){ playGameSound(nextRoundSound); }
 function playCVoice(kind){
     const table = {
         heavy: cVoiceHeavySound,
@@ -1565,38 +1687,41 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel.value) sel.value = "current";
 }
 
-async function openSettingsModal(targetGid, event) {
+function showSettingsTab(tabName) {
+    const isManagement = tabName === "management";
+    if (isManagement && settingTargetGid === MAIN_GID) return;
+    document.getElementById("personalSettingsTab").classList.toggle("active", !isManagement);
+    document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
+    document.getElementById("personalSettingsPanel").classList.toggle("active", !isManagement);
+    document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
+    if (isManagement && !currentAdminPass) {
+        setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
+    }
+}
+
+function syncPersonalSettingsControls() {
+    const currentSeatName = isSpectator() ? "" : sanitizeName(latestState?.player_names?.[mySeat] || "");
+    document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
+    document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
+    document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
+    document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
+    document.getElementById("personalSettingsStatus").textContent = "";
+}
+
+function openSettingsModal(targetGid, event) {
     if (event) {
         event.stopPropagation();
     }
-    
-    const pass = prompt("管理用パスワードを入力してください");
-    if (!pass) return;
-
-    try {
-        const res = await fetch(`${API}/games/${targetGid}/verify_admin`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ password: pass })
-        });
-        if (res.ok) {
-            const data = await res.json();
-            settingTargetGid = targetGid;
-            currentAdminPass = pass;
-            document.getElementById("setRoomName").value = data.owner_name || "";
-            document.getElementById("checkEnableEffects").checked = data.enable_effects !== false;
-            document.getElementById("checkEnableCVoice").checked = data.enable_c_voice === true;
-            populateAiProfileSelect(data.ai_profiles, data.ai_profile);
-            document.getElementById("checkUpdatePass").checked = false;
-            document.getElementById("setRoomPass").style.display = "none";
-            document.getElementById("setRoomPass").value = "";
-            document.getElementById("settingsModal").style.display = "flex";
-        } else {
-            alert("パスワードが正しくありません。");
-        }
-    } catch (e) {
-        alert("通信エラーが発生しました。");
-    }
+    settingTargetGid = targetGid;
+    currentAdminPass = "";
+    syncPersonalSettingsControls();
+    document.getElementById("setAdminPassword").value = "";
+    document.getElementById("adminAuthStatus").textContent = "";
+    document.getElementById("adminAuthArea").style.display = "block";
+    document.getElementById("roomManagementFields").style.display = "none";
+    document.getElementById("roomManagementTab").style.display = targetGid === MAIN_GID ? "none" : "block";
+    showSettingsTab("personal");
+    document.getElementById("settingsModal").style.display = "flex";
 }
 
 function closeSettings() {
@@ -1605,12 +1730,65 @@ function closeSettings() {
     settingTargetGid = null;
 }
 
-async function saveSettings() {
+async function savePersonalSettings() {
+    personalSettings = {
+        playerName: sanitizeName(document.getElementById("personalPlayerName").value),
+        enableEffects: document.getElementById("checkEnableEffects").checked,
+        enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
+        enableCVoice: document.getElementById("checkEnableCVoice").checked,
+    };
+    try {
+        localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
+        if (!isSpectator()) {
+            await setName(mySeat, personalSettings.playerName);
+            await refresh();
+        }
+        document.getElementById("personalSettingsStatus").textContent = "保存しました。";
+    } catch (e) {
+        document.getElementById("personalSettingsStatus").textContent = "保存できませんでした。";
+    }
+}
+
+async function unlockRoomManagement() {
+    const passInput = document.getElementById("setAdminPassword");
+    const status = document.getElementById("adminAuthStatus");
+    const pass = passInput.value;
+    if (!pass) {
+        status.textContent = "管理用パスワードを入力してください。";
+        return;
+    }
+    passInput.disabled = true;
+    status.textContent = "";
+    try {
+        const res = await fetch(`${API}/games/${settingTargetGid}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ password: pass })
+        });
+        if (!res.ok) {
+            status.textContent = "管理用パスワードが正しくありません。";
+            return;
+        }
+        const data = await res.json();
+        currentAdminPass = pass;
+        document.getElementById("setRoomName").value = data.owner_name || "";
+        populateAiProfileSelect(data.ai_profiles, data.ai_profile);
+        document.getElementById("checkUpdatePass").checked = false;
+        document.getElementById("setRoomPass").style.display = "none";
+        document.getElementById("setRoomPass").value = "";
+        document.getElementById("adminAuthArea").style.display = "none";
+        document.getElementById("roomManagementFields").style.display = "block";
+    } catch (e) {
+        status.textContent = "通信エラーが発生しました。";
+    } finally {
+        passInput.disabled = false;
+    }
+}
+
+async function saveRoomManagement() {
     const newName = document.getElementById("setRoomName").value;
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
-    const enableEffects = document.getElementById("checkEnableEffects").checked;
-    const enableCVoice = document.getElementById("checkEnableCVoice").checked;
     const aiProfile = document.getElementById("setAiProfile")?.value || "current";
 
     try {
@@ -1622,27 +1800,15 @@ async function saveSettings() {
                 new_owner_name: newName,
                 update_password: isUpdatePass,
                 new_password: newPass,
-                enable_effects: enableEffects,
-                enable_c_voice: enableCVoice,
                 ai_profile: aiProfile
             })
         });
         if (res.ok) {
             const saved = await res.json();
-            const savedEnableCVoice = (saved && typeof saved.enable_c_voice === "boolean")
-                ? saved.enable_c_voice
-                : enableCVoice;
-            const savedEnableEffects = (saved && typeof saved.enable_effects === "boolean")
-                ? saved.enable_effects
-                : enableEffects;
             if (latestState) {
-                latestState.enable_c_voice = savedEnableCVoice;
-                latestState.enable_effects = savedEnableEffects;
                 if (saved && saved.ai_profile) latestState.ai_profile = saved.ai_profile;
             }
-            document.getElementById("checkEnableCVoice").checked = savedEnableCVoice;
-            document.getElementById("checkEnableEffects").checked = savedEnableEffects;
-            alert("ルーム設定を保存しました。");
+            alert("ルーム管理の設定を保存しました。");
             closeSettings();
             await refresh();
         } else {
@@ -1699,10 +1865,10 @@ async function selectSeat(next) {
     if (next !== WATCH) {
         lastSeat = mySeat;
         await claimSeat(mySeat);
+        await setName(mySeat, personalSettings.playerName || "");
     }
     
     await refresh();
-    updateNameInputVisibility();
 }
 
 async function setSeatAiMode(seat, enabled) {
@@ -1729,7 +1895,6 @@ async function setSeatAiMode(seat, enabled) {
         mySeat = WATCH;
     }
     await refresh();
-    updateNameInputVisibility();
 }
 
 async function clearSeatMode(seat) {
@@ -1751,7 +1916,6 @@ async function leaveSeat(seat) {
     await releaseSeat(seat);
     mySeat = WATCH;
     await refresh();
-    updateNameInputVisibility();
 }
 
 async function openSeatMenu(seat) {
@@ -1816,21 +1980,7 @@ function updateRoomUI() {
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
     
-    if (settingsBtn) settingsBtn.style.display = (!isMain) ? "inline-block" : "none";
-}
-
-function updateNameInputVisibility(){
-  const grid = document.getElementById("nameGrid");
-  if(!grid) return;
-
-  const items = grid.querySelectorAll("[data-seat]");
-  if(mySeat === WATCH){
-    items.forEach(el => el.style.display = "none");
-    return;
-  }
-  items.forEach(el => {
-    el.style.display = (el.dataset.seat === mySeat) ? "" : "none";
-  });
+    if (settingsBtn) settingsBtn.style.display = "inline-block";
 }
 
 const SEAT_ORDER = ["A","B","C","D"];
@@ -2320,7 +2470,12 @@ function setHint(msg){
   if(latestState) renderChat(latestState);
 }
 
+function isDesktopChatDocked(){
+  return window.matchMedia("(min-width: 702px)").matches;
+}
+
 function toggleChatPanel(open){
+  if(isDesktopChatDocked()) return;
   chatOpen = (typeof open === "boolean") ? open : !chatOpen;
   const panel = document.getElementById("chatPanel");
   const btn = document.getElementById("chatToggle");
@@ -2402,8 +2557,11 @@ function renderChat(state){
   if(!panel || !btn || !box) return;
 
   const inRoom = document.getElementById("gameView")?.style.display !== "none";
-  btn.style.display = inRoom ? "block" : "none";
+  const docked = isDesktopChatDocked();
+  const chatVisible = docked || chatOpen;
+  btn.style.display = inRoom && !docked ? "block" : "none";
   panel.style.display = inRoom ? "flex" : "none";
+  panel.classList.toggle("open", inRoom && chatVisible);
   if(!inRoom){
     chatOpen = false;
     panel.classList.remove("open");
@@ -2428,7 +2586,7 @@ function renderChat(state){
   }
 
   const unread = Math.max(0, serverMessages.length - lastChatCount);
-  btn.textContent = (!chatOpen && unread > 0) ? `チャット ${unread}` : "チャット";
+  btn.textContent = (!chatVisible && unread > 0) ? `チャット ${unread}` : "チャット";
 
   const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   box.replaceChildren();
@@ -2472,7 +2630,7 @@ function renderChat(state){
     box.appendChild(frag);
   }
 
-  if(chatOpen){
+  if(chatVisible){
     lastChatCount = serverMessages.length;
     if(wasNearBottom || unread > 0){
       setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
@@ -2497,6 +2655,7 @@ async function sendChatMessage(event){
       body: JSON.stringify({
         seat: isSpectator() ? WATCH : mySeat,
         client_id: clientId,
+        name: personalSettings.playerName || "",
         message
       })
     });
@@ -2690,16 +2849,6 @@ async function setName(seat, name){
   }catch(e){}
 }
 
-async function applyName(seat){
-  const el = document.getElementById("name" + seat);
-  if(!el) return;
-  const v = sanitizeName(el.value);
-  el.value = v;
-  await setName(seat, v);
-  await refresh();
-  updateNameInputVisibility();
-}
-
 async function downloadKifu(){
   const res = await fetch(`${API}/games/${gid}/kifu`);
   const text = await res.text();
@@ -2869,7 +3018,7 @@ function cAiEnemyPassVoiceAlreadyUsed(log, index, attackNo){
 }
 
 function cAiVoiceForLogEntry(state, index, entry){
-  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return null;
+  if(!state || personalSettings.enableCVoice !== true || !seatIsAi(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
 
@@ -2891,7 +3040,7 @@ function cAiVoiceForLogEntry(state, index, entry){
 }
 
 function cAttackVoiceForLogEntry(state, index, entry){
-  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return null;
+  if(!state || personalSettings.enableCVoice !== true || !seatIsAi(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
   if(move.type !== "attack" && move.type !== "attack_after_block") return null;
@@ -2905,7 +3054,7 @@ function cAttackVoiceForLogEntry(state, index, entry){
 }
 
 function cWinsInLogEntry(state, entry){
-  if(!state || state.enable_c_voice !== true || !seatIsAi(state, voiceSeat)) return false;
+  if(!state || personalSettings.enableCVoice !== true || !seatIsAi(state, voiceSeat)) return false;
   return new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(String(entry || ""));
 }
 
@@ -3111,7 +3260,7 @@ function renderHands(state) {
 
         const valDiv = document.createElement("div");
         valDiv.className = "val";
-        valDiv.textContent = isFaceDown ? "" : pieceToLabel(card);
+        valDiv.textContent = isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card));
         pieceDiv.appendChild(valDiv);
 
         if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
@@ -3396,7 +3545,6 @@ async function refresh(){
   renderHands(state);
   renderPresetControls(state);
   await renderActions();
-  updateNameInputVisibility();
   renderChat(state);
 
   const logDelta = currentLogCount - lastLogCount;
@@ -3434,7 +3582,8 @@ async function refresh(){
       const hasBaizuke = entry.includes("[EFFECT:baizuke]");
       const hasDamadamaAgari = entry.includes("[EFFECT:damadama_agari]");
       const hasOuAgari = entry.includes("[EFFECT:ou_agari]");
-      const hasVisibleEffect = hasKakarigotae || hasDamadama || hasReach || hasBaizuke || hasDamadamaAgari || hasOuAgari;
+      const personalEffectsEnabled = personalSettings.enableEffects !== false;
+      const hasVisibleEffect = personalEffectsEnabled && (hasKakarigotae || hasDamadama || hasReach || hasBaizuke || hasDamadamaAgari || hasOuAgari);
       const cVoiceKind = cAiVoiceForLogEntry(state, i, entry);
       const cAttackVoiceKind = nextEntryIsRoundFinished ? null : cAttackVoiceForLogEntry(state, i, entry);
       const cWinVoice = cWinsInLogEntry(state, entry);
@@ -3467,7 +3616,7 @@ async function refresh(){
         animDelay += 160;
       }
       
-      if (seatMatch && shouldShowSpecialEffects) {
+      if (personalEffectsEnabled && seatMatch && shouldShowSpecialEffects) {
           if (hasKakarigotae) {
               scheduleLogAnimation(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
@@ -3534,19 +3683,10 @@ async function refresh(){
   }
 }
 
-function bindNameInputs(){
-  const ids = ["nameA","nameB","nameC","nameD"];
-  for(const id of ids){
-    const el = document.getElementById(id);
-    if(!el) continue;
-    el.addEventListener("input", ()=>{
-      const v = sanitizeName(el.value);
-      if(el.value !== v) el.value = v;
-    });
-  }
-}
-
 window.addEventListener("load", async ()=>{
+  window.addEventListener("resize", () => {
+    if(latestState) renderChat(latestState);
+  });
   setupPresetSeatResetButtons();
   presetLoad();
   presetSetEnabled(presetIsEnabled());
@@ -3567,8 +3707,6 @@ window.addEventListener("load", async ()=>{
   if(dealerSelect){
     dealerSelect.addEventListener("change", ()=> scheduleApplyCurrentSetup());
   }
-  bindNameInputs();
-
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
   
