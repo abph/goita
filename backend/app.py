@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import random
 import time
@@ -23,6 +24,7 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 MAIN_GID = "main"
 NAME_MAX_LEN = 9
 CHAT_MAX_LEN = 200
+DISCONNECT_SEAT_GRACE_SECONDS = 120
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
@@ -49,17 +51,46 @@ PARTNER_SEAT = {"A": "C", "C": "A", "B": "D", "D": "B"}
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.client_connections: Dict[Tuple[str, str], Set[WebSocket]] = {}
+        self.disconnect_tasks: Dict[Tuple[str, str], Any] = {}
 
-    async def connect(self, websocket: WebSocket, game_id: str):
+    async def connect(self, websocket: WebSocket, game_id: str, client_id: str = ""):
         await websocket.accept()
         if game_id not in self.active_connections:
             self.active_connections[game_id] = []
         self.active_connections[game_id].append(websocket)
+        if client_id:
+            key = (game_id, client_id)
+            self.client_connections.setdefault(key, set()).add(websocket)
+            self.cancel_disconnect_release(game_id, client_id)
 
-    def disconnect(self, websocket: WebSocket, game_id: str):
+    def disconnect(self, websocket: WebSocket, game_id: str, client_id: str = "") -> bool:
         if game_id in self.active_connections:
             if websocket in self.active_connections[game_id]:
                 self.active_connections[game_id].remove(websocket)
+        if not client_id:
+            return False
+        key = (game_id, client_id)
+        connections = self.client_connections.get(key)
+        if connections is not None:
+            connections.discard(websocket)
+            if not connections:
+                self.client_connections.pop(key, None)
+                return True
+        return False
+
+    def has_client_connection(self, game_id: str, client_id: str) -> bool:
+        return bool(self.client_connections.get((game_id, client_id)))
+
+    def cancel_disconnect_release(self, game_id: str, client_id: str) -> None:
+        task = self.disconnect_tasks.pop((game_id, client_id), None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    def schedule_disconnect_release(self, game_id: str, client_id: str) -> None:
+        self.cancel_disconnect_release(game_id, client_id)
+        task = asyncio.create_task(_release_disconnected_client_after_grace(game_id, client_id))
+        self.disconnect_tasks[(game_id, client_id)] = task
 
     async def broadcast_update(self, game_id: str):
         if game_id in self.active_connections:
@@ -70,6 +101,33 @@ class ConnectionManager:
                     pass
 
 manager = ConnectionManager()
+
+
+async def _release_disconnected_client_after_grace(game_id: str, client_id: str) -> None:
+    key = (game_id, client_id)
+    try:
+        await asyncio.sleep(DISCONNECT_SEAT_GRACE_SECONDS)
+        if manager.has_client_connection(game_id, client_id):
+            return
+        game = GAMES.get(game_id)
+        if not game:
+            return
+        human_seats = game.get("human_seats", {})
+        if not isinstance(human_seats, dict):
+            return
+        removed = False
+        for seat, owner_client_id in list(human_seats.items()):
+            if owner_client_id == client_id:
+                del human_seats[seat]
+                removed = True
+        if removed:
+            await manager.broadcast_update(game_id)
+            await manager.broadcast_update("lobby")
+    except asyncio.CancelledError:
+        return
+    finally:
+        if manager.disconnect_tasks.get(key) is asyncio.current_task():
+            manager.disconnect_tasks.pop(key, None)
 # =========================================================
 
 def _validate_seat(s: str, *, name: str = "seat") -> str:
@@ -235,6 +293,26 @@ def _human_seat_set(game: Dict[str, Any]) -> Set[str]:
     return _seat_set(game.get("human_seats", {}))
 
 
+def _client_owned_human_seats(game: Dict[str, Any], client_id: str) -> Set[str]:
+    human_seats = game.get("human_seats", {})
+    if not client_id or not isinstance(human_seats, dict):
+        return set()
+    return {
+        seat
+        for seat, owner_client_id in human_seats.items()
+        if seat in ALL_SEATS and owner_client_id == client_id
+    }
+
+
+def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> bool:
+    return seat in _client_owned_human_seats(game, client_id)
+
+
+def _require_human_seat_owner(game: Dict[str, Any], seat: str, client_id: str) -> None:
+    if not _client_owns_human_seat(game, seat, client_id):
+        raise HTTPException(status_code=403, detail=f"Seat {seat} is owned by another client.")
+
+
 def _ai_seat_set(game: Dict[str, Any]) -> Set[str]:
     return _seat_set(game.get("ai_seats", []))
 
@@ -268,25 +346,14 @@ def serve_index():
 
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
-    await manager.connect(websocket, game_id)
+    await manager.connect(websocket, game_id, client_id)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, game_id)
-        if client_id:
-            game = GAMES.get(game_id)
-            if game:
-                hs = game.get("human_seats", {})
-                if isinstance(hs, dict):
-                    removed = False
-                    for s, cid in list(hs.items()):
-                        if cid == client_id:
-                            del hs[s]
-                            removed = True
-                    if removed:
-                        await manager.broadcast_update(game_id)
-                        await manager.broadcast_update("lobby")
+        is_fully_disconnected = manager.disconnect(websocket, game_id, client_id)
+        if client_id and is_fully_disconnected:
+            manager.schedule_disconnect_release(game_id, client_id)
 
 
 def _hand_to_kifu_string(hand: List[Any]) -> str:
@@ -342,10 +409,12 @@ class ActionModel(BaseModel):
 
 class StepRequest(BaseModel):
     player: str = Field(..., description="A/B/C/D")
+    client_id: str = ""
     action: ActionModel
 
 class NameRequest(BaseModel):
     seat: str
+    client_id: str = ""
     name: str = ""
 
 class ChatRequest(BaseModel):
@@ -358,6 +427,7 @@ class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     requester: str = Field(default="W") 
+    client_id: str = ""
     keep_score: bool = Field(default=False)
 
 class SettingsUpdateRequest(BaseModel):
@@ -483,13 +553,15 @@ def _state_public_view(
     state: GoitaState,
     *,
     viewer: str,
-    game_obj: Dict[str, Any]
+    game_obj: Dict[str, Any],
+    client_id: str = "",
 ) -> Dict[str, Any]:
     
     log = game_obj.get("log", [])
     board_public = game_obj.get("board", _new_board_snapshot())
     reveal_hands = game_obj.get("reveal_hands", False)
     human_seats = game_obj.get("human_seats", {})
+    owned_human_seats = _client_owned_human_seats(game_obj, client_id)
     ai_seats = _ai_seat_set(game_obj)
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
@@ -514,7 +586,7 @@ def _state_public_view(
         winner = None
     else:
         for p in ALL_SEATS:
-            if reveal_hands or p == viewer:
+            if reveal_hands or p in owned_human_seats:
                 hands_view[p] = list(state.hands[p])
                 init_hands_view[p] = list((game_obj.get("init_hands") or {}).get(p, []))
             else:
@@ -562,6 +634,7 @@ def _state_public_view(
         "chat_messages": chat_messages,
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
+    payload["owned_human_seats"] = sorted(owned_human_seats)
     payload["ai_seats"] = sorted(ai_seats)
     return payload
 
@@ -849,7 +922,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
 
 
 @app.post("/games/{game_id}/start")
-async def start_game(game_id: str, requester: str = "W"):
+async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can start.")
     if game_id == MAIN_GID:
@@ -857,6 +930,7 @@ async def start_game(game_id: str, requester: str = "W"):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+    _require_human_seat_owner(game, "A", client_id)
     if game.get("is_started"):
         return {"ok": False, "detail": "Already started"}
     
@@ -869,7 +943,7 @@ async def start_game(game_id: str, requester: str = "W"):
 
 
 @app.post("/games/{game_id}/toggle_reveal_hands")
-async def toggle_reveal_hands(game_id: str, requester: str = "W"):
+async def toggle_reveal_hands(game_id: str, requester: str = "W", client_id: str = ""):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can toggle hands.")
     if game_id == MAIN_GID:
@@ -877,6 +951,7 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+    _require_human_seat_owner(game, "A", client_id)
     
     game["reveal_hands"] = not game.get("reveal_hands", False)
     await manager.broadcast_update(game_id)
@@ -884,7 +959,13 @@ async def toggle_reveal_hands(game_id: str, requester: str = "W"):
 
 
 @app.post("/games/{game_id}/reset")
-async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep_score: bool = False):
+async def reset_game(
+    game_id: str,
+    dealer: str = "A",
+    requester: str = "W",
+    client_id: str = "",
+    keep_score: bool = False,
+):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
     if game_id == MAIN_GID:
@@ -893,6 +974,7 @@ async def reset_game(game_id: str, dealer: str = "A", requester: str = "W", keep
         raise HTTPException(status_code=404, detail="game not found")
 
     old_game = GAMES.get(game_id, {})
+    _require_human_seat_owner(old_game, "A", client_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
@@ -936,6 +1018,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     dealer = _validate_seat(body.dealer, name="dealer")
     preset = body.preset_counts or {}
     old_game = GAMES.get(game_id, {})
+    _require_human_seat_owner(old_game, "A", body.client_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
     owner_name = old_game.get("owner_name", "")
@@ -1002,10 +1085,15 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
+    if not client_id:
+        raise HTTPException(status_code=400, detail="client_id is required")
     game = GAMES[game_id]
     
     hs = game.setdefault("human_seats", {})
     if isinstance(hs, dict):
+        current_owner = hs.get(seat)
+        if current_owner and current_owner != client_id:
+            raise HTTPException(status_code=409, detail=f"Seat {seat} is already occupied.")
         for k, v in list(hs.items()):
             if v == client_id:
                 del hs[k]
@@ -1013,6 +1101,7 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     else:
         game["human_seats"] = {seat: client_id}
         hs = game["human_seats"]
+    manager.cancel_disconnect_release(game_id, client_id)
 
     ai_seats = _ai_seat_set(game)
     if seat in ai_seats:
@@ -1065,6 +1154,10 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
     hs = game.setdefault("human_seats", {})
 
     if enabled:
+        if isinstance(hs, dict):
+            current_owner = hs.get(seat)
+            if current_owner and current_owner != client_id:
+                raise HTTPException(status_code=409, detail=f"Seat {seat} is already occupied.")
         ai_seats.add(seat)
         if isinstance(hs, dict) and seat in hs:
             del hs[seat]
@@ -1091,6 +1184,7 @@ async def set_player_name(game_id: str, req: NameRequest):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(req.seat, name="seat")
+    _require_human_seat_owner(game, seat, req.client_id)
     name = _sanitize_player_name(req.name)
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
     pn[seat] = name
@@ -1107,13 +1201,14 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-
     message = _sanitize_chat_message(req.message)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
     if not message:
         return {"ok": False, "chat_messages": chat_messages[-100:]}
 
     seat = _normalize_chat_seat(req.seat)
+    if seat in ALL_SEATS and not _client_owns_human_seat(game, seat, req.client_id):
+        seat = "W"
     chat_messages.append({
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
@@ -1137,6 +1232,7 @@ async def step(game_id: str, req: StepRequest):
         raise HTTPException(status_code=404, detail="game not found")
     if not game.get("is_started"):
         raise HTTPException(status_code=400, detail="Game not started")
+    _require_human_seat_owner(game, player, req.client_id)
 
     state: GoitaState = game["state"]
     agents: Dict[str, RuleBasedAgent] = game["agents"]
@@ -1144,7 +1240,15 @@ async def step(game_id: str, req: StepRequest):
     board = game.setdefault("board", _new_board_snapshot())
     
     if state.finished:
-        return {"ok": True, "state": _state_public_view(state, viewer=player, game_obj=game)}
+        return {
+            "ok": True,
+            "state": _state_public_view(
+                state,
+                viewer=player,
+                game_obj=game,
+                client_id=req.client_id,
+            ),
+        }
 
     if state.turn != player:
         raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
@@ -1175,7 +1279,15 @@ async def step(game_id: str, req: StepRequest):
     _handle_round_finish(game, state, action, effects)
 
     await manager.broadcast_update(game_id)
-    return {"ok": True, "state": _state_public_view(state, viewer=player, game_obj=game)}
+    return {
+        "ok": True,
+        "state": _state_public_view(
+            state,
+            viewer=player,
+            game_obj=game,
+            client_id=req.client_id,
+        ),
+    }
 
 
 @app.post("/games/{game_id}/cpu_step")
@@ -1227,29 +1339,36 @@ async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
 # =========================================================
 
 @app.get("/games/{game_id}/state")
-def get_state(game_id: str, viewer: str = "A", reveal_hands: int = 0):
+def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands: int = 0):
     if game_id == MAIN_GID:
         _ensure_main_game()
-    viewer = _validate_seat(viewer, name="viewer")
+    viewer = viewer if viewer in ALL_SEATS else "W"
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     
     game_copy = copy.copy(game)
-    if reveal_hands:
+    if reveal_hands and _client_owns_human_seat(game, "A", client_id):
         game_copy["reveal_hands"] = True
         
-    return _state_public_view(game["state"], viewer=viewer, game_obj=game_copy)
+    return _state_public_view(
+        game["state"],
+        viewer=viewer,
+        game_obj=game_copy,
+        client_id=client_id,
+    )
 
 
 @app.get("/games/{game_id}/legal_actions")
-def get_legal_actions(game_id: str, player: str = "A"):
+def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
     if game_id == MAIN_GID:
         _ensure_main_game()
     player = _validate_seat(player, name="player")
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+    if not _client_owns_human_seat(game, player, client_id):
+        return []
     if not game.get("is_started"):
         return []
     

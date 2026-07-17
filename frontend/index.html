@@ -814,7 +814,7 @@
       }
       .chat-panel {
         top: 0;
-        background: rgba(255, 253, 245, 0.26);
+        background: rgba(255, 253, 245, var(--mobile-chat-opacity, 0.26));
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
       }
@@ -823,8 +823,22 @@
         z-index: 950;
       }
       .chat-panel:focus-within {
-        background: rgba(255, 253, 245, 0.48);
+        background: rgba(255, 253, 245, var(--mobile-chat-opacity, 0.26));
         border-color: rgba(139, 90, 43, 0.55);
+      }
+      body.mobile-chat-placement-top .chat-panel {
+        left: 10px;
+        right: 10px;
+        width: auto;
+        height: min(138px, calc(100vh - 120px));
+        background: rgba(255, 253, 245, var(--mobile-chat-opacity, 1));
+        border: 3px solid #8b5a2b;
+        border-radius: 0 0 6px 6px;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+      }
+      body.mobile-chat-placement-top .chat-panel:focus-within {
+        background: rgba(255, 253, 245, var(--mobile-chat-opacity, 1));
+        border-color: #8b5a2b;
       }
       .chat-header {
         top: 3px;
@@ -1226,6 +1240,17 @@
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
       </div>
       <div class="settings-row">
+        <label for="mobileChatPlacement">モバイル版のチャット配置</label>
+        <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+          <option value="right">右側</option>
+          <option value="top">上側</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label for="mobileChatTransparency">モバイル版のチャットの透明度（<span id="mobileChatTransparencyValue">74%</span>）</label>
+        <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="74" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
+      </div>
+      <div class="settings-row">
         <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
       </div>
       <div class="settings-row">
@@ -1290,17 +1315,46 @@ const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
 function loadPersonalSettings() {
     try {
         const saved = JSON.parse(localStorage.getItem(PERSONAL_SETTINGS_KEY) || "{}");
+        const defaultMobileChatTransparency = saved.mobileChatPlacement === "top" ? 0 : 74;
+        const savedMobileChatTransparency = Number(saved.mobileChatTransparency);
         return {
             playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
             enableEffects: saved.enableEffects !== false,
             enableSoundEffects: saved.enableSoundEffects !== false,
             enableCVoice: saved.enableCVoice === true,
+            mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
+            mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
+                ? Math.max(0, Math.min(90, savedMobileChatTransparency))
+                : defaultMobileChatTransparency,
         };
     } catch (e) {
-        return { playerName: "", enableEffects: true, enableSoundEffects: true, enableCVoice: false };
+        return {
+            playerName: "",
+            enableEffects: true,
+            enableSoundEffects: true,
+            enableCVoice: false,
+            mobileChatPlacement: "right",
+            mobileChatTransparency: 74,
+        };
     }
 }
 let personalSettings = loadPersonalSettings();
+
+function applyPersonalSettingsAppearance() {
+    const transparency = Math.max(0, Math.min(90, Number(personalSettings.mobileChatTransparency) || 0));
+    document.body.classList.toggle(
+        "mobile-chat-placement-top",
+        personalSettings.mobileChatPlacement === "top"
+    );
+    document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
+}
+
+function updateMobileChatTransparencyDisplay(value) {
+    const transparency = Math.max(0, Math.min(90, Number(value) || 0));
+    document.getElementById("mobileChatTransparencyValue").textContent = `${transparency}%`;
+}
+
+applyPersonalSettingsAppearance();
 
 let clientId = sessionStorage.getItem("goita_client_id");
 if (!clientId) {
@@ -1702,6 +1756,10 @@ function showSettingsTab(tabName) {
 function syncPersonalSettingsControls() {
     const currentSeatName = isSpectator() ? "" : sanitizeName(latestState?.player_names?.[mySeat] || "");
     document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
+    document.getElementById("mobileChatPlacement").value =
+        personalSettings.mobileChatPlacement === "top" ? "top" : "right";
+    document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
+    updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
     document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
@@ -1733,10 +1791,13 @@ function closeSettings() {
 async function savePersonalSettings() {
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
+        mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
+        mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("checkEnableEffects").checked,
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
     };
+    applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
         if (!isSpectator()) {
@@ -1852,20 +1913,22 @@ function updateSeatButtons(state) {
 async function selectSeat(next) {
     if (next === mySeat) return;
 
-    if (!isSpectator()) {
-        await releaseSeat(mySeat);
-    }
-
     forceDisablePreset();
 
     pending = null;
     setAutoPlayEnabled(false);
-    mySeat = next;
-    
+
     if (next !== WATCH) {
-        lastSeat = mySeat;
-        await claimSeat(mySeat);
-        await setName(mySeat, personalSettings.playerName || "");
+        const claimed = await claimSeat(next);
+        if (!claimed) {
+            await refresh();
+            return;
+        }
+        mySeat = next;
+        lastSeat = next;
+        await setName(next, personalSettings.playerName || "");
+    } else {
+        mySeat = WATCH;
     }
     
     await refresh();
@@ -2098,7 +2161,7 @@ function startGame() {
     (async () => {
       try{
         await applyCurrentSetupToWaitingGame({ refreshAfter: false });
-        await fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}`, {
+        await fetch(`${API}/games/${gid}/start?requester=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`, {
             method: "POST"
         });
         keepScoreForPendingSetup = false;
@@ -2386,10 +2449,10 @@ async function resetWithPreset(dealer, keepScore){
     await fetch(`${API}/games/${gid}/reset_config`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat, keep_score: keepScore })
+      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat, client_id: clientId, keep_score: keepScore })
     });
   }else{
-    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}&keep_score=${keepScore}`, {
+    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}&keep_score=${keepScore}`, {
       method:"POST",
     });
   }
@@ -2835,7 +2898,20 @@ function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
   return out;
 }
 
-async function claimSeat(seat){ try{ await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
+async function claimSeat(seat){
+  try{
+    const res = await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"});
+    if(res.ok) return true;
+    if(res.status === 409){
+      setHint(`${seat} は、すでに別の端末で使われています。`);
+    }else{
+      setHint(`${seat} への着席に失敗しました。`);
+    }
+  }catch(e){
+    setHint("着席の通信に失敗しました。");
+  }
+  return false;
+}
 async function releaseSeat(seat){ try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
 
 async function setName(seat, name){
@@ -2844,7 +2920,7 @@ async function setName(seat, name){
     await fetch(`${API}/games/${gid}/set_name`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ seat, name })
+      body: JSON.stringify({ seat, client_id: clientId, name })
     });
   }catch(e){}
 }
@@ -2862,7 +2938,7 @@ async function downloadKifu(){
 
 async function toggleAllHands(){
   try{
-    await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}`, {
+    await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`, {
       method: "POST"
     });
   }catch(e){}
@@ -2872,10 +2948,13 @@ async function submitAction(actionObj, usedSlots = []){
   const res = await fetch(`${API}/games/${gid}/step`, {
     method:"POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ player: mySeat, action: actionObj })
+    body: JSON.stringify({ player: mySeat, client_id: clientId, action: actionObj })
   });
   if(res.ok){
     usedSlots.forEach(item => markFixedHandSlotUsed(latestState, item.seat || mySeat, item.slotIndex, item.piece));
+  }else if(res.status === 403){
+    pending = null;
+    await refresh();
   }
   return res.ok;
 }
@@ -3423,7 +3502,7 @@ async function startNewGame(keepScore = false){
 
 async function fetchLegal(){
   if(isSpectator()) return [];
-  const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}`);
+  const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`);
   const acts = await res.json();
   return Array.isArray(acts) ? acts : [];
 }
@@ -3433,8 +3512,24 @@ async function refresh(){
 
   const qs = new URLSearchParams(); 
   qs.set("viewer", viewerSeat());
+  qs.set("client_id", clientId);
 
   const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
+  const ownershipSupported = Array.isArray(state?.owned_human_seats);
+  const ownedHumanSeats = ownershipSupported ? state.owned_human_seats : [];
+  if(ownershipSupported && isSpectator() && ownedHumanSeats.length === 1){
+    mySeat = ownedHumanSeats[0];
+    lastSeat = mySeat;
+  }
+  const seatOwnershipLost = ownershipSupported && !isSpectator() && !ownedHumanSeats.includes(mySeat);
+  if(seatOwnershipLost){
+    pending = null;
+    setAutoPlayEnabled(false);
+    mySeat = WATCH;
+    latestState = state;
+    await returnToLobby();
+    return;
+  }
   latestState = state;
   
   updateRoomUI(); 
