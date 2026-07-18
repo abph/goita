@@ -950,6 +950,7 @@
     .settings-inline-action { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
     .settings-inline-action button { white-space: nowrap; }
     .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
+    .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
     .settings-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(139,90,43,0.25); }
     .settings-footer button { width: 100%; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px; }
@@ -1185,7 +1186,6 @@
       
       <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
-      <button onclick="downloadKifu()">棋譜GET</button>
     </div>
     
     <div class="bottom-grid">
@@ -1309,6 +1309,12 @@
       </div>
       <div class="settings-row">
         <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
+      </div>
+      <div class="settings-row">
+        <button class="settings-action-button" type="button" onclick="downloadKifu(false)">棋譜を保存する</button>
+      </div>
+      <div class="settings-row">
+        <button class="settings-action-button" type="button" onclick="downloadKifu(true)">匿名で棋譜を保存する</button>
       </div>
       <button class="settings-save-button" type="button" onclick="savePersonalSettings()">個人設定を保存</button>
       <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
@@ -2994,13 +3000,14 @@ async function setName(seat, name){
   }catch(e){}
 }
 
-async function downloadKifu(){
-  const res = await fetch(`${API}/games/${gid}/kifu`);
+async function downloadKifu(anonymous = false){
+  const res = await fetch(`${API}/games/${gid}/kifu?anonymous=${anonymous ? "true" : "false"}`);
   const text = await res.text();
   const blob = new Blob([text], {type:"text/yaml;charset=utf-8"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}.yaml`;
+  const suffix = anonymous ? "_anonymous" : "";
+  a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}${suffix}.yaml`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }

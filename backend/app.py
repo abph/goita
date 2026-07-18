@@ -371,6 +371,10 @@ def _piece_to_kifu(v: Optional[str]) -> str:
     v = str(v)
     return PIECE_KANJI.get(v, v)
 
+def _kifu_yaml_quote(value: Any) -> str:
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
 def _action_to_kifu_row(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> List[str]:
     t, b, a = action
     pid = PLAYER_IDX[player]
@@ -1390,7 +1394,7 @@ def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
-def get_kifu_yaml(game_id: str):
+def get_kifu_yaml(game_id: str, anonymous: bool = True):
     if game_id == MAIN_GID:
         _ensure_main_game()
     game = GAMES.get(game_id)
@@ -1400,6 +1404,7 @@ def get_kifu_yaml(game_id: str):
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
     state: GoitaState = game["state"]
+    configured_names: Dict[str, str] = game.get("player_names", {})
     
     score = [int(game.get("total_team_score", {}).get("AC", 0)), int(game.get("total_team_score", {}).get("BD", 0))]
     
@@ -1409,8 +1414,27 @@ def get_kifu_yaml(game_id: str):
         "p2": _hand_to_kifu_string(init_hands.get("C", [])),
         "p3": _hand_to_kifu_string(init_hands.get("D", [])),
     }
+    kifu_names = {
+        seat: f"プレイヤー{seat}" if anonymous else (_sanitize_player_name(configured_names.get(seat, "")) or f"プレイヤー{seat}")
+        for seat in ALL_SEATS
+    }
     uchidashi = int(PLAYER_IDX.get(dealer, "0"))
-    lines: List[str] = ["version: 1.0", 'p0: "プレイヤーA"', 'p1: "プレイヤーB"', 'p2: "プレイヤーC"', 'p3: "プレイヤーD"', "log:", " - hand:", f'     p0: "{h["p0"]}"', f'     p1: "{h["p1"]}"', f'     p2: "{h["p2"]}"', f'     p3: "{h["p3"]}"', f"   uchidashi: {uchidashi}", f"   score: [{score[0]},{score[1]}]", "   game:"]
+    lines: List[str] = [
+        "version: 1.0",
+        f'p0: {_kifu_yaml_quote(kifu_names["A"])}',
+        f'p1: {_kifu_yaml_quote(kifu_names["B"])}',
+        f'p2: {_kifu_yaml_quote(kifu_names["C"])}',
+        f'p3: {_kifu_yaml_quote(kifu_names["D"])}',
+        "log:",
+        " - hand:",
+        f'     p0: "{h["p0"]}"',
+        f'     p1: "{h["p1"]}"',
+        f'     p2: "{h["p2"]}"',
+        f'     p3: "{h["p3"]}"',
+        f"   uchidashi: {uchidashi}",
+        f"   score: [{score[0]},{score[1]}]",
+        "   game:",
+    ]
     for row in moves:
         a, b, c = str(row[0]).replace('"', '\\"'), str(row[1]).replace('"', '\\"'), str(row[2]).replace('"', '\\"')
         lines.append(f'    - ["{a}","{b}","{c}"]')
