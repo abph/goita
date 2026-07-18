@@ -446,6 +446,7 @@ class SettingsUpdateRequest(BaseModel):
     update_password: bool = False
     new_password: Optional[str] = None
     ai_profile: str = DEFAULT_AI_PROFILE
+    show_legal_actions: bool = False
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -641,6 +642,7 @@ def _state_public_view(
         "last_round_score": game_obj.get("last_round_score", 0),
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
+        "show_legal_actions": bool(game_obj.get("show_legal_actions", False)),
         "chat_messages": chat_messages,
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
@@ -672,6 +674,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "admin_password": None,
         "owner_name": "",
         "reveal_hands": False,
+        "show_legal_actions": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -897,6 +900,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "owner_name": game.get("owner_name", ""),
             "is_private": game.get("password") is not None,
             "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+            "show_legal_actions": bool(game.get("show_legal_actions", False)),
             "ai_profiles": {
                 key: str(info["label"])
                 for key, info in AI_PROFILES.items()
@@ -914,6 +918,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
+    game["show_legal_actions"] = bool(req.show_legal_actions)
     next_ai_profile = _normalize_ai_profile(req.ai_profile)
     if game.get("ai_profile") != next_ai_profile:
         game["ai_profile"] = next_ai_profile
@@ -928,6 +933,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     return {
         "ok": True,
         "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+        "show_legal_actions": bool(game.get("show_legal_actions", False)),
     }
 
 
@@ -993,6 +999,7 @@ async def reset_game(
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
+    show_legal_actions = bool(old_game.get("show_legal_actions", False))
     
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
     new_game["password"] = password
@@ -1005,6 +1012,7 @@ async def reset_game(
     new_game["reveal_hands"] = False 
     new_game["is_started"] = False
     new_game["ai_profile"] = ai_profile
+    new_game["show_legal_actions"] = show_legal_actions
     
     if keep_score:
         _preserve_match_progress(new_game, old_game)
@@ -1037,6 +1045,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
+    show_legal_actions = bool(old_game.get("show_legal_actions", False))
 
     if preset:
         try:
@@ -1060,6 +1069,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["ai_profile"] = ai_profile
+        new_game["show_legal_actions"] = show_legal_actions
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
@@ -1077,6 +1087,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["reveal_hands"] = False
         new_game["is_started"] = False
         new_game["ai_profile"] = ai_profile
+        new_game["show_legal_actions"] = show_legal_actions
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)

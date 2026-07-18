@@ -356,6 +356,9 @@
       border: 2px solid #8b5a2b;
       border-radius: 6px;
     }
+    .hand-row-title.spectator {
+      font-size: 18px;
+    }
     .hand-row-pieces {
       display: grid;
       grid-template-columns: repeat(4, auto);
@@ -983,10 +986,33 @@
     }
     
     .gear-btn {
-      background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px 8px;
-      vertical-align: middle; transition: transform 0.3s;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 4px 8px;
+      vertical-align: middle;
     }
-    .gear-btn:hover { transform: rotate(45deg); }
+    .gear-icon {
+      display: inline-block;
+      font-size: 20px;
+      transition: transform 0.3s;
+    }
+    .gear-btn:hover .gear-icon { transform: rotate(45deg); }
+    .game-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 0 0 auto;
+    }
+    @media (max-width: 701px) {
+      .gear-label { display: none; }
+      .game-header-actions { gap: 4px; }
+    }
 
     @media (max-width: 980px){
       :root{ --gap: 4px; --cell: clamp(26px, calc((100vw - 40px - (7 * var(--gap)))/8), 58px); }
@@ -1022,6 +1048,7 @@
       .hint { font-size: 13px; padding: 10px; }
       
       .hand-row-title { width: 32px; font-size: 20px; padding: 6px 0; }
+      .hand-row-title.spectator { font-size: 16px; }
       .hand-row-pieces { gap: 4px; }
       .hand-row-pieces .hand { width: clamp(32px, 8vw, 44px); height: clamp(38px, 9.5vw, 54px); }
       .hand-row-pieces .hand .val { font-size: clamp(20px, 5vw, 26px); }
@@ -1140,9 +1167,11 @@
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
     <h1 style="margin: 0; font-size: 24px;">
       <span id="currentRoomName"></span>
-      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定">⚙️</button>
     </h1>
-    <button onclick="returnToLobby()" style="font-weight: bold; background: #fffafa; border: 2px solid #8b5a2b; color: #8b5a2b;">🏠 ロビーに戻る</button>
+    <div class="game-header-actions">
+      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定"><span class="gear-icon" aria-hidden="true">⚙️</span><span class="gear-label">設定</span></button>
+      <button onclick="returnToLobby()" style="font-weight: bold; background: #fffafa; border: 2px solid #8b5a2b; color: #8b5a2b;">🏠 ロビーに戻る</button>
+    </div>
   </div>
 
   <div class="top-controls">
@@ -1179,7 +1208,7 @@
 
   <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
-  <div class="ui">
+  <div class="ui" id="hostControlsPanel" style="display:none;">
     
     <div class="btns" style="margin-top:0;">
       <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
@@ -1188,7 +1217,7 @@
       <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
     </div>
     
-    <div class="bottom-grid">
+    <div class="bottom-grid" id="hostToolsGrid" style="display:none;">
       <div class="card">
         <details id="dealerDetails" style="display:none;">
           <summary><b>親（dealer）設定</b></summary>
@@ -1235,7 +1264,7 @@
         </details>
       </div>
 
-      <div class="card">
+      <div class="card" id="logCard" style="display:none;">
         <details>
           <summary><b>ログ</b></summary>
           <pre id="log" style="margin-top:8px;"></pre>
@@ -1345,6 +1374,9 @@
             <option value="current">強化中AI</option>
             <option value="beginner_upper">初級者（上）</option>
           </select>
+        </div>
+        <div class="settings-row">
+          <label><input type="checkbox" id="checkShowLegalActions" style="width:auto;"> （デバッグ用）合法手を表示する</label>
         </div>
         <button class="settings-save-button" type="button" onclick="saveRoomManagement()">ルーム管理を保存</button>
       </div>
@@ -1908,6 +1940,7 @@ async function unlockRoomManagement() {
         currentAdminPass = pass;
         document.getElementById("setRoomName").value = data.owner_name || "";
         populateAiProfileSelect(data.ai_profiles, data.ai_profile);
+        document.getElementById("checkShowLegalActions").checked = data.show_legal_actions === true;
         document.getElementById("checkUpdatePass").checked = false;
         document.getElementById("setRoomPass").style.display = "none";
         document.getElementById("setRoomPass").value = "";
@@ -1925,6 +1958,7 @@ async function saveRoomManagement() {
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
     const aiProfile = document.getElementById("setAiProfile")?.value || "current";
+    const showLegalActions = document.getElementById("checkShowLegalActions")?.checked === true;
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
@@ -1935,13 +1969,15 @@ async function saveRoomManagement() {
                 new_owner_name: newName,
                 update_password: isUpdatePass,
                 new_password: newPass,
-                ai_profile: aiProfile
+                ai_profile: aiProfile,
+                show_legal_actions: showLegalActions
             })
         });
         if (res.ok) {
             const saved = await res.json();
             if (latestState) {
                 if (saved && saved.ai_profile) latestState.ai_profile = saved.ai_profile;
+                latestState.show_legal_actions = saved?.show_legal_actions === true;
             }
             alert("ルーム管理の設定を保存しました。");
             closeSettings();
@@ -2100,9 +2136,15 @@ async function chooseSeatMode(mode) {
     }
 }
 
+function isCurrentClientHost() {
+    if (mySeat !== "A") return false;
+    const ownedSeats = latestState?.owned_human_seats;
+    return !Array.isArray(ownedSeats) || ownedSeats.includes("A");
+}
+
 function updateRoomUI() {
     const isMain = (gid === MAIN_GID);
-    const isHost = (mySeat === "A"); 
+    const isHost = isCurrentClientHost();
 
     const toggleBtn = document.getElementById("toggleHandsBtn");
     const dealerDetails = document.getElementById("dealerDetails");
@@ -2110,14 +2152,20 @@ function updateRoomUI() {
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
     const settingsBtn = document.getElementById("roomSettingsBtn");
+    const hostControlsPanel = document.getElementById("hostControlsPanel");
+    const hostToolsGrid = document.getElementById("hostToolsGrid");
+    const logCard = document.getElementById("logCard");
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
+    if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
     if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
-    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost) ? "block" : "none"; 
+    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost && latestState?.show_legal_actions === true) ? "block" : "none";
+    if (hostToolsGrid) hostToolsGrid.style.display = isHost ? "grid" : "none";
+    if (logCard) logCard.style.display = isHost ? "block" : "none";
     
-    if (settingsBtn) settingsBtn.style.display = "inline-block";
+    if (settingsBtn) settingsBtn.style.display = "inline-flex";
 }
 
 const SEAT_ORDER = ["A","B","C","D"];
@@ -3386,8 +3434,6 @@ function renderHands(state) {
     return;
   }
 
-  const seats = ["A", "B", "C", "D"];
-  
   const usable = new Set();
   if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
@@ -3407,9 +3453,10 @@ function renderHands(state) {
     }
   }
 
-  seats.forEach(seat => {
-    const isVisible = !isSpectator() && mySeat === seat;
-    if (!isVisible) return; 
+  const displayedSeats = isSpectator() ? [null] : [mySeat];
+
+  displayedSeats.forEach(seat => {
+    const isSpectatorRow = seat === null;
 
     const rowDiv = document.createElement("div");
     rowDiv.className = "hand-row";
@@ -3419,53 +3466,63 @@ function renderHands(state) {
 
     const titleDiv = document.createElement("div");
     titleDiv.className = "hand-row-title";
-    titleDiv.textContent = seat;
+    if(isSpectatorRow) titleDiv.classList.add("spectator");
+    titleDiv.textContent = isSpectatorRow ? "観戦" : seat;
     leftWrap.appendChild(titleDiv);
 
     const piecesDiv = document.createElement("div");
     piecesDiv.className = "hand-row-pieces";
 
-    const raw = state.hands?.[seat];
-    if (Array.isArray(raw)) {
-      fixedHandSlots(state, seat).forEach(slot => {
-        const card = slot.piece;
-        const isPendingHidden = (
-          pending &&
-          pending.player === seat &&
-          pending.blockSlot === slot.index &&
-          pending.block === card
-        );
-        const isFaceDown = slot.used || isPendingHidden;
+    if(isSpectatorRow){
+      for(let i = 0; i < 8; i += 1){
+        const emptySlot = document.createElement("div");
+        emptySlot.className = "hand face-down";
+        emptySlot.setAttribute("aria-hidden", "true");
+        piecesDiv.appendChild(emptySlot);
+      }
+    }else{
+      const raw = state.hands?.[seat];
+      if (Array.isArray(raw)) {
+        fixedHandSlots(state, seat).forEach(slot => {
+          const card = slot.piece;
+          const isPendingHidden = (
+            pending &&
+            pending.player === seat &&
+            pending.blockSlot === slot.index &&
+            pending.block === card
+          );
+          const isFaceDown = slot.used || isPendingHidden;
 
-        const pieceDiv = document.createElement("div");
-        pieceDiv.className = "hand";
-        pieceDiv.classList.add(seatIsAi(state, seat) ? "ai" : "human");
-        if(isFaceDown) pieceDiv.classList.add("face-down");
-        if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
+          const pieceDiv = document.createElement("div");
+          pieceDiv.className = "hand";
+          pieceDiv.classList.add(seatIsAi(state, seat) ? "ai" : "human");
+          if(isFaceDown) pieceDiv.classList.add("face-down");
+          if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
 
-        const valDiv = document.createElement("div");
-        valDiv.className = "val";
-        valDiv.textContent = isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card));
-        pieceDiv.appendChild(valDiv);
+          const valDiv = document.createElement("div");
+          valDiv.className = "val";
+          valDiv.textContent = isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card));
+          pieceDiv.appendChild(valDiv);
 
-        if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
-          pieceDiv.onclick = () => onHandPieceClick(card, slot.index);
-        }else if (!isFaceDown && seat === mySeat && state.turn === mySeat && !state.finished) {
-          if (usable.has(card)) {
-            pieceDiv.classList.add("clickable");
+          if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
             pieceDiv.onclick = () => onHandPieceClick(card, slot.index);
-          } else {
-            pieceDiv.classList.add("disabled");
+          }else if (!isFaceDown && seat === mySeat && state.turn === mySeat && !state.finished) {
+            if (usable.has(card)) {
+              pieceDiv.classList.add("clickable");
+              pieceDiv.onclick = () => onHandPieceClick(card, slot.index);
+            } else {
+              pieceDiv.classList.add("disabled");
+            }
           }
-        }
 
-        piecesDiv.appendChild(pieceDiv);
-      });
+          piecesDiv.appendChild(pieceDiv);
+        });
+      }
     }
     leftWrap.appendChild(piecesDiv);
     rowDiv.appendChild(leftWrap);
 
-    if (seat === mySeat && !isSpectator()) {
+    if (isSpectatorRow || seat === mySeat) {
       const passBtnWrap = document.createElement("div");
       passBtnWrap.className = "pass-btn-area";
 
@@ -3473,10 +3530,11 @@ function renderHands(state) {
       passBtn.className = "pass";
       passBtn.textContent = "パス";
       
-      if (state.turn === mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")) {
+      if (!isSpectatorRow && state.turn === mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")) {
           passBtn.onclick = onPassClick;
       } else {
           passBtn.classList.add("disabled");
+          passBtn.disabled = true;
       }
       passBtnWrap.appendChild(passBtn);
 
@@ -3484,9 +3542,9 @@ function renderHands(state) {
       autoBtn.className = "auto-play";
       autoBtn.type = "button";
       autoBtn.textContent = "Auto";
-      autoBtn.classList.toggle("active", autoPlayEnabled);
-      autoBtn.disabled = state.finished || !state.is_started;
-      autoBtn.onclick = toggleAutoPlay;
+      autoBtn.classList.toggle("active", !isSpectatorRow && autoPlayEnabled);
+      autoBtn.disabled = isSpectatorRow || state.finished || !state.is_started;
+      if(!isSpectatorRow) autoBtn.onclick = toggleAutoPlay;
       passBtnWrap.appendChild(autoBtn);
 
       rowDiv.appendChild(passBtnWrap);
@@ -3657,7 +3715,7 @@ async function refresh(){
       oldScoreBoard.style.display = "none";
   }
 
-  document.getElementById("log").textContent = (state.log||[]).join("\n");
+  document.getElementById("log").textContent = isCurrentClientHost() ? (state.log||[]).join("\n") : "";
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
