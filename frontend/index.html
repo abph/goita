@@ -3165,13 +3165,27 @@ function cAiEnemyPassVoiceAlreadyUsed(log, index, attackNo){
   return false;
 }
 
+function publicHandCount(state, seat){
+  const hand = state?.hands?.[seat];
+  if(Array.isArray(hand)) return hand.length;
+  const count = Number(hand?.count);
+  return Number.isFinite(count) ? count : null;
+}
+
+function isKingOrGyokuBlock(move){
+  return !!move && (move.block === "8" || move.block === "9");
+}
+
 function cAiVoiceForLogEntry(state, index, entry){
   if(!state || personalSettings.enableCVoice !== true || !seatIsAi(state, voiceSeat)) return null;
   const move = parseLogMove(entry);
   if(!move || move.seat !== voiceSeat) return null;
 
-  if(move.type === "receive" || move.type === "attack_after_block"){
-    if(move.block === "8" || move.block === "9") return "kakugo";
+  if((move.type === "receive" || move.type === "attack_after_block") && isKingOrGyokuBlock(move)){
+    const winsWithNextAttack = move.type === "receive" && (publicHandCount(state, voiceSeat) ?? 8) <= 1;
+    const winsWithThisAttack = move.type === "attack_after_block" && state.finished && state.winner === voiceSeat;
+    if(winsWithNextAttack || winsWithThisAttack) return null;
+    return "kakugo";
   }
 
   if(move.type === "pass"){
@@ -3193,6 +3207,15 @@ function cAttackVoiceForLogEntry(state, index, entry){
   if(!move || move.seat !== voiceSeat) return null;
   if(move.type !== "attack" && move.type !== "attack_after_block") return null;
 
+  const previousMove = parseLogMove((state.log || [])[index - 1]);
+  const followsKingOrGyokuReceive = (
+    move.type === "attack" &&
+    previousMove?.seat === voiceSeat &&
+    previousMove.type === "receive" &&
+    isKingOrGyokuBlock(previousMove)
+  );
+  if(followsKingOrGyokuReceive || (move.type === "attack_after_block" && isKingOrGyokuBlock(move))) return null;
+
   const ctx = logContextBefore(state.log || [], index + 1);
   if(ctx.currentAttacker !== voiceSeat) return null;
   if(ctx.currentAttackNo === 1) return "attack1";
@@ -3203,7 +3226,9 @@ function cAttackVoiceForLogEntry(state, index, entry){
 
 function cWinsInLogEntry(state, entry){
   if(!state || personalSettings.enableCVoice !== true || !seatIsAi(state, voiceSeat)) return false;
-  return new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(String(entry || ""));
+  const text = String(entry || "");
+  if(new RegExp(`^Round finished\\. winner=${voiceSeat}\\b`).test(text)) return true;
+  return /^Match finished!/.test(text) && state.winner === voiceSeat;
 }
 
 function renderBoard(state){

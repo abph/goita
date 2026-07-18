@@ -119,6 +119,7 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
         for seat, owner_client_id in list(human_seats.items()):
             if owner_client_id == client_id:
                 del human_seats[seat]
+                _clear_player_name(game, seat)
                 removed = True
         if removed:
             await manager.broadcast_update(game_id)
@@ -302,6 +303,11 @@ def _client_owned_human_seats(game: Dict[str, Any], client_id: str) -> Set[str]:
         for seat, owner_client_id in human_seats.items()
         if seat in ALL_SEATS and owner_client_id == client_id
     }
+
+
+def _clear_player_name(game: Dict[str, Any], seat: str) -> None:
+    player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
+    player_names[seat] = ""
 
 
 def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> bool:
@@ -1095,8 +1101,9 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         if current_owner and current_owner != client_id:
             raise HTTPException(status_code=409, detail=f"Seat {seat} is already occupied.")
         for k, v in list(hs.items()):
-            if v == client_id:
+            if v == client_id and k != seat:
                 del hs[k]
+                _clear_player_name(game, k)
         hs[seat] = client_id
     else:
         game["human_seats"] = {seat: client_id}
@@ -1130,6 +1137,7 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
     if isinstance(hs, dict):
         if seat in hs and hs[seat] == client_id:
             del hs[seat]
+            _clear_player_name(game, seat)
     
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -1161,8 +1169,11 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
         ai_seats.add(seat)
         if isinstance(hs, dict) and seat in hs:
             del hs[seat]
+        _clear_player_name(game, seat)
     else:
         ai_seats.discard(seat)
+        if seat not in _human_seat_set(game):
+            _clear_player_name(game, seat)
 
     _store_ai_seats(game, ai_seats)
 
