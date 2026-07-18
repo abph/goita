@@ -584,9 +584,20 @@
     }
     
     .small { font-size: 12px; color: #555; }
-    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .bottom-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 10px; }
     .card { border: 1px solid #c8a77a; border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.6); min-height: 120px; }
     pre { background:#f4efdf; padding:10px; border-radius:6px; max-height: 420px; overflow:auto; margin: 0; border: 1px solid #c8a77a; font-family: monospace; }
+    .game-content-layout { min-width: 0; }
+    .game-content-main { min-width: 0; }
+    #logCard { margin-top: 10px; }
+    #log {
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      overflow-x: hidden;
+    }
 
     .chat-toggle {
       position: fixed;
@@ -676,12 +687,16 @@
       color: #b00000;
     }
     .chat-message.notice {
-      background: rgba(255, 255, 255, 0.42);
-      border-left: 3px solid rgba(139, 90, 43, 0.46);
+      background: rgba(176, 0, 0, 0.06);
+      border-left: 3px solid rgba(176, 0, 0, 0.55);
       padding-left: 6px;
     }
     .chat-message.notice .chat-sender {
-      color: rgba(85, 85, 85, 0.74);
+      color: #861f24;
+    }
+    .chat-message.notice .chat-text {
+      color: #9b2226;
+      font-weight: 700;
     }
     .chat-meta {
       display: flex;
@@ -751,6 +766,13 @@
       opacity: 1;
       transform: translate(-50%, 0);
     }
+    .chat-toast.notice {
+      border-color: #9b2226;
+    }
+    .chat-toast.notice .chat-toast-meta,
+    .chat-toast.notice .chat-toast-text {
+      color: #9b2226;
+    }
     .chat-toast-meta {
       display: flex;
       align-items: baseline;
@@ -814,9 +836,37 @@
         display: none !important;
       }
     }
+    @media (min-width: 1150px) {
+      #gameView.desktop-log-visible {
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 64px + (var(--chat-panel-width) * 2));
+      }
+      .game-content-layout.log-visible {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--chat-panel-width);
+        align-items: stretch;
+        gap: 16px;
+      }
+      .game-content-layout.log-visible #logCard {
+        width: var(--chat-panel-width);
+        height: 100%;
+        min-height: 0;
+        margin-top: 0;
+      }
+      .game-content-layout.log-visible #logCard > details {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+      }
+      .game-content-layout.log-visible #logCard > details > pre {
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+      }
+    }
     @media (max-width: 701px) {
       :root {
-        --chat-panel-width: min(var(--mobile-chat-width, 160px), calc(100vw - 28px));
+        --chat-panel-width: min(var(--mobile-chat-width, 200px), calc(100vw - 28px));
         --chat-panel-height: min(340px, calc(100vh - 120px));
       }
       .play-layout {
@@ -931,6 +981,19 @@
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .settings-group {
+      margin: 0 0 16px;
+      padding: 10px 12px 12px;
+      border: 1px solid rgba(139, 90, 43, 0.35);
+      border-radius: 6px;
+    }
+    .settings-group legend {
+      padding: 0 6px;
+      color: #6d461f;
+      font-weight: 900;
+      font-size: 14px;
+    }
+    .settings-group .settings-row:last-child { margin-bottom: 0; }
     .settings-modal-content { max-height: min(680px, calc(100vh - 32px)); overflow-y: auto; }
     .settings-tabs {
       display: grid;
@@ -1187,90 +1250,92 @@
     </div>
   </div>
 
-  <div class="play-layout">
-    <div class="board-wrap">
-      <div id="board" class="board"></div>
-    </div>
-    <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
-    <div id="chatPanel" class="chat-panel" aria-live="polite">
-      <div class="chat-header">
-        <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
-      </div>
-      <div id="chatMessages" class="chat-messages"></div>
-      <form class="chat-form" onsubmit="sendChatMessage(event)">
-        <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
-        <button type="submit">送信</button>
-      </form>
-    </div>
-  </div>
-  
-  <div id="handsArea" class="hands-area"></div>
-
-  <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
-
-  <div class="ui" id="hostControlsPanel" style="display:none;">
-    
-    <div class="btns" style="margin-top:0;">
-      <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
-      
-      <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
-      <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
-    </div>
-    
-    <div class="bottom-grid" id="hostToolsGrid" style="display:none;">
-      <div class="card">
-        <details id="dealerDetails" style="display:none;">
-          <summary><b>親（dealer）設定</b></summary>
-          <div class="small" style="margin-top:6px;">
-            次の「新規ゲーム」で適用されます。winnerは前回の勝者（初回はランダム）になります。
+  <div class="game-content-layout">
+    <div class="game-content-main">
+      <div class="play-layout">
+        <div class="board-wrap">
+          <div id="board" class="board"></div>
+        </div>
+        <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
+        <div id="chatPanel" class="chat-panel" aria-live="polite">
+          <div class="chat-header">
+            <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
           </div>
-          <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-            <select id="dealerSelect">
-              <option value="winner" selected>勝者 (winner)</option>
-              <option value="random">ランダム (random)</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-              <option value="D">D</option>
-            </select>
-            <span class="small">現在: <b id="dealerNow">-</b></span>
-          </div>
-        </details>
-
-        <details id="presetHandsDetails" style="margin-top:10px; display:none;">
-          <summary><b>手札指定（枚数）</b></summary>
-          <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
-          <div class="preset-note">
-            各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
-            さらに「し」は各プレイヤー4枚まで（5以上は不可）。
-            ※この設定は「新規ゲーム」では保持され、「リセット」で消えます。
-          </div>
-          <div class="preset-grid" id="presetGrid">
-            <div></div>
-            <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
-            <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-            <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-          </div>
-          <div class="preset-copy-area" id="presetCopyArea"></div>
-          <div class="preset-err" id="presetErr" style="display:none;"></div>
-        </details>
-
-        <details id="actionsDetails" style="margin-top:10px; display:none;">
-          <summary><b>（デバッグ用）合法手</b></summary>
-          <div class="small">観戦中は空になります。</div>
-          <div id="actions" style="margin-top:8px;"></div>
-        </details>
+          <div id="chatMessages" class="chat-messages"></div>
+          <form class="chat-form" onsubmit="sendChatMessage(event)">
+            <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
+            <button type="submit">送信</button>
+          </form>
+        </div>
       </div>
 
-      <div class="card" id="logCard" style="display:none;">
-        <details>
-          <summary><b>ログ</b></summary>
-          <pre id="log" style="margin-top:8px;"></pre>
-        </details>
-      </div>
+      <div id="handsArea" class="hands-area"></div>
 
+      <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
+
+      <div class="ui" id="hostControlsPanel" style="display:none;">
+
+        <div class="btns" style="margin-top:0;">
+          <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
+
+          <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
+          <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
+        </div>
+
+        <div class="bottom-grid" id="hostToolsGrid" style="display:none;">
+          <div class="card">
+            <details id="dealerDetails" style="display:none;">
+              <summary><b>親（dealer）設定</b></summary>
+              <div class="small" style="margin-top:6px;">
+                次の「新規ゲーム」で適用されます。winnerは前回の勝者（初回はランダム）になります。
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                <select id="dealerSelect">
+                  <option value="winner" selected>勝者 (winner)</option>
+                  <option value="random">ランダム (random)</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="D">D</option>
+                </select>
+                <span class="small">現在: <b id="dealerNow">-</b></span>
+              </div>
+            </details>
+
+            <details id="presetHandsDetails" style="margin-top:10px; display:none;">
+              <summary><b>手札指定（枚数）</b></summary>
+              <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
+              <div class="preset-note">
+                各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
+                さらに「し」は各プレイヤー4枚まで（5以上は不可）。
+                ※この設定は「新規ゲーム」では保持され、「リセット」で消えます。
+              </div>
+              <div class="preset-grid" id="presetGrid">
+                <div></div>
+                <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
+                <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+                <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+                <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+                <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+              </div>
+              <div class="preset-copy-area" id="presetCopyArea"></div>
+              <div class="preset-err" id="presetErr" style="display:none;"></div>
+            </details>
+
+            <details id="actionsDetails" style="margin-top:10px; display:none;">
+              <summary><b>（デバッグ用）合法手</b></summary>
+              <div class="small">観戦中は空になります。</div>
+              <div id="actions" style="margin-top:8px;"></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="logCard" style="display:none;">
+      <details>
+        <summary><b>ログ</b></summary>
+        <pre id="log" style="margin-top:8px;"></pre>
+      </details>
     </div>
   </div>
 
@@ -1311,25 +1376,28 @@
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
       </div>
-      <div class="settings-row">
-        <label for="mobileChatPlacement">モバイル版のチャット配置</label>
-        <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-          <option value="right">右側</option>
-          <option value="top">上側</option>
-        </select>
-      </div>
-      <div class="settings-row">
-        <label for="mobileChatWidth">モバイル版のチャットの幅</label>
-        <select id="mobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-          <option value="wide">太い</option>
-          <option value="normal">普通</option>
-          <option value="narrow">細い</option>
-        </select>
-      </div>
-      <div class="settings-row">
-        <label for="mobileChatTransparency">モバイル版のチャットの透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
-        <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
-      </div>
+      <fieldset class="settings-group">
+        <legend>モバイル版のチャット設定</legend>
+        <div class="settings-row">
+          <label for="mobileChatPlacement">配置</label>
+          <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+            <option value="right">右側</option>
+            <option value="top">上側</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label for="mobileChatWidth">幅</label>
+          <select id="mobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+            <option value="wide">太い</option>
+            <option value="normal" selected>普通</option>
+            <option value="narrow">細い</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label for="mobileChatTransparency">透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
+          <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
+        </div>
+      </fieldset>
       <div class="settings-row">
         <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
       </div>
@@ -1378,6 +1446,9 @@
         <div class="settings-row">
           <label><input type="checkbox" id="checkShowLegalActions" style="width:auto;"> （デバッグ用）合法手を表示する</label>
         </div>
+        <div class="settings-row">
+          <label><input type="checkbox" id="checkShowLog" style="width:auto;"> ログを表示する</label>
+        </div>
         <button class="settings-save-button" type="button" onclick="saveRoomManagement()">ルーム管理を保存</button>
       </div>
     </section>
@@ -1414,7 +1485,7 @@ function loadPersonalSettings() {
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
                 ? saved.mobileChatWidth
-                : "narrow",
+                : "normal",
             mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
                 ? Math.max(0, Math.min(90, savedMobileChatTransparency))
                 : defaultMobileChatTransparency,
@@ -1426,7 +1497,7 @@ function loadPersonalSettings() {
             enableSoundEffects: true,
             enableCVoice: false,
             mobileChatPlacement: "right",
-            mobileChatWidth: "narrow",
+            mobileChatWidth: "normal",
             mobileChatTransparency: 0,
         };
     }
@@ -1446,7 +1517,7 @@ function applyPersonalSettingsAppearance() {
     );
     document.documentElement.style.setProperty(
         "--mobile-chat-width",
-        mobileChatWidths[personalSettings.mobileChatWidth] || mobileChatWidths.narrow
+        mobileChatWidths[personalSettings.mobileChatWidth] || mobileChatWidths.normal
     );
     document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
 }
@@ -1860,7 +1931,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
-    document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "narrow";
+    document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
     document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
@@ -1897,7 +1968,7 @@ async function savePersonalSettings() {
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("mobileChatWidth").value)
             ? document.getElementById("mobileChatWidth").value
-            : "narrow",
+            : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("checkEnableEffects").checked,
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
@@ -1941,6 +2012,7 @@ async function unlockRoomManagement() {
         document.getElementById("setRoomName").value = data.owner_name || "";
         populateAiProfileSelect(data.ai_profiles, data.ai_profile);
         document.getElementById("checkShowLegalActions").checked = data.show_legal_actions === true;
+        document.getElementById("checkShowLog").checked = data.show_log === true;
         document.getElementById("checkUpdatePass").checked = false;
         document.getElementById("setRoomPass").style.display = "none";
         document.getElementById("setRoomPass").value = "";
@@ -1959,6 +2031,7 @@ async function saveRoomManagement() {
     const newPass = document.getElementById("setRoomPass").value;
     const aiProfile = document.getElementById("setAiProfile")?.value || "current";
     const showLegalActions = document.getElementById("checkShowLegalActions")?.checked === true;
+    const showLog = document.getElementById("checkShowLog")?.checked === true;
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
@@ -1970,7 +2043,8 @@ async function saveRoomManagement() {
                 update_password: isUpdatePass,
                 new_password: newPass,
                 ai_profile: aiProfile,
-                show_legal_actions: showLegalActions
+                show_legal_actions: showLegalActions,
+                show_log: showLog
             })
         });
         if (res.ok) {
@@ -1978,6 +2052,7 @@ async function saveRoomManagement() {
             if (latestState) {
                 if (saved && saved.ai_profile) latestState.ai_profile = saved.ai_profile;
                 latestState.show_legal_actions = saved?.show_legal_actions === true;
+                latestState.show_log = saved?.show_log === true;
             }
             alert("ルーム管理の設定を保存しました。");
             closeSettings();
@@ -2155,6 +2230,10 @@ function updateRoomUI() {
     const hostControlsPanel = document.getElementById("hostControlsPanel");
     const hostToolsGrid = document.getElementById("hostToolsGrid");
     const logCard = document.getElementById("logCard");
+    const logDetails = logCard?.querySelector("details");
+    const gameView = document.getElementById("gameView");
+    const gameContentLayout = document.querySelector(".game-content-layout");
+    const showLog = isHost && latestState?.show_log === true;
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
@@ -2163,7 +2242,12 @@ function updateRoomUI() {
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost && latestState?.show_legal_actions === true) ? "block" : "none";
     if (hostToolsGrid) hostToolsGrid.style.display = isHost ? "grid" : "none";
-    if (logCard) logCard.style.display = isHost ? "block" : "none";
+    if (logCard) logCard.style.display = showLog ? "block" : "none";
+    if (gameView) gameView.classList.toggle("desktop-log-visible", showLog);
+    if (gameContentLayout) gameContentLayout.classList.toggle("log-visible", showLog);
+    if (logDetails && showLog && window.matchMedia("(min-width: 1150px)").matches) {
+        logDetails.open = true;
+    }
     
     if (settingsBtn) settingsBtn.style.display = "inline-flex";
 }
@@ -2637,16 +2721,23 @@ function recordHintNotice(msg){
   if(keyText === lastHintNoticeKey) return;
   lastHintNoticeKey = keyText;
 
-  localChatNotices.push({
+  const notice = {
     seat: "notice",
     sender: "連絡",
     message: text,
     ts: Date.now(),
     local_notice: true
-  });
+  };
+  localChatNotices.push(notice);
   if(localChatNotices.length > 40){
     localChatNotices.splice(0, localChatNotices.length - 40);
   }
+  if(shouldShowHintToast(text)) showChatToast(notice);
+}
+
+function shouldShowHintToast(text){
+  const normalized = String(text ?? "").trim();
+  return normalized !== "他のプレイヤーの番です" && !/^いまは.+の手番です。/.test(normalized);
 }
 
 function setHint(msg){
@@ -2670,6 +2761,7 @@ function toggleChatPanel(open){
     btn.textContent = "チャット";
   }
   if(chatOpen){
+    hideChatToast();
     const messages = Array.isArray(latestState?.chat_messages) ? latestState.chat_messages : [];
     lastChatCount = messages.length;
     setTimeout(() => {
@@ -2698,10 +2790,15 @@ function showChatToast(item){
   const time = document.getElementById("chatToastTime");
   const text = document.getElementById("chatToastText");
   if(!toast || !sender || !time || !text) return;
+  if(!isDesktopChatDocked() && chatOpen){
+    hideChatToast();
+    return;
+  }
 
   sender.textContent = String(item?.sender || item?.seat || "観戦");
   time.textContent = formatChatTime(item?.ts);
   text.textContent = String(item?.message || "");
+  toast.classList.toggle("notice", item?.local_notice === true);
 
   toast.classList.add("show");
   if(chatToastTimer){
@@ -2716,7 +2813,7 @@ function showChatToast(item){
 
 function hideChatToast(){
   const toast = document.getElementById("chatToast");
-  if(toast) toast.classList.remove("show");
+  if(toast) toast.classList.remove("show", "notice");
   if(chatToastTimer){
     clearTimeout(chatToastTimer);
     chatToastTimer = null;
@@ -3430,10 +3527,6 @@ function renderHands(state) {
   if (!area) return;
   area.innerHTML = "";
 
-  if (!state.is_started) {
-    return;
-  }
-
   const usable = new Set();
   if(!isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
@@ -3457,6 +3550,7 @@ function renderHands(state) {
 
   displayedSeats.forEach(seat => {
     const isSpectatorRow = seat === null;
+    const isEmptyHandRow = isSpectatorRow || !state.is_started;
 
     const rowDiv = document.createElement("div");
     rowDiv.className = "hand-row";
@@ -3473,7 +3567,7 @@ function renderHands(state) {
     const piecesDiv = document.createElement("div");
     piecesDiv.className = "hand-row-pieces";
 
-    if(isSpectatorRow){
+    if(isEmptyHandRow){
       for(let i = 0; i < 8; i += 1){
         const emptySlot = document.createElement("div");
         emptySlot.className = "hand face-down";
