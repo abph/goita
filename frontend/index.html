@@ -731,6 +731,12 @@
       line-height: 1.45;
       font-size: 13px;
     }
+    .chat-text a {
+      color: #165c8c;
+      font-weight: 800;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
     .chat-form {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -1487,6 +1493,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
+const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 
 // 状態管理変数
 let gid = MAIN_GID;
@@ -2851,6 +2858,26 @@ function chatItemTimeValue(item){
   return Number.isFinite(n) ? n : 0;
 }
 
+function setChatMessageText(element, message){
+  const value = String(message || "");
+  if(!value.includes(GOITA_RULE_URL)){
+    element.textContent = value;
+    return;
+  }
+
+  const parts = value.split(GOITA_RULE_URL);
+  parts.forEach((part, index) => {
+    if(part) element.appendChild(document.createTextNode(part));
+    if(index >= parts.length - 1) return;
+    const link = document.createElement("a");
+    link.href = GOITA_RULE_URL;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = GOITA_RULE_URL;
+    element.appendChild(link);
+  });
+}
+
 function mergedChatMessages(serverMessages){
   return [
     ...serverMessages,
@@ -2930,7 +2957,7 @@ function renderChat(state){
 
       const text = document.createElement("div");
       text.className = "chat-text";
-      text.textContent = String(item?.message || "");
+      setChatMessageText(text, item?.message);
 
       row.appendChild(meta);
       row.appendChild(text);
