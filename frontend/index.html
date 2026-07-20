@@ -898,6 +898,10 @@
         --chat-panel-width: min(var(--mobile-chat-width, 200px), calc(100vw - 28px));
         --chat-panel-height: min(340px, calc(100vh - 120px));
       }
+      .seat-btn {
+        padding: 3px 9px;
+        font-size: 12px;
+      }
       .play-layout {
         position: relative;
       }
@@ -1437,6 +1441,13 @@
         <label><input type="checkbox" id="checkEnableSoundEffects" style="width:auto;"> 効果音（駒を出す音など）を有効にする</label>
       </div>
       <div class="settings-row">
+        <label for="pieceSoundChoice">駒を打つ音</label>
+        <select id="pieceSoundChoice" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+          <option value="notanomori">新しい音（既定）</option>
+          <option value="standard">これまでの音</option>
+        </select>
+      </div>
+      <div class="settings-row">
         <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
       </div>
       <div class="settings-row">
@@ -1516,6 +1527,9 @@ function loadPersonalSettings() {
             playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
             enableEffects: saved.enableEffects !== false,
             enableSoundEffects: saved.enableSoundEffects !== false,
+            pieceSound: ["notanomori", "standard"].includes(saved.pieceSound)
+                ? saved.pieceSound
+                : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
@@ -1530,6 +1544,7 @@ function loadPersonalSettings() {
             playerName: "",
             enableEffects: true,
             enableSoundEffects: true,
+            pieceSound: "notanomori",
             enableCVoice: false,
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
@@ -1604,7 +1619,10 @@ const voiceSeat = "C";
 const effectSound = new Audio("/static/sounds/effect.mp3");
 const winSound = new Audio("/static/sounds/win.mp3");
 const passSound = new Audio("/static/sounds/pass.mp3");
-const pieceSound = new Audio("/static/sounds/piece.mp3");
+const pieceSounds = {
+    notanomori: new Audio("/static/sounds/piece_notanomori.wav"),
+    standard: new Audio("/static/sounds/piece.mp3"),
+};
 const nextRoundSound = new Audio("/static/sounds/next_round.mp3");
 const cVoiceHeavySound = new Audio("/static/sounds/voice_c_heavy.mp3");
 const cVoiceKuoSound = new Audio("/static/sounds/voice_c_kuo.mp3");
@@ -1617,7 +1635,7 @@ const cVoiceWinSound = new Audio("/static/sounds/voice_c_win.mp3");
 effectSound.preload = "auto";
 winSound.preload = "auto";
 passSound.preload = "auto";
-pieceSound.preload = "auto";
+Object.values(pieceSounds).forEach((audio) => { audio.preload = "auto"; });
 nextRoundSound.preload = "auto";
 cVoiceHeavySound.preload = "auto";
 cVoiceKuoSound.preload = "auto";
@@ -1630,7 +1648,7 @@ cVoiceWinSound.preload = "auto";
 effectSound.volume = 0.65;
 winSound.volume = 0.75;
 passSound.volume = 0.55;
-pieceSound.volume = 0.6;
+Object.values(pieceSounds).forEach((audio) => { audio.volume = 0.6; });
 nextRoundSound.volume = 0.65;
 cVoiceHeavySound.volume = 0.85;
 cVoiceKuoSound.volume = 0.85;
@@ -1667,7 +1685,9 @@ function playGameSound(audio){
 function playEffectSound(){ playGameSound(effectSound); }
 function playWinSound(){ playGameSound(winSound); }
 function playPassSound(){ playGameSound(passSound); }
-function playPieceSound(){ playGameSound(pieceSound); }
+function playPieceSound(){
+    playGameSound(pieceSounds[personalSettings.pieceSound] || pieceSounds.notanomori);
+}
 function playNextRoundSound(){ playGameSound(nextRoundSound); }
 function playCVoice(kind){
     const table = {
@@ -1972,6 +1992,7 @@ function syncPersonalSettingsControls() {
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
     document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
+    document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("personalSettingsStatus").textContent = "";
 }
@@ -2008,6 +2029,7 @@ async function savePersonalSettings() {
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("checkEnableEffects").checked,
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
+        pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
     };
     applyPersonalSettingsAppearance();
