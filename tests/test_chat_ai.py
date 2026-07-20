@@ -16,6 +16,7 @@ async def _run() -> None:
         app_module.GAMES.clear()
         app_module.AI_HELP_LAST_REQUEST.clear()
         assert "https://vrcgoita.com/goita/rule/" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "https://vrcgoita.com/goita/strategy/" in app_module.AI_HELP_SYSTEM_PROMPT
         os.environ["GEMINI_API_KEY"] = "test-key"
         app_module._request_gemini_help = lambda question: f"案内回答: {question}"
 

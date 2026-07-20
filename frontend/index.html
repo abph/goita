@@ -1494,6 +1494,8 @@
 const API = "";
 const MAIN_GID = "main";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
+const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
+const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
 
 // 状態管理変数
 let gid = MAIN_GID;
@@ -2860,22 +2862,37 @@ function chatItemTimeValue(item){
 
 function setChatMessageText(element, message){
   const value = String(message || "");
-  if(!value.includes(GOITA_RULE_URL)){
+  if(!CHAT_KNOWN_URLS.some((url) => value.includes(url))){
     element.textContent = value;
     return;
   }
 
-  const parts = value.split(GOITA_RULE_URL);
-  parts.forEach((part, index) => {
-    if(part) element.appendChild(document.createTextNode(part));
-    if(index >= parts.length - 1) return;
+  let rest = value;
+  while(rest){
+    let nextUrl = "";
+    let nextIndex = -1;
+    for(const url of CHAT_KNOWN_URLS){
+      const index = rest.indexOf(url);
+      if(index >= 0 && (nextIndex < 0 || index < nextIndex)){
+        nextUrl = url;
+        nextIndex = index;
+      }
+    }
+    if(nextIndex < 0){
+      element.appendChild(document.createTextNode(rest));
+      break;
+    }
+    if(nextIndex > 0){
+      element.appendChild(document.createTextNode(rest.slice(0, nextIndex)));
+    }
     const link = document.createElement("a");
-    link.href = GOITA_RULE_URL;
+    link.href = nextUrl;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.textContent = GOITA_RULE_URL;
+    link.textContent = nextUrl;
     element.appendChild(link);
-  });
+    rest = rest.slice(nextIndex + nextUrl.length);
+  }
 }
 
 function mergedChatMessages(serverMessages){
