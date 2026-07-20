@@ -698,6 +698,14 @@
       color: #9b2226;
       font-weight: 700;
     }
+    .chat-message.ai-answer {
+      background: rgba(31, 92, 68, 0.08);
+      border-left: 3px solid rgba(31, 92, 68, 0.62);
+      padding-left: 6px;
+    }
+    .chat-message.ai-answer .chat-sender {
+      color: #1f5c44;
+    }
     .chat-meta {
       display: flex;
       align-items: baseline;
@@ -724,7 +732,8 @@
       font-size: 13px;
     }
     .chat-form {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 6px;
       padding: 8px;
       border-top: 2px solid #d1ab75;
@@ -739,12 +748,25 @@
       font-size: 14px;
       background: #fff;
     }
+    .chat-form-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+    }
     .chat-form button {
       padding: 8px 9px;
       border-radius: 6px;
       background: #8b5a2b;
       color: #fff;
       font-weight: 900;
+      white-space: nowrap;
+    }
+    .chat-form button:disabled {
+      cursor: wait;
+      opacity: 0.58;
+    }
+    .chat-form .chat-ask-button {
+      background: #1f5c44;
     }
     .chat-toast {
       position: fixed;
@@ -1264,7 +1286,10 @@
           <div id="chatMessages" class="chat-messages"></div>
           <form class="chat-form" onsubmit="sendChatMessage(event)">
             <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
-            <button type="submit">送信</button>
+            <div class="chat-form-actions">
+              <button id="chatAskButton" class="chat-ask-button" type="button" onclick="askChatAi()">AIに聞く</button>
+              <button id="chatSendButton" type="submit">送信</button>
+            </div>
           </form>
         </div>
       </div>
@@ -1554,6 +1579,7 @@ let chatOpen = false;
 let lastChatCount = 0;
 let lastChatToastCount = 0;
 let chatSending = false;
+let chatAiAsking = false;
 let chatToastTimer = null;
 let localChatNotices = [];
 let lastHintNoticeKey = "";
@@ -2884,6 +2910,7 @@ function renderChat(state){
       row.className = "chat-message";
       if(item?.seat === mySeat && !isSpectator()) row.classList.add("mine");
       if(item?.local_notice) row.classList.add("notice");
+      if(item?.ai_answer) row.classList.add("ai-answer");
 
       const sender = document.createElement("div");
       sender.className = "chat-sender";
@@ -2922,14 +2949,18 @@ function renderChat(state){
 
 async function sendChatMessage(event){
   event.preventDefault();
-  if(chatSending) return;
+  if(chatSending || chatAiAsking) return;
   const input = document.getElementById("chatInput");
+  const askButton = document.getElementById("chatAskButton");
+  const sendButton = document.getElementById("chatSendButton");
   if(!input) return;
   const message = input.value.trim();
   if(!message) return;
 
   chatSending = true;
   input.disabled = true;
+  if(askButton) askButton.disabled = true;
+  if(sendButton) sendButton.disabled = true;
   try{
     const res = await fetch(`${API}/games/${gid}/chat`, {
       method: "POST",
@@ -2953,6 +2984,61 @@ async function sendChatMessage(event){
   }finally{
     chatSending = false;
     input.disabled = false;
+    if(askButton) askButton.disabled = false;
+    if(sendButton) sendButton.disabled = false;
+    input.focus();
+  }
+}
+
+async function askChatAi(){
+  if(chatSending || chatAiAsking) return;
+  const input = document.getElementById("chatInput");
+  const askButton = document.getElementById("chatAskButton");
+  const sendButton = document.getElementById("chatSendButton");
+  if(!input || !askButton) return;
+  const message = input.value.trim();
+  if(!message){
+    setHint("AIに聞きたいことを入力してください。");
+    input.focus();
+    return;
+  }
+
+  chatAiAsking = true;
+  input.disabled = true;
+  askButton.disabled = true;
+  askButton.textContent = "回答中…";
+  if(sendButton) sendButton.disabled = true;
+  try{
+    const res = await fetch(`${API}/games/${gid}/chat/ask_ai`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        seat: isSpectator() ? WATCH : mySeat,
+        client_id: clientId,
+        name: personalSettings.playerName || "",
+        message
+      })
+    });
+    if(!res.ok){
+      let detail = "AIから回答を取得できませんでした。";
+      try{
+        const data = await res.json();
+        if(data?.detail) detail = String(data.detail);
+      }catch(_e){}
+      setHint(detail);
+    } else {
+      input.value = "";
+      await refresh();
+    }
+  }catch(e){
+    console.error("Chat AI error:", e);
+    setHint("AIへの接続に失敗しました。通信状態を確認してください。");
+  }finally{
+    chatAiAsking = false;
+    input.disabled = false;
+    askButton.disabled = false;
+    askButton.textContent = "AIに聞く";
+    if(sendButton) sendButton.disabled = false;
     input.focus();
   }
 }
