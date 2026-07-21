@@ -1137,13 +1137,37 @@
     }
     .settings-disclosure-content .settings-row:first-child { margin-top: 10px; }
     .settings-disclosure-content .settings-row:last-child { margin-bottom: 0; }
-    .settings-modal-content { max-height: min(680px, calc(100vh - 32px)); overflow-y: auto; }
+    .settings-modal-content {
+      position: relative;
+      max-height: min(680px, calc(100vh - 32px));
+      overflow-y: auto;
+    }
+    .settings-modal-content > h3 { padding-right: 36px; }
+    .settings-modal-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      z-index: 2;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #6d461f;
+      font-size: 25px;
+      line-height: 1;
+      cursor: pointer;
+    }
     @media (max-width: 701px) {
       .settings-modal-content {
         width: calc(100% - 24px);
-        max-height: min(440px, calc(100dvh - 28px));
+        max-height: min(520px, calc(100dvh - 28px));
         padding: 16px;
         box-sizing: border-box;
+      }
+      .settings-modal-close {
+        top: 8px;
+        right: 9px;
       }
       .settings-modal-content .settings-tabs { margin-bottom: 14px; }
       .settings-modal-content .settings-row { margin-bottom: 12px; }
@@ -1566,6 +1590,7 @@
 
 <div id="settingsModal" class="modal-overlay">
   <div class="modal-content settings-modal-content">
+    <button class="settings-modal-close" type="button" onclick="closeSettings()" aria-label="設定を閉じる" title="閉じる">×</button>
     <h3>⚙️ 設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
       <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
