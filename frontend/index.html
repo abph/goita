@@ -492,10 +492,13 @@
         flex-wrap: wrap;
         justify-content: center;
         gap: 4px 14px;
-        margin-bottom: 16px;
+        margin: 0;
     }
+    .lobby-footer-links-secondary { margin: 2px 0 16px; }
     .lobby-footer-link {
         appearance: none;
+        display: inline-flex;
+        align-items: center;
         border: 0;
         background: transparent;
         color: #6d461f;
@@ -526,11 +529,11 @@
     .site-resource-link { display: inline-block; }
     @media (max-width: 520px) {
         .lobby-footer-links {
-            display: grid;
-            grid-template-columns: repeat(2, max-content);
-            column-gap: 22px;
+            flex-wrap: nowrap;
+            column-gap: 10px;
             row-gap: 4px;
         }
+        .lobby-footer-link { font-size: 11px; }
     }
     
     /* ロビーの正方形ルームカードデザイン */
@@ -1424,8 +1427,11 @@
   </div>
 
   <footer class="lobby-footer">
-    <nav class="lobby-footer-links" aria-label="サイト案内">
+    <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
+      <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
+    </nav>
+    <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('contact')">お問い合わせ</button>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('privacy')">プライバシーポリシー</button>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('notice')">利用上の注意</button>
