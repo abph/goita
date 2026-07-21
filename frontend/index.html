@@ -1057,20 +1057,42 @@
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
-    .settings-group {
+    .settings-disclosure {
       margin: 0 0 16px;
-      padding: 10px 12px 12px;
       border: 1px solid rgba(139, 90, 43, 0.35);
       border-radius: 6px;
+      background: rgba(255, 255, 255, 0.22);
     }
-    .settings-group legend {
-      padding: 0 6px;
+    .settings-disclosure summary {
+      padding: 10px 12px;
       color: #6d461f;
       font-weight: 900;
       font-size: 14px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
     }
-    .settings-group .settings-row:last-child { margin-bottom: 0; }
+    .settings-disclosure summary::-webkit-details-marker { display: none; }
+    .settings-disclosure .when-open { display: none; }
+    .settings-disclosure[open] .when-closed { display: none; }
+    .settings-disclosure[open] .when-open { display: inline; }
+    .settings-disclosure-content {
+      padding: 2px 12px 12px;
+      border-top: 1px solid rgba(139, 90, 43, 0.2);
+    }
+    .settings-disclosure-content .settings-row:first-child { margin-top: 10px; }
+    .settings-disclosure-content .settings-row:last-child { margin-bottom: 0; }
     .settings-modal-content { max-height: min(680px, calc(100vh - 32px)); overflow-y: auto; }
+    @media (max-width: 701px) {
+      .settings-modal-content {
+        width: calc(100% - 24px);
+        max-height: min(440px, calc(100dvh - 28px));
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      .settings-modal-content .settings-tabs { margin-bottom: 14px; }
+      .settings-modal-content .settings-row { margin-bottom: 12px; }
+    }
     .settings-tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1095,7 +1117,9 @@
     .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
     .settings-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(139,90,43,0.25); }
+    .settings-footer .settings-save-button { margin-bottom: 8px; }
     .settings-footer button { width: 100%; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px; }
+    .settings-footer .settings-save-button { background: #8b5a2b; color: #fff; }
     .seat-ai-note {
       flex-basis: 100%;
       margin-top: 4px;
@@ -1458,52 +1482,63 @@
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
       </div>
-      <fieldset class="settings-group">
-        <legend>モバイル版のチャット設定</legend>
-        <div class="settings-row">
-          <label for="mobileChatPlacement">配置</label>
-          <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-            <option value="right">右側</option>
-            <option value="top">上側</option>
-          </select>
+      <details id="mobileChatSettingsDetails" class="settings-disclosure">
+        <summary>
+          <span class="when-closed">▶ モバイル版のチャット設定を開く</span>
+          <span class="when-open">▼ モバイル版のチャット設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label for="mobileChatPlacement">配置</label>
+            <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="right">右側</option>
+              <option value="top">上側</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label for="mobileChatWidth">幅</label>
+            <select id="mobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="wide">太い</option>
+              <option value="normal" selected>普通</option>
+              <option value="narrow">細い</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label for="mobileChatTransparency">透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
+            <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
+          </div>
         </div>
-        <div class="settings-row">
-          <label for="mobileChatWidth">幅</label>
-          <select id="mobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-            <option value="wide">太い</option>
-            <option value="normal" selected>普通</option>
-            <option value="narrow">細い</option>
-          </select>
-        </div>
-        <div class="settings-row">
-          <label for="mobileChatTransparency">透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
-          <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
-        </div>
-      </fieldset>
+      </details>
       <div class="settings-row">
         <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
       </div>
-      <div class="settings-row">
-        <label><input type="checkbox" id="checkEnableSoundEffects" style="width:auto;"> 効果音（駒を出す音など）を有効にする</label>
-      </div>
-      <div class="settings-row">
-        <label for="pieceSoundChoice">駒を打つ音</label>
-        <select id="pieceSoundChoice" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-          <option value="notanomori">新しい音（既定）</option>
-          <option value="standard">これまでの音</option>
-        </select>
-      </div>
-      <div class="settings-row">
-        <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
-      </div>
+      <details id="soundSettingsDetails" class="settings-disclosure">
+        <summary>
+          <span class="when-closed">▶ 音の設定を開く</span>
+          <span class="when-open">▼ 音の設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkEnableSoundEffects" style="width:auto;"> 効果音（駒を出す音など）を有効にする</label>
+          </div>
+          <div class="settings-row">
+            <label for="pieceSoundChoice">駒を打つ音</label>
+            <select id="pieceSoundChoice" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="notanomori">新しい音（既定）</option>
+              <option value="standard">これまでの音</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
+          </div>
+        </div>
+      </details>
       <div class="settings-row">
         <button class="settings-action-button" type="button" onclick="downloadKifu(false)">棋譜を保存する</button>
       </div>
       <div class="settings-row">
         <button class="settings-action-button" type="button" onclick="downloadKifu(true)">匿名で棋譜を保存する</button>
       </div>
-      <button class="settings-save-button" type="button" onclick="savePersonalSettings()">個人設定を保存</button>
-      <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
     </section>
 
     <section id="roomManagementPanel" class="settings-panel" role="tabpanel">
@@ -1543,6 +1578,10 @@
     </section>
 
     <div class="settings-footer">
+      <div id="personalSettingsFooterActions">
+        <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
+        <button class="settings-save-button" type="button" onclick="savePersonalSettings()">個人設定を保存</button>
+      </div>
       <button type="button" onclick="closeSettings()">閉じる</button>
     </div>
   </div>
@@ -2025,6 +2064,7 @@ function showSettingsTab(tabName) {
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
     document.getElementById("personalSettingsPanel").classList.toggle("active", !isManagement);
     document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
+    document.getElementById("personalSettingsFooterActions").style.display = isManagement ? "none" : "block";
     if (isManagement && !currentAdminPass) {
         setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
     }
@@ -2057,6 +2097,10 @@ function openSettingsModal(targetGid, event) {
     document.getElementById("adminAuthArea").style.display = "block";
     document.getElementById("roomManagementFields").style.display = "none";
     document.getElementById("roomManagementTab").style.display = targetGid === MAIN_GID ? "none" : "block";
+    ["mobileChatSettingsDetails", "soundSettingsDetails"].forEach((id) => {
+        const details = document.getElementById(id);
+        if (details) details.open = false;
+    });
     showSettingsTab("personal");
     document.getElementById("settingsModal").style.display = "flex";
 }
