@@ -750,15 +750,35 @@
       flex: 1;
       min-width: 0;
       padding: 8px;
-      border: 1px solid #c8a77a;
+      border: 2px solid #8b5a2b;
       border-radius: 6px;
       font-size: 14px;
       background: #fff;
     }
-    .chat-form-actions {
+    .chat-form input:focus {
+      outline: 2px solid rgba(139, 90, 43, 0.28);
+      border-color: #8b5a2b;
+    }
+    .chat-form input.ai-mode {
+      border-color: #1f5c44;
+    }
+    .chat-form input.ai-mode:focus {
+      outline-color: rgba(31, 92, 68, 0.28);
+      border-color: #1f5c44;
+    }
+    .chat-compose-entry {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 6px;
+    }
+    .chat-compose-modes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid #c8a77a;
+      border-radius: 7px;
+      background: #f4efdf;
     }
     .chat-form button {
       padding: 8px 9px;
@@ -772,8 +792,31 @@
       cursor: wait;
       opacity: 0.58;
     }
-    .chat-form .chat-ask-button {
+    .chat-form .chat-mode-button {
+      background: #fff;
+      color: #6d461f;
+      border: 1px solid transparent;
+      box-shadow: none;
+    }
+    .chat-form .chat-mode-button.chat.active {
+      background: #8b5a2b;
+      color: #fff;
+      border-color: #71451f;
+    }
+    .chat-form .chat-mode-button.ai.active {
       background: #1f5c44;
+      color: #fff;
+      border-color: #174936;
+      box-shadow: 0 2px 5px rgba(31, 92, 68, 0.24);
+    }
+    .chat-form .chat-submit-button {
+      min-width: 58px;
+      background: #8b5a2b;
+      border-color: #71451f;
+    }
+    .chat-form .chat-submit-button.ai-mode {
+      background: #1f5c44;
+      border-color: #174936;
     }
     .chat-toast {
       position: fixed;
@@ -1295,11 +1338,14 @@
             <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
           </div>
           <div id="chatMessages" class="chat-messages"></div>
-          <form class="chat-form" onsubmit="sendChatMessage(event)">
-            <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="メッセージ" />
-            <div class="chat-form-actions">
-              <button id="chatAskButton" class="chat-ask-button" type="button" onclick="askChatAi()">AIに聞く</button>
-              <button id="chatSendButton" type="submit">送信</button>
+          <form class="chat-form" onsubmit="submitChatInput(event)">
+            <div class="chat-compose-modes" role="tablist" aria-label="送信先">
+              <button id="chatModeChatButton" class="chat-mode-button chat active" type="button" role="tab" aria-selected="true" onclick="setChatComposeMode('chat')">チャット</button>
+              <button id="chatModeAiButton" class="chat-mode-button ai" type="button" role="tab" aria-selected="false" onclick="setChatComposeMode('ai')">AIに質問</button>
+            </div>
+            <div class="chat-compose-entry">
+              <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力" />
+              <button id="chatSendButton" class="chat-submit-button" type="submit">送信</button>
             </div>
           </form>
         </div>
@@ -1605,6 +1651,7 @@ let lastChatCount = 0;
 let lastChatToastCount = 0;
 let chatSending = false;
 let chatAiAsking = false;
+let chatComposeMode = "chat";
 let chatToastTimer = null;
 let localChatNotices = [];
 let lastHintNoticeKey = "";
@@ -1848,6 +1895,7 @@ async function returnToLobby() {
         await releaseSeat(mySeat);
     }
     setAutoPlayEnabled(false);
+    setChatComposeMode("chat", false);
     toggleChatPanel(false);
     hideChatToast();
     renderChat.roomId = null;
@@ -3014,20 +3062,67 @@ function renderChat(state){
   }
 }
 
-async function sendChatMessage(event){
+function updateChatComposerUi(){
+  const isAiMode = chatComposeMode === "ai";
+  const input = document.getElementById("chatInput");
+  const chatButton = document.getElementById("chatModeChatButton");
+  const aiButton = document.getElementById("chatModeAiButton");
+  const sendButton = document.getElementById("chatSendButton");
+  if(input){
+    input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
+    input.classList.toggle("ai-mode", isAiMode);
+  }
+  if(chatButton){
+    chatButton.classList.toggle("active", !isAiMode);
+    chatButton.setAttribute("aria-selected", isAiMode ? "false" : "true");
+  }
+  if(aiButton){
+    aiButton.classList.toggle("active", isAiMode);
+    aiButton.setAttribute("aria-selected", isAiMode ? "true" : "false");
+  }
+  if(sendButton){
+    sendButton.textContent = "送信";
+    sendButton.classList.toggle("ai-mode", isAiMode);
+  }
+}
+
+function setChatComposeMode(mode, focusInput = true){
+  if(chatSending || chatAiAsking) return;
+  chatComposeMode = mode === "ai" ? "ai" : "chat";
+  updateChatComposerUi();
+  if(focusInput) document.getElementById("chatInput")?.focus();
+}
+
+function setChatComposerDisabled(disabled){
+  const input = document.getElementById("chatInput");
+  const chatButton = document.getElementById("chatModeChatButton");
+  const aiButton = document.getElementById("chatModeAiButton");
+  const sendButton = document.getElementById("chatSendButton");
+  if(input) input.disabled = disabled;
+  if(chatButton) chatButton.disabled = disabled;
+  if(aiButton) aiButton.disabled = disabled;
+  if(sendButton) sendButton.disabled = disabled;
+}
+
+function submitChatInput(event){
   event.preventDefault();
+  if(chatComposeMode === "ai"){
+    askChatAi();
+  }else{
+    sendChatMessage();
+  }
+}
+
+async function sendChatMessage(event){
+  if(event) event.preventDefault();
   if(chatSending || chatAiAsking) return;
   const input = document.getElementById("chatInput");
-  const askButton = document.getElementById("chatAskButton");
-  const sendButton = document.getElementById("chatSendButton");
   if(!input) return;
   const message = input.value.trim();
   if(!message) return;
 
   chatSending = true;
-  input.disabled = true;
-  if(askButton) askButton.disabled = true;
-  if(sendButton) sendButton.disabled = true;
+  setChatComposerDisabled(true);
   try{
     const res = await fetch(`${API}/games/${gid}/chat`, {
       method: "POST",
@@ -3050,9 +3145,8 @@ async function sendChatMessage(event){
     setHint("チャットの送信に失敗しました。通信状態を確認してください。");
   }finally{
     chatSending = false;
-    input.disabled = false;
-    if(askButton) askButton.disabled = false;
-    if(sendButton) sendButton.disabled = false;
+    setChatComposerDisabled(false);
+    updateChatComposerUi();
     input.focus();
   }
 }
@@ -3060,9 +3154,7 @@ async function sendChatMessage(event){
 async function askChatAi(){
   if(chatSending || chatAiAsking) return;
   const input = document.getElementById("chatInput");
-  const askButton = document.getElementById("chatAskButton");
-  const sendButton = document.getElementById("chatSendButton");
-  if(!input || !askButton) return;
+  if(!input) return;
   const message = input.value.trim();
   if(!message){
     setHint("AIに聞きたいことを入力してください。");
@@ -3071,10 +3163,7 @@ async function askChatAi(){
   }
 
   chatAiAsking = true;
-  input.disabled = true;
-  askButton.disabled = true;
-  askButton.textContent = "回答中…";
-  if(sendButton) sendButton.disabled = true;
+  setChatComposerDisabled(true);
   try{
     const res = await fetch(`${API}/games/${gid}/chat/ask_ai`, {
       method: "POST",
@@ -3102,10 +3191,8 @@ async function askChatAi(){
     setHint("AIへの接続に失敗しました。通信状態を確認してください。");
   }finally{
     chatAiAsking = false;
-    input.disabled = false;
-    askButton.disabled = false;
-    askButton.textContent = "AIに聞く";
-    if(sendButton) sendButton.disabled = false;
+    setChatComposerDisabled(false);
+    updateChatComposerUi();
     input.focus();
   }
 }
@@ -4019,7 +4106,7 @@ async function refresh(){
               setHint("👑 あなたはホストです。設定や配牌を確認し、「▶ 開始」を押してください。");
           }
       } else {
-          setHint("待機中... ホスト(👑A)が「開始」を押すのをお待ちください。");
+          setHint("待機中... ホスト（👑A）が「開始」を押すのをお待ちください。\n使い方で分からないことがあれば、チャットの「AIに質問」をご利用ください。");
       }
       pending = null;
   } else if (state.finished) {
