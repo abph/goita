@@ -484,6 +484,58 @@
         max-width: 800px;
         margin: 0 auto;
     }
+    .lobby-footer {
+        margin: 36px 0 16px;
+        padding: 28px 12px 22px;
+        border-top: 1px solid rgba(139, 90, 43, 0.28);
+        color: #666;
+        text-align: center;
+    }
+    .lobby-footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px 14px;
+        margin-bottom: 16px;
+    }
+    .lobby-footer-link {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: #6d461f;
+        padding: 7px 2px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+    }
+    .lobby-footer-link:hover { color: #a2521c; }
+    .lobby-footer-copy { font-size: 12px; }
+    .site-info-modal-content { max-height: min(560px, calc(100vh - 32px)); overflow-y: auto; }
+    .site-info-body { color: #333; font-size: 14px; line-height: 1.8; }
+    .site-info-body p { margin: 0 0 12px; }
+    .site-info-body p:last-child { margin-bottom: 0; }
+    .site-info-body a { color: #8b4f1f; font-weight: 800; text-underline-offset: 3px; }
+    .site-resource-list {
+        margin-top: 14px;
+        border-top: 1px solid rgba(139, 90, 43, 0.25);
+    }
+    .site-resource {
+        padding: 14px 0;
+        border-bottom: 1px solid rgba(139, 90, 43, 0.18);
+    }
+    .site-resource-title { color: #4c3018; font-size: 15px; font-weight: 900; }
+    .site-resource-description { margin: 3px 0 7px !important; color: #555; font-size: 13px; }
+    .site-resource-link { display: inline-block; }
+    @media (max-width: 520px) {
+        .lobby-footer-links {
+            display: grid;
+            grid-template-columns: repeat(2, max-content);
+            column-gap: 22px;
+            row-gap: 4px;
+        }
+    }
     
     /* ロビーの正方形ルームカードデザイン */
     .room-card-container {
@@ -1323,6 +1375,16 @@
     <div id="lobbyRoomList" class="room-card-container">
       </div>
   </div>
+
+  <footer class="lobby-footer">
+    <nav class="lobby-footer-links" aria-label="サイト案内">
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('contact')">お問い合わせ</button>
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('privacy')">プライバシーポリシー</button>
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('notice')">利用上の注意</button>
+    </nav>
+    <div class="lobby-footer-copy">© そろうごいた</div>
+  </footer>
 </div>
 
 <div id="gameView" style="display: none;">
@@ -1469,6 +1531,16 @@
   </div>
 </div>
 
+<div id="siteInfoModal" class="modal-overlay" onclick="closeSiteInfo(event)">
+  <div class="modal-content site-info-modal-content" role="dialog" aria-modal="true" aria-labelledby="siteInfoTitle" onclick="event.stopPropagation()">
+    <h3 id="siteInfoTitle"></h3>
+    <div id="siteInfoBody" class="site-info-body"></div>
+    <div class="settings-footer">
+      <button type="button" onclick="closeSiteInfo()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="settingsModal" class="modal-overlay">
   <div class="modal-content settings-modal-content">
     <h3>⚙️ 設定</h3>
@@ -1593,6 +1665,116 @@ const MAIN_GID = "main";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
+const SITE_INFO = {
+    learn: {
+        title: "ごいたを知る",
+        paragraphs: [
+            "ごいたの概要、遊び方、戦略を知りたい方は、目的に合ったページをご覧ください。",
+        ],
+        resources: [
+            {
+                title: "ごいたを知る",
+                description: "ごいたの概要や歴史、基本ルール、遊べる場所を紹介しています。",
+                href: "https://vrcgoita.com/goita/",
+            },
+            {
+                title: "ごいたのルールについて知る",
+                description: "駒の種類、受けと攻め、上がり方、点数などを解説しています。",
+                href: "https://vrcgoita.com/goita/rule/",
+            },
+            {
+                title: "ごいたの戦略について知る",
+                description: "攻め方、受け方、読み合いなど、対局で役立つ考え方を紹介しています。",
+                href: "https://vrcgoita.com/goita/strategy/",
+            },
+        ],
+    },
+    contact: {
+        title: "お問い合わせ",
+        link: {
+            prefix: "お問い合わせは、",
+            label: "1222（@wanksk）",
+            suffix: "までお願いします。",
+            href: "https://x.com/wanksk",
+        },
+        paragraphs: [
+            "対局室のチャットは他の利用者にも表示されます。個人情報や公開したくない内容は書き込まないでください。",
+        ],
+    },
+    privacy: {
+        title: "プライバシーポリシー",
+        paragraphs: [
+            "そろうごいたでは、対局や各機能の提供に必要な範囲で、設定した名前、チャット内容、対局情報、棋譜情報などを取り扱います。個人設定の一部は、ご利用のブラウザー内に保存されます。",
+            "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。ただし、運営側がその情報を勝手に棋譜として保存・収集することはありません。また、本人の同意なく、棋譜から個人の打ち方を分析したり、AI開発、研究、記事などに利用したりすることもありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。",
+            "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
+            "取得した情報は、サービスの提供、改善、不具合調査のために必要な範囲で利用します。",
+        ],
+    },
+    notice: {
+        title: "利用上の注意",
+        paragraphs: [
+            "そろうごいたは現在ベータ版です。予告なく機能の変更、停止、データの初期化などを行う場合があります。",
+            "通信状況や不具合などにより、対局が中断したり、操作内容が正しく反映されなかったりする場合があります。",
+            "他の利用者が不快になる発言や、対局・サービスの運営を妨げる行為はお控えください。",
+        ],
+    },
+};
+
+function openSiteInfo(infoKey) {
+    const info = SITE_INFO[infoKey];
+    if (!info) return;
+    document.getElementById("siteInfoTitle").textContent = info.title;
+    const body = document.getElementById("siteInfoBody");
+    const contents = info.paragraphs.map((text) => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = text;
+        return paragraph;
+    });
+    if (info.link) {
+        const paragraph = document.createElement("p");
+        const link = document.createElement("a");
+        link.href = info.link.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = info.link.label;
+        paragraph.append(info.link.prefix, link, info.link.suffix);
+        contents.unshift(paragraph);
+    }
+    if (info.resources) {
+        const resourceList = document.createElement("div");
+        resourceList.className = "site-resource-list";
+        info.resources.forEach((resource) => {
+            const item = document.createElement("div");
+            item.className = "site-resource";
+
+            const title = document.createElement("div");
+            title.className = "site-resource-title";
+            title.textContent = resource.title;
+
+            const description = document.createElement("p");
+            description.className = "site-resource-description";
+            description.textContent = resource.description;
+
+            const link = document.createElement("a");
+            link.className = "site-resource-link";
+            link.href = resource.href;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "詳しく見る";
+
+            item.append(title, description, link);
+            resourceList.appendChild(item);
+        });
+        contents.push(resourceList);
+    }
+    body.replaceChildren(...contents);
+    document.getElementById("siteInfoModal").style.display = "flex";
+}
+
+function closeSiteInfo(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById("siteInfoModal").style.display = "none";
+}
 
 // 状態管理変数
 let gid = MAIN_GID;
