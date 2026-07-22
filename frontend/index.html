@@ -1402,7 +1402,7 @@
      
      <div style="font-size: 14px; color: #555; text-align: left; display: inline-block; background: #fffdf5; padding: 15px 20px; border-radius: 8px; border: 1px dashed #8b5a2b; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-          <li>不足人数に応じて、<b>AI（初級者の上レベル）</b>が自動で参戦します。1人からでも対局可能です。</li>
+          <li>不足人数に応じて、<b>ルームで選択したAI</b>が自動で参戦します。1人からでも対局可能です。</li>
           <li>※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
         </ul>
      </div>
@@ -1594,6 +1594,21 @@
   </div>
 </div>
 
+<div id="debugAccessModal" class="modal-overlay">
+  <form class="modal-content" onsubmit="submitDebugRoomAccess(event)">
+    <h3>デバッグルーム</h3>
+    <div class="settings-row">
+      <label for="debugRoomPassword">管理用パスワード</label>
+      <input id="debugRoomPassword" type="password" autocomplete="current-password" />
+    </div>
+    <div id="debugAccessStatus" class="settings-status" aria-live="polite"></div>
+    <div class="settings-footer">
+      <button type="button" onclick="cancelDebugRoomAccess()">キャンセル</button>
+      <button type="submit">入室</button>
+    </div>
+  </form>
+</div>
+
 <div id="settingsModal" class="modal-overlay">
   <div class="modal-content settings-modal-content">
     <button class="settings-modal-close" type="button" onclick="closeSettings()" aria-label="設定を閉じる" title="閉じる">×</button>
@@ -1690,6 +1705,7 @@
           <label for="setAiProfile">AIの選択</label>
           <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
             <option value="current">強化中AI</option>
+            <option value="intermediate_lower">中級者（下）</option>
             <option value="beginner_upper">初級者（上）</option>
           </select>
         </div>
@@ -1716,6 +1732,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
+const DEBUG_GID = "debug";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
@@ -2102,6 +2119,110 @@ async function joinMainRoom() {
     await enterRoom(MAIN_GID, "メインルームA");
 }
 
+function isDebugRoomRequested() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("room") === DEBUG_GID;
+}
+
+function debugRoomPasswordFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("password") || "";
+}
+
+function clearDebugRoomPasswordUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("password");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function clearDebugRoomUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("room");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function openDebugRoomAccess() {
+    document.getElementById("lobbyView").style.display = "block";
+    document.getElementById("gameView").style.display = "none";
+    document.getElementById("debugRoomPassword").value = "";
+    document.getElementById("debugAccessStatus").textContent = "";
+    document.getElementById("debugAccessModal").style.display = "flex";
+    setTimeout(() => document.getElementById("debugRoomPassword")?.focus(), 0);
+}
+
+async function autoEnterDebugRoomFromUrl() {
+    const password = debugRoomPasswordFromUrl();
+    if (!password) return false;
+    clearDebugRoomPasswordUrl();
+
+    try {
+        const res = await fetch(`${API}/games/${DEBUG_GID}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password})
+        });
+        if (!res.ok) {
+            openDebugRoomAccess();
+            document.getElementById("debugAccessStatus").textContent =
+                res.status === 404
+                    ? "デバッグルームが有効になっていません。"
+                    : "URLのパスワードが正しくありません。";
+            return false;
+        }
+        await enterRoom(DEBUG_GID, "デバッグルーム");
+        return true;
+    } catch (e) {
+        openDebugRoomAccess();
+        document.getElementById("debugAccessStatus").textContent =
+            "デバッグルームへの接続に失敗しました。";
+        return false;
+    }
+}
+
+function cancelDebugRoomAccess() {
+    document.getElementById("debugAccessModal").style.display = "none";
+    clearDebugRoomUrl();
+    connectWS("lobby");
+    fetchRoomList();
+}
+
+async function submitDebugRoomAccess(event) {
+    event.preventDefault();
+    const input = document.getElementById("debugRoomPassword");
+    const status = document.getElementById("debugAccessStatus");
+    const password = input.value;
+    if (!password) {
+        status.textContent = "管理用パスワードを入力してください。";
+        input.focus();
+        return;
+    }
+
+    input.disabled = true;
+    status.textContent = "確認しています...";
+
+    try {
+        const res = await fetch(`${API}/games/${DEBUG_GID}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password})
+        });
+        if (res.status === 404) {
+            status.textContent = "デバッグルームが有効になっていません。";
+            return;
+        }
+        if (!res.ok) {
+            status.textContent = "管理用パスワードが正しくありません。";
+            return;
+        }
+        document.getElementById("debugAccessModal").style.display = "none";
+        await enterRoom(DEBUG_GID, "デバッグルーム");
+    } catch (e) {
+        status.textContent = "デバッグルームへの接続に失敗しました。";
+    } finally {
+        input.disabled = false;
+    }
+}
+
 async function tryJoinRoom(targetGid, isPrivate) {
     if (isPrivate) {
         const pass = prompt("合言葉（パスワード）を入力してください");
@@ -2178,6 +2299,10 @@ async function returnToLobby() {
     localChatNotices = [];
     lastHintNoticeKey = "";
     mySeat = WATCH;
+
+    if (gid === DEBUG_GID) {
+        clearDebugRoomUrl();
+    }
     
     if (socket) {
         socket.onclose = null;
@@ -2279,6 +2404,7 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel) return;
     const fallback = {
         current: "強化中AI",
+        intermediate_lower: "中級者（下）",
         beginner_upper: "初級者（上）"
     };
     const src = profiles && typeof profiles === "object" ? profiles : fallback;
@@ -4580,9 +4706,18 @@ window.addEventListener("load", async ()=>{
   if(dealerSelect){
     dealerSelect.addEventListener("change", ()=> scheduleApplyCurrentSetup());
   }
+  if (isDebugRoomRequested()) {
+    if (debugRoomPasswordFromUrl()) {
+      await autoEnterDebugRoomFromUrl();
+      return;
+    }
+    openDebugRoomAccess();
+    return;
+  }
+
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
-  
+
   connectWS("lobby");
   fetchRoomList();
 });

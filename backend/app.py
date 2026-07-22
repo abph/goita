@@ -21,12 +21,15 @@ from pydantic import BaseModel, Field
 from goita_ai2.state import GoitaState
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperRuleBasedAgent
+from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
+DEBUG_GID = "debug"
+DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 NAME_MAX_LEN = 9
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
@@ -36,6 +39,7 @@ DISCONNECT_SEAT_GRACE_SECONDS = 60
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
+    "intermediate_lower": {"label": "中級者（下）", "class": IntermediateLowerRuleBasedAgent},
     "beginner_upper": {"label": "初級者（上）", "class": BeginnerUpperRuleBasedAgent},
 }
 
@@ -783,6 +787,8 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "reveal_hands": False,
         "show_legal_actions": False,
         "show_log": False,
+        "hidden_from_lobby": False,
+        "is_debug_room": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -825,7 +831,26 @@ def setup_supporter_rooms():
             room["owner_name"] = data["owner"]
             GAMES[data["gid"]] = room
 
+
+def setup_debug_room() -> None:
+    debug_password = (os.getenv("DEBUG_ROOM_PASSWORD") or DEFAULT_DEBUG_ROOM_PASSWORD).strip()
+    if DEBUG_GID in GAMES:
+        return
+
+    room = _create_game_obj(dealer="A", ai_profile="current")
+    room["password"] = debug_password
+    room["admin_password"] = debug_password
+    room["owner_name"] = "デバッグルーム"
+    room["ai_seats"] = ["B", "C", "D"]
+    room["show_legal_actions"] = True
+    room["show_log"] = True
+    room["hidden_from_lobby"] = True
+    room["is_debug_room"] = True
+    GAMES[DEBUG_GID] = room
+
+
 setup_supporter_rooms()
+setup_debug_room()
 
 
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]], dealer: str) -> List[str]:
@@ -981,7 +1006,7 @@ def list_rooms():
 
     rooms = [build_room_info(MAIN_GID, GAMES[MAIN_GID])]
     for gid, data in GAMES.items():
-        if gid != MAIN_GID:
+        if gid != MAIN_GID and not data.get("hidden_from_lobby", False):
             rooms.append(build_room_info(gid, data))
             
     return {"rooms": rooms}
@@ -1112,6 +1137,8 @@ async def reset_game(
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
     show_log = bool(old_game.get("show_log", False))
+    hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
+    is_debug_room = bool(old_game.get("is_debug_room", False))
     
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
     new_game["password"] = password
@@ -1126,6 +1153,8 @@ async def reset_game(
     new_game["ai_profile"] = ai_profile
     new_game["show_legal_actions"] = show_legal_actions
     new_game["show_log"] = show_log
+    new_game["hidden_from_lobby"] = hidden_from_lobby
+    new_game["is_debug_room"] = is_debug_room
     
     if keep_score:
         _preserve_match_progress(new_game, old_game)
@@ -1160,6 +1189,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
     show_log = bool(old_game.get("show_log", False))
+    hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
+    is_debug_room = bool(old_game.get("is_debug_room", False))
 
     if preset:
         try:
@@ -1185,6 +1216,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
+        new_game["hidden_from_lobby"] = hidden_from_lobby
+        new_game["is_debug_room"] = is_debug_room
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
@@ -1204,6 +1237,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
+        new_game["hidden_from_lobby"] = hidden_from_lobby
+        new_game["is_debug_room"] = is_debug_room
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
