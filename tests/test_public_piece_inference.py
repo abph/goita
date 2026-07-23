@@ -173,6 +173,20 @@ def test_partner_kakarigotae_rejection_then_switch_breaks_first_strategy() -> No
     assert agent._opponent_first_attack_strategy_penalty(tr, "A", "5") == 0.0
 
 
+def test_big_piece_return_is_not_treated_as_kakarigotae_reaction() -> None:
+    agent, state = _partner_rejection_state(
+        "6",
+        "4",
+        original_attacker_switches=False,
+    )
+    tr = _tracker(agent, state)
+    model = tr["public_hand_models"]["B"]
+
+    assert model.get("partner_first_strategy_reaction") is None
+    assert model["strategy_broken"] is False
+    assert tr["other_first_attack_strategy_by_player"]["B"]["active"] is True
+
+
 def test_partner_shi_rejection_then_switch_breaks_first_strategy() -> None:
     agent, state = _partner_rejection_state("1", "4")
     model = _tracker(agent, state)["public_hand_models"]["B"]
@@ -336,6 +350,7 @@ if __name__ == "__main__":
     test_visible_receive_and_attack_reconcile_the_public_pool()
     test_partner_rejection_alone_does_not_break_first_strategy()
     test_partner_kakarigotae_rejection_then_switch_breaks_first_strategy()
+    test_big_piece_return_is_not_treated_as_kakarigotae_reaction()
     test_partner_shi_rejection_then_switch_breaks_first_strategy()
     test_returning_same_piece_keeps_first_strategy_active()
     test_passing_shi_caps_current_shi_count_at_one()

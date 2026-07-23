@@ -17,6 +17,10 @@ TARGET_LAST1 = ("2", "3", "4", "5", "6", "7")
 class AttackStrategyMixin:
     """Scores attack pieces and chooses which piece to hide."""
 
+    @staticmethod
+    def _is_kakarigotae_piece(piece: Optional[str]) -> bool:
+        return piece in ("2", "3", "4", "5")
+
     def _is_dealer_opening_attack(self, state, player: str) -> bool:
         tr = self._track.get(id(state))
         return (
@@ -185,10 +189,28 @@ class AttackStrategyMixin:
             return 0.0
         return self.SINGLE_MIDDLE_OVER_FOUR_SHI_SIGNAL_PENALTY
 
+    def _four_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
+        tr = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            tr is None
+            or int(tr.get("my_attack_count", 0)) != 0
+            or tr.get("my_last_receive_piece") not in ("6", "7")
+            or hand.count("1") < 4
+            or any(piece in hand for piece in ("8", "9"))
+            or any(hand.count(piece) >= 2 for piece in ("2", "3", "4", "5", "6", "7"))
+        ):
+            return 0.0
+        return self.FOUR_SHI_AFTER_BIG_RECEIVE_FIRST_ATTACK_BONUS
+
     def _shi_attack_score_adjustment(self, state, player: str) -> float:
         tr = self._track.get(id(state))
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
+
+        four_shi_bonus = self._four_shi_after_big_receive_first_attack_bonus(state, player)
+        if four_shi_bonus > 0:
+            return four_shi_bonus
 
         exhaust_bonus = self._shi_exhaust_attack_bonus(state, player)
         if exhaust_bonus > 0:
@@ -302,15 +324,17 @@ class AttackStrategyMixin:
         return 1
 
     def _is_fourth_middle_attack(self, state, player: str, attack: Optional[str]) -> bool:
-        if attack not in ("3", "4", "5"):
+        if attack not in ("2", "3", "4", "5"):
             return False
         tr = self._track.get(id(state))
         if tr is None:
             return False
+        if state.hands[player].count(attack) != 1:
+            return False
         seen_and_mine = int(tr.get("public_seen_counts", {}).get(attack, 0)) + state.hands[player].count(attack)
         return seen_and_mine >= self._piece_total(attack)
 
-    def _fourth_middle_first_attack_delay_penalty(
+    def _fourth_middle_early_attack_delay_penalty(
         self,
         state,
         player: str,
@@ -321,11 +345,69 @@ class AttackStrategyMixin:
         if (
             tr is None
             or action_type not in ("attack", "attack_after_block")
-            or int(tr.get("my_attack_count", 0)) != 0
+            or int(tr.get("my_attack_count", 0)) >= 2
             or not self._is_fourth_middle_attack(state, player, attack)
         ):
             return 0.0
-        return self.FOURTH_MIDDLE_FIRST_ATTACK_DELAY_PENALTY
+        return self.FOURTH_MIDDLE_EARLY_ATTACK_DELAY_PENALTY
+
+    def _fourth_middle_third_attack_bonus(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        attack: Optional[str],
+    ) -> float:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or int(tr.get("my_attack_count", 0)) != 2
+            or not self._is_fourth_middle_attack(state, player, attack)
+        ):
+            return 0.0
+        return self.FOURTH_MIDDLE_THIRD_ATTACK_BONUS
+
+    def _second_kyosha_single_shi_block_adjustment(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        tr = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            tr is None
+            or action_type != "attack_after_block"
+            or attack != "2"
+            or block is None
+            or int(tr.get("my_attack_count", 0)) != 1
+            or tr.get("my_last_attack") != "2"
+            or hand.count("2") < 2
+            or hand.count("1") != 1
+            or not any(piece in ("8", "9") for piece in hand)
+        ):
+            return 0.0
+
+        singleton_middle = [
+            piece
+            for piece in ("3", "4", "5")
+            if hand.count(piece) == 1
+        ]
+        if not singleton_middle:
+            return 0.0
+        lowest_middle = min(
+            singleton_middle,
+            key=lambda piece: (POINTS.get(piece, 0), piece),
+        )
+
+        if block == "1":
+            return -self.SECOND_KYOSHA_KEEP_SINGLE_SHI_BLOCK_PENALTY
+        if block == lowest_middle:
+            return self.SECOND_KYOSHA_LOW_MIDDLE_BLOCK_BONUS
+        return 0.0
 
     def _ally_strategy_piece_value(self, tr: Optional[dict], player: str, piece: Optional[str]) -> float:
         if tr is None or piece is None:
@@ -515,7 +597,7 @@ class AttackStrategyMixin:
 
     def _piece_count_kakari_adjustment(self, state, player: str, attack: str) -> float:
         tr = self._track.get(id(state))
-        if tr is None or attack == "1":
+        if tr is None or not self._is_kakarigotae_piece(attack):
             return 0.0
         if not (attack == tr.get("ally_first_attack") or attack in tr.get("ally_past_attacks", set())):
             return 0.0
@@ -549,7 +631,7 @@ class AttackStrategyMixin:
         return sorted(pieces, key=lambda piece: (POINTS.get(piece, 0), piece), reverse=True)
 
     def _kakari_saturation_attack_bonus(self, state, player: str, attack: Optional[str]) -> float:
-        if attack is None or attack not in ("2", "3", "4", "5", "6", "7"):
+        if not self._is_kakarigotae_piece(attack):
             return 0.0
         tr = self._track.get(id(state))
         if tr is None:
@@ -661,7 +743,7 @@ class AttackStrategyMixin:
         attack_pieces = set(str(p) for p in profile["pieces"])
         receive_type = sum(1 for n in counts.values() if n > 0)
 
-        is_kakari = attack != "1" and (
+        is_kakari = self._is_kakarigotae_piece(attack) and (
             attack == tr.get("ally_first_attack") or attack in tr.get("ally_past_attacks", set())
         )
         if is_kakari:
@@ -744,8 +826,16 @@ class AttackStrategyMixin:
         score += self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack)
         score += self._piece_count_attack_adjustment(state, player, attack)
         score += self._kakari_saturation_attack_bonus(state, player, attack)
+        score += self._fourth_middle_third_attack_bonus(state, player, action_type, attack)
         score += self._ally_force_king_attack_bonus(state, player, action_type, attack)
         score += self._endgame_remaining_pair_adjustment(state, player, block, attack)
+        score += self._second_kyosha_single_shi_block_adjustment(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
         score += self._conditional_shi_royal_finish_adjustment(
             state,
             player,
@@ -770,7 +860,7 @@ class AttackStrategyMixin:
             action_type,
             attack,
         )
-        score -= self._fourth_middle_first_attack_delay_penalty(
+        score -= self._fourth_middle_early_attack_delay_penalty(
             state,
             player,
             action_type,
@@ -787,7 +877,7 @@ class AttackStrategyMixin:
             else:
                 score += self.CONTINUOUS_ATTACK_BONUS
 
-        if tr is not None and attack != "1":
+        if tr is not None and self._is_kakarigotae_piece(attack):
             ally_first = tr.get("ally_first_attack")
             is_fourth_middle = self._is_fourth_middle_attack(state, player, attack)
             if ally_first is not None and attack == ally_first:

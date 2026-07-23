@@ -3711,6 +3711,12 @@ const COMBO_POS = {
 
 const SKIP_CELLS = ["5,6", "6,5", "5,3", "3,5"];
 const NAME_SIDE_CELLS = new Set(["3,6", "6,6", "3,3", "6,3"]);
+const UNUSED_CORNER_CELLS = new Set([
+  "1,1", "2,1", "7,1", "8,1",
+  "1,2", "2,2", "7,2", "8,2",
+  "1,7", "2,7", "7,7", "8,7",
+  "1,8", "2,8", "7,8", "8,8",
+]);
 
 function buildSlotMap(physToSeat){
   const m=new Map();
@@ -4057,7 +4063,7 @@ function renderBoard(state){
     for(let col=1;col<=8;col++){
       const k = key(col,row);
       
-      if(SKIP_CELLS.includes(k)) continue;
+      if(SKIP_CELLS.includes(k) || UNUSED_CORNER_CELLS.has(k)) continue;
 
       const div=document.createElement("div");
       div.className="cell";

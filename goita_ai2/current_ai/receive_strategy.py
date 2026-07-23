@@ -370,6 +370,68 @@ class ReceiveStrategyMixin:
 
         return self.FIRST_ENEMY_KING_RECEIVE_PENALTY
 
+    def _enemy_second_attack_royal_reserve_pass_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.current_attack not in ("6", "7")
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or state.next_player(player) != state.attacker
+            or len(state.hands[player]) != 4
+            or len(state.hands[state.attacker]) != 4
+        ):
+            return None
+
+        attacker = state.attacker
+        if int(tr.get("enemy_attack_counts", {}).get(attacker, 1)) != 2:
+            return None
+
+        hand = state.hands[player]
+        royal = next((piece for piece in ("8", "9") if piece in hand), None)
+        if (
+            royal is None
+            or hand.count("8") + hand.count("9") != 1
+            or hand.count("1") < 1
+            or hand.count("2") < 1
+            or not any(hand.count(piece) >= 1 for piece in ("3", "4", "5"))
+        ):
+            return None
+
+        attack_history = list(tr.get("my_attack_history", []))
+        if len(attack_history) < 2 or attack_history[0] != "2" or attack_history[1] not in ("3", "4", "5"):
+            return None
+
+        attacker_blocks = tr.get("public_hand_models", {}).get(attacker, {}).get("blocks", Counter())
+        if int(attacker_blocks.get("8", 0)) + int(attacker_blocks.get("9", 0)) < 1:
+            return None
+        known_royals = (
+            int(tr.get("public_seen_counts", {}).get("8", 0))
+            + int(tr.get("public_seen_counts", {}).get("9", 0))
+            + hand.count("8")
+            + hand.count("9")
+        )
+        if known_royals < 2:
+            return None
+
+        royal_receive = next(
+            (action for action in actions if action[0] == "receive" and action[1] == royal),
+            None,
+        )
+        pass_action = next((action for action in actions if action[0] == "pass"), None)
+        if royal_receive is None or pass_action is None:
+            return None
+
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail("pass_royal_reserve_wait_ally_kakari")
+        return pass_action
+
     def _strong_ally_receive_followup_pieces(self, hand: List[str]) -> List[str]:
         counts = Counter(hand)
         pieces: List[str] = []
@@ -423,7 +485,7 @@ class ReceiveStrategyMixin:
         return 0.0
 
     def _kakari_saturation_receive_bonus(self, state, player: str, block: Optional[str]) -> float:
-        if block is None or block not in ("2", "3", "4", "5", "6", "7"):
+        if not self._is_kakarigotae_piece(block):
             return 0.0
         if state.attacker is None or not self._same_team(state.attacker, player):
             return 0.0

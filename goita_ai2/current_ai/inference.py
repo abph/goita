@@ -81,7 +81,10 @@ class PublicInferenceMixin:
             if (
                 original_attacker is not None
                 and original_attacker != player
-                and original_piece in ("1", "2", "3", "4", "5", "6", "7")
+                and (
+                    original_piece == "1"
+                    or self._is_kakarigotae_piece(str(original_piece))
+                )
                 and self._same_team(str(original_attacker), player)
             ):
                 original_model = tr.get("public_hand_models", {}).get(str(original_attacker), {})

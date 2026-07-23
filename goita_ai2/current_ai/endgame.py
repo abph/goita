@@ -206,7 +206,16 @@ class EndgameMixin:
         score = self._endgame_pair_score(state, player, hand) * self.ENDGAME_PAIR_SCORE_WEIGHT
         shi_count = hand.count("1")
         if shi_count == 1:
-            score += self.ENDGAME_MIXED_SHI_PAIR_BONUS
+            if any(piece in ("8", "9") for piece in hand):
+                tr = self._track.get(id(state))
+                shi_pressure = self._opponents_piece_pressure(tr, player, "1")
+                score += self.ROYAL_WAIT_SHI_BASE_BONUS
+                score += (
+                    min(self.ROYAL_WAIT_SHI_PRESSURE_CAP, shi_pressure)
+                    * self.ROYAL_WAIT_SHI_PRESSURE_WEIGHT
+                )
+            else:
+                score += self.ENDGAME_MIXED_SHI_PAIR_BONUS
             score += self._shi_sashikomi_wait_bonus_for_pair(state, player, hand)
         elif shi_count == 2:
             score -= self.ENDGAME_SHI_PAIR_PENALTY
@@ -429,6 +438,351 @@ class EndgameMixin:
 
         score = self._max_tsume_score(temp_hand, state, player, tr)
         return score if score >= 0 else None
+
+    def _estimated_piece_hold_risk(
+        self,
+        tr: dict,
+        player: str,
+        piece: str,
+    ) -> Optional[float]:
+        estimate = self._estimated_current_piece(tr, player, piece)
+        if estimate is None:
+            return None
+        if int(estimate.get("min", 0)) > 0:
+            return 1.0
+        if int(estimate.get("max", 0)) <= 0:
+            return 0.0
+        return max(0.0, min(1.0, float(estimate.get("expected", 0.0))))
+
+    def _estimated_receive_risk_for_player(
+        self,
+        tr: dict,
+        player: str,
+        attack: str,
+    ) -> Optional[float]:
+        attack_risk = self._estimated_piece_hold_risk(tr, player, attack)
+        if attack_risk is None:
+            return None
+        if attack in ("1", "2", "8", "9"):
+            return attack_risk
+
+        king_risks = [
+            self._estimated_piece_hold_risk(tr, player, king)
+            for king in ("8", "9")
+        ]
+        if any(risk is None for risk in king_risks):
+            return None
+        return min(1.0, attack_risk + sum(float(risk) for risk in king_risks))
+
+    def _reach_avoidance_conditional_tsume_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        has_non_king_attack_option: bool,
+    ) -> Optional[Tuple[Action, float, float]]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "attack"
+            or state.turn != player
+            or len(state.hands[player]) != 4
+        ):
+            return None
+
+        next_enemy = state.next_player(player)
+        if self._same_team(next_enemy, player) or len(state.hands[next_enemy]) != 2:
+            return None
+        enemy_model = tr.get("public_hand_models", {}).get(next_enemy, {})
+        if int(enemy_model.get("attack_count", 0)) < 3:
+            return None
+
+        attack_actions = [
+            action
+            for action in actions
+            if action[0] == "attack_after_block"
+            and action[1] is not None
+            and action[2] is not None
+            and action[2] not in ("8", "9")
+        ]
+        if len(attack_actions) < 2:
+            return None
+
+        # A guaranteed route always has priority over this probabilistic search.
+        if any(
+            self._guaranteed_finish_score_after_attack_action(state, player, action) is not None
+            for action in attack_actions
+        ):
+            return None
+
+        candidates: List[Tuple[float, float, Action]] = []
+        attack_risks: dict[str, float] = {}
+        for action in attack_actions:
+            action_type, block, attack = action
+            remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
+            if remaining is None or len(remaining) != 2:
+                continue
+            receive_risk = self._estimated_receive_risk_for_player(tr, next_enemy, attack)
+            if receive_risk is None:
+                continue
+            heuristic = self._score_attack_phase(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+                has_non_king_attack_option=has_non_king_attack_option,
+            )
+            heuristic += self._score_receive_phase(state, player, "receive", block)
+            candidates.append((receive_risk, heuristic, action))
+            attack_risks[attack] = receive_risk
+
+        if len(attack_risks) < 2:
+            return None
+        lowest_risk = min(attack_risks.values())
+        highest_risk = max(attack_risks.values())
+        risk_gap = highest_risk - lowest_risk
+        if risk_gap < self.REACH_AVOIDANCE_CONDITIONAL_TSUME_MIN_RISK_GAP:
+            return None
+
+        candidates.sort(key=lambda item: (item[0], -item[1]))
+        receive_risk, _heuristic, action = candidates[0]
+        return action, receive_risk, risk_gap
+
+    def _inferred_ally_shi_sashikomi_finish_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "attack"
+            or state.turn != player
+            or int(tr.get("my_attack_count", 0)) != 2
+        ):
+            return None
+
+        next_enemy = state.next_player(player)
+        ally = state.next_player(next_enemy)
+        if self._same_team(next_enemy, player) or not self._same_team(ally, player):
+            return None
+        if len(state.hands[ally]) != 2:
+            return None
+
+        joint = tr.get("joint_hand_inference", {})
+        if not bool(joint.get("feasible")):
+            return None
+        map_current = joint.get("map_current_counts", {})
+        enemy_counts = map_current.get(next_enemy, {})
+        ally_counts = map_current.get(ally, {})
+        if int(enemy_counts.get("1", 0)) != 0 or int(ally_counts.get("1", 0)) < 1:
+            return None
+        if sum(int(value) for value in ally_counts.values()) != len(state.hands[ally]):
+            return None
+
+        return next(
+            (
+                action
+                for action in actions
+                if action[0] in ("attack", "attack_after_block") and action[2] == "1"
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _endgame_team(player: str) -> str:
+        return "AC" if player in ("A", "C") else "BD"
+
+    def _inferred_endgame_state(self, state, player: str, tr: dict):
+        joint = tr.get("joint_hand_inference", {})
+        if not bool(joint.get("feasible")):
+            return None
+
+        map_current = joint.get("map_current_counts", {})
+        map_hidden = joint.get("map_hidden_counts", {})
+        map_original = joint.get("map_original_counts", {})
+        inferred = copy.deepcopy(state)
+        for other in ("A", "B", "C", "D"):
+            if other == player:
+                inferred.hands[other] = sorted(state.hands[other])
+                continue
+
+            current_counts = map_current.get(other)
+            hidden_counts = map_hidden.get(other)
+            original_counts = map_original.get(other)
+            if not isinstance(current_counts, dict) or not isinstance(hidden_counts, dict):
+                return None
+            if not isinstance(original_counts, dict):
+                return None
+
+            current_hand = [
+                piece
+                for piece in (str(i) for i in range(1, 10))
+                for _ in range(int(current_counts.get(piece, 0)))
+            ]
+            hidden_hand = [
+                piece
+                for piece in (str(i) for i in range(1, 10))
+                for _ in range(int(hidden_counts.get(piece, 0)))
+            ]
+            if len(current_hand) != len(state.hands[other]):
+                return None
+            if len(hidden_hand) != len(state.face_down_hidden.get(other, [])):
+                return None
+
+            inferred.hands[other] = current_hand
+            inferred.face_down_hidden[other] = hidden_hand
+            inferred.had_both_kings[other] = (
+                int(original_counts.get("8", 0)) > 0
+                and int(original_counts.get("9", 0)) > 0
+            )
+
+        # The hidden block itself is not public. A receive clears it, while
+        # a completed lap replaces it before the next scoring action.
+        inferred.last_block = None
+        inferred.last_block_player = None
+        return inferred
+
+    def _inferred_endgame_state_key(self, state) -> tuple:
+        return (
+            tuple(
+                (seat, tuple(sorted(state.hands[seat])))
+                for seat in ("A", "B", "C", "D")
+            ),
+            state.phase,
+            state.turn,
+            state.current_attack,
+            state.attacker,
+            state.last_block,
+            state.last_block_player,
+            int(state.king_block_used),
+            tuple(
+                (seat, bool(state.had_both_kings.get(seat, False)))
+                for seat in ("A", "B", "C", "D")
+            ),
+            int(state.team_score.get("AC", 0)),
+            int(state.team_score.get("BD", 0)),
+        )
+
+    def _solve_inferred_endgame(
+        self,
+        state,
+        root_player: str,
+        baseline_scores: dict,
+        depth: int,
+        memo: dict,
+    ):
+        if state.finished and state.winner is not None:
+            winner = state.winner
+            winner_team = self._endgame_team(winner)
+            score = int(state.team_score[winner_team]) - int(baseline_scores[winner_team])
+            if self._same_team(winner, root_player):
+                utility = 100_000 + score
+            else:
+                utility = -100_000 - score
+            return utility, winner, score, ()
+        if depth <= 0:
+            return None
+
+        key = (depth, self._inferred_endgame_state_key(state))
+        if key in memo:
+            return memo[key]
+
+        turn = state.turn
+        legal = state.legal_actions(turn)
+        if not legal:
+            memo[key] = None
+            return None
+
+        outcomes = []
+        for action in legal:
+            try:
+                next_state = self._apply_action_on_copy(state, turn, action)
+            except Exception:
+                memo[key] = None
+                return None
+            outcome = self._solve_inferred_endgame(
+                next_state,
+                root_player,
+                baseline_scores,
+                depth - 1,
+                memo,
+            )
+            if outcome is None:
+                memo[key] = None
+                return None
+            utility, winner, score, path = outcome
+            outcomes.append((utility, winner, score, (action,) + path))
+
+        if self._same_team(turn, root_player):
+            chosen = max(outcomes, key=lambda item: item[0])
+        else:
+            chosen = min(outcomes, key=lambda item: item[0])
+        memo[key] = chosen
+        return chosen
+
+    def _inferred_endgame_team_result_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Tuple[Action, str, int]]:
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.turn != player
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or len(state.hands[player]) > 4
+            or len(actions) < 2
+        ):
+            return None
+
+        attacker_model = tr.get("public_hand_models", {}).get(state.attacker, {})
+        if int(attacker_model.get("attack_count", 0)) < 2:
+            return None
+
+        inferred = self._inferred_endgame_state(state, player, tr)
+        if inferred is None or any(
+            len(inferred.hands[seat]) > 4 for seat in ("A", "B", "C", "D")
+        ):
+            return None
+
+        baseline_scores = {
+            "AC": int(inferred.team_score.get("AC", 0)),
+            "BD": int(inferred.team_score.get("BD", 0)),
+        }
+        memo = {}
+        candidates = []
+        for action in actions:
+            try:
+                next_state = self._apply_action_on_copy(inferred, player, action)
+            except Exception:
+                return None
+            outcome = self._solve_inferred_endgame(
+                next_state,
+                player,
+                baseline_scores,
+                48,
+                memo,
+            )
+            if outcome is None:
+                return None
+            utility, winner, score, path = outcome
+            candidates.append((utility, action, winner, score, (action,) + path))
+
+        if len({candidate[0] for candidate in candidates}) < 2:
+            return None
+
+        _utility, action, winner, score, _path = max(
+            candidates,
+            key=lambda item: item[0],
+        )
+        return action, winner, score
 
     def _high_score_tsume_action(
         self,

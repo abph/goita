@@ -319,15 +319,17 @@ class HandEvaluationMixin:
         if any(counts.get(piece, 0) >= 2 for piece in ("3", "4", "5")):
             return None
 
+        if any(counts.get(piece, 0) >= 2 for piece in ("6", "7")):
+            return None
         big_pieces = [piece for piece in ("7", "6") if counts.get(piece, 0) == 1]
-        if len(big_pieces) != 1 or sum(counts.get(piece, 0) for piece in ("6", "7")) != 1:
+        if not big_pieces:
             return None
 
         royal_count = counts.get("8", 0) + counts.get("9", 0)
         big_piece = big_pieces[0]
         if royal_count == 0:
             return [big_piece, "2", "2"]
-        if royal_count == 1:
+        if royal_count == 1 and len(big_pieces) == 1:
             return ["2", big_piece, "2"]
         return None
 
@@ -342,6 +344,19 @@ class HandEvaluationMixin:
         if royal_count not in (0, 1):
             return None
         return ["5", "2", "2"]
+
+    def _two_kyosha_middle_pair_royal_attack_plan(self, counts: Counter) -> Optional[List[str]]:
+        attack_type = self._classify_attack_type(counts)
+        if attack_type.get("label") != "two_kyosha":
+            return None
+        if counts.get("2", 0) != 2:
+            return None
+        if counts.get("8", 0) + counts.get("9", 0) != 1:
+            return None
+        middle_pairs = [piece for piece in ("5", "4", "3") if counts.get(piece, 0) == 2]
+        if len(middle_pairs) != 1:
+            return None
+        return ["2", middle_pairs[0]]
 
     def _middle_pair_single_big_attack_plan(self, counts: Counter) -> Optional[List[str]]:
         attack_type = self._classify_attack_type(counts)
@@ -366,6 +381,10 @@ class HandEvaluationMixin:
         return None
 
     def _special_attack_sequence_plan(self, counts: Counter) -> Optional[Dict[str, object]]:
+        plan = self._two_kyosha_middle_pair_royal_attack_plan(counts)
+        if plan is not None:
+            return {"label": "two_kyosha_middle_pair_royal", "sequence": plan}
+
         plan = self._two_kyosha_gold_pair_attack_plan(counts)
         if plan is not None:
             return {"label": "two_kyosha_gold_pair", "sequence": plan}
@@ -522,7 +541,7 @@ class HandEvaluationMixin:
         tr = self._track.get(id(state))
         is_kakari = (
             tr is not None
-            and attack != "1"
+            and self._is_kakarigotae_piece(attack)
             and (attack == tr.get("ally_first_attack") or attack in tr.get("ally_past_attacks", set()))
         )
 
