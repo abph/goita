@@ -9,6 +9,7 @@ from collections import Counter
 from typing import List, Optional, Tuple
 
 from goita_ai2.constants import POINTS
+from goita_ai2.current_ai.endgame import ForcedWinStatus
 
 Action = Tuple[str, Optional[str], Optional[str]]
 
@@ -291,13 +292,13 @@ class ReceiveStrategyMixin:
         for act in actions:
             if act[0] != "receive":
                 continue
-            score = self._score_receive_phase(state, player, act[0], act[1])
-            if score < 1e8:
+            result = self._forced_win_result_after_receive_action(state, player, act)
+            if result.status != ForcedWinStatus.PROVEN or result.minimum_score is None:
                 continue
             detail = "receive_win_after"
             if self._win_after_receive_bonus(state, player, act) <= 0:
                 detail = "receive_tsume_after"
-            finish_after_receive_actions.append((score, detail, act))
+            finish_after_receive_actions.append((result.minimum_score, detail, act))
 
         if not finish_after_receive_actions:
             return None
@@ -638,24 +639,16 @@ class ReceiveStrategyMixin:
             if bonus > 0:
                 return 1e9
 
-            tr = self._track.get(id(state))
-            if tr is not None:
-                try:
-                    temp_hand = list(state.hands[player])
-                    if block in temp_hand:
-                        temp_hand.remove(block)
-                        if len(temp_hand) <= 1:
-                            return 1e8
-
-                        safe_atks = set(p for p in temp_hand if self._is_absolute_safe_for_tsume(state, player, p, tr))
-                        for atk in safe_atks:
-                            next_hand = list(temp_hand)
-                            next_hand.remove(atk)
-                            max_sc = self._max_tsume_score(next_hand, state, player, tr)
-                            if max_sc >= 0:
-                                return 1e8 + max_sc
-                except Exception:
-                    pass
+            forced_result = self._forced_win_result_after_receive_action(
+                state,
+                player,
+                (action_type, block, None),
+            )
+            if (
+                forced_result.status == ForcedWinStatus.PROVEN
+                and forced_result.minimum_score is not None
+            ):
+                return 1e8 + forced_result.minimum_score
 
             if state.attacker is not None and self._same_team(state.attacker, player):
                 ally_strength = self._public_hand_strength(self._track.get(id(state)), state.attacker)

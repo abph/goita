@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
+from goita_ai2.current_ai.attack_planning import AttackPlanningMixin
 from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
 from goita_ai2.current_ai.decision import DecisionMixin
 from goita_ai2.current_ai.endgame import EndgameMixin
@@ -22,6 +23,7 @@ class RuleBasedAgent(
     HandEvaluationMixin,
     ForcedPlansMixin,
     EndgameMixin,
+    AttackPlanningMixin,
     AttackStrategyMixin,
     ReceiveStrategyMixin,
     PublicInferenceMixin,
@@ -112,6 +114,8 @@ class RuleBasedAgent(
         self.REACH_AVOIDANCE_CONDITIONAL_TSUME_MIN_RISK_GAP = 0.05
         self.SHI_SASHIKOMI_WAIT_BONUS = 180.0
         self.SHI_SASHIKOMI_ATTACK_BONUS = 520.0
+        self.EXACT_FORCED_WIN_MAX_HAND = 6
+        self.EXACT_FORCED_WIN_MAX_DEPTH = 18
         self.SHI_EXHAUST_RECEIVE_BONUS = 760.0
         self.SHI_EXHAUST_ATTACK_BONUS = 620.0
         self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS = 180.0
@@ -139,6 +143,22 @@ class RuleBasedAgent(
         self.ROYAL_WAIT_SHI_BASE_BONUS = 20.0
         self.ROYAL_WAIT_SHI_PRESSURE_WEIGHT = 70.0
         self.ROYAL_WAIT_SHI_PRESSURE_CAP = 3.0
+        self.GENERAL_ATTACK_PLAN_WEIGHT = 0.65
+        self.GENERAL_ATTACK_PLAN_BONUS_CAP = 240.0
+        self.GENERAL_ATTACK_PLAN_FINISH_WEIGHT = 2.0
+        self.GENERAL_ATTACK_PLAN_EARLY_ROYAL_PENALTY = 160.0
+        self.GENERAL_ATTACK_PLAN_SHI_PENALTY = 20.0
+        self.GENERAL_ATTACK_PLAN_SHI_MODE_BONUS = 80.0
+        self.GENERAL_ATTACK_PLAN_KYOSHA_BONUS = 10.0
+        self.GENERAL_ATTACK_PLAN_INFERENCE_CAP = 90.0
+        self.GENERAL_ATTACK_PLAN_PUBLIC_SAFETY_CAP = 60.0
+        self.GENERAL_ATTACK_PLAN_PAST_ATTACK_BONUS = 55.0
+        self.GENERAL_ATTACK_PLAN_CONTINUATION_BONUS = 90.0
+        self.GENERAL_ATTACK_PLAN_KAKARI_BONUS = 65.0
+        self.GENERAL_ATTACK_PLAN_SHAPE_WEIGHT = 8.0
+        self.GENERAL_ATTACK_PLAN_THIRD_FOURTH_BONUS = 70.0
+        self.GENERAL_ATTACK_PLAN_FUTURE_BLOCK_WEIGHT = 0.25
+        self.GENERAL_ATTACK_PLAN_KEEP_LAST_SHI_PENALTY = 35.0
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
 

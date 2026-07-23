@@ -335,7 +335,7 @@ def test_third_kyosha_compares_shi_royal_and_big_royal_waits() -> None:
         state.legal_actions("A"),
     )
 
-    assert low_shi_pressure_choice == ("attack_after_block", "1", "2")
+    assert low_shi_pressure_choice == ("attack_after_block", "6", "2")
     assert sorted(
         a_agent._remaining_hand_after_attack_action(
             state,
@@ -343,7 +343,7 @@ def test_third_kyosha_compares_shi_royal_and_big_royal_waits() -> None:
             low_shi_pressure_choice[1],
             low_shi_pressure_choice[2],
         )
-    ) == ["6", "9"]
+    ) == ["1", "9"]
 
 
 if __name__ == "__main__":

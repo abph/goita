@@ -7,11 +7,29 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
-from goita_ai2.constants import POINTS
+from goita_ai2.constants import PIECE_TOTALS, POINTS
 
 Action = Tuple[str, Optional[str], Optional[str]]
+
+
+class ForcedWinStatus(str, Enum):
+    """Result of a public-information forced-win proof."""
+
+    PROVEN = "proven_win"
+    COUNTEREXAMPLE = "counterexample"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ForcedWinResult:
+    """Three-valued result; a score exists only for a proven win."""
+
+    status: ForcedWinStatus
+    minimum_score: Optional[float] = None
 
 
 class EndgameMixin:
@@ -403,41 +421,428 @@ class EndgameMixin:
                 continue
         return 0.0
 
+    @staticmethod
+    def _forced_win_proven(score: float) -> ForcedWinResult:
+        return ForcedWinResult(ForcedWinStatus.PROVEN, float(score))
+
+    @staticmethod
+    def _forced_win_counterexample() -> ForcedWinResult:
+        return ForcedWinResult(ForcedWinStatus.COUNTEREXAMPLE)
+
+    @staticmethod
+    def _forced_win_unknown() -> ForcedWinResult:
+        return ForcedWinResult(ForcedWinStatus.UNKNOWN)
+
+    def _public_unknown_piece_pool(
+        self,
+        state,
+        player: str,
+        tr: dict,
+    ) -> Optional[Counter]:
+        public_seen = tr.get("public_seen_counts")
+        if not isinstance(public_seen, dict):
+            return None
+
+        pool = Counter()
+        my_hand = Counter(state.hands[player])
+        for piece, total in PIECE_TOTALS.items():
+            remaining = (
+                int(total)
+                - int(public_seen.get(piece, 0))
+                - int(my_hand.get(piece, 0))
+            )
+            if remaining < 0:
+                return None
+            pool[piece] = remaining
+        return pool
+
+    @staticmethod
+    def _forced_win_pool_key(pool: Counter) -> Tuple[int, ...]:
+        return tuple(int(pool.get(str(i), 0)) for i in range(1, 10))
+
+    @staticmethod
+    def _forced_win_attack_is_legal(
+        hand: Tuple[str, ...],
+        attack: str,
+        *,
+        block: Optional[str],
+        king_used: bool,
+        had_both_kings: bool,
+    ) -> bool:
+        if attack not in hand:
+            return False
+        if block is not None:
+            if block not in hand:
+                return False
+            if block == attack and hand.count(block) < 2:
+                return False
+        if attack not in ("8", "9"):
+            return True
+        last_finish = len(hand) == (2 if block is not None else 1)
+        return had_both_kings or king_used or last_finish
+
+    @staticmethod
+    def _forced_win_finish_score(block: Optional[str], attack: str) -> float:
+        base = float(POINTS.get(attack, 0))
+        if block is None:
+            return base
+        if {block, attack} == {"8", "9"}:
+            return 100.0
+        if block == attack:
+            return base * 2.0
+        return base
+
+    @staticmethod
+    def _forced_win_receive_options(
+        hand: Tuple[str, ...],
+        attack: str,
+    ) -> Tuple[str, ...]:
+        options = []
+        for piece in sorted(set(hand)):
+            if piece == attack or (piece in ("8", "9") and attack not in ("1", "2")):
+                options.append(piece)
+        return tuple(options)
+
+    @staticmethod
+    def _forced_win_external_receivers(
+        pool: Counter,
+        attack: str,
+    ) -> Tuple[str, ...]:
+        receivers = []
+        if int(pool.get(attack, 0)) > 0:
+            receivers.append(attack)
+        if attack not in ("1", "2"):
+            for royal in ("8", "9"):
+                if int(pool.get(royal, 0)) > 0 and royal not in receivers:
+                    receivers.append(royal)
+        return tuple(receivers)
+
+    def _forced_win_choose_attack(
+        self,
+        hand: Tuple[str, ...],
+        pool: Counter,
+        *,
+        need_block: bool,
+        king_used: bool,
+        had_both_kings: bool,
+        depth: int,
+        external_cards_used: int,
+        minimum_enemy_hand: int,
+        memo: Dict[tuple, ForcedWinResult],
+    ) -> ForcedWinResult:
+        if depth <= 0:
+            return self._forced_win_unknown()
+
+        key = (
+            "choose",
+            tuple(sorted(hand)),
+            self._forced_win_pool_key(pool),
+            bool(need_block),
+            bool(king_used),
+            int(depth),
+            int(external_cards_used),
+            int(minimum_enemy_hand),
+        )
+        if key in memo:
+            return memo[key]
+
+        candidates: List[ForcedWinResult] = []
+        blocks: Tuple[Optional[str], ...]
+        blocks = tuple(sorted(set(hand))) if need_block else (None,)
+        for block in blocks:
+            for attack in sorted(set(hand)):
+                if not self._forced_win_attack_is_legal(
+                    hand,
+                    attack,
+                    block=block,
+                    king_used=king_used,
+                    had_both_kings=had_both_kings,
+                ):
+                    continue
+
+                remaining = list(hand)
+                if block is not None:
+                    remaining.remove(block)
+                remaining.remove(attack)
+                if not remaining:
+                    candidates.append(self._forced_win_proven(
+                        self._forced_win_finish_score(block, attack)
+                    ))
+                    continue
+
+                candidates.append(self._forced_win_resolve_attack(
+                    tuple(sorted(remaining)),
+                    pool,
+                    attack=attack,
+                    king_used=king_used,
+                    had_both_kings=had_both_kings,
+                    depth=depth - 1,
+                    external_cards_used=external_cards_used,
+                    minimum_enemy_hand=minimum_enemy_hand,
+                    memo=memo,
+                ))
+
+        proven = [
+            result
+            for result in candidates
+            if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
+        ]
+        if proven:
+            result = max(proven, key=lambda item: float(item.minimum_score))
+        elif any(result.status == ForcedWinStatus.UNKNOWN for result in candidates):
+            result = self._forced_win_unknown()
+        else:
+            result = self._forced_win_counterexample()
+        memo[key] = result
+        return result
+
+    def _forced_win_resolve_external_return(
+        self,
+        hand: Tuple[str, ...],
+        pool: Counter,
+        *,
+        returned_attack: str,
+        king_used: bool,
+        had_both_kings: bool,
+        depth: int,
+        external_cards_used: int,
+        minimum_enemy_hand: int,
+        memo: Dict[tuple, ForcedWinResult],
+    ) -> ForcedWinResult:
+        receive_results: List[ForcedWinResult] = []
+        for receive_piece in self._forced_win_receive_options(hand, returned_attack):
+            remaining = list(hand)
+            remaining.remove(receive_piece)
+            if not remaining:
+                continue
+            receive_results.append(self._forced_win_choose_attack(
+                tuple(sorted(remaining)),
+                pool,
+                need_block=False,
+                king_used=king_used or receive_piece in ("8", "9"),
+                had_both_kings=had_both_kings,
+                depth=depth - 1,
+                external_cards_used=external_cards_used,
+                minimum_enemy_hand=minimum_enemy_hand,
+                memo=memo,
+            ))
+
+        proven = [
+            result
+            for result in receive_results
+            if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
+        ]
+        if proven:
+            return max(proven, key=lambda item: float(item.minimum_score))
+        if any(result.status == ForcedWinStatus.UNKNOWN for result in receive_results):
+            return self._forced_win_unknown()
+        return self._forced_win_counterexample()
+
+    def _forced_win_resolve_attack(
+        self,
+        hand: Tuple[str, ...],
+        pool: Counter,
+        *,
+        attack: str,
+        king_used: bool,
+        had_both_kings: bool,
+        depth: int,
+        external_cards_used: int,
+        minimum_enemy_hand: int,
+        memo: Dict[tuple, ForcedWinResult],
+    ) -> ForcedWinResult:
+        if depth <= 0:
+            return self._forced_win_unknown()
+
+        key = (
+            "resolve",
+            tuple(sorted(hand)),
+            self._forced_win_pool_key(pool),
+            attack,
+            bool(king_used),
+            int(depth),
+            int(external_cards_used),
+            int(minimum_enemy_hand),
+        )
+        if key in memo:
+            return memo[key]
+
+        # Passing around the table is always a legal enemy response.
+        branches = [
+            self._forced_win_choose_attack(
+                hand,
+                pool,
+                need_block=True,
+                king_used=king_used,
+                had_both_kings=had_both_kings,
+                depth=depth - 1,
+                external_cards_used=external_cards_used,
+                minimum_enemy_hand=minimum_enemy_hand,
+                memo=memo,
+            )
+        ]
+
+        for receiver in self._forced_win_external_receivers(pool, attack):
+            after_receiver = pool.copy()
+            after_receiver[receiver] -= 1
+            next_external_used = external_cards_used + 2
+            if minimum_enemy_hand > 0 and next_external_used >= minimum_enemy_hand:
+                branches.append(self._forced_win_counterexample())
+                continue
+
+            returned_pieces = [
+                piece
+                for piece in (str(i) for i in range(1, 10))
+                if int(after_receiver.get(piece, 0)) > 0
+            ]
+            if not returned_pieces:
+                branches.append(self._forced_win_unknown())
+                continue
+
+            for returned_attack in returned_pieces:
+                after_return = after_receiver.copy()
+                after_return[returned_attack] -= 1
+                branches.append(self._forced_win_resolve_external_return(
+                    hand,
+                    after_return,
+                    returned_attack=returned_attack,
+                    king_used=king_used,
+                    had_both_kings=had_both_kings,
+                    depth=depth - 1,
+                    external_cards_used=next_external_used,
+                    minimum_enemy_hand=minimum_enemy_hand,
+                    memo=memo,
+                ))
+
+        if any(result.status == ForcedWinStatus.COUNTEREXAMPLE for result in branches):
+            result = self._forced_win_counterexample()
+        elif any(result.status == ForcedWinStatus.UNKNOWN for result in branches):
+            result = self._forced_win_unknown()
+        else:
+            result = self._forced_win_proven(min(
+                float(result.minimum_score)
+                for result in branches
+                if result.minimum_score is not None
+            ))
+        memo[key] = result
+        return result
+
+    def _forced_win_result_after_attack_action(
+        self,
+        state,
+        player: str,
+        action: Action,
+    ) -> ForcedWinResult:
+        action_type, block, attack = action
+        if action_type not in ("attack", "attack_after_block") or attack is None:
+            return self._forced_win_counterexample()
+
+        finish_score = self._finish_score_after_action(state, player, action)
+        if finish_score is not None:
+            return self._forced_win_proven(finish_score)
+
+        max_hand = int(getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6))
+        if len(state.hands[player]) > max_hand:
+            return self._forced_win_unknown()
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return self._forced_win_unknown()
+        pool = self._public_unknown_piece_pool(state, player, tr)
+        if pool is None:
+            return self._forced_win_unknown()
+
+        enemies = [
+            seat
+            for seat in ("A", "B", "C", "D")
+            if not self._same_team(seat, player)
+        ]
+        minimum_enemy_hand = min((len(state.hands[seat]) for seat in enemies), default=0)
+        if minimum_enemy_hand <= 2:
+            return self._forced_win_unknown()
+
+        remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
+        if remaining is None:
+            return self._forced_win_counterexample()
+
+        return self._forced_win_resolve_attack(
+            tuple(sorted(remaining)),
+            pool,
+            attack=attack,
+            king_used=int(getattr(state, "king_block_used", 0)) > 0,
+            had_both_kings=bool(state.had_both_kings.get(player, False)),
+            depth=int(getattr(self, "EXACT_FORCED_WIN_MAX_DEPTH", 18)),
+            external_cards_used=0,
+            minimum_enemy_hand=minimum_enemy_hand,
+            memo={},
+        )
+
+    def _forced_win_result_after_receive_action(
+        self,
+        state,
+        player: str,
+        action: Action,
+    ) -> ForcedWinResult:
+        action_type, block, _attack = action
+        if action_type != "receive" or block is None:
+            return self._forced_win_counterexample()
+
+        max_hand = int(getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6))
+        if len(state.hands[player]) > max_hand:
+            return self._forced_win_unknown()
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return self._forced_win_unknown()
+        try:
+            after_receive = self._apply_action_on_copy(state, player, action)
+        except Exception:
+            return self._forced_win_counterexample()
+
+        # The copied state has consumed our receive piece. Reflect that newly
+        # public piece before evaluating the available follow-up attacks.
+        after_tracker = copy.deepcopy(tr)
+        after_public = after_tracker.setdefault(
+            "public_seen_counts",
+            {str(i): 0 for i in range(1, 10)},
+        )
+        after_public[block] = int(after_public.get(block, 0)) + 1
+        after_id = id(after_receive)
+        self._track[after_id] = after_tracker
+        try:
+            results = [
+                self._forced_win_result_after_attack_action(
+                    after_receive,
+                    player,
+                    next_action,
+                )
+                for next_action in after_receive.legal_actions(player)
+                if next_action[0] in ("attack", "attack_after_block")
+            ]
+        finally:
+            self._track.pop(after_id, None)
+
+        proven = [
+            result
+            for result in results
+            if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
+        ]
+        if proven:
+            return max(proven, key=lambda item: float(item.minimum_score))
+        if any(result.status == ForcedWinStatus.UNKNOWN for result in results):
+            return self._forced_win_unknown()
+        return self._forced_win_counterexample()
+
     def _guaranteed_finish_score_after_attack_action(
         self,
         state,
         player: str,
         action: Action,
     ) -> Optional[float]:
-        action_type, block, attack = action
-        if action_type not in ("attack", "attack_after_block") or attack is None:
+        result = self._forced_win_result_after_attack_action(state, player, action)
+        if result.status != ForcedWinStatus.PROVEN:
             return None
-
-        finish_score = self._finish_score_after_action(state, player, action)
-        if finish_score is not None:
-            return finish_score
-
-        tr = self._track.get(id(state))
-        if tr is None:
-            return None
-
-        kyosha_probe_score = self._kyosha_probe_expected_score_after_attack_action(state, player, action, tr)
-        if kyosha_probe_score is not None:
-            return kyosha_probe_score
-
-        if not self._is_absolute_safe_for_tsume(state, player, attack, tr):
-            return None
-
-        temp_hand = list(state.hands[player])
-        if block is not None and block in temp_hand:
-            temp_hand.remove(block)
-        if attack in temp_hand:
-            temp_hand.remove(attack)
-        if not temp_hand:
-            return finish_score
-
-        score = self._max_tsume_score(temp_hand, state, player, tr)
-        return score if score >= 0 else None
+        return result.minimum_score
 
     def _estimated_piece_hold_risk(
         self,
@@ -818,6 +1223,15 @@ class EndgameMixin:
 
         candidates.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
         route_score, immediate, _heuristic, action = candidates[0]
+        equally_safe = [
+            candidate
+            for candidate in candidates
+            if candidate[0] == route_score and candidate[1] == immediate
+        ]
+        if len(equally_safe) > 1 and not immediate:
+            # The guaranteed floor is identical. Let the normal attack scorer
+            # compare waits, inference, and expected points instead.
+            return None
         return action, route_score, bool(immediate)
 
     def _finish_score_after_action(self, state, player: str, action: Action) -> Optional[float]:

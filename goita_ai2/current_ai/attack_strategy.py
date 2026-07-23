@@ -792,31 +792,13 @@ class AttackStrategyMixin:
 
         score = 0.0
         tr = self._track.get(id(state))
-
-        if tr is not None and attack is not None:
-            is_safe = self._is_absolute_safe_for_tsume(state, player, attack, tr)
-            is_agari = (len(state.hands[player]) <= 2)
-
-            if is_safe or is_agari:
-                temp_hand = list(state.hands[player])
-                if block is not None and block in temp_hand:
-                    temp_hand.remove(block)
-                if attack in temp_hand:
-                    temp_hand.remove(attack)
-
-                if len(temp_hand) == 0:
-                    agari_pt = 0.0
-                    if block == attack and block is not None:
-                        agari_pt = float(POINTS.get(attack, 0)) * 2.0
-                    elif block is not None and set([block, attack]) == {"8", "9"}:
-                        agari_pt = 100.0
-                    else:
-                        agari_pt = float(POINTS.get(attack, 0))
-                    score += 1e8 + agari_pt
-                else:
-                    max_sc = self._max_tsume_score(temp_hand, state, player, tr)
-                    if max_sc >= 0:
-                        score += 1e8 + max_sc
+        guaranteed_score = self._guaranteed_finish_score_after_attack_action(
+            state,
+            player,
+            (action_type, block, attack),
+        )
+        if guaranteed_score is not None:
+            score += 1e8 + guaranteed_score
 
         score += self._last_one_remaining_bonus(state, player, attack)
         score += self._occupancy_priority_bonus(state, attack)
@@ -829,6 +811,13 @@ class AttackStrategyMixin:
         score += self._fourth_middle_third_attack_bonus(state, player, action_type, attack)
         score += self._ally_force_king_attack_bonus(state, player, action_type, attack)
         score += self._endgame_remaining_pair_adjustment(state, player, block, attack)
+        score += self._future_attack_plan_adjustment(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
         score += self._second_kyosha_single_shi_block_adjustment(
             state,
             player,

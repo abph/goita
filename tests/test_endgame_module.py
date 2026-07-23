@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from goita_ai2.current_ai.endgame import EndgameMixin
+from goita_ai2.current_ai.endgame import EndgameMixin, ForcedWinStatus
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
 
@@ -12,6 +12,8 @@ def test_rule_based_agent_uses_endgame_mixin() -> None:
 def test_endgame_methods_are_owned_by_mixin() -> None:
     for method_name in (
         "_max_tsume_score",
+        "_forced_win_result_after_attack_action",
+        "_forced_win_result_after_receive_action",
         "_high_score_tsume_action",
         "_reach_avoidance_conditional_tsume_action",
         "_inferred_ally_shi_sashikomi_finish_action",
@@ -350,6 +352,147 @@ def test_high_score_tsume_outranks_kakarigotae() -> None:
     assert b_agent.last_score_fallback_detail == "high_score_40"
 
 
+def test_second_shi_attack_is_proven_at_thirty_over_safe_kyosha_ten() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("45143156"),
+            "B": list("27124331"),
+            "C": list("12821165"),
+            "D": list("73911145"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("B", ("attack_after_block", "3", "2")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "1", "2")),
+        ("C", ("receive", "2", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    c_agent = agents["C"]
+    shi_route = ("attack_after_block", "1", "1")
+    kyosha_route = ("attack_after_block", "1", "2")
+    shi_result = c_agent._forced_win_result_after_attack_action(state, "C", shi_route)
+    kyosha_result = c_agent._forced_win_result_after_attack_action(state, "C", kyosha_route)
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert sorted(state.hands["C"]) == sorted("111258")
+    assert shi_result.status == ForcedWinStatus.PROVEN
+    assert shi_result.minimum_score == 30.0
+    assert kyosha_result.status == ForcedWinStatus.PROVEN
+    assert kyosha_result.minimum_score == 10.0
+    assert chosen == shi_route
+    assert c_agent.last_decision_reason == "tsume"
+    assert c_agent.last_score_fallback_detail == "high_score_30"
+
+
+def test_early_forced_win_search_reports_unknown_instead_of_guessing() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11112345"),
+            "B": list("11112345"),
+            "C": list("11112345"),
+            "D": list("11112345"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+
+    result = agent._forced_win_result_after_attack_action(
+        state,
+        "A",
+        ("attack_after_block", "1", "2"),
+    )
+
+    assert result.status == ForcedWinStatus.UNKNOWN
+    assert result.minimum_score is None
+
+
+def test_receive_then_safe_kyosha_is_proven_at_thirty() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("1111"),
+            "B": list("1111"),
+            "C": list("1285"),
+            "D": list("1111"),
+        },
+        dealer="A",
+    )
+    state.phase = "receive"
+    state.turn = "C"
+    state.attacker = "D"
+    state.current_attack = "5"
+
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent._ensure_trackers(state)
+    tracker = agent._track[id(state)]
+    tracker["public_seen_counts"]["2"] = 3
+    tracker["public_seen_counts"]["5"] = 1
+
+    result = agent._forced_win_result_after_receive_action(
+        state,
+        "C",
+        ("receive", "8", None),
+    )
+
+    assert result.status == ForcedWinStatus.PROVEN
+    assert result.minimum_score == 30.0
+
+
+def test_royal_cannot_receive_shi_in_forced_win_search() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("1111"),
+            "B": list("1111"),
+            "C": list("1285"),
+            "D": list("1111"),
+        },
+        dealer="A",
+    )
+    state.phase = "receive"
+    state.turn = "C"
+    state.attacker = "D"
+    state.current_attack = "1"
+
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent._ensure_trackers(state)
+    result = agent._forced_win_result_after_receive_action(
+        state,
+        "C",
+        ("receive", "8", None),
+    )
+
+    assert result.status == ForcedWinStatus.COUNTEREXAMPLE
+    assert result.minimum_score is None
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_endgame_mixin()
     test_endgame_methods_are_owned_by_mixin()
@@ -358,4 +501,8 @@ if __name__ == "__main__":
     test_inferred_endgame_prefers_lower_scoring_enemy_finish()
     test_inferred_endgame_prefers_ally_finish_over_enemy_finish()
     test_high_score_tsume_outranks_kakarigotae()
+    test_second_shi_attack_is_proven_at_thirty_over_safe_kyosha_ten()
+    test_early_forced_win_search_reports_unknown_instead_of_guessing()
+    test_receive_then_safe_kyosha_is_proven_at_thirty()
+    test_royal_cannot_receive_shi_in_forced_win_search()
     print("ENDGAME_MODULE_TEST_OK")
