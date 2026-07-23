@@ -71,6 +71,8 @@ class TrackingMixin:
             ally_shi_signal="unknown",
             shi_attack_mode=False,
             shi_attack_mode_source=None,
+            my_shi_approval_pending=False,
+            my_shi_approval_sent=False,
             i_passed_ally_shi=False,
             inherit_ally_shi_attack=False,
             my_open_shi_attack_pending=False,
@@ -216,6 +218,9 @@ class TrackingMixin:
             tr["ally_passed_enemy_dealer_first_attack_piece"] = str(state.current_attack)
 
         if player == self.me and action_type in ("attack", "attack_after_block"):
+            if tr.get("my_shi_approval_pending"):
+                tr["my_shi_approval_sent"] = (attack == "1")
+                tr["my_shi_approval_pending"] = False
             tr["pending_ally_force_king_attack_piece"] = None
             tr["my_last_receive_piece"] = None
 

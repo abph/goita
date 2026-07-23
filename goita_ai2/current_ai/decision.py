@@ -697,6 +697,17 @@ class DecisionMixin:
             if state.phase == "receive" and state.current_attack == "1" and state.attacker == ally:
                 initial_shis = tr["my_init_count"].get("1", 0)
                 current_shis = state.hands[player].count("1")
+                if tr.get("my_shi_approval_sent"):
+                    pass_action = next(
+                        (act for act in actions if act[0] == "pass"),
+                        None,
+                    )
+                    if pass_action is not None:
+                        self._set_decision_reason("shi_signal")
+                        self._set_score_fallback_detail(
+                            "ally_shi_approval_already_sent_pass"
+                        )
+                        return pass_action
                 can_show_four_shi_signal = (
                     current_shis >= 4
                     or (current_shis >= 3 and "1" in tr.get("my_past_attacks", set()))
@@ -721,6 +732,7 @@ class DecisionMixin:
                         if act[0] == "receive" and act[1] == "1":
                             tr["shi_attack_mode"] = True
                             tr["shi_attack_mode_source"] = "ally_signal_receive"
+                            tr["my_shi_approval_pending"] = True
                             self._set_decision_reason("shi_signal")
                             return act
 
