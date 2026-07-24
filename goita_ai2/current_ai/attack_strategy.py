@@ -189,28 +189,62 @@ class AttackStrategyMixin:
             return 0.0
         return self.SINGLE_MIDDLE_OVER_FOUR_SHI_SIGNAL_PENALTY
 
-    def _four_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
+    def _multi_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
         tr = self._track.get(id(state))
         hand = state.hands[player]
         if (
             tr is None
             or int(tr.get("my_attack_count", 0)) != 0
             or tr.get("my_last_receive_piece") not in ("6", "7")
-            or hand.count("1") < 4
-            or any(piece in hand for piece in ("8", "9"))
+            or hand.count("1") < 3
+            or hand.count("8") + hand.count("9") > 1
             or any(hand.count(piece) >= 2 for piece in ("2", "3", "4", "5", "6", "7"))
         ):
             return 0.0
         return self.FOUR_SHI_AFTER_BIG_RECEIVE_FIRST_ATTACK_BONUS
+
+    def _four_shi_receive_return_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            tr is None
+            or state.phase != "attack"
+            or state.turn != player
+            or int(tr.get("my_attack_count", 0)) != 0
+            or tr.get("my_last_receive_piece") != "1"
+            or int(tr.get("my_init_count", Counter()).get("1", 0)) < 4
+            or hand.count("1") < 3
+            or any(hand.count(piece) >= 2 for piece in ("2", "3", "4", "5", "6", "7"))
+        ):
+            return None
+
+        return next(
+            (
+                action
+                for action in actions
+                if action[0] in ("attack", "attack_after_block") and action[2] == "1"
+            ),
+            None,
+        )
+
+    def _four_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
+        if state.hands[player].count("1") < 4:
+            return 0.0
+        return self._multi_shi_after_big_receive_first_attack_bonus(state, player)
 
     def _shi_attack_score_adjustment(self, state, player: str) -> float:
         tr = self._track.get(id(state))
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
 
-        four_shi_bonus = self._four_shi_after_big_receive_first_attack_bonus(state, player)
-        if four_shi_bonus > 0:
-            return four_shi_bonus
+        multi_shi_bonus = self._multi_shi_after_big_receive_first_attack_bonus(state, player)
+        if multi_shi_bonus > 0:
+            return multi_shi_bonus
 
         exhaust_bonus = self._shi_exhaust_attack_bonus(state, player)
         if exhaust_bonus > 0:

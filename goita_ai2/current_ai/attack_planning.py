@@ -19,6 +19,17 @@ PlanStep = Tuple[str, str]
 class AttackPlanningMixin:
     """Searches provisional block-and-attack routes through the whole hand."""
 
+    def _planned_receive_width(self, hand: List[str]) -> float:
+        """Approximate how many different attacks the remaining hand can receive."""
+        counts = Counter(hand)
+        normal_types = sum(
+            1
+            for piece in ("1", "2", "3", "4", "5", "6", "7")
+            if counts.get(piece, 0) > 0
+        )
+        royal_count = counts.get("8", 0) + counts.get("9", 0)
+        return float(normal_types + royal_count * 2)
+
     def _planned_finish_score(self, block: str, attack: str) -> float:
         if block == attack:
             return float(POINTS.get(attack, 0)) * 2.0
@@ -274,3 +285,102 @@ class AttackPlanningMixin:
             -self.GENERAL_ATTACK_PLAN_BONUS_CAP,
             min(self.GENERAL_ATTACK_PLAN_BONUS_CAP, value),
         )
+
+    def _eight_card_shallow_plan_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        has_non_king_attack_option: bool,
+    ) -> Optional[Tuple[Action, Dict[str, object]]]:
+        """Choose an opening by comparing the whole provisional four-attack route.
+
+        This is intentionally shallower than the exact endgame solver. It assumes
+        each planned attack returns after one round, but it scores the opening,
+        future attack shapes, hidden pieces, receive width, and final pair
+        together instead of choosing the first hidden piece in isolation.
+        """
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "attack"
+            or state.current_attack is not None
+            or state.attacker is not None
+            or len(state.hands[player]) != 8
+            or int(tr.get("my_attack_count", 0)) != 0
+        ):
+            return None
+
+        candidates: List[
+            Tuple[Tuple[float, float, float, float, int, int], Action, Dict[str, object]]
+        ] = []
+        for action in actions:
+            action_type, block, attack = action
+            if action_type != "attack_after_block" or block is None or attack is None:
+                continue
+
+            future = self._future_attack_plan_for_action(state, player, action)
+            if (
+                future is None
+                or len(future.get("remaining_hand", [])) != 6
+                or len(future.get("steps", [])) != 3
+            ):
+                continue
+
+            opening_score = self._score_attack_phase(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+                has_non_king_attack_option=has_non_king_attack_option,
+            )
+            # The normal attack score already includes a capped future-plan
+            # adjustment. Replace it with the uncapped eight-card evaluation.
+            opening_score -= self._future_attack_plan_adjustment(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            )
+
+            remaining = list(future["remaining_hand"])
+            receive_width = self._planned_receive_width(remaining)
+            future_score = float(future["score"])
+            finish_score = float(future["finish_score"])
+            total_score = (
+                opening_score
+                + future_score * self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT
+                + receive_width * self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT
+            )
+
+            steps = [(block, attack)] + list(future["steps"])
+            plan = {
+                "source_hand": sorted(str(piece) for piece in state.hands[player]),
+                "steps": steps,
+                "attacks": [step_attack for _step_block, step_attack in steps],
+                "final_pair": steps[-1],
+                "finish_score": finish_score,
+                "receive_width_after_opening": receive_width,
+                "projected_score": total_score,
+                "inference_revision": int(tr.get("piece_inference_revision", 0)),
+            }
+            key = (
+                total_score,
+                finish_score,
+                receive_width,
+                future_score,
+                POINTS.get(attack, 0),
+                -POINTS.get(block, 0),
+            )
+            candidates.append((key, action, plan))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        _key, action, plan = candidates[0]
+        tr["shallow_eight_card_plan"] = plan
+        return action, plan

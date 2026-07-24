@@ -242,9 +242,24 @@ class ReceiveStrategyMixin:
 
         axes = self._initial_hand_axes_for_state(state, player)
         absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+        dealer = getattr(state, "dealer", None)
+        weak_shi_signal_receive = (
+            attacker == dealer
+            and current_attack in ("3", "4", "5")
+            and absolute_rank in ("D", "E", "F", "X")
+            and state.hands[player].count("1") >= 3
+            and self._effective_receive_type(Counter(state.hands[player])) <= 3
+        )
+        if weak_shi_signal_receive:
+            tr["pending_weak_hand_shi_signal"] = True
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                f"enemy_dealer_first_next_abs{absolute_rank}_weak_shi_signal_receive"
+            )
+            return same_piece_receive
+
         if absolute_rank in ("SS", "S", "A", "B", "C"):
             self._set_decision_reason("score_fallback")
-            dealer = getattr(state, "dealer", None)
             if dealer is not None and attacker == dealer:
                 self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_receive")
             else:
@@ -256,21 +271,18 @@ class ReceiveStrategyMixin:
             if current_attack == "1":
                 if state.hands[player].count("1") >= 2:
                     self._set_decision_reason("score_fallback")
-                    dealer = getattr(state, "dealer", None)
                     if dealer is not None and attacker == dealer:
                         self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_two_shi_receive")
                     else:
                         self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_two_shi_receive")
                     return same_piece_receive
                 self._set_decision_reason("score_fallback")
-                dealer = getattr(state, "dealer", None)
                 if dealer is not None and attacker == dealer:
                     self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_one_shi_pass")
                 else:
                     self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_one_shi_pass")
                 return pass_action
             self._set_decision_reason("score_fallback")
-            dealer = getattr(state, "dealer", None)
             if dealer is not None and attacker == dealer:
                 self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_pass")
             else:
@@ -308,6 +320,92 @@ class ReceiveStrategyMixin:
         self._set_decision_reason("score_fallback")
         self._set_score_fallback_detail(detail)
         return chosen
+
+    def _no_shi_royal_endgame_commit_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        """Use a royal for the third attack route when passing leaves no shi defence."""
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or int(tr.get("my_attack_count", 0)) != 2
+            or len(state.hands[player]) != 4
+            or "1" in state.hands[player]
+        ):
+            return None
+
+        royal_receives = [
+            action
+            for action in actions
+            if action[0] == "receive" and action[1] in ("8", "9")
+        ]
+        if not royal_receives:
+            return None
+
+        royal_receives.sort(
+            key=lambda action: self._score_receive_phase(
+                state,
+                player,
+                action[0],
+                action[1],
+            ),
+            reverse=True,
+        )
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail("receive_no_shi_royal_endgame_commit")
+        return royal_receives[0]
+
+    def _full_receive_cover_royal_wait_pass_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        """Delay a proven low-score finish when し・香・玉・王 cover every next attack."""
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.current_attack not in ("3", "4", "5", "6", "7")
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or int(tr.get("my_attack_count", 0)) != 2
+            or not bool(state.had_both_kings.get(player, False))
+        ):
+            return None
+
+        hand = state.hands[player]
+        if Counter(hand) != Counter(("1", "2", "8", "9")):
+            return None
+
+        attacker = state.attacker
+        if (
+            int(tr.get("enemy_attack_counts", {}).get(attacker, 0)) != 2
+            or len(state.hands[attacker]) != 4
+        ):
+            return None
+
+        # An enemy with two cards could receive before our next turn and finish
+        # immediately, so the waiting route is no longer guaranteed.
+        for enemy in ("A", "B", "C", "D"):
+            if enemy == player or self._same_team(enemy, player):
+                continue
+            if enemy != attacker and len(state.hands[enemy]) <= 2:
+                return None
+
+        pass_action = next((action for action in actions if action[0] == "pass"), None)
+        if pass_action is None:
+            return None
+
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail("pass_full_receive_cover_royal_wait_high_score")
+        return pass_action
 
     def _early_big_piece_same_receive_action(
         self,
@@ -575,11 +673,25 @@ class ReceiveStrategyMixin:
             return None
         hand_after.remove(block)
 
+        fourth_middle_followups: set[str] = set()
+        tr = self._track.get(id(state))
+        if tr is not None and int(tr.get("my_attack_count", 0)) == 2:
+            fourth_middle_followups = {
+                piece
+                for piece in ("3", "4", "5")
+                if piece in hand_after
+                and (
+                    int(tr.get("public_seen_counts", {}).get(piece, 0))
+                    + hand_after.count(piece)
+                    >= self._piece_total(piece)
+                )
+            }
+
         strong_followups = set(self._strong_ally_receive_followup_pieces(hand_after))
         candidates = [
             p
             for p in set(hand_after)
-            if p in strong_followups
+            if p in strong_followups | fourth_middle_followups
             and self._attack_forces_enemy_king_receive(state, player, p, hand_after)
         ]
         if not candidates:
@@ -597,6 +709,84 @@ class ReceiveStrategyMixin:
         if self._ally_force_king_attack_piece_after_receive(state, player, action_type, block) is not None:
             return self.ALLY_FORCE_KING_RECEIVE_BONUS
         return 0.0
+
+    def _ally_kyosha_continuation_pass_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        tr = self._track.get(id(state))
+        ally = state.attacker
+        if (
+            tr is None
+            or state.phase != "receive"
+            or state.current_attack != "2"
+            or ally is None
+            or not self._same_team(ally, player)
+            or state.hands[player].count("2") != 1
+            or int(tr.get("my_init_count", Counter()).get("2", 0)) != 1
+        ):
+            return None
+
+        ally_model = tr.get("public_hand_models", {}).get(ally, {})
+        ally_attack_count = int(ally_model.get("attack_count", 0))
+        if (
+            ally_model.get("first_attack") != "2"
+            or ally_attack_count < 1
+            or bool(ally_model.get("strategy_broken"))
+        ):
+            return None
+
+        first_responder = state.next_player(ally)
+        if (
+            state.next_player(first_responder) != player
+            or self._same_team(first_responder, player)
+        ):
+            return None
+
+        _remaining_min, remaining_max = self._estimate_remaining_range(
+            tr,
+            ally,
+            "2",
+        )
+        if ally_attack_count == 1 and remaining_max < 1:
+            return None
+
+        hand_after_receive = list(state.hands[player])
+        hand_after_receive.remove("2")
+        if any(
+            hand_after_receive.count(piece) >= 3
+            for piece in ("3", "4", "5")
+        ):
+            return None
+
+        enemies = [
+            seat
+            for seat in ("A", "B", "C", "D")
+            if not self._same_team(seat, player)
+        ]
+        if any(len(state.hands[enemy]) <= 2 for enemy in enemies):
+            return None
+
+        pass_action = next(
+            (action for action in actions if action[0] == "pass"),
+            None,
+        )
+        same_piece_receive = next(
+            (
+                action
+                for action in actions
+                if action[0] == "receive" and action[1] == "2"
+            ),
+            None,
+        )
+        if pass_action is None or same_piece_receive is None:
+            return None
+
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail("pass_ally_kyosha_continuation")
+        return pass_action
 
     def _king_gyoku_opening_keep_receive_width_action(
         self,

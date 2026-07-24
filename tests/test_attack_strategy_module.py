@@ -13,6 +13,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
     for method_name in (
         "_dealer_opening_plan_adjustment",
         "_four_shi_after_big_receive_first_attack_bonus",
+        "_four_shi_receive_return_action",
+        "_multi_shi_after_big_receive_first_attack_bonus",
         "_fourth_middle_early_attack_delay_penalty",
         "_fourth_middle_third_attack_bonus",
         "_second_kyosha_single_shi_block_adjustment",
@@ -71,6 +73,150 @@ def test_four_shi_is_preferred_after_receiving_big_piece() -> None:
 
     assert chosen == ("attack", None, "1")
     assert agents["B"].last_score_fallback_detail == "attack_four_shi_over_single_middle"
+
+
+def test_three_shi_is_preferred_over_singletons_after_receiving_big_piece() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("45114125"),
+            "B": list("72373245"),
+            "C": list("13119361"),
+            "D": list("16241185"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("B", ("attack_after_block", "3", "7")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "3", "7")),
+        ("C", ("receive", "9", None)),
+        ("C", ("attack", None, "3")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "6")),
+        ("D", ("receive", "6", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    d_agent = agents["D"]
+    chosen = d_agent.select_action(state, "D", state.legal_actions("D"))
+
+    assert chosen == ("attack", None, "1")
+    assert d_agent.last_decision_reason == "score_fallback"
+    assert d_agent.last_score_fallback_detail == "attack_three_shi_after_big_receive"
+
+
+def test_four_shi_receive_returns_shi_over_singleton_attacks() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("43412314"),
+            "B": list("17316214"),
+            "C": list("95321111"),
+            "D": list("55875621"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("A", ("attack_after_block", "3", "4")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("attack_after_block", "1", "4")),
+        ("B", ("receive", "4", None)),
+        ("B", ("attack", None, "1")),
+        ("C", ("receive", "1", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    c_agent = agents["C"]
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert state.hands["C"].count("1") == 3
+    assert chosen == ("attack", None, "1")
+    assert c_agent.last_decision_reason == "score_fallback"
+    assert c_agent.last_score_fallback_detail == "attack_four_shi_receive_return"
+
+
+def test_dealer_three_shi_two_single_bigs_and_royal_uses_hisha_then_kaku() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("21755136"),
+            "B": list("41512143"),
+            "C": list("91411267"),
+            "D": list("18243153"),
+        },
+        dealer="C",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent._ensure_trackers(state)
+
+    first = agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert agent._track[id(state)]["special_attack_plan"] == {
+        "label": "dealer_three_shi_two_single_bigs_royal",
+        "sequence": ["7", "6"],
+        "block_sequence": ["1", "1"],
+    }
+    assert first[0] == "attack_after_block"
+    assert first[1] == "1"
+    assert first[2] == "7"
+    assert agent.last_score_fallback_detail == (
+        "attack_sequence_dealer_three_shi_two_single_bigs_royal"
+    )
+
+    state.apply_attack_after_block("C", first[1], first[2])
+    agent.on_public_action(state, "C", first)
+    for passer in ("D", "A", "B"):
+        pass_action = ("pass", None, None)
+        state.apply_pass(passer)
+        agent.on_public_action(state, passer, pass_action)
+
+    second = agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert second[0] == "attack_after_block"
+    assert second[1] == "1"
+    assert second[2] == "6"
+
+    remaining = list(state.hands["C"])
+    remaining.remove(second[1])
+    remaining.remove(second[2])
+    assert sorted(remaining) == ["1", "2", "4", "9"]
 
 
 def test_fourth_kyosha_is_reserved_after_receiving_gold() -> None:
@@ -262,7 +408,8 @@ def test_second_kyosha_keeps_single_shi_and_blocks_low_middle() -> None:
     chosen = a_agent.select_action(state, "A", state.legal_actions("A"))
 
     assert chosen == ("attack_after_block", "4", "2")
-    assert a_agent.last_score_fallback_detail == "block_low_middle_keep_single_shi"
+    assert a_agent.last_decision_reason == "tsume"
+    assert a_agent.last_score_fallback_detail == "high_score_10"
 
 
 def test_third_kyosha_compares_shi_royal_and_big_royal_waits() -> None:
@@ -350,6 +497,9 @@ if __name__ == "__main__":
     test_rule_based_agent_uses_attack_strategy_mixin()
     test_attack_strategy_methods_are_owned_by_mixin()
     test_four_shi_is_preferred_after_receiving_big_piece()
+    test_three_shi_is_preferred_over_singletons_after_receiving_big_piece()
+    test_four_shi_receive_returns_shi_over_singleton_attacks()
+    test_dealer_three_shi_two_single_bigs_and_royal_uses_hisha_then_kaku()
     test_fourth_kyosha_is_reserved_after_receiving_gold()
     test_remaining_silver_pair_continues_three_silver_attack()
     test_second_kyosha_keeps_single_shi_and_blocks_low_middle()

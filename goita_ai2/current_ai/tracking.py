@@ -44,6 +44,7 @@ class TrackingMixin:
             my_attack_count=0,
             my_attack_history=[],
             special_attack_plan=self._special_attack_sequence_plan(cnt_all),
+            shallow_eight_card_plan=None,
             kg_plan_active=(("9" in init_hand) and ("8" in init_hand)),
             kg_second=None,
 
@@ -86,6 +87,9 @@ class TrackingMixin:
             ally_passed_enemy_first_attack_attacker=None,
             ally_passed_enemy_first_attack_piece=None,
             pending_ally_force_king_attack_piece=None,
+            pending_weak_hand_shi_signal=False,
+            pending_inferred_endgame_attack=None,
+            last_forced_win_score_plan=None,
             my_last_receive_piece=None,
             enemy_pending_shi_receive_players=set(),
             enemy_team_rejected_shi_attack=False,

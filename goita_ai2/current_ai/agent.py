@@ -159,6 +159,8 @@ class RuleBasedAgent(
         self.GENERAL_ATTACK_PLAN_THIRD_FOURTH_BONUS = 70.0
         self.GENERAL_ATTACK_PLAN_FUTURE_BLOCK_WEIGHT = 0.25
         self.GENERAL_ATTACK_PLAN_KEEP_LAST_SHI_PENALTY = 35.0
+        self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT = 1.35
+        self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT = 7.0
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
 

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <title>そろうごいた</title>
   <style>
     /* ===== 和風テイストのビジュアル強化 ===== */
@@ -398,6 +399,51 @@
       color: #8b5a2b;
       font-weight: 900;
       transform: none;
+    }
+    @keyframes beginner-support-pulse {
+      0%, 100% { filter: drop-shadow(0 0 2px rgba(37, 112, 57, 0.55)); }
+      50% { filter: drop-shadow(0 0 8px rgba(37, 112, 57, 0.95)); }
+    }
+    .hand-row-pieces .hand.beginner-recommended {
+      background: linear-gradient(135deg, #e8f7bd, #8ac56f);
+      outline: 4px solid #257039;
+      outline-offset: 3px;
+      animation: beginner-support-pulse 1.25s ease-in-out infinite;
+      z-index: 2;
+    }
+    .hand-row-pieces .hand.beginner-recommended .val {
+      color: #174f29;
+    }
+    .pass.beginner-recommended {
+      border-color: #257039;
+      box-shadow: 0 0 0 3px rgba(37, 112, 57, 0.28);
+      color: #1f5f31;
+      animation: beginner-support-pulse 1.25s ease-in-out infinite;
+    }
+    .beginner-support-note {
+      border-left: 5px solid #257039;
+      background: #f4faef;
+      color: #23402b;
+      padding: 9px 12px;
+      font-family: sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .beginner-support-note strong {
+      display: inline-block;
+      margin-right: 6px;
+      color: #185329;
+    }
+    .beginner-support-rule {
+      margin-top: 3px;
+      color: #7a4b00;
+      font-size: 12px;
+    }
+    .settings-help-text {
+      margin: 3px 0 0 24px;
+      color: #666;
+      font-size: 12px;
+      line-height: 1.45;
     }
 
     .pass-btn-area {
@@ -1653,6 +1699,10 @@
       <div class="settings-row">
         <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
       </div>
+      <div id="beginnerSupportSettingRow" class="settings-row">
+        <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
+        <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+      </div>
       <details id="soundSettingsDetails" class="settings-disclosure">
         <summary>
           <span class="when-closed">▶ 音の設定を開く</span>
@@ -1869,6 +1919,7 @@ function loadPersonalSettings() {
                 ? saved.pieceSound
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
+            enableBeginnerSupport: saved.enableBeginnerSupport === true,
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
                 ? saved.mobileChatWidth
@@ -1884,6 +1935,7 @@ function loadPersonalSettings() {
             enableSoundEffects: true,
             pieceSound: "notanomori",
             enableCVoice: false,
+            enableBeginnerSupport: false,
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
             mobileChatTransparency: 0,
@@ -1935,6 +1987,8 @@ let logAnimationGeneration = 0;
 let cpuTimer = null; 
 let latestState = null;
 let latestLegal = [];
+let latestBeginnerRecommendation = null;
+let beginnerRecommendationKey = "";
 let pending = null;
 let isGameStarted = false; 
 let activeRoomId = null;
@@ -2444,6 +2498,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
+    document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("personalSettingsStatus").textContent = "";
 }
 
@@ -2459,6 +2514,7 @@ function openSettingsModal(targetGid, event) {
     document.getElementById("adminAuthArea").style.display = "block";
     document.getElementById("roomManagementFields").style.display = "none";
     document.getElementById("roomManagementTab").style.display = targetGid === MAIN_GID ? "none" : "block";
+    document.getElementById("beginnerSupportSettingRow").style.display = targetGid === MAIN_GID ? "none" : "block";
     ["mobileChatSettingsDetails", "soundSettingsDetails"].forEach((id) => {
         const details = document.getElementById(id);
         if (details) details.open = false;
@@ -2485,7 +2541,10 @@ async function savePersonalSettings() {
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
+        enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
     };
+    latestBeginnerRecommendation = null;
+    beginnerRecommendationKey = "";
     applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
@@ -3672,6 +3731,95 @@ function rerenderPendingPreview(){
   renderHands(latestState);
 }
 
+function beginnerSupportActive(state = latestState){
+  return (
+    personalSettings.enableBeginnerSupport === true &&
+    gid !== MAIN_GID &&
+    !isSpectator() &&
+    state?.is_started === true &&
+    state?.finished !== true &&
+    state?.turn === mySeat
+  );
+}
+
+function beginnerRecommendedPiece(piece){
+  if(!beginnerSupportActive() || !latestBeginnerRecommendation?.action) return false;
+  const action = latestBeginnerRecommendation.action;
+
+  if(pending?.need === "attack"){
+    return (
+      action.action_type === "attack_after_block" &&
+      pending.block === action.block &&
+      piece === action.attack
+    );
+  }
+  if(action.action_type === "attack_after_block" || action.action_type === "receive"){
+    return piece === action.block;
+  }
+  if(action.action_type === "attack"){
+    return piece === action.attack;
+  }
+  return false;
+}
+
+function beginnerSupportRuleText(state){
+  if(!beginnerSupportActive(state)) return "";
+  const hand = state.hands?.[mySeat];
+  if(!Array.isArray(hand)) return "";
+  if(["1", "2"].includes(String(state.current_attack)) && hand.some(piece => piece === "8" || piece === "9")){
+    return "しと香は、王・玉では受けられません。";
+  }
+  return "";
+}
+
+function renderBeginnerSupportNote(state, area){
+  if(!beginnerSupportActive(state) || !latestBeginnerRecommendation?.action) return;
+
+  const action = latestBeginnerRecommendation.action;
+  const forcedPass = (
+    action.action_type === "pass" &&
+    latestBeginnerRecommendation.forced === true
+  );
+  const note = document.createElement("div");
+  note.className = "beginner-support-note";
+
+  const heading = document.createElement("strong");
+  heading.textContent = forcedPass ? "操作" : "おすすめ";
+  note.appendChild(heading);
+
+  const guide = document.createElement("span");
+  if(forcedPass){
+    guide.textContent = "受けられる駒がないため、パスしてください。";
+  }else if(action.action_type === "attack_after_block" && !pending){
+    guide.textContent = "まず伏せる駒を選びます。";
+  }else if(action.action_type === "attack_after_block"){
+    guide.textContent = "次に攻める駒を選びます。";
+  }else if(action.action_type === "receive"){
+    guide.textContent = "受ける駒を選びます。";
+  }else if(action.action_type === "attack"){
+    guide.textContent = "攻める駒を選びます。";
+  }else{
+    guide.textContent = "今回はパスを選びます。";
+  }
+  note.appendChild(guide);
+
+  if(!forcedPass && latestBeginnerRecommendation.explanation){
+    const explanation = document.createElement("div");
+    explanation.textContent = latestBeginnerRecommendation.explanation;
+    note.appendChild(explanation);
+  }
+
+  const ruleText = beginnerSupportRuleText(state);
+  if(ruleText){
+    const rule = document.createElement("div");
+    rule.className = "beginner-support-rule";
+    rule.textContent = ruleText;
+    note.appendChild(rule);
+  }
+
+  area.appendChild(note);
+}
+
 function sanitizeName(s){
   s = (s ?? "").toString().replace(/\r?\n/g, "");
   if(s.length > 9) s = s.slice(0,9);
@@ -3901,6 +4049,13 @@ async function onPassClick(){
 
   const pass = latestLegal.find(a => a.action_type === "pass");
   if(!pass){ setHint("今はパスできません。"); return; }
+
+  const canReceive = latestLegal.some(a => a.action_type === "receive");
+  const passIsRecommended = latestBeginnerRecommendation?.action?.action_type === "pass";
+  if(beginnerSupportActive(latestState) && canReceive && !passIsRecommended){
+    const shouldPass = window.confirm("受けられる駒があります。本当にパスしますか？");
+    if(!shouldPass) return;
+  }
 
   pending = null;
   await submitAction(pass);
@@ -4244,6 +4399,9 @@ function renderHands(state) {
           pieceDiv.classList.add(seatIsAi(state, seat) ? "ai" : "human");
           if(isFaceDown) pieceDiv.classList.add("face-down");
           if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
+          if(!isFaceDown && beginnerRecommendedPiece(card)){
+            pieceDiv.classList.add("beginner-recommended");
+          }
 
           const valDiv = document.createElement("div");
           valDiv.className = "val";
@@ -4282,6 +4440,12 @@ function renderHands(state) {
           passBtn.classList.add("disabled");
           passBtn.disabled = true;
       }
+      if(
+        beginnerSupportActive(state) &&
+        latestBeginnerRecommendation?.action?.action_type === "pass"
+      ){
+        passBtn.classList.add("beginner-recommended");
+      }
       passBtnWrap.appendChild(passBtn);
 
       const autoBtn = document.createElement("button");
@@ -4298,6 +4462,8 @@ function renderHands(state) {
 
     area.appendChild(rowDiv);
   });
+
+  renderBeginnerSupportNote(state, area);
 }
 
 async function renderActions(){
@@ -4417,6 +4583,49 @@ async function fetchLegal(){
   return Array.isArray(acts) ? acts : [];
 }
 
+async function fetchBeginnerRecommendation(state){
+  if(!beginnerSupportActive(state)){
+    latestBeginnerRecommendation = null;
+    beginnerRecommendationKey = "";
+    return null;
+  }
+
+  const lastLog = Array.isArray(state.log) && state.log.length
+    ? String(state.log[state.log.length - 1])
+    : "";
+  const hand = Array.isArray(state.hands?.[mySeat]) ? state.hands[mySeat].join("") : "";
+  const key = [
+    gid,
+    state.round_count || 1,
+    state.turn,
+    state.phase,
+    state.current_attack || "",
+    hand,
+    lastLog,
+  ].join("|");
+  if(key === beginnerRecommendationKey){
+    return latestBeginnerRecommendation;
+  }
+
+  beginnerRecommendationKey = key;
+  try{
+    const qs = new URLSearchParams({
+      player: mySeat,
+      client_id: clientId,
+    });
+    const res = await fetch(`${API}/games/${gid}/beginner_recommendation?${qs.toString()}`);
+    if(!res.ok){
+      latestBeginnerRecommendation = null;
+      return null;
+    }
+    const data = await res.json();
+    latestBeginnerRecommendation = data?.action ? data : null;
+  }catch(e){
+    latestBeginnerRecommendation = null;
+  }
+  return latestBeginnerRecommendation;
+}
+
 async function refresh(){
   if(isProcessingCpu) return;
 
@@ -4466,6 +4675,7 @@ async function refresh(){
   if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
   latestLegal = await fetchLegal();
+  await fetchBeginnerRecommendation(state);
 
   const currentLogCount = state.log ? state.log.length : 0;
 

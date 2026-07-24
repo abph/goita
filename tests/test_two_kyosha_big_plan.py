@@ -102,6 +102,61 @@ def test_two_kyosha_single_big_with_one_royal_uses_kyosha_big_kyosha() -> None:
     assert first_action[1] not in ("2", "7")
 
 
+def test_two_kyosha_big_pair_order_depends_on_royal() -> None:
+    agent = RuleBasedAgent()
+
+    assert agent._two_kyosha_big_pair_attack_plan(
+        Counter(["2", "2", "3", "3", "4", "5", "7", "7"])
+    ) == ["2", "7"]
+    assert agent._two_kyosha_big_pair_attack_plan(
+        Counter(["1", "2", "2", "3", "4", "7", "7", "9"])
+    ) == ["7", "2"]
+
+
+def test_two_kyosha_big_pair_without_royal_starts_kyosha_then_big() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11124455"),
+            "B": list("22334577"),
+            "C": list("11113369"),
+            "D": list("14611158"),
+        },
+        dealer="B",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("B")
+
+    first = agent.select_action(state, "B", state.legal_actions("B"))
+    assert first[0] == "attack_after_block"
+    assert first[2] == "2"
+    assert agent.last_score_fallback_detail == "attack_sequence_two_kyosha_big_pair"
+    _apply_public_action(agent, state, "B", first)
+    for passer in ("C", "D", "A"):
+        _apply_public_action(agent, state, passer, ("pass", None, None))
+
+    second = agent.select_action(state, "B", state.legal_actions("B"))
+    assert second[0] == "attack_after_block"
+    assert second[2] == "7"
+
+    remaining = list(state.hands["B"])
+    assert second[1] is not None
+    remaining.remove(second[1])
+    remaining.remove("7")
+    assert "2" in remaining or "7" in remaining
+
+
+def test_two_kyosha_big_pair_with_royal_starts_big_then_kyosha() -> None:
+    state = _state(["1", "2", "2", "3", "4", "7", "7", "9"])
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+
+    first = _choose_and_apply(agent, state)
+    assert first[2] == "7"
+    _return_attack_to_a(state)
+    second = _choose_and_apply(agent, state)
+    assert second[2] == "2"
+
+
 def test_kakarigotae_stays_above_two_kyosha_single_big_plan() -> None:
     state = _state(["1", "1", "1", "2", "2", "3", "4", "7"])
     agent = RuleBasedAgent()
@@ -131,7 +186,7 @@ def test_big_piece_is_not_treated_as_kakarigotae() -> None:
 
 def test_two_kyosha_gold_pair_uses_gold_then_kyosha_without_royal() -> None:
     attacks, first_action = _attack_sequence(["1", "1", "2", "2", "3", "5", "5", "6"])
-    assert attacks == ["5", "2", "2"]
+    assert attacks[:2] == ["5", "2"]
     assert first_action[1] != "2"
 
 
@@ -186,6 +241,87 @@ def test_two_kyosha_middle_pair_royal_allows_horse_pair_and_big_piece() -> None:
     assert agent._two_kyosha_middle_pair_royal_attack_plan(
         Counter(["1", "2", "2", "3", "3", "6", "7", "9"])
     ) == ["2", "3"]
+
+
+def test_two_kyosha_middle_pair_without_royal_uses_pair_then_kyosha() -> None:
+    agent = RuleBasedAgent()
+
+    assert agent._two_kyosha_middle_pair_attack_plan(
+        Counter(["1", "1", "1", "2", "2", "3", "3", "4"])
+    ) == ["3", "2"]
+    assert agent._two_kyosha_middle_pair_attack_plan(
+        Counter(["1", "1", "1", "2", "2", "4", "4", "5"])
+    ) == ["4", "2"]
+    assert agent._two_kyosha_middle_pair_attack_plan(
+        Counter(["1", "1", "1", "2", "2", "3", "5", "5"])
+    ) == ["5", "2"]
+
+
+def test_two_kyosha_horse_pair_without_royal_starts_with_horse_after_receive() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("89167531"),
+            "B": list("51171156"),
+            "C": list("12321413"),
+            "D": list("35144224"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("A", ("attack_after_block", "1", "6")),
+        ("B", ("receive", "6", None)),
+        ("B", ("attack", None, "5")),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "5", None)),
+        ("D", ("attack", None, "4")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "4", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            assert block is not None
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            assert attack is not None
+            state.apply_attack(action_player, attack)
+        else:
+            assert block is not None and attack is not None
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    c_agent = agents["C"]
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert c_agent._track[id(state)]["special_attack_plan"] == {
+        "label": "two_kyosha_middle_pair",
+        "sequence": ["3", "2"],
+    }
+    assert chosen == ("attack", None, "3")
+    assert c_agent.last_score_fallback_detail == "attack_sequence_two_kyosha_middle_pair"
+
+    _apply_public_action(c_agent, state, "C", chosen)
+    for passer in ("D", "A", "B"):
+        _apply_public_action(c_agent, state, passer, ("pass", None, None))
+
+    second = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert second[0] == "attack_after_block"
+    assert second[2] == "2"
+
+    remaining = list(state.hands["C"])
+    assert second[1] is not None
+    remaining.remove(second[1])
+    remaining.remove("2")
+    assert "2" in remaining or "3" in remaining
 
 
 def test_middle_pair_single_big_without_royal_uses_pair_pair_big() -> None:
@@ -325,12 +461,17 @@ if __name__ == "__main__":
     test_two_kyosha_single_big_without_royal_uses_big_then_kyosha()
     test_two_kyosha_two_singleton_bigs_without_royal_uses_one_big_first()
     test_two_kyosha_single_big_with_one_royal_uses_kyosha_big_kyosha()
+    test_two_kyosha_big_pair_order_depends_on_royal()
+    test_two_kyosha_big_pair_without_royal_starts_kyosha_then_big()
+    test_two_kyosha_big_pair_with_royal_starts_big_then_kyosha()
     test_kakarigotae_stays_above_two_kyosha_single_big_plan()
     test_big_piece_is_not_treated_as_kakarigotae()
     test_two_kyosha_gold_pair_uses_gold_then_kyosha_without_royal()
     test_two_kyosha_gold_pair_with_one_royal_uses_kyosha_then_gold()
     test_two_kyosha_middle_pair_royal_uses_kyosha_then_silver_after_receive()
     test_two_kyosha_middle_pair_royal_allows_horse_pair_and_big_piece()
+    test_two_kyosha_middle_pair_without_royal_uses_pair_then_kyosha()
+    test_two_kyosha_horse_pair_without_royal_starts_with_horse_after_receive()
     test_middle_pair_single_big_without_royal_uses_pair_pair_big()
     test_middle_pair_single_big_with_one_royal_uses_pair_big_pair()
     test_middle_pair_single_big_generalizes_to_silver_and_horse()

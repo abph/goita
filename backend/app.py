@@ -610,6 +610,103 @@ def _actions_to_json(actions: List[Tuple[str, Optional[str], Optional[str]]]) ->
     return [{"action_type": t, "block": b, "attack": a} for (t, b, a) in actions]
 
 
+def _beginner_support_score_preview(
+    state: GoitaState,
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+) -> Optional[int]:
+    action_type, block, attack = action
+    if attack is None:
+        return None
+
+    hand_len = len(state.hands[player])
+    is_agari = (
+        (action_type == "attack" and hand_len == 1)
+        or (action_type == "attack_after_block" and hand_len == 2)
+    )
+    if not is_agari:
+        return None
+
+    base_score = int(PIECE_POINTS.get(str(attack), 0))
+    if action_type != "attack_after_block":
+        return base_score
+    if {str(block), str(attack)} == {"8", "9"}:
+        return 100
+    if block == attack:
+        return base_score * 2
+    return base_score
+
+
+def _beginner_support_explanation(
+    state: GoitaState,
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+    agent: Any,
+) -> str:
+    action_type, block, attack = action
+    block_label = str(PIECE_KANJI.get(str(block), block or ""))
+    attack_label = str(PIECE_KANJI.get(str(attack), attack or ""))
+    reason = str(getattr(agent, "last_decision_reason", "") or "")
+    detail = str(getattr(agent, "last_score_fallback_detail", "") or "")
+    combined_reason = f"{reason}/{detail}".lower()
+
+    if action_type == "pass":
+        attacker = state.attacker
+        is_ally_attack = (
+            attacker is not None
+            and attacker != player
+            and (
+                {attacker, player}.issubset({"A", "C"})
+                or {attacker, player}.issubset({"B", "D"})
+            )
+        )
+        if is_ally_attack:
+            return (
+                "味方の駒は基本的にパスします。"
+                "3香を持っている、しを持っていないなど、"
+                "大きな理由がない限りはパスしましょう。"
+            )
+        current_attack = state.current_attack
+        hand = state.hands.get(player, [])
+        has_royal = any(piece in hand for piece in ("8", "9"))
+        if (
+            current_attack not in (None, "1", "2")
+            and current_attack not in hand
+            and has_royal
+        ):
+            return "王（玉）を温存するため、今回はパスがおすすめです。"
+        if "ally" in combined_reason or "shi_signal" in combined_reason:
+            return "味方の反応を見るため、今回はパスがおすすめです。"
+        return "大切な駒を温存するため、今回はパスがおすすめです。"
+
+    if action_type == "receive":
+        if block in ("8", "9"):
+            message = f"{block_label}で受けて、次の攻めにつなげるのがおすすめです。"
+        else:
+            message = f"{block_label}で受けて、攻め返すのがおすすめです。"
+    elif action_type == "attack_after_block":
+        message = f"{block_label}を伏せて、{attack_label}で攻めるのがおすすめです。"
+    else:
+        message = f"{attack_label}で攻めるのがおすすめです。"
+
+    projected_score = _beginner_support_score_preview(state, player, action)
+    if projected_score is not None:
+        return f"{message} この手で上がると{projected_score}点です。"
+    if reason == "win_now":
+        return f"{message} この手で上がれます。"
+    if reason in ("tsume", "conditional_tsume", "inferred_endgame"):
+        return f"{message} 上がりにつながる攻め筋を優先します。"
+    if reason == "kakari" or "kakari" in detail:
+        return f"{message} 味方の攻めに合わせて圧力をかけます。"
+    if "high_score" in combined_reason:
+        return f"{message} より高い点数の上がりを狙います。"
+    if "continuous" in combined_reason or "attack_sequence" in combined_reason:
+        return f"{message} 同じ種類の駒を続けて、相手に圧力をかけます。"
+    if attack == "1":
+        return f"{message} しを多く持っていることを味方に伝えます。"
+    return message
+
+
 def _build_scores(state: GoitaState) -> Dict[str, Any]:
     ts = getattr(state, "team_score", None)
     if isinstance(ts, dict):
@@ -771,6 +868,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
     return {
         "state": state,
         "agents": agents,
+        "beginner_support_agents": _create_agents("current"),
         "ai_profile": ai_profile,
         "log": [],
         "board": _new_board_snapshot(),
@@ -969,6 +1067,7 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
 
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
     _notify_public(agents, state, player, agent_action)
+    _notify_public(game.get("beginner_support_agents", {}), state, player, agent_action)
 
     _handle_round_finish(game, state, agent_action, effects)
     return {"status": "ok", "player": player}
@@ -1523,6 +1622,7 @@ async def step(game_id: str, req: StepRequest):
     
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
+    _notify_public(game.get("beginner_support_agents", {}), state, player, action)
 
     _handle_round_finish(game, state, action, effects)
 
@@ -1624,6 +1724,60 @@ def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
     if state.finished or state.turn != player:
         return []
     return _actions_to_json(state.legal_actions(player))
+
+
+@app.get("/games/{game_id}/beginner_recommendation")
+def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str = ""):
+    if game_id == MAIN_GID:
+        raise HTTPException(status_code=403, detail="Beginner support is available only in private rooms.")
+
+    player = _validate_seat(player, name="player")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if not _client_owns_human_seat(game, player, client_id):
+        raise HTTPException(status_code=403, detail="This seat is owned by another client.")
+    if not game.get("is_started"):
+        return {}
+
+    state: GoitaState = game["state"]
+    if state.finished or state.turn != player:
+        return {}
+
+    legal_actions = state.legal_actions(player)
+    if not legal_actions:
+        return {}
+
+    support_agents = game.get("beginner_support_agents")
+    if not isinstance(support_agents, dict):
+        support_agents = _create_agents("current")
+        game["beginner_support_agents"] = support_agents
+    source_agent = support_agents.get(player)
+    if source_agent is None:
+        return {}
+
+    recommendation_agent = copy.deepcopy(source_agent)
+    action = recommendation_agent.select_action(state, player, legal_actions)
+    if action not in legal_actions:
+        return {}
+    forced = len(legal_actions) == 1
+    explanation = (
+        "受けられる駒がないため、パスしてください。"
+        if forced and action[0] == "pass"
+        else _beginner_support_explanation(
+            state,
+            player,
+            action,
+            recommendation_agent,
+        )
+    )
+
+    return {
+        "action": _actions_to_json([action])[0],
+        "forced": forced,
+        "explanation": explanation,
+        "projected_score": _beginner_support_score_preview(state, player, action),
+    }
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)

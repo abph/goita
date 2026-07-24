@@ -195,8 +195,10 @@ class DecisionMixin:
 
             if (
                 attack == "1"
-                and self._four_shi_after_big_receive_first_attack_bonus(state, player) > 0
+                and self._multi_shi_after_big_receive_first_attack_bonus(state, player) > 0
             ):
+                if state.hands[player].count("1") == 3:
+                    return "attack_three_shi_after_big_receive"
                 return "attack_four_shi_over_single_middle"
 
             if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
@@ -293,6 +295,83 @@ class DecisionMixin:
             for (t, _b, a) in actions
         )
 
+        # Compare every publicly proven finish before applying local attack plans.
+        high_score_tsume = self._high_score_tsume_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if high_score_tsume is not None:
+            chosen, route_score, immediate = high_score_tsume
+            if tr is not None and chosen[0] in ("attack", "attack_after_block"):
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                tr["pending_weak_hand_shi_signal"] = False
+                tr["pending_ally_force_king_attack_piece"] = None
+                tr["pending_inferred_endgame_attack"] = None
+                if (
+                    tr.get("kg_plan_active")
+                    and tr["my_attack_count"] == 2
+                    and chosen[2] in ("8", "9")
+                    and tr.get("kg_second") is None
+                ):
+                    tr["kg_second"] = chosen[2]
+                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                    tr["kg_plan_active"] = False
+            self._set_decision_reason("win_now" if immediate else "tsume")
+            self._set_score_fallback_detail(f"high_score_{int(route_score)}")
+            return chosen
+
+        royal_bridge = self._royal_bridge_finish_action(state, player, actions)
+        if royal_bridge is not None:
+            chosen, finish_score = royal_bridge
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                tr["pending_weak_hand_shi_signal"] = False
+                tr["pending_ally_force_king_attack_piece"] = None
+                tr["pending_inferred_endgame_attack"] = None
+            self._set_decision_reason("tsume")
+            self._set_score_fallback_detail(
+                f"royal_bridge_high_score_{int(finish_score)}"
+            )
+            return chosen
+
+        if tr is not None and tr.get("pending_inferred_endgame_attack") is not None:
+            planned_attack = tr.get("pending_inferred_endgame_attack")
+            tr["pending_inferred_endgame_attack"] = None
+            if planned_attack in actions:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("inferred_endgame")
+                self._set_score_fallback_detail("inferred_endgame_followup_attack")
+                return planned_attack
+
+        if tr is not None and tr.get("pending_weak_hand_shi_signal"):
+            attack_actions = [
+                (t, b, a)
+                for (t, b, a) in actions
+                if t in ("attack", "attack_after_block") and a is not None
+            ]
+            win_now_actions = [
+                (self._win_now_bonus(state, player, act), act)
+                for act in attack_actions
+                if self._win_now_bonus(state, player, act) > 0
+            ]
+            if win_now_actions:
+                win_now_actions.sort(key=lambda item: item[0], reverse=True)
+                chosen = win_now_actions[0][1]
+                tr["pending_weak_hand_shi_signal"] = False
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("win_now")
+                return chosen
+
+            shi_attack = next((act for act in attack_actions if act[2] == "1"), None)
+            tr["pending_weak_hand_shi_signal"] = False
+            if shi_attack is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail("attack_weak_hand_shi_signal")
+                return shi_attack
+
         if tr is not None and tr.get("pending_ally_force_king_attack_piece"):
             attack_actions = [
                 (t, b, a)
@@ -338,25 +417,6 @@ class DecisionMixin:
             self._set_score_fallback_detail(
                 f"reach_avoid_next_{next_enemy}_piece_{chosen[2]}_risk_{int(round(receive_risk * 100))}"
             )
-            return chosen
-
-        # A forced scoring route outranks kakarigotae and other attack signals.
-        high_score_tsume = self._high_score_tsume_action(
-            state,
-            player,
-            actions,
-            has_non_king_attack_option=has_non_king_attack_option,
-        )
-        if high_score_tsume is not None:
-            chosen, route_score, immediate = high_score_tsume
-            if tr is not None and chosen[0] in ("attack", "attack_after_block"):
-                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and chosen[2] in ("8", "9") and tr.get("kg_second") is None:
-                    tr["kg_second"] = chosen[2]
-                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
-                    tr["kg_plan_active"] = False
-            self._set_decision_reason("win_now" if immediate else "tsume")
-            self._set_score_fallback_detail(f"high_score_{int(route_score)}")
             return chosen
 
         kakari_actions: List[Tuple[float, Action]] = []
@@ -418,13 +478,43 @@ class DecisionMixin:
             self._set_decision_reason("responded")
             return chosen
 
+        four_shi_return = self._four_shi_receive_return_action(
+            state,
+            player,
+            actions,
+        )
+        if four_shi_return is not None:
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                tr["shi_attack_mode"] = True
+                tr["shi_attack_mode_source"] = "four_shi_receive_return"
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail("attack_four_shi_receive_return")
+            return four_shi_return
+
         give_way_action = self._give_way_to_ally_guaranteed_win_action(state, player, actions)
         if give_way_action is not None:
             return give_way_action
 
+        full_receive_cover_wait = self._full_receive_cover_royal_wait_pass_action(
+            state,
+            player,
+            actions,
+        )
+        if full_receive_cover_wait is not None:
+            return full_receive_cover_wait
+
         guaranteed_finish_receive = self._guaranteed_finish_receive_action(state, player, actions)
         if guaranteed_finish_receive is not None:
             return guaranteed_finish_receive
+
+        no_shi_royal_commit = self._no_shi_royal_endgame_commit_action(
+            state,
+            player,
+            actions,
+        )
+        if no_shi_royal_commit is not None:
+            return no_shi_royal_commit
 
         inferred_endgame_result = self._inferred_endgame_team_result_action(
             state,
@@ -444,6 +534,14 @@ class DecisionMixin:
                     f"inferred_endgame_min_loss_{winner}_{score}"
                 )
             return chosen
+
+        ally_kyosha_continuation = self._ally_kyosha_continuation_pass_action(
+            state,
+            player,
+            actions,
+        )
+        if ally_kyosha_continuation is not None:
+            return ally_kyosha_continuation
 
         royal_reserve_pass = self._enemy_second_attack_royal_reserve_pass_action(
             state,
@@ -614,6 +712,22 @@ class DecisionMixin:
                 plan_label = tr.get("special_attack_plan", {}).get("label", "special") if tr is not None else "special"
                 self._set_score_fallback_detail(f"attack_sequence_{plan_label}")
             return special_sequence_action
+
+        shallow_eight_card = self._eight_card_shallow_plan_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if shallow_eight_card is not None:
+            chosen, plan = shallow_eight_card
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                f"attack_shallow_eight_card_plan_{int(float(plan['finish_score']))}"
+            )
+            return chosen
 
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
 

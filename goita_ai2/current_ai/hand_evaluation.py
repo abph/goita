@@ -333,30 +333,63 @@ class HandEvaluationMixin:
             return ["2", big_piece, "2"]
         return None
 
-    def _two_kyosha_gold_pair_attack_plan(self, counts: Counter) -> Optional[List[str]]:
-        attack_type = self._classify_attack_type(counts)
-        if attack_type.get("label") != "two_kyosha":
+    def _two_kyosha_big_pair_attack_plan(self, counts: Counter) -> Optional[List[str]]:
+        if counts.get("2", 0) != 2:
             return None
-        if counts.get("5", 0) != 2:
+
+        big_pairs = [piece for piece in ("7", "6") if counts.get(piece, 0) == 2]
+        if len(big_pairs) != 1:
             return None
 
         royal_count = counts.get("8", 0) + counts.get("9", 0)
-        if royal_count not in (0, 1):
-            return None
-        return ["5", "2", "2"]
+        big_piece = big_pairs[0]
+        if royal_count == 0:
+            return ["2", big_piece]
+        if royal_count == 1:
+            return [big_piece, "2"]
+        return None
 
-    def _two_kyosha_middle_pair_royal_attack_plan(self, counts: Counter) -> Optional[List[str]]:
+    def _dealer_three_shi_two_single_bigs_royal_attack_plan(
+        self,
+        counts: Counter,
+    ) -> Optional[List[str]]:
+        if (
+            counts.get("1", 0) != 3
+            or counts.get("6", 0) != 1
+            or counts.get("7", 0) != 1
+            or counts.get("8", 0) + counts.get("9", 0) != 1
+            or any(counts.get(piece, 0) >= 2 for piece in ("2", "3", "4", "5"))
+        ):
+            return None
+        return ["7", "6"]
+
+    def _two_kyosha_middle_pair_attack_plan(self, counts: Counter) -> Optional[List[str]]:
         attack_type = self._classify_attack_type(counts)
         if attack_type.get("label") != "two_kyosha":
             return None
         if counts.get("2", 0) != 2:
             return None
-        if counts.get("8", 0) + counts.get("9", 0) != 1:
-            return None
         middle_pairs = [piece for piece in ("5", "4", "3") if counts.get(piece, 0) == 2]
         if len(middle_pairs) != 1:
             return None
-        return ["2", middle_pairs[0]]
+
+        royal_count = counts.get("8", 0) + counts.get("9", 0)
+        if royal_count not in (0, 1):
+            return None
+        middle_piece = middle_pairs[0]
+        if royal_count == 0:
+            return [middle_piece, "2"]
+        return ["2", middle_piece]
+
+    def _two_kyosha_gold_pair_attack_plan(self, counts: Counter) -> Optional[List[str]]:
+        if counts.get("5", 0) != 2:
+            return None
+        return self._two_kyosha_middle_pair_attack_plan(counts)
+
+    def _two_kyosha_middle_pair_royal_attack_plan(self, counts: Counter) -> Optional[List[str]]:
+        if counts.get("8", 0) + counts.get("9", 0) != 1:
+            return None
+        return self._two_kyosha_middle_pair_attack_plan(counts)
 
     def _middle_pair_single_big_attack_plan(self, counts: Counter) -> Optional[List[str]]:
         attack_type = self._classify_attack_type(counts)
@@ -381,13 +414,27 @@ class HandEvaluationMixin:
         return None
 
     def _special_attack_sequence_plan(self, counts: Counter) -> Optional[Dict[str, object]]:
-        plan = self._two_kyosha_middle_pair_royal_attack_plan(counts)
+        plan = self._dealer_three_shi_two_single_bigs_royal_attack_plan(counts)
         if plan is not None:
-            return {"label": "two_kyosha_middle_pair_royal", "sequence": plan}
+            return {
+                "label": "dealer_three_shi_two_single_bigs_royal",
+                "sequence": plan,
+                "block_sequence": ["1", "1"],
+            }
 
-        plan = self._two_kyosha_gold_pair_attack_plan(counts)
+        plan = self._two_kyosha_big_pair_attack_plan(counts)
         if plan is not None:
-            return {"label": "two_kyosha_gold_pair", "sequence": plan}
+            return {"label": "two_kyosha_big_pair", "sequence": plan}
+
+        plan = self._two_kyosha_middle_pair_attack_plan(counts)
+        if plan is not None:
+            royal_count = counts.get("8", 0) + counts.get("9", 0)
+            label = (
+                "two_kyosha_middle_pair_royal"
+                if royal_count == 1
+                else "two_kyosha_middle_pair"
+            )
+            return {"label": label, "sequence": plan}
 
         plan = self._two_kyosha_single_big_attack_plan(counts)
         if plan is not None:
@@ -413,9 +460,15 @@ class HandEvaluationMixin:
         plan_info = tr.get("special_attack_plan")
         if not isinstance(plan_info, dict):
             return None
+        if (
+            plan_info.get("label") == "dealer_three_shi_two_single_bigs_royal"
+            and state.dealer != player
+        ):
+            return None
         plan = plan_info.get("sequence")
         if not isinstance(plan, list) or not plan:
             return None
+        block_plan = plan_info.get("block_sequence")
 
         step = 0
         for piece in tr.get("my_attack_history", []):
@@ -425,10 +478,22 @@ class HandEvaluationMixin:
             return None
 
         expected_attack = plan[step]
+        expected_block = (
+            block_plan[step]
+            if isinstance(block_plan, list) and step < len(block_plan)
+            else None
+        )
         required_after = Counter(plan[step + 1:])
         candidates: List[Tuple[float, Action]] = []
         for action_type, block, attack in actions:
             if action_type not in ("attack", "attack_after_block") or attack != expected_attack:
+                continue
+            if (
+                action_type == "attack_after_block"
+                and expected_block is not None
+                and expected_block in state.hands[player]
+                and block != expected_block
+            ):
                 continue
 
             remaining = list(state.hands[player])

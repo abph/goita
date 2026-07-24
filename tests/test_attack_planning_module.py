@@ -72,6 +72,35 @@ def test_full_attack_plan_keeps_angle_for_third_attack() -> None:
     assert plan["attacks"][0] == "6"
 
 
+def test_eight_card_shallow_planner_records_complete_route() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11123459"),
+            "B": list("11122334"),
+            "C": list("11124567"),
+            "D": list("13455678"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+
+    chosen = agent.select_action(state, "A", state.legal_actions("A"))
+    plan = agent._track[id(state)]["shallow_eight_card_plan"]
+
+    assert plan is not None
+    assert tuple(plan["steps"][0]) == (chosen[1], chosen[2])
+    assert len(plan["steps"]) == 4
+    assert len(plan["attacks"]) == 4
+    assert plan["finish_score"] == 50.0
+    assert agent.last_score_fallback_detail == "attack_shallow_eight_card_plan_50"
+
+    used = []
+    for block, attack in plan["steps"]:
+        used.extend((block, attack))
+    assert sorted(used) == sorted(state.hands["A"])
+
+
 def test_replanned_third_attack_uses_reserved_angle() -> None:
     agent, state = _horse_kakari_after_angle_state()
     chosen = agent.select_action(state, "C", state.legal_actions("C"))
@@ -88,5 +117,6 @@ def test_replanned_third_attack_uses_reserved_angle() -> None:
 if __name__ == "__main__":
     test_rule_based_agent_uses_attack_planning_mixin()
     test_full_attack_plan_keeps_angle_for_third_attack()
+    test_eight_card_shallow_planner_records_complete_route()
     test_replanned_third_attack_uses_reserved_angle()
     print("ATTACK_PLANNING_MODULE_TEST_OK")

@@ -26,10 +26,12 @@ class ForcedWinStatus(str, Enum):
 
 @dataclass(frozen=True)
 class ForcedWinResult:
-    """Three-valued result; a score exists only for a proven win."""
+    """Three-valued result with guaranteed and branch-weighted scores."""
 
     status: ForcedWinStatus
     minimum_score: Optional[float] = None
+    expected_score: Optional[float] = None
+    maximum_score: Optional[float] = None
 
 
 class EndgameMixin:
@@ -422,8 +424,21 @@ class EndgameMixin:
         return 0.0
 
     @staticmethod
-    def _forced_win_proven(score: float) -> ForcedWinResult:
-        return ForcedWinResult(ForcedWinStatus.PROVEN, float(score))
+    def _forced_win_proven(
+        score: float,
+        *,
+        expected_score: Optional[float] = None,
+        maximum_score: Optional[float] = None,
+    ) -> ForcedWinResult:
+        minimum = float(score)
+        expected = minimum if expected_score is None else float(expected_score)
+        maximum = expected if maximum_score is None else float(maximum_score)
+        return ForcedWinResult(
+            ForcedWinStatus.PROVEN,
+            minimum,
+            expected,
+            maximum,
+        )
 
     @staticmethod
     def _forced_win_counterexample() -> ForcedWinResult:
@@ -432,6 +447,21 @@ class EndgameMixin:
     @staticmethod
     def _forced_win_unknown() -> ForcedWinResult:
         return ForcedWinResult(ForcedWinStatus.UNKNOWN)
+
+    @staticmethod
+    def _forced_win_preference_key(result: ForcedWinResult) -> Tuple[float, float, float]:
+        minimum = float(result.minimum_score or 0.0)
+        expected = (
+            minimum
+            if result.expected_score is None
+            else float(result.expected_score)
+        )
+        maximum = (
+            expected
+            if result.maximum_score is None
+            else float(result.maximum_score)
+        )
+        return minimum, expected, maximum
 
     def _public_unknown_piece_pool(
         self,
@@ -588,7 +618,7 @@ class EndgameMixin:
             if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
         ]
         if proven:
-            result = max(proven, key=lambda item: float(item.minimum_score))
+            result = max(proven, key=self._forced_win_preference_key)
         elif any(result.status == ForcedWinStatus.UNKNOWN for result in candidates):
             result = self._forced_win_unknown()
         else:
@@ -633,7 +663,7 @@ class EndgameMixin:
             if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
         ]
         if proven:
-            return max(proven, key=lambda item: float(item.minimum_score))
+            return max(proven, key=self._forced_win_preference_key)
         if any(result.status == ForcedWinStatus.UNKNOWN for result in receive_results):
             return self._forced_win_unknown()
         return self._forced_win_counterexample()
@@ -668,8 +698,8 @@ class EndgameMixin:
             return memo[key]
 
         # Passing around the table is always a legal enemy response.
-        branches = [
-            self._forced_win_choose_attack(
+        branches: List[Tuple[float, ForcedWinResult]] = [
+            (1.0, self._forced_win_choose_attack(
                 hand,
                 pool,
                 need_block=True,
@@ -679,15 +709,16 @@ class EndgameMixin:
                 external_cards_used=external_cards_used,
                 minimum_enemy_hand=minimum_enemy_hand,
                 memo=memo,
-            )
+            ))
         ]
 
         for receiver in self._forced_win_external_receivers(pool, attack):
+            receiver_weight = max(1.0, float(pool.get(receiver, 0)))
             after_receiver = pool.copy()
             after_receiver[receiver] -= 1
             next_external_used = external_cards_used + 2
             if minimum_enemy_hand > 0 and next_external_used >= minimum_enemy_hand:
-                branches.append(self._forced_win_counterexample())
+                branches.append((receiver_weight, self._forced_win_counterexample()))
                 continue
 
             returned_pieces = [
@@ -696,34 +727,74 @@ class EndgameMixin:
                 if int(after_receiver.get(piece, 0)) > 0
             ]
             if not returned_pieces:
-                branches.append(self._forced_win_unknown())
+                branches.append((receiver_weight, self._forced_win_unknown()))
                 continue
 
             for returned_attack in returned_pieces:
+                branch_weight = receiver_weight * max(
+                    1.0,
+                    float(after_receiver.get(returned_attack, 0)),
+                )
                 after_return = after_receiver.copy()
                 after_return[returned_attack] -= 1
-                branches.append(self._forced_win_resolve_external_return(
-                    hand,
-                    after_return,
-                    returned_attack=returned_attack,
-                    king_used=king_used,
-                    had_both_kings=had_both_kings,
-                    depth=depth - 1,
-                    external_cards_used=next_external_used,
-                    minimum_enemy_hand=minimum_enemy_hand,
-                    memo=memo,
+                branches.append((
+                    branch_weight,
+                    self._forced_win_resolve_external_return(
+                        hand,
+                        after_return,
+                        returned_attack=returned_attack,
+                        king_used=king_used,
+                        had_both_kings=had_both_kings,
+                        depth=depth - 1,
+                        external_cards_used=next_external_used,
+                        minimum_enemy_hand=minimum_enemy_hand,
+                        memo=memo,
+                    ),
                 ))
 
-        if any(result.status == ForcedWinStatus.COUNTEREXAMPLE for result in branches):
+        if any(
+            result.status == ForcedWinStatus.COUNTEREXAMPLE
+            for _weight, result in branches
+        ):
             result = self._forced_win_counterexample()
-        elif any(result.status == ForcedWinStatus.UNKNOWN for result in branches):
+        elif any(
+            result.status == ForcedWinStatus.UNKNOWN
+            for _weight, result in branches
+        ):
             result = self._forced_win_unknown()
         else:
-            result = self._forced_win_proven(min(
-                float(result.minimum_score)
-                for result in branches
-                if result.minimum_score is not None
-            ))
+            proven_branches = [
+                (weight, branch)
+                for weight, branch in branches
+                if branch.minimum_score is not None
+            ]
+            minimum_score = min(
+                float(branch.minimum_score)
+                for _weight, branch in proven_branches
+            )
+            total_weight = sum(weight for weight, _branch in proven_branches)
+            expected_score = sum(
+                weight
+                * float(
+                    branch.expected_score
+                    if branch.expected_score is not None
+                    else branch.minimum_score
+                )
+                for weight, branch in proven_branches
+            ) / max(1.0, total_weight)
+            maximum_score = max(
+                float(
+                    branch.maximum_score
+                    if branch.maximum_score is not None
+                    else branch.minimum_score
+                )
+                for _weight, branch in proven_branches
+            )
+            result = self._forced_win_proven(
+                minimum_score,
+                expected_score=expected_score,
+                maximum_score=maximum_score,
+            )
         memo[key] = result
         return result
 
@@ -740,10 +811,6 @@ class EndgameMixin:
         finish_score = self._finish_score_after_action(state, player, action)
         if finish_score is not None:
             return self._forced_win_proven(finish_score)
-
-        max_hand = int(getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6))
-        if len(state.hands[player]) > max_hand:
-            return self._forced_win_unknown()
 
         tr = self._track.get(id(state))
         if tr is None:
@@ -764,6 +831,17 @@ class EndgameMixin:
         remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
         if remaining is None:
             return self._forced_win_counterexample()
+        max_hand = int(getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6))
+        allow_seven_card_receive_followup = (
+            action_type == "attack"
+            and block is None
+            and len(state.hands[player]) == max_hand + 1
+        )
+        if len(remaining) > max_hand or (
+            len(state.hands[player]) > max_hand
+            and not allow_seven_card_receive_followup
+        ):
+            return self._forced_win_unknown()
 
         return self._forced_win_resolve_attack(
             tuple(sorted(remaining)),
@@ -828,7 +906,7 @@ class EndgameMixin:
             if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None
         ]
         if proven:
-            return max(proven, key=lambda item: float(item.minimum_score))
+            return max(proven, key=self._forced_win_preference_key)
         if any(result.status == ForcedWinStatus.UNKNOWN for result in results):
             return self._forced_win_unknown()
         return self._forced_win_counterexample()
@@ -878,6 +956,57 @@ class EndgameMixin:
         if any(risk is None for risk in king_risks):
             return None
         return min(1.0, attack_risk + sum(float(risk) for risk in king_risks))
+
+    def _royal_bridge_finish_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Tuple[Action, float]]:
+        if (
+            state.phase != "attack"
+            or state.turn != player
+            or len(state.hands[player]) != 4
+        ):
+            return None
+
+        candidates: List[Tuple[float, float, Action]] = []
+        for action in actions:
+            action_type, block, attack = action
+            if (
+                action_type != "attack_after_block"
+                or block is None
+                or attack not in ("8", "9")
+            ):
+                continue
+
+            remaining = self._remaining_hand_after_attack_action(
+                state,
+                player,
+                block,
+                attack,
+            )
+            if remaining is None or len(remaining) != 2:
+                continue
+
+            finish_score = self._pair_finish_score(remaining)
+            if finish_score < 0:
+                continue
+            heuristic = self._score_attack_phase(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+                has_non_king_attack_option=True,
+            )
+            candidates.append((finish_score, heuristic, action))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        finish_score, _heuristic, action = candidates[0]
+        return action, finish_score
 
     def _reach_avoidance_conditional_tsume_action(
         self,
@@ -1183,10 +1312,15 @@ class EndgameMixin:
         if len({candidate[0] for candidate in candidates}) < 2:
             return None
 
-        _utility, action, winner, score, _path = max(
+        _utility, action, winner, score, path = max(
             candidates,
             key=lambda item: item[0],
         )
+        tr["pending_inferred_endgame_attack"] = None
+        if action[0] == "receive" and len(path) >= 2:
+            planned_attack = path[1]
+            if planned_attack[0] in ("attack", "attack_after_block"):
+                tr["pending_inferred_endgame_attack"] = planned_attack
         return action, winner, score
 
     def _high_score_tsume_action(
@@ -1197,13 +1331,58 @@ class EndgameMixin:
         *,
         has_non_king_attack_option: bool,
     ) -> Optional[Tuple[Action, float, bool]]:
-        candidates: List[Tuple[float, int, float, Action]] = []
+        tr = self._track.get(id(state))
+        candidates: List[
+            Tuple[float, float, float, int, int, float, Action]
+        ] = []
         for action in actions:
             action_type, block, attack = action
             if action_type not in ("attack", "attack_after_block") or attack is None:
                 continue
 
-            route_score = self._guaranteed_finish_score_after_attack_action(state, player, action)
+            result = self._forced_win_result_after_attack_action(
+                state,
+                player,
+                action,
+            )
+            route_score = (
+                float(result.minimum_score)
+                if (
+                    result.status == ForcedWinStatus.PROVEN
+                    and result.minimum_score is not None
+                )
+                else None
+            )
+            expected_score = (
+                route_score
+                if result.expected_score is None
+                else float(result.expected_score)
+            )
+            maximum_score = (
+                expected_score
+                if result.maximum_score is None
+                else float(result.maximum_score)
+            )
+            if route_score is None and tr is not None:
+                remaining = self._remaining_hand_after_attack_action(
+                    state,
+                    player,
+                    block,
+                    attack,
+                )
+                if (
+                    remaining is not None
+                    and len(remaining) == 2
+                    and self._is_absolute_safe_for_tsume(
+                        state,
+                        player,
+                        attack,
+                        tr,
+                    )
+                ):
+                    route_score = self._pair_finish_score(remaining)
+                    expected_score = route_score
+                    maximum_score = route_score
             if route_score is None:
                 continue
 
@@ -1216,22 +1395,41 @@ class EndgameMixin:
                 attack,
                 has_non_king_attack_option=has_non_king_attack_option,
             )
-            candidates.append((route_score, immediate, heuristic, action))
+            candidates.append((
+                route_score,
+                expected_score,
+                maximum_score,
+                immediate,
+                1 if attack not in ("8", "9") else 0,
+                heuristic,
+                action,
+            ))
 
         if not candidates:
             return None
 
-        candidates.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
-        route_score, immediate, _heuristic, action = candidates[0]
-        equally_safe = [
-            candidate
-            for candidate in candidates
-            if candidate[0] == route_score and candidate[1] == immediate
-        ]
-        if len(equally_safe) > 1 and not immediate:
-            # The guaranteed floor is identical. Let the normal attack scorer
-            # compare waits, inference, and expected points instead.
-            return None
+        candidates.sort(
+            key=lambda x: (x[0], x[1], x[2], x[3], x[4], x[5]),
+            reverse=True,
+        )
+        (
+            route_score,
+            expected_score,
+            maximum_score,
+            immediate,
+            _keep_royal,
+            _heuristic,
+            action,
+        ) = candidates[0]
+        if tr is not None:
+            tr["last_forced_win_score_plan"] = {
+                "minimum_score": route_score,
+                "expected_score": expected_score,
+                "maximum_score": maximum_score,
+                "attack": action[2],
+            }
+        # The heuristic already contains the normal attack evaluation. Keeping
+        # the choice here prevents lower guaranteed-score routes from rejoining.
         return action, route_score, bool(immediate)
 
     def _finish_score_after_action(self, state, player: str, action: Action) -> Optional[float]:
