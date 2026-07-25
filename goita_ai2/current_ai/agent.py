@@ -12,6 +12,7 @@ from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
 from goita_ai2.current_ai.decision import DecisionMixin
 from goita_ai2.current_ai.endgame import EndgameMixin
 from goita_ai2.current_ai.forced_plans import ForcedPlansMixin
+from goita_ai2.current_ai.forced_win_planner import ForcedWinPlannerMixin
 from goita_ai2.current_ai.hand_evaluation import HandEvaluationMixin
 from goita_ai2.current_ai.inference import PublicInferenceMixin
 from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
@@ -22,6 +23,7 @@ class RuleBasedAgent(
     TrackingMixin,
     HandEvaluationMixin,
     ForcedPlansMixin,
+    ForcedWinPlannerMixin,
     EndgameMixin,
     AttackPlanningMixin,
     AttackStrategyMixin,

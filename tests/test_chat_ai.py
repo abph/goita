@@ -18,6 +18,11 @@ async def _run() -> None:
         assert "https://vrcgoita.com/goita/rule/" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "https://vrcgoita.com/goita/strategy/" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "操作回答の末尾" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "初心者サポートを有効にする" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert app_module._beginner_support_move_answer("どの駒を出せばいい？") is not None
+        assert app_module._beginner_support_move_answer("何を伏せるべき？") is not None
+        assert app_module._beginner_support_move_answer("受けるべき？それともパス？") is not None
+        assert app_module._beginner_support_move_answer("ごいたの攻め方を教えて") is None
         os.environ["GEMINI_API_KEY"] = "test-key"
         app_module._request_gemini_help = lambda question: f"案内回答: {question}"
 
@@ -49,6 +54,18 @@ async def _run() -> None:
             assert exc.status_code == 429
         else:
             raise AssertionError("cooldown was not enforced")
+
+        app_module._request_gemini_help = lambda question: (_ for _ in ()).throw(
+            AssertionError("concrete move questions must not call Gemini")
+        )
+        move_payload = payload.model_copy(update={
+            "client_id": "move-help-client",
+            "message": "この場面では、どの駒を出せばいい？",
+        })
+        move_result = await app_module.ask_chat_ai("main", move_payload, request)
+        assert "初心者サポートを有効にする" in move_result["answer"]
+        assert "おすすめの駒が強調表示" in move_result["answer"]
+        assert "strategy" not in move_result["answer"]
 
         os.environ.pop("GEMINI_API_KEY", None)
         no_key_payload = payload.model_copy(update={"client_id": "no-key-client"})

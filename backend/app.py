@@ -68,6 +68,7 @@ AI_HELP_SYSTEM_PROMPT = """
 3. ごいたの戦略
 
 - 「そろうごいたの使い方」「どう操作するの」「どう始めるの」などはページ操作です。操作方法だけを直接答え、ルール・戦略ページや関連情報を付け足さないでください。
+- 対局中に「どの駒を出すか」「何を伏せるか」「受けるかパスするか」など、具体的な手を質問された場合は、設定から「初心者サポートを有効にする」をオンにするよう案内してください。おすすめの駒が強調表示され、簡単な理由も確認できると伝え、戦略ページは付け足さないでください。
 - 質問の主目的がごいたのルール、駒、ゲーム進行、上がり方、点数の場合だけ、詳しい説明の代わりに次のページを案内してください。
   https://vrcgoita.com/goita/rule/
 - 質問の主目的がごいたの戦略、戦術、読み合い、手駒の強さ、攻め方、受け方、パスの判断の場合だけ、詳しい説明の代わりに次のページを案内してください。
@@ -80,6 +81,7 @@ AI_HELP_SYSTEM_PROMPT = """
 - 「Auto」をオンにすると、自分の席をAIが操作する。席の所有権を失うとAutoは停止する。
 - ゲーム開始前にも手駒欄は表示される。開始や配牌・親設定はホスト側の操作に従う。
 - 個人設定では名前、演出、Cの声、効果音、モバイル版チャットの位置・透明度・幅を変更できる。
+- プライベートルームでは、個人設定の「初心者サポートを有効にする」をオンにすると、おすすめの駒と簡単な理由が表示される。
 - ルーム管理は管理用パスワードが必要で、ルーム名、入室用合言葉、AI種類、合法手、ログ表示を設定できる。
 - 「みんな手札公開」では盤面上に各プレイヤーの手駒が表示される。
 - 「棋譜を保存する」は名前入り、「匿名で棋譜を保存する」はプレイヤー名を伏せて保存する。
@@ -305,6 +307,55 @@ def _sanitize_ai_answer(s: str) -> str:
     if len(s) > AI_CHAT_MAX_LEN:
         s = s[:AI_CHAT_MAX_LEN].rstrip() + "…"
     return s
+
+
+def _beginner_support_move_answer(question: str) -> Optional[str]:
+    """Redirect concrete in-game move questions to the beginner support UI."""
+    compact = "".join((question or "").lower().split())
+    piece_choice = any(
+        phrase in compact
+        for phrase in (
+            "どの駒を出",
+            "どの駒がいい",
+            "何の駒を出",
+            "何を出せ",
+            "何を出すべき",
+            "どれを出",
+            "どの駒を打",
+            "何を打て",
+            "何を打つべき",
+            "おすすめの駒",
+            "推奨の駒",
+        )
+    )
+    hidden_choice = any(
+        phrase in compact
+        for phrase in (
+            "どの駒を伏せ",
+            "何を伏せ",
+            "どれを伏せ",
+        )
+    )
+    receive_or_pass = any(
+        phrase in compact
+        for phrase in (
+            "受けるべき",
+            "受けた方が",
+            "受ける方が",
+            "パスすべき",
+            "パスした方が",
+            "パスする方が",
+            "受けるかパス",
+            "パスか受け",
+        )
+    )
+    if not (piece_choice or hidden_choice or receive_or_pass):
+        return None
+    return (
+        "ゲーム中にどの駒を出すか迷った場合は、設定から"
+        "「初心者サポートを有効にする」をオンにしてください。"
+        "おすすめの駒が強調表示され、簡単な理由も確認できます。"
+    )
 
 
 def _gemini_api_key() -> str:
@@ -1505,12 +1556,13 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    if not _gemini_api_key():
-        raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
 
     question = _sanitize_chat_message(req.message)
     if not question:
         raise HTTPException(status_code=400, detail="質問を入力してください。")
+    local_answer = _beginner_support_move_answer(question)
+    if local_answer is None and not _gemini_api_key():
+        raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
 
     seat = _normalize_chat_seat(req.seat)
     if seat in ALL_SEATS and not _client_owns_human_seat(game, seat, req.client_id):
@@ -1534,16 +1586,19 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
                 AI_HELP_LAST_REQUEST.pop(key, None)
     AI_HELP_LAST_REQUEST[rate_key] = now
 
-    try:
-        async with AI_HELP_SEMAPHORE:
-            answer = await asyncio.wait_for(
-                asyncio.to_thread(_request_gemini_help, question),
-                timeout=30,
-            )
-    except (RuntimeError, asyncio.TimeoutError):
-        if AI_HELP_LAST_REQUEST.get(rate_key) == now:
-            AI_HELP_LAST_REQUEST.pop(rate_key, None)
-        raise HTTPException(status_code=502, detail="AIから回答を取得できませんでした。")
+    if local_answer is not None:
+        answer = local_answer
+    else:
+        try:
+            async with AI_HELP_SEMAPHORE:
+                answer = await asyncio.wait_for(
+                    asyncio.to_thread(_request_gemini_help, question),
+                    timeout=30,
+                )
+        except (RuntimeError, asyncio.TimeoutError):
+            if AI_HELP_LAST_REQUEST.get(rate_key) == now:
+                AI_HELP_LAST_REQUEST.pop(rate_key, None)
+            raise HTTPException(status_code=502, detail="AIから回答を取得できませんでした。")
 
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
     ts = int(time.time() * 1000)

@@ -1331,106 +1331,15 @@ class EndgameMixin:
         *,
         has_non_king_attack_option: bool,
     ) -> Optional[Tuple[Action, float, bool]]:
-        tr = self._track.get(id(state))
-        candidates: List[
-            Tuple[float, float, float, int, int, float, Action]
-        ] = []
-        for action in actions:
-            action_type, block, attack = action
-            if action_type not in ("attack", "attack_after_block") or attack is None:
-                continue
-
-            result = self._forced_win_result_after_attack_action(
-                state,
-                player,
-                action,
-            )
-            route_score = (
-                float(result.minimum_score)
-                if (
-                    result.status == ForcedWinStatus.PROVEN
-                    and result.minimum_score is not None
-                )
-                else None
-            )
-            expected_score = (
-                route_score
-                if result.expected_score is None
-                else float(result.expected_score)
-            )
-            maximum_score = (
-                expected_score
-                if result.maximum_score is None
-                else float(result.maximum_score)
-            )
-            if route_score is None and tr is not None:
-                remaining = self._remaining_hand_after_attack_action(
-                    state,
-                    player,
-                    block,
-                    attack,
-                )
-                if (
-                    remaining is not None
-                    and len(remaining) == 2
-                    and self._is_absolute_safe_for_tsume(
-                        state,
-                        player,
-                        attack,
-                        tr,
-                    )
-                ):
-                    route_score = self._pair_finish_score(remaining)
-                    expected_score = route_score
-                    maximum_score = route_score
-            if route_score is None:
-                continue
-
-            immediate = 1 if self._finish_score_after_action(state, player, action) is not None else 0
-            heuristic = self._score_attack_phase(
-                state,
-                player,
-                action_type,
-                block,
-                attack,
-                has_non_king_attack_option=has_non_king_attack_option,
-            )
-            candidates.append((
-                route_score,
-                expected_score,
-                maximum_score,
-                immediate,
-                1 if attack not in ("8", "9") else 0,
-                heuristic,
-                action,
-            ))
-
-        if not candidates:
-            return None
-
-        candidates.sort(
-            key=lambda x: (x[0], x[1], x[2], x[3], x[4], x[5]),
-            reverse=True,
+        plan = self._forced_win_plan_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
         )
-        (
-            route_score,
-            expected_score,
-            maximum_score,
-            immediate,
-            _keep_royal,
-            _heuristic,
-            action,
-        ) = candidates[0]
-        if tr is not None:
-            tr["last_forced_win_score_plan"] = {
-                "minimum_score": route_score,
-                "expected_score": expected_score,
-                "maximum_score": maximum_score,
-                "attack": action[2],
-            }
-        # The heuristic already contains the normal attack evaluation. Keeping
-        # the choice here prevents lower guaranteed-score routes from rejoining.
-        return action, route_score, bool(immediate)
+        if plan is None:
+            return None
+        return plan.action, plan.minimum_score, plan.immediate
 
     def _finish_score_after_action(self, state, player: str, action: Action) -> Optional[float]:
         team = "AC" if player in ("A", "C") else "BD"

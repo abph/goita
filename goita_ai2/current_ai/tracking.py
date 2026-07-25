@@ -90,6 +90,7 @@ class TrackingMixin:
             pending_weak_hand_shi_signal=False,
             pending_inferred_endgame_attack=None,
             last_forced_win_score_plan=None,
+            active_forced_win_plan=None,
             my_last_receive_piece=None,
             enemy_pending_shi_receive_players=set(),
             enemy_team_rejected_shi_attack=False,
@@ -116,9 +117,6 @@ class TrackingMixin:
                 )
                 for p in ("A", "B", "C", "D")
             },
-
-            perfect_plan=None,
-            perfect_plan_step=0,
         )
         self._refresh_public_piece_inference(
             state,

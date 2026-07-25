@@ -556,22 +556,14 @@ class DecisionMixin:
             if rank_policy_action is not None:
                 return rank_policy_action
 
-        # A stale ally-response estimate must not hide a guaranteed scoring route.
-        prefilter_high_score_tsume = self._high_score_tsume_action(
+        # Guaranteed routes were already resolved at the top of this turn.
+        # From here on, every action is a non-proven strategic alternative.
+        protected_tsume_action = None
+        inferred_shi_sashikomi = self._inferred_ally_shi_sashikomi_finish_action(
             state,
             player,
             actions,
-            has_non_king_attack_option=has_non_king_attack_option,
         )
-        protected_tsume_action = prefilter_high_score_tsume[0] if prefilter_high_score_tsume is not None else None
-
-        inferred_shi_sashikomi = None
-        if protected_tsume_action is None:
-            inferred_shi_sashikomi = self._inferred_ally_shi_sashikomi_finish_action(
-                state,
-                player,
-                actions,
-            )
         if inferred_shi_sashikomi is not None:
             if tr is not None:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
@@ -610,25 +602,6 @@ class DecisionMixin:
         kg_keep_width_action = self._king_gyoku_opening_keep_receive_width_action(state, player, actions)
         if kg_keep_width_action is not None:
             return kg_keep_width_action
-
-        if tr is not None and tr.get("my_attack_count", 0) == 0 and state.attacker is None and state.current_attack is None:
-            if tr.get("perfect_plan") is None:
-                plan = self._plan_perfect_game(state.hands[player])
-                if plan:
-                    tr["perfect_plan"] = plan
-                    tr["perfect_plan_step"] = 0
-
-        if tr is not None and tr.get("perfect_plan") is not None:
-            step = tr["perfect_plan_step"]
-            plan = tr["perfect_plan"]
-            if step < len(plan):
-                expected_fuse, expected_atk = plan[step]
-                for act in actions:
-                    if act[0] in ("attack", "attack_after_block") and act[1] == expected_fuse and act[2] == expected_atk:
-                        tr["perfect_plan_step"] += 1
-                        tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                        self._set_decision_reason("perfect_plan")
-                        return act
 
         win_now_actions: List[Tuple[float, Action]] = []
         for (t, b, a) in actions:
