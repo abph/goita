@@ -28,6 +28,11 @@ from goita_ai2.utils import create_random_hands
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
+MAIN_ROOM_NAMES: Dict[str, str] = {
+    MAIN_GID: "メインルームA",
+    "main-b": "メインルームB",
+}
+MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 DEBUG_GID = "debug"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 NAME_MAX_LEN = 9
@@ -135,6 +140,20 @@ class ConnectionManager:
 
     def has_client_connection(self, game_id: str, client_id: str) -> bool:
         return bool(self.client_connections.get((game_id, client_id)))
+
+    def spectator_count(self, game_id: str, game: Dict[str, Any]) -> int:
+        connected_client_ids = {
+            client_id
+            for (connected_game_id, client_id), connections in self.client_connections.items()
+            if connected_game_id == game_id and client_id and connections
+        }
+        human_seats = game.get("human_seats", {})
+        seated_client_ids = (
+            {client_id for client_id in human_seats.values() if client_id}
+            if isinstance(human_seats, dict)
+            else set()
+        )
+        return len(connected_client_ids - seated_client_ids)
 
     def cancel_disconnect_release(self, game_id: str, client_id: str) -> None:
         task = self.disconnect_tasks.pop((game_id, client_id), None)
@@ -509,11 +528,15 @@ def serve_index():
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
     await manager.connect(websocket, game_id, client_id)
+    if game_id != "lobby":
+        await manager.broadcast_update(game_id)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         is_fully_disconnected = manager.disconnect(websocket, game_id, client_id)
+        if game_id != "lobby":
+            await manager.broadcast_update(game_id)
         if client_id and is_fully_disconnected:
             manager.schedule_disconnect_release(game_id, client_id)
 
@@ -821,6 +844,7 @@ def _visible_receive_for_score_effect(action: Tuple[str, Optional[str], Optional
 def _state_public_view(
     state: GoitaState,
     *,
+    game_id: str,
     viewer: str,
     game_obj: Dict[str, Any],
     client_id: str = "",
@@ -903,6 +927,7 @@ def _state_public_view(
         "show_legal_actions": bool(game_obj.get("show_legal_actions", False)),
         "show_log": bool(game_obj.get("show_log", False)),
         "chat_messages": chat_messages,
+        "spectator_count": manager.spectator_count(game_id, game_obj),
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["owned_human_seats"] = sorted(owned_human_seats)
@@ -959,17 +984,42 @@ def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
     new_game["round_count"] = old_round + (1 if should_advance_round else 0)
 
 
-def _ensure_main_game(dealer: Optional[str] = None) -> None:
-    if MAIN_GID not in GAMES:
+def _is_main_game_id(game_id: str) -> bool:
+    return game_id in MAIN_GIDS
+
+
+def _ensure_main_game(game_id: str = MAIN_GID, dealer: Optional[str] = None) -> None:
+    if not _is_main_game_id(game_id):
+        return
+    if game_id not in GAMES:
         d = dealer if dealer else random.choice(["A", "B", "C", "D"])
         game = _create_game_obj(dealer=d)
-        game["owner_name"] = "メインルームA"
-        GAMES[MAIN_GID] = game
+        game["owner_name"] = MAIN_ROOM_NAMES[game_id]
+        GAMES[game_id] = game
+
+
+def setup_main_rooms() -> None:
+    for game_id in MAIN_ROOM_NAMES:
+        _ensure_main_game(game_id)
 
 def setup_supporter_rooms():
     supporter_data = [
         {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
         {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
+        {
+            "gid": "room-bronze-03",
+            "pass": None,
+            "admin": "admin-c",
+            "owner": "プライベートC",
+            "hidden_from_lobby": True,
+        },
+        {
+            "gid": "room-copper-04",
+            "pass": None,
+            "admin": "admin-d",
+            "owner": "プライベートD",
+            "hidden_from_lobby": True,
+        },
     ]
     for data in supporter_data:
         if data["gid"] not in GAMES:
@@ -979,6 +1029,9 @@ def setup_supporter_rooms():
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
             GAMES[data["gid"]] = room
+        GAMES[data["gid"]]["hidden_from_lobby"] = bool(
+            data.get("hidden_from_lobby", False)
+        )
 
 
 def setup_debug_room() -> None:
@@ -998,6 +1051,7 @@ def setup_debug_room() -> None:
     GAMES[DEBUG_GID] = room
 
 
+setup_main_rooms()
 setup_supporter_rooms()
 setup_debug_room()
 
@@ -1126,7 +1180,7 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
 
 @app.get("/games/list")
 def list_rooms():
-    _ensure_main_game()
+    setup_main_rooms()
     def build_room_info(gid: str, data: dict):
         hs = data.get("human_seats", {})
         human_set = _seat_set(hs)
@@ -1143,10 +1197,12 @@ def list_rooms():
             else:
                 seats_info[s] = "Empty"
 
-        owner_name = "メインルームA" if gid == MAIN_GID else data.get("owner_name", "サポーター")
+        owner_name = MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
         return {
             "game_id": gid,
+            "is_main_room": _is_main_game_id(gid),
             "is_private": data.get("password") is not None,
+            "requires_password": data.get("password") is not None,
             "owner_name": owner_name,
             "ai_profile": _normalize_ai_profile(data.get("ai_profile")),
             "ai_profile_label": _ai_profile_label(data.get("ai_profile")),
@@ -1154,9 +1210,12 @@ def list_rooms():
             "seats": seats_info
         }
 
-    rooms = [build_room_info(MAIN_GID, GAMES[MAIN_GID])]
+    rooms = [
+        build_room_info(gid, GAMES[gid])
+        for gid in MAIN_ROOM_NAMES
+    ]
     for gid, data in GAMES.items():
-        if gid != MAIN_GID and not data.get("hidden_from_lobby", False):
+        if not _is_main_game_id(gid) and not data.get("hidden_from_lobby", False):
             rooms.append(build_room_info(gid, data))
             
     return {"rooms": rooms}
@@ -1227,8 +1286,8 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
 async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can start.")
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1248,8 +1307,8 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
 async def toggle_reveal_hands(game_id: str, requester: str = "W", client_id: str = ""):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can toggle hands.")
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1270,8 +1329,8 @@ async def reset_game(
 ):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
-    if game_id == MAIN_GID:
-        _ensure_main_game(dealer=dealer)
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id, dealer=dealer)
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
 
@@ -1320,8 +1379,8 @@ async def reset_game(
 async def reset_game_config(game_id: str, body: ResetConfigBody):
     if body.requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game configuration.")
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
 
@@ -1402,8 +1461,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
 
 @app.post("/games/{game_id}/claim")
 async def claim_seat(game_id: str, seat: str, client_id: str = ""):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
@@ -1443,8 +1502,8 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
 
 @app.post("/games/{game_id}/release")
 async def release_seat(game_id: str, seat: str, client_id: str = ""):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
@@ -1467,8 +1526,8 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
 
 @app.post("/games/{game_id}/set_ai")
 async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: str = ""):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     elif game_id not in GAMES:
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
@@ -1505,8 +1564,8 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
 
 @app.post("/games/{game_id}/set_name")
 async def set_player_name(game_id: str, req: NameRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1523,8 +1582,8 @@ async def set_player_name(game_id: str, req: NameRequest):
 
 @app.post("/games/{game_id}/chat")
 async def post_chat_message(game_id: str, req: ChatRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1551,8 +1610,8 @@ async def post_chat_message(game_id: str, req: ChatRequest):
 
 @app.post("/games/{game_id}/chat/ask_ai")
 async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1626,8 +1685,8 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
 
 @app.post("/games/{game_id}/step")
 async def step(game_id: str, req: StepRequest):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     player = _validate_seat(req.player, name="player")
     game = GAMES.get(game_id)
     if not game:
@@ -1646,6 +1705,7 @@ async def step(game_id: str, req: StepRequest):
             "ok": True,
             "state": _state_public_view(
                 state,
+                game_id=game_id,
                 viewer=player,
                 game_obj=game,
                 client_id=req.client_id,
@@ -1686,6 +1746,7 @@ async def step(game_id: str, req: StepRequest):
         "ok": True,
         "state": _state_public_view(
             state,
+            game_id=game_id,
             viewer=player,
             game_obj=game,
             client_id=req.client_id,
@@ -1695,8 +1756,8 @@ async def step(game_id: str, req: StepRequest):
 
 @app.post("/games/{game_id}/cpu_step")
 async def cpu_step(game_id: str):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
@@ -1718,8 +1779,8 @@ async def cpu_step(game_id: str):
 
 @app.post("/games/{game_id}/auto_step")
 async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     player = _validate_seat(player, name="player")
     game = GAMES.get(game_id)
     if not game:
@@ -1743,8 +1804,8 @@ async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
 
 @app.get("/games/{game_id}/state")
 def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands: int = 0):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     viewer = viewer if viewer in ALL_SEATS else "W"
     game = GAMES.get(game_id)
     if not game:
@@ -1756,6 +1817,7 @@ def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands
         
     return _state_public_view(
         game["state"],
+        game_id=game_id,
         viewer=viewer,
         game_obj=game_copy,
         client_id=client_id,
@@ -1764,8 +1826,8 @@ def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands
 
 @app.get("/games/{game_id}/legal_actions")
 def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     player = _validate_seat(player, name="player")
     game = GAMES.get(game_id)
     if not game:
@@ -1783,7 +1845,7 @@ def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
 
 @app.get("/games/{game_id}/beginner_recommendation")
 def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str = ""):
-    if game_id == MAIN_GID:
+    if _is_main_game_id(game_id):
         raise HTTPException(status_code=403, detail="Beginner support is available only in private rooms.")
 
     player = _validate_seat(player, name="player")
@@ -1837,8 +1899,8 @@ def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
 def get_kifu_yaml(game_id: str, anonymous: bool = True):
-    if game_id == MAIN_GID:
-        _ensure_main_game()
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")

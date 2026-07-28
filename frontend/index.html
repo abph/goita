@@ -1448,14 +1448,14 @@
      
      <div style="font-size: 14px; color: #555; text-align: left; display: inline-block; background: #fffdf5; padding: 15px 20px; border-radius: 8px; border: 1px dashed #8b5a2b; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-          <li>不足人数に応じて、<b>ルームで選択したAI</b>が自動で参戦します。1人からでも対局可能です。</li>
+          <li>不足人数に応じて、<b>ルームで選択したAI</b>が参戦します。1人からでも対局可能です。</li>
           <li>※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
         </ul>
      </div>
   </div>
 
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
-    <h2>🌐 公開部屋（メインルームA）</h2>
+    <h2>🌐 公開部屋</h2>
     <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
     <div id="lobbyMainRoom" class="room-card-container">
       </div>
@@ -1465,7 +1465,7 @@
     <h2 style="color: #8b5a2b; margin-top: 0; text-align: center;">🏯 プライベートルーム</h2>
     <p style="margin-bottom: 15px; color: #555; text-align: center; line-height: 1.6;">
       合言葉を知っている人だけが入れる専用の部屋です。<br>
-      <span style="font-size: 13px;">「全員の手札公開」「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
+      <span style="font-size: 13px;">「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。<br>
       <b>※いまはお試し期間で、プライベートAを自由に使えます。</b></span>
     </p>
     <div id="lobbyRoomList" class="room-card-container">
@@ -1500,8 +1500,8 @@
 
   <div class="top-controls">
     <div class="meta">
-      <b>自分の席</b>
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button id="btnSpectator" onclick="selectSpectator()" class="seat-btn spectator-seat-btn">観戦0人</button>
         <button id="btnSeatA" onclick="openSeatMenu('A')" class="seat-btn">👑 A</button>
         <button id="btnSeatB" onclick="openSeatMenu('B')" class="seat-btn">B</button>
         <button id="btnSeatC" onclick="openSeatMenu('C')" class="seat-btn">C</button>
@@ -1782,6 +1782,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
+const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b"]);
 const DEBUG_GID = "debug";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
@@ -2113,6 +2114,12 @@ function connectWS(targetGid) {
     
     socket = new WebSocket(wsUrl);
 
+    socket.onopen = () => {
+        if (currentWsGid !== "lobby") {
+            refresh();
+        }
+    };
+
     socket.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -2169,8 +2176,12 @@ async function toggleAutoPlay(){
     }
 }
 
-async function joinMainRoom() {
-    await enterRoom(MAIN_GID, "メインルームA");
+function isMainRoomId(roomId) {
+    return MAIN_ROOM_IDS.has(roomId);
+}
+
+async function joinMainRoom(roomId = MAIN_GID, roomName = "メインルームA") {
+    await enterRoom(roomId, roomName);
 }
 
 function isDebugRoomRequested() {
@@ -2407,11 +2418,13 @@ async function fetchRoomList() {
                 return `<div class="seat-badge ${badgeClass}" title="${text}">${text}</div>`;
             };
 
-            const settingsIcon = (room.game_id !== MAIN_GID) 
+            const isMainRoom = room.is_main_room === true || isMainRoomId(room.game_id);
+            const requiresPassword = room.requires_password === true || room.is_private === true;
+            const settingsIcon = (!isMainRoom)
                 ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event)" title="ルーム設定">⚙️</div>` 
                 : "";
 
-            if (room.is_private) {
+            if (requiresPassword) {
                 card.innerHTML = `
                     ${settingsIcon}
                     <div class="lock-icon">🔒</div>
@@ -2434,11 +2447,11 @@ async function fetchRoomList() {
                 `;
             }
             
-            if (room.game_id === MAIN_GID) {
-                card.onclick = joinMainRoom;
+            if (isMainRoom) {
+                card.onclick = () => joinMainRoom(room.game_id, room.owner_name);
                 mainContainer.appendChild(card);
             } else {
-                card.onclick = () => tryJoinRoom(room.game_id, room.is_private);
+                card.onclick = () => tryJoinRoom(room.game_id, requiresPassword);
                 privateContainer.appendChild(card);
             }
         });
@@ -2475,7 +2488,7 @@ function populateAiProfileSelect(profiles, selected) {
 
 function showSettingsTab(tabName) {
     const isManagement = tabName === "management";
-    if (isManagement && settingTargetGid === MAIN_GID) return;
+    if (isManagement && isMainRoomId(settingTargetGid)) return;
     document.getElementById("personalSettingsTab").classList.toggle("active", !isManagement);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
     document.getElementById("personalSettingsPanel").classList.toggle("active", !isManagement);
@@ -2513,8 +2526,8 @@ function openSettingsModal(targetGid, event) {
     document.getElementById("adminAuthStatus").textContent = "";
     document.getElementById("adminAuthArea").style.display = "block";
     document.getElementById("roomManagementFields").style.display = "none";
-    document.getElementById("roomManagementTab").style.display = targetGid === MAIN_GID ? "none" : "block";
-    document.getElementById("beginnerSupportSettingRow").style.display = targetGid === MAIN_GID ? "none" : "block";
+    document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
+    document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
     ["mobileChatSettingsDetails", "soundSettingsDetails"].forEach((id) => {
         const details = document.getElementById(id);
         if (details) details.open = false;
@@ -2640,6 +2653,14 @@ function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
     const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
     const aiSeats = Array.isArray(state?.ai_seats) ? state.ai_seats : [];
+    const spectatorBtn = document.getElementById('btnSpectator');
+    const spectatorCount = Math.max(0, Number(state?.spectator_count) || 0);
+
+    if (spectatorBtn) {
+        spectatorBtn.textContent = `観戦${spectatorCount}人`;
+        spectatorBtn.classList.toggle('active', isSpectator());
+        spectatorBtn.setAttribute('aria-pressed', isSpectator() ? 'true' : 'false');
+    }
 
     seats.forEach(s => {
         const btn = document.getElementById('btnSeat' + s);
@@ -2666,6 +2687,12 @@ function updateSeatButtons(state) {
         }
     });
 }
+
+async function selectSpectator() {
+    if (isSpectator()) return;
+    await leaveSeat(mySeat);
+}
+
 async function selectSeat(next) {
     if (next === mySeat) return;
 
@@ -2789,7 +2816,7 @@ function isCurrentClientHost() {
 }
 
 function updateRoomUI() {
-    const isMain = (gid === MAIN_GID);
+    const isMain = isMainRoomId(gid);
     const isHost = isCurrentClientHost();
 
     const toggleBtn = document.getElementById("toggleHandsBtn");
@@ -2808,7 +2835,7 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
-    if (toggleBtn) toggleBtn.style.display = (!isMain && isHost) ? "" : "none";
+    if (toggleBtn) toggleBtn.style.display = isHost ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = (!isMain && isHost && latestState?.show_legal_actions === true) ? "block" : "none";
@@ -3086,7 +3113,7 @@ function renderPresetCopyButtons(state){
     state.is_started &&
     state.reveal_hands &&
     mySeat === "A" &&
-    gid !== MAIN_GID
+    !isMainRoomId(gid)
   );
   area.style.display = canCopy ? "flex" : "none";
   if(!canCopy) return;
@@ -3109,7 +3136,7 @@ function renderPresetControls(state){
   if(!area) return;
   area.innerHTML = "";
 
-  const canShow = mySeat === "A" && gid !== MAIN_GID;
+  const canShow = mySeat === "A" && !isMainRoomId(gid);
   const canCopy = !!(state && state.is_started && state.reveal_hands && canShow);
   area.style.display = canShow ? "flex" : "none";
   if(!canShow) return;
@@ -3734,7 +3761,7 @@ function rerenderPendingPreview(){
 function beginnerSupportActive(state = latestState){
   return (
     personalSettings.enableBeginnerSupport === true &&
-    gid !== MAIN_GID &&
+    !isMainRoomId(gid) &&
     !isSpectator() &&
     state?.is_started === true &&
     state?.finished !== true &&
@@ -4661,7 +4688,7 @@ async function refresh(){
 
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
-      currentRoomNameEl.textContent = state.owner_name || (gid === MAIN_GID ? "メインルームA" : "");
+      currentRoomNameEl.textContent = state.owner_name || (isMainRoomId(gid) ? "メインルームA" : "");
   }
 
   // 古い盤面上のスコアボードは不要になったため、非表示で固定
