@@ -9,7 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set
 
 from fastapi import FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
@@ -34,6 +34,7 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 DEBUG_GID = "debug"
+PRIVATE_A_GID = "room-gold-01"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 NAME_MAX_LEN = 9
 CHAT_MAX_LEN = 200
@@ -631,6 +632,41 @@ class SettingsUpdateRequest(BaseModel):
     ai_profile: str = DEFAULT_AI_PROFILE
     show_legal_actions: bool = False
     show_log: bool = False
+    room_background_image: Optional[str] = None
+
+
+def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
+    image_path = str(value or "").strip()
+    if not image_path:
+        return ""
+    if game_id != PRIVATE_A_GID:
+        raise HTTPException(
+            status_code=400,
+            detail="背景画像はプライベートAでのみ設定できます",
+        )
+
+    parsed = urllib.parse.urlsplit(image_path)
+    decoded_path = urllib.parse.unquote(parsed.path)
+    relative_path = PurePosixPath(decoded_path.removeprefix("/static/"))
+    allowed_extensions = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or not decoded_path.startswith("/static/")
+        or "\\" in decoded_path
+        or relative_path.is_absolute()
+        or not relative_path.parts
+        or any(part in {"", ".", ".."} for part in relative_path.parts)
+        or relative_path.suffix.lower() not in allowed_extensions
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="背景画像には /static/ から始まる画像パスを指定してください",
+        )
+
+    return urllib.parse.quote(decoded_path, safe="/._-~")
 
 
 def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]]) -> None:
@@ -926,6 +962,7 @@ def _state_public_view(
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
         "show_legal_actions": bool(game_obj.get("show_legal_actions", False)),
         "show_log": bool(game_obj.get("show_log", False)),
+        "room_background_image": str(game_obj.get("room_background_image", "")),
         "chat_messages": chat_messages,
         "spectator_count": manager.spectator_count(game_id, game_obj),
     }
@@ -961,6 +998,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "reveal_hands": False,
         "show_legal_actions": False,
         "show_log": False,
+        "room_background_image": "",
         "hidden_from_lobby": False,
         "is_debug_room": False,
         "is_started": False,
@@ -1004,7 +1042,7 @@ def setup_main_rooms() -> None:
 
 def setup_supporter_rooms():
     supporter_data = [
-        {"gid": "room-gold-01", "pass": None, "admin": "admin-a", "owner": "プライベートA"},
+        {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
         {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
         {
             "gid": "room-bronze-03",
@@ -1244,6 +1282,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
             "show_legal_actions": bool(game.get("show_legal_actions", False)),
             "show_log": bool(game.get("show_log", False)),
+            "room_background_image": str(game.get("room_background_image", "")),
             "ai_profiles": {
                 key: str(info["label"])
                 for key, info in AI_PROFILES.items()
@@ -1263,6 +1302,11 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
     game["show_legal_actions"] = bool(req.show_legal_actions)
     game["show_log"] = bool(req.show_log)
+    if req.room_background_image is not None:
+        game["room_background_image"] = _normalize_room_background_image(
+            game_id,
+            req.room_background_image,
+        )
     next_ai_profile = _normalize_ai_profile(req.ai_profile)
     if game.get("ai_profile") != next_ai_profile:
         game["ai_profile"] = next_ai_profile
@@ -1279,6 +1323,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
         "show_legal_actions": bool(game.get("show_legal_actions", False)),
         "show_log": bool(game.get("show_log", False)),
+        "room_background_image": str(game.get("room_background_image", "")),
     }
 
 
@@ -1346,6 +1391,7 @@ async def reset_game(
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
     show_log = bool(old_game.get("show_log", False))
+    room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
     
@@ -1362,6 +1408,7 @@ async def reset_game(
     new_game["ai_profile"] = ai_profile
     new_game["show_legal_actions"] = show_legal_actions
     new_game["show_log"] = show_log
+    new_game["room_background_image"] = room_background_image
     new_game["hidden_from_lobby"] = hidden_from_lobby
     new_game["is_debug_room"] = is_debug_room
     
@@ -1398,6 +1445,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
     show_log = bool(old_game.get("show_log", False))
+    room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
 
@@ -1425,6 +1473,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
+        new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
         
@@ -1446,6 +1495,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
+        new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
         

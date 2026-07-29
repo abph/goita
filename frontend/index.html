@@ -23,6 +23,15 @@
       max-width: 1250px; 
       margin: 20px auto; 
     }
+    body.room-background-active {
+      background-image:
+        linear-gradient(rgba(244, 239, 223, 0.48), rgba(244, 239, 223, 0.48)),
+        var(--room-background-image);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
+      background-attachment: fixed;
+    }
     h1 { margin-bottom: 12px; font-size: 28px; }
     @media (max-width: 430px){
       h1{ font-size: 16px; margin-bottom: 6px; }
@@ -538,6 +547,42 @@
     #lobbyView {
         max-width: 800px;
         margin: 0 auto;
+        position: relative;
+        isolation: isolate;
+    }
+    .lobby-piece-background {
+        position: fixed;
+        left: -50vmax;
+        top: -50vmax;
+        width: 180vmax;
+        height: 180vmax;
+        z-index: -1;
+        pointer-events: none;
+        display: grid;
+        grid-template-columns: repeat(22, 1fr);
+        grid-template-rows: repeat(18, 1fr);
+        place-items: center;
+        color: #6d461f;
+        opacity: 0.055;
+        overflow: hidden;
+        will-change: transform;
+        animation: lobby-piece-drift 18s linear infinite;
+    }
+    .lobby-piece-background span {
+        font-size: clamp(32px, 3.8vmax, 60px);
+        font-weight: 900;
+        line-height: 1;
+    }
+    .lobby-piece-background span:nth-child(3n) {
+        opacity: 0.65;
+    }
+    @keyframes lobby-piece-drift {
+        from { transform: translate3d(-8.1818vmax, 10vmax, 0); }
+        to { transform: translate3d(0, 0, 0); }
+    }
+    #lobbyView > .card {
+        background-color: rgba(255, 253, 245, 0.9);
+        box-shadow: 0 8px 20px rgba(80, 53, 26, 0.12);
     }
     .lobby-footer {
         margin: 36px 0 16px;
@@ -586,7 +631,16 @@
     .site-resource-title { color: #4c3018; font-size: 15px; font-weight: 900; }
     .site-resource-description { margin: 3px 0 7px !important; color: #555; font-size: 13px; }
     .site-resource-link { display: inline-block; }
+    @media (prefers-reduced-motion: reduce) {
+        .lobby-piece-background {
+            animation: none;
+            transform: none;
+        }
+    }
     @media (max-width: 520px) {
+        .lobby-piece-background {
+            display: none;
+        }
         .lobby-footer-links {
             flex-wrap: nowrap;
             column-gap: 10px;
@@ -1450,11 +1504,37 @@
       color: #555;
       line-height: 1.5;
     }
+
+    /* プライベートAの背景画像を、盤面越しにも少し見せる */
+    body.room-background-active .board-wrap,
+    body.room-background-active .hand-row {
+      background-color: rgba(209, 171, 117, 0.84);
+    }
+    body.room-background-active .name-zone-background {
+      background: rgba(223, 195, 145, 0.78);
+    }
+    body.room-background-active .center-score {
+      background: rgba(244, 239, 223, 0.78);
+    }
+    body.room-background-active .ui,
+    body.room-background-active .card {
+      background: rgba(255, 255, 255, 0.72);
+    }
+    @media (min-width: 702px) {
+      body.room-background-active .chat-panel,
+      body.room-background-active .chat-form {
+        background: rgba(255, 253, 245, 0.86);
+      }
+      body.room-background-active .chat-messages {
+        background: rgba(244, 239, 223, 0.52);
+      }
+    }
   </style>
 </head>
 <body>
 
 <div id="lobbyView">
+  <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
   <div style="text-align: center; padding: 40px 0;">
      <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた（β）</h1>
      <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ。</p>
@@ -1797,6 +1877,7 @@ const API = "";
 const MAIN_GID = "main";
 const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b"]);
 const DEBUG_GID = "debug";
+const PRIVATE_A_GID = "room-gold-01";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
@@ -2369,6 +2450,7 @@ async function enterRoom(targetGid, roomName) {
     mySeat = WATCH;
     gid = targetGid;
     isGameStarted = false; 
+    clearRoomBackground();
     
     forceDisablePreset();
 
@@ -2415,6 +2497,7 @@ async function returnToLobby() {
     
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
+    clearRoomBackground();
     
     connectWS("lobby");
     fetchRoomList();
@@ -2580,6 +2663,41 @@ function closeSettings() {
     settingTargetGid = null;
 }
 
+function clearRoomBackground() {
+    document.body.classList.remove("room-background-active");
+    document.body.style.removeProperty("--room-background-image");
+}
+
+function applyRoomBackground(state) {
+    const imagePath = gid === PRIVATE_A_GID
+        ? String(state?.room_background_image || "").trim()
+        : "";
+    if (!imagePath) {
+        clearRoomBackground();
+        return;
+    }
+    document.body.style.setProperty("--room-background-image", `url("${imagePath}")`);
+    document.body.classList.add("room-background-active");
+}
+
+function setupLobbyPieceBackground() {
+    const background = document.getElementById("lobbyPieceBackground");
+    if (!background || background.childElementCount) return;
+
+    const pieces = ["し", "香", "馬", "銀", "金", "角", "飛", "玉", "王"];
+    const columns = 22;
+    const rows = 18;
+    const fragment = document.createDocumentFragment();
+    for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+            const piece = document.createElement("span");
+            piece.textContent = pieces[(row + column) % pieces.length];
+            fragment.appendChild(piece);
+        }
+    }
+    background.appendChild(fragment);
+}
+
 async function savePersonalSettings() {
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
@@ -2654,20 +2772,21 @@ async function saveRoomManagement() {
     const aiProfile = document.getElementById("setAiProfile")?.value || "current";
     const showLegalActions = document.getElementById("checkShowLegalActions")?.checked === true;
     const showLog = document.getElementById("checkShowLog")?.checked === true;
+    const requestBody = {
+        admin_password: currentAdminPass,
+        new_owner_name: newName,
+        update_password: isUpdatePass,
+        new_password: newPass,
+        ai_profile: aiProfile,
+        show_legal_actions: showLegalActions,
+        show_log: showLog
+    };
 
     try {
         const res = await fetch(`${API}/games/${settingTargetGid}/update_settings`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                admin_password: currentAdminPass,
-                new_owner_name: newName,
-                update_password: isUpdatePass,
-                new_password: newPass,
-                ai_profile: aiProfile,
-                show_legal_actions: showLegalActions,
-                show_log: showLog
-            })
+            body: JSON.stringify(requestBody)
         });
         if (res.ok) {
             const saved = await res.json();
@@ -2675,12 +2794,14 @@ async function saveRoomManagement() {
                 if (saved && saved.ai_profile) latestState.ai_profile = saved.ai_profile;
                 latestState.show_legal_actions = saved?.show_legal_actions === true;
                 latestState.show_log = saved?.show_log === true;
+                latestState.room_background_image = saved?.room_background_image || "";
             }
             alert("ルーム管理の設定を保存しました。");
             closeSettings();
             await refresh();
         } else {
-            alert("設定の保存に失敗しました。");
+            const error = await res.json().catch(() => null);
+            alert(error?.detail || "設定の保存に失敗しました。");
         }
     } catch (e) {
         alert("通信エラーが発生しました。");
@@ -4727,6 +4848,7 @@ async function refresh(){
     return;
   }
   latestState = state;
+  applyRoomBackground(state);
   
   updateRoomUI(); 
   updateSeatButtons(state);
@@ -4986,6 +5108,7 @@ async function refresh(){
 }
 
 window.addEventListener("load", async ()=>{
+  setupLobbyPieceBackground();
   window.addEventListener("resize", () => {
     if(latestState) renderChat(latestState);
   });
