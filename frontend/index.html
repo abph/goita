@@ -56,6 +56,39 @@
       width: fit-content;
       max-width: 100%;
     }
+    .board-3d {
+      display: none;
+      position: relative;
+      width: calc((var(--cell) * 8) + (var(--gap) * 7));
+      max-width: 100%;
+      aspect-ratio: 1;
+      margin: 0 auto;
+      overflow: hidden;
+      background: #b98750;
+      touch-action: none;
+    }
+    .board-3d canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    .board-3d canvas:active { cursor: grabbing; }
+    body.board-view-3d #board { display: none; }
+    body.board-view-3d #board3d { display: block; }
+    .board-3d-fallback {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #d1ab75;
+      color: #5f3b1c;
+      text-align: center;
+      font-weight: 700;
+    }
+    .board-3d.is-unavailable .board-3d-fallback { display: flex; }
     
     /* マス目は控えめな焼き印風に */
     .cell {
@@ -566,7 +599,7 @@
         opacity: 0.055;
         overflow: hidden;
         will-change: transform;
-        animation: lobby-piece-drift 18s linear infinite;
+        animation: lobby-piece-drift 14s linear infinite;
     }
     .lobby-piece-background span {
         font-size: clamp(32px, 3.8vmax, 60px);
@@ -1255,6 +1288,7 @@
     .settings-disclosure-content .settings-row:last-child { margin-bottom: 0; }
     .settings-modal-content {
       position: relative;
+      max-width: 440px;
       max-height: min(680px, calc(100vh - 32px));
       overflow-y: auto;
     }
@@ -1289,8 +1323,7 @@
       .settings-modal-content .settings-row { margin-bottom: 12px; }
     }
     .settings-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
       gap: 4px;
       margin-bottom: 20px;
       border-bottom: 2px solid #c8a77a;
@@ -1302,6 +1335,7 @@
       background: rgba(255,255,255,0.42);
       color: #6d461f;
       font-weight: 900;
+      flex: 1 1 0;
     }
     .settings-tab.active { background: #8b5a2b; color: #fff; }
     .settings-panel { display: none; }
@@ -1311,10 +1345,35 @@
     .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
     .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
+    .board-view-segmented {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0;
+      overflow: hidden;
+      border: 1px solid #a87b4d;
+      border-radius: 6px;
+    }
+    .board-view-option {
+      min-height: 38px;
+      border: 0;
+      border-radius: 0;
+      background: #fffdf5;
+      color: #6d461f;
+      font-weight: 800;
+    }
+    .board-view-option + .board-view-option { border-left: 1px solid #a87b4d; }
+    .board-view-option.active { background: #8b5a2b; color: #fff; }
     .settings-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(139,90,43,0.25); }
     .settings-footer .settings-save-button { margin-bottom: 8px; }
     .settings-footer button { width: 100%; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px; }
     .settings-footer .settings-save-button { background: #8b5a2b; color: #fff; }
+    .match-settings-note {
+      margin: 0 0 12px;
+      color: #555;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    #matchSettingsPanel .settings-disclosure:last-child { margin-bottom: 0; }
     .seat-ai-note {
       flex-basis: 100%;
       margin-top: 4px;
@@ -1445,12 +1504,12 @@
     }
   
     .preset-grid{
-      display: grid; grid-template-columns: 22px repeat(9, 34px); gap: 6px 6px;
+      display: grid; grid-template-columns: 22px repeat(9, 28px); gap: 4px;
       align-items: center; justify-content: start; margin-top: 8px;
     }
     .preset-grid .hdr{ font-weight: 900; text-align: center; }
     .preset-grid .seat{ font-weight: 900; }
-    .preset-grid input{ width: 34px; padding: 6px 6px; text-align: center; }
+    .preset-grid input{ width: 28px; padding: 6px 2px; box-sizing: border-box; text-align: center; }
     .preset-seat-reset{
       padding: 6px 8px;
       font-size: 12px;
@@ -1475,12 +1534,60 @@
     }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
+    .kifu-preset-import {
+      margin-bottom: 12px;
+      padding: 10px;
+      border: 1px solid rgba(139, 90, 43, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 253, 245, 0.7);
+    }
+    .kifu-preset-import-title {
+      margin-bottom: 8px;
+      color: #6d461f;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .kifu-preset-import-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 92px auto;
+      gap: 7px;
+      align-items: end;
+    }
+    .kifu-preset-import-form label {
+      min-width: 0;
+      margin: 0;
+      font-size: 12px;
+    }
+    .kifu-preset-import-form input {
+      width: 100%;
+      margin-top: 4px;
+      padding: 7px 6px;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    .kifu-preset-import-form button {
+      min-height: 38px;
+      padding: 7px 10px;
+      white-space: nowrap;
+    }
+    .kifu-preset-status {
+      min-height: 1.4em;
+      margin-top: 7px;
+      color: #555;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .kifu-preset-status.error { color: #b00000; }
+    .kifu-preset-status.success { color: #176b35; }
 
     @media (max-width: 430px){
-      .preset-grid{ grid-template-columns: 22px repeat(9, 28px); gap: 5px 5px; }
-      .preset-grid input{ width: 28px; padding: 6px 4px; font-size: 16px; } 
+      .preset-grid{ grid-template-columns: 18px repeat(9, 24px); gap: 3px; width: auto; }
+      .preset-grid .hdr{ font-size: 13px; }
+      .preset-grid input{ width: 24px; min-width: 0; padding: 6px 0; font-size: 16px; }
       .preset-seat-reset{ padding: 6px 5px; font-size: 11px; }
       .preset-copy-area .preset-copy-btn{ font-size: 11px; padding: 6px 5px; }
+      .kifu-preset-import-form { grid-template-columns: minmax(0, 1fr) 88px; }
+      .kifu-preset-import-form button { grid-column: 1 / -1; }
     }
 
     .preset-disabled #presetGrid,
@@ -1609,6 +1716,10 @@
       <div class="play-layout">
         <div class="board-wrap">
           <div id="board" class="board"></div>
+          <div id="board3d" class="board-3d" aria-hidden="true">
+            <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
+            <div class="board-3d-fallback">この端末では3D盤面を表示できないため、2D盤面に戻しました。</div>
+          </div>
         </div>
         <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
         <div id="chatPanel" class="chat-panel" aria-live="polite">
@@ -1644,44 +1755,6 @@
 
         <div class="bottom-grid" id="hostToolsGrid" style="display:none;">
           <div class="card">
-            <details id="dealerDetails" style="display:none;">
-              <summary><b>親（dealer）設定</b></summary>
-              <div class="small" style="margin-top:6px;">
-                次の「新規ゲーム」で適用されます。winnerは前回の勝者（初回はランダム）になります。
-              </div>
-              <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-                <select id="dealerSelect">
-                  <option value="winner" selected>勝者 (winner)</option>
-                  <option value="random">ランダム (random)</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                  <option value="D">D</option>
-                </select>
-                <span class="small">現在: <b id="dealerNow">-</b></span>
-              </div>
-            </details>
-
-            <details id="presetHandsDetails" style="margin-top:10px; display:none;">
-              <summary><b>手札指定（枚数）</b></summary>
-              <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
-              <div class="preset-note">
-                各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
-                さらに「し」は各プレイヤー4枚まで（5以上は不可）。
-                ※この設定は「新規ゲーム」では保持され、「リセット」で消えます。
-              </div>
-              <div class="preset-grid" id="presetGrid">
-                <div></div>
-                <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
-                <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-                <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-                <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-                <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
-              </div>
-              <div class="preset-copy-area" id="presetCopyArea"></div>
-              <div class="preset-err" id="presetErr" style="display:none;"></div>
-            </details>
-
             <details id="actionsDetails" style="margin-top:10px; display:none;">
               <summary><b>（デバッグ用）合法手</b></summary>
               <div class="small">観戦中は空になります。</div>
@@ -1754,6 +1827,7 @@
     <h3>⚙️ 設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
       <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
+      <button id="matchSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('match')">対局設定</button>
       <button id="roomManagementTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('management')">ルーム管理</button>
     </div>
 
@@ -1761,6 +1835,14 @@
       <div class="settings-row">
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+      </div>
+      <div id="boardViewSettingRow" class="settings-row" style="display:none;">
+        <label>盤面表示</label>
+        <input id="boardViewMode" type="hidden" value="2d">
+        <div class="board-view-segmented" role="group" aria-label="盤面表示">
+          <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
+          <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
+        </div>
       </div>
       <details id="mobileChatSettingsDetails" class="settings-disclosure">
         <summary>
@@ -1789,13 +1871,21 @@
           </div>
         </div>
       </details>
-      <div class="settings-row">
-        <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
-      </div>
-      <div id="beginnerSupportSettingRow" class="settings-row">
-        <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
-        <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
-      </div>
+      <details id="playSupportSettingsDetails" class="settings-disclosure">
+        <summary>
+          <span class="when-closed">▶ 対局中の表示・サポートを開く</span>
+          <span class="when-open">▼ 対局中の表示・サポートを閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
+          </div>
+          <div id="beginnerSupportSettingRow" class="settings-row">
+            <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
+            <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+          </div>
+        </div>
+      </details>
       <details id="soundSettingsDetails" class="settings-disclosure">
         <summary>
           <span class="when-closed">▶ 音の設定を開く</span>
@@ -1817,12 +1907,86 @@
           </div>
         </div>
       </details>
-      <div class="settings-row">
-        <button class="settings-action-button" type="button" onclick="downloadKifu(false)">棋譜を保存する</button>
-      </div>
-      <div class="settings-row">
-        <button class="settings-action-button" type="button" onclick="downloadKifu(true)">匿名で棋譜を保存する</button>
-      </div>
+      <details id="kifuSaveSettingsDetails" class="settings-disclosure">
+        <summary>
+          <span class="when-closed">▶ 棋譜保存を開く</span>
+          <span class="when-open">▼ 棋譜保存を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <button class="settings-action-button" type="button" onclick="downloadKifu(false)">棋譜を保存する</button>
+          </div>
+          <div class="settings-row">
+            <button class="settings-action-button" type="button" onclick="downloadKifu(true)">匿名で棋譜を保存する</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section id="matchSettingsPanel" class="settings-panel" role="tabpanel">
+      <p class="match-settings-note">親と手札の変更は、ゲーム開始前なら現在の配牌へすぐ反映されます。対局中の変更は次の新規ゲームから適用されます。</p>
+
+      <details id="dealerDetails" class="settings-disclosure" open style="display:none;">
+        <summary>
+          <span class="when-closed">▶ 親設定を開く</span>
+          <span class="when-open">▼ 親設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label for="dealerSelect">親の決め方</label>
+            <select id="dealerSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="winner" selected>勝者 (winner)</option>
+              <option value="random">ランダム (random)</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </div>
+          <div class="small">現在の親: <b id="dealerNow">-</b></div>
+          <div class="small" style="margin-top:6px;">winnerは前回の勝者、初回はランダムになります。</div>
+        </div>
+      </details>
+
+      <details id="presetHandsDetails" class="settings-disclosure" style="display:none;">
+        <summary>
+          <span class="when-closed">▶ 手札指定を開く</span>
+          <span class="when-open">▼ 手札指定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="kifu-preset-import">
+            <div class="kifu-preset-import-title">棋譜から手札を読み込む</div>
+            <form class="kifu-preset-import-form" onsubmit="loadPresetFromKifu(event)">
+              <label for="kifuPresetId">
+                棋譜ID
+                <input type="text" id="kifuPresetId" inputmode="numeric" autocomplete="off" placeholder="0001" required>
+              </label>
+              <label for="kifuPresetRound">
+                何局目
+                <input type="number" id="kifuPresetRound" inputmode="numeric" min="1" step="1" placeholder="1" required>
+              </label>
+              <button id="kifuPresetLoadButton" type="submit">手札へ反映</button>
+            </form>
+            <div id="kifuPresetStatus" class="kifu-preset-status" aria-live="polite"></div>
+          </div>
+          <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
+          <div class="preset-note">
+            各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
+            さらに「し」は各プレイヤー4枚まで（5以上は不可）。
+            ※この設定は「新規ゲーム」では保持され、「リセット」で消えます。
+          </div>
+          <div class="preset-grid" id="presetGrid">
+            <div></div>
+            <div class="hdr" title="1">し</div><div class="hdr" title="2">香</div><div class="hdr" title="3">馬</div><div class="hdr" title="4">銀</div><div class="hdr" title="5">金</div><div class="hdr" title="6">角</div><div class="hdr" title="7">飛</div><div class="hdr" title="8">玉</div><div class="hdr" title="9">王</div>
+            <div class="seat">A</div><input class="ph" data-seat="A" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="A" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">B</div><input class="ph" data-seat="B" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="B" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">C</div><input class="ph" data-seat="C" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="C" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+            <div class="seat">D</div><input class="ph" data-seat="D" data-piece="1" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="2" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="3" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="4" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="5" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="6" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="7" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="8" maxlength="1" inputmode="numeric" autocomplete="off" /><input class="ph" data-seat="D" data-piece="9" maxlength="1" inputmode="numeric" autocomplete="off" />
+          </div>
+          <div class="preset-copy-area" id="presetCopyArea"></div>
+          <div class="preset-err" id="presetErr" style="display:none;"></div>
+        </div>
+      </details>
     </section>
 
     <section id="roomManagementPanel" class="settings-panel" role="tabpanel">
@@ -1872,6 +2036,13 @@
   </div>
 </div>
 
+<script type="module">
+  import("/static/board3d.js?v=20260730").catch((error) => {
+    window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
+    console.warn("3D board module failed to load:", error);
+    window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
+  });
+</script>
 <script>
 const API = "";
 const MAIN_GID = "main";
@@ -2015,6 +2186,7 @@ function loadPersonalSettings() {
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
+            boardViewMode: saved.boardViewMode === "3d" ? "3d" : "2d",
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
                 ? saved.mobileChatWidth
@@ -2031,6 +2203,7 @@ function loadPersonalSettings() {
             pieceSound: "notanomori",
             enableCVoice: false,
             enableBeginnerSupport: false,
+            boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
             mobileChatTransparency: 0,
@@ -2055,6 +2228,29 @@ function applyPersonalSettingsAppearance() {
         mobileChatWidths[personalSettings.mobileChatWidth] || mobileChatWidths.normal
     );
     document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
+    applyBoardViewMode();
+}
+
+function setBoardViewControl(mode) {
+    const normalized = mode === "3d" ? "3d" : "2d";
+    document.getElementById("boardViewMode").value = normalized;
+    document.getElementById("boardView2dButton").classList.toggle("active", normalized === "2d");
+    document.getElementById("boardView3dButton").classList.toggle("active", normalized === "3d");
+}
+
+function applyBoardViewMode() {
+    const requested3d = gid === DEBUG_GID && personalSettings.boardViewMode === "3d";
+    const rendererReady = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
+    const use3d = requested3d && rendererReady;
+    const board3d = document.getElementById("board3d");
+
+    document.body.classList.toggle("board-view-3d", use3d);
+    if (board3d) {
+        board3d.setAttribute("aria-hidden", use3d ? "false" : "true");
+        board3d.classList.toggle("is-unavailable", requested3d && window.goitaBoard3D?.isAvailable?.() === false);
+    }
+    window.goitaBoard3D?.setVisible?.(use3d);
+    if (use3d && latestState) renderBoard3D(latestState);
 }
 
 function updateMobileChatTransparencyDisplay(value) {
@@ -2101,6 +2297,8 @@ let lastHintNoticeKey = "";
 let socket = null;
 let fixedHandMemory = {};
 let setupApplyTimer = null;
+let kifuArchiveCache = null;
+let kifuPresetLoading = false;
 let startRequestInFlight = false;
 let autoPlayEnabled = false;
 let keepScoreForPendingSetup = false;
@@ -2451,6 +2649,7 @@ async function enterRoom(targetGid, roomName) {
     gid = targetGid;
     isGameStarted = false; 
     clearRoomBackground();
+    applyBoardViewMode();
     
     forceDisablePreset();
 
@@ -2498,6 +2697,8 @@ async function returnToLobby() {
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
     clearRoomBackground();
+    document.body.classList.remove("board-view-3d");
+    window.goitaBoard3D?.setVisible?.(false);
     
     connectWS("lobby");
     fetchRoomList();
@@ -2608,13 +2809,18 @@ function populateAiProfileSelect(profiles, selected) {
 }
 
 function showSettingsTab(tabName) {
+    const isMatch = tabName === "match";
     const isManagement = tabName === "management";
     if (isManagement && isMainRoomId(settingTargetGid)) return;
-    document.getElementById("personalSettingsTab").classList.toggle("active", !isManagement);
+    if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
+    const isPersonal = !isMatch && !isManagement;
+    document.getElementById("personalSettingsTab").classList.toggle("active", isPersonal);
+    document.getElementById("matchSettingsTab").classList.toggle("active", isMatch);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
-    document.getElementById("personalSettingsPanel").classList.toggle("active", !isManagement);
+    document.getElementById("personalSettingsPanel").classList.toggle("active", isPersonal);
+    document.getElementById("matchSettingsPanel").classList.toggle("active", isMatch);
     document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
-    document.getElementById("personalSettingsFooterActions").style.display = isManagement ? "none" : "block";
+    document.getElementById("personalSettingsFooterActions").style.display = isPersonal ? "block" : "none";
     if (isManagement && !currentAdminPass) {
         setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
     }
@@ -2633,6 +2839,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    setBoardViewControl(personalSettings.boardViewMode);
     document.getElementById("personalSettingsStatus").textContent = "";
 }
 
@@ -2647,9 +2854,12 @@ function openSettingsModal(targetGid, event) {
     document.getElementById("adminAuthStatus").textContent = "";
     document.getElementById("adminAuthArea").style.display = "block";
     document.getElementById("roomManagementFields").style.display = "none";
+    document.getElementById("matchSettingsTab").style.display =
+        (targetGid === gid && isCurrentClientHost()) ? "block" : "none";
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
-    ["mobileChatSettingsDetails", "soundSettingsDetails"].forEach((id) => {
+    document.getElementById("boardViewSettingRow").style.display = targetGid === DEBUG_GID ? "block" : "none";
+    ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
         const details = document.getElementById(id);
         if (details) details.open = false;
     });
@@ -2711,6 +2921,7 @@ async function savePersonalSettings() {
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
+        boardViewMode: document.getElementById("boardViewMode").value === "3d" ? "3d" : "2d",
     };
     latestBeginnerRecommendation = null;
     beginnerRecommendationKey = "";
@@ -2991,14 +3202,15 @@ function updateRoomUI() {
     const gameView = document.getElementById("gameView");
     const gameContentLayout = document.querySelector(".game-content-layout");
     const showLog = isHost && latestState?.show_log === true;
+    const showActions = !isMain && isHost && latestState?.show_legal_actions === true;
     
     if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
     if (toggleBtn) toggleBtn.style.display = isHost ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
-    if (actionsDetails) actionsDetails.style.display = (!isMain && isHost && latestState?.show_legal_actions === true) ? "block" : "none";
-    if (hostToolsGrid) hostToolsGrid.style.display = isHost ? "grid" : "none";
+    if (actionsDetails) actionsDetails.style.display = showActions ? "block" : "none";
+    if (hostToolsGrid) hostToolsGrid.style.display = showActions ? "grid" : "none";
     if (logCard) logCard.style.display = showLog ? "block" : "none";
     if (gameView) gameView.classList.toggle("desktop-log-visible", showLog);
     if (gameContentLayout) gameContentLayout.classList.toggle("log-visible", showLog);
@@ -3260,6 +3472,137 @@ function setPresetHandFromVisibleSeat(seat, hand){
 
   presetValidateAndClamp();
   scheduleApplyCurrentSetup();
+}
+
+function setKifuPresetStatus(message, kind = ""){
+  const status = document.getElementById("kifuPresetStatus");
+  if(!status) return;
+  status.textContent = message;
+  status.classList.toggle("error", kind === "error");
+  status.classList.toggle("success", kind === "success");
+}
+
+async function getKifuArchive(){
+  if(kifuArchiveCache) return kifuArchiveCache;
+  const response = await fetch("/static/kifu_data.json", {cache: "force-cache"});
+  if(!response.ok) throw new Error(`棋譜データを取得できませんでした（${response.status}）`);
+  const data = await response.json();
+  if(!data || !Array.isArray(data.matches)){
+    throw new Error("棋譜データの形式が正しくありません。");
+  }
+  kifuArchiveCache = data;
+  return data;
+}
+
+function findKifuMatch(matches, inputId){
+  const requested = String(inputId || "").trim();
+  const exact = matches.find(match => String(match?.id || "") === requested);
+  if(exact) return exact;
+  if(!/^\d+$/.test(requested)) return null;
+  const requestedNumber = Number(requested);
+  return matches.find(match => /^\d+$/.test(String(match?.id || "")) && Number(match.id) === requestedNumber) || null;
+}
+
+function parseKifuHand(handText){
+  const labelToPiece = Object.fromEntries(
+    Object.entries(PIECE_LABEL).map(([piece, label]) => [label, piece])
+  );
+  const labels = Array.from(String(handText || ""));
+  if(labels.length !== 8 || labels.some(label => !labelToPiece[label])) return null;
+  return labels.map(label => labelToPiece[label]);
+}
+
+function applyKifuHandsToPreset(round){
+  const handSource = round?.hand;
+  const seatKeys = {A: "p0", B: "p1", C: "p2", D: "p3"};
+  const parsedHands = {};
+
+  for(const [seat, sourceKey] of Object.entries(seatKeys)){
+    const parsed = parseKifuHand(handSource?.[sourceKey]);
+    if(!parsed) return false;
+    parsedHands[seat] = parsed;
+  }
+
+  for(const [seat, hand] of Object.entries(parsedHands)){
+    const counts = countPieces(hand);
+    PRESET_PIECES.forEach(piece => {
+      const input = document.querySelector(`#presetGrid input.ph[data-seat="${seat}"][data-piece="${piece}"]`);
+      if(!input) return;
+      const count = counts[piece] || 0;
+      input.value = count > 0 ? String(count) : "";
+    });
+  }
+
+  presetSetEnabled(true);
+  presetValidateAndClamp();
+  scheduleApplyCurrentSetup();
+  return true;
+}
+
+async function loadPresetFromKifu(event){
+  event?.preventDefault();
+  if(kifuPresetLoading) return;
+  if(!isCurrentClientHost() || isMainRoomId(gid)){
+    setKifuPresetStatus("棋譜の手札指定は、プライベートルームのホストだけが利用できます。", "error");
+    return;
+  }
+
+  const idInput = document.getElementById("kifuPresetId");
+  const roundInput = document.getElementById("kifuPresetRound");
+  const loadButton = document.getElementById("kifuPresetLoadButton");
+  const requestedId = String(idInput?.value || "").trim();
+  const requestedRound = Number(roundInput?.value);
+
+  if(!requestedId){
+    setKifuPresetStatus("棋譜IDを入力してください。", "error");
+    idInput?.focus();
+    return;
+  }
+  if(!Number.isInteger(requestedRound) || requestedRound < 1){
+    setKifuPresetStatus("何局目かを1以上の整数で入力してください。", "error");
+    roundInput?.focus();
+    return;
+  }
+
+  kifuPresetLoading = true;
+  if(loadButton){
+    loadButton.disabled = true;
+    loadButton.textContent = "読込中...";
+  }
+  setKifuPresetStatus("棋譜を読み込んでいます。");
+
+  try{
+    const archive = await getKifuArchive();
+    const match = findKifuMatch(archive.matches, requestedId);
+    if(!match){
+      setKifuPresetStatus(`棋譜ID ${requestedId} は見つかりませんでした。`, "error");
+      return;
+    }
+
+    const round = Array.isArray(match.rounds)
+      ? match.rounds.find(item => Number(item?.round_index) === requestedRound)
+      : null;
+    if(!round){
+      setKifuPresetStatus(`棋譜ID ${match.id} に ${requestedRound}局目はありません。`, "error");
+      return;
+    }
+    if(!applyKifuHandsToPreset(round)){
+      setKifuPresetStatus("棋譜の手札データを読み取れませんでした。", "error");
+      return;
+    }
+
+    if(idInput) idInput.value = String(match.id);
+    setKifuPresetStatus(`棋譜ID ${match.id}・${requestedRound}局目の手札を反映しました。`, "success");
+  }catch(error){
+    console.error("Kifu preset load error:", error);
+    setKifuPresetStatus(error?.message || "棋譜データの読み込みに失敗しました。", "error");
+  }finally{
+    kifuPresetLoading = false;
+    if(loadButton){
+      loadButton.disabled = false;
+      loadButton.textContent = "手札へ反映";
+    }
+  }
 }
 
 function renderPresetCopyButtons(state){
@@ -4104,6 +4447,79 @@ function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
   return out;
 }
 
+function buildBoard3DSnapshot(state) {
+  const physToSeat = getPhysToSeat();
+  const slotMap = buildSlotMap(physToSeat);
+  const pendingReceive = pendingBlockPreview(state);
+  const revealedBoardHands = buildRevealedBoardHandMap(state, physToSeat, pendingReceive);
+  const pieces = [];
+  let currentAttackIndex = -1;
+  const currentAttacker = state.attacker;
+
+  if(currentAttacker && state.board_public?.[currentAttacker]?.attack){
+    state.board_public[currentAttacker].attack.forEach((piece, index) => {
+      if(piece !== null) currentAttackIndex = index;
+    });
+  }
+
+  for(const [coordKey, slot] of slotMap.entries()){
+    const [col, row] = coordKey.split(",").map(Number);
+    const kindKey = slot.kind === "R" ? "receive" : "attack";
+    const boardPiece = state.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+    const revealedHandPiece = revealedBoardHands.get(coordKey);
+    const isPendingReceive = (
+      pendingReceive &&
+      kindKey === "receive" &&
+      slot.p === pendingReceive.seat &&
+      slot.idx === pendingReceive.idx
+    );
+    const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
+    const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+    const isRevealedHand = !boardPiece && !isPendingReceive && !!revealedHandPiece;
+    const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : revealedHandPiece);
+    if(!piece) continue;
+
+    pieces.push({
+      key: `${slot.p}-${kindKey}-${slot.idx}-${piece}`,
+      col,
+      row,
+      seat: slot.p,
+      phys: slot.phys,
+      kind: kindKey,
+      piece: String(piece),
+      label: pieceToLabel(piece),
+      hidden: kindKey === "receive" && (isPendingReceive || isHiddenReceive) && !isRevealedHidden,
+      pending: !!isPendingReceive,
+      revealedHand: !!isRevealedHand,
+      revealedHidden: !!isRevealedHidden,
+      ai: seatIsAi(state, slot.p),
+      current: slot.p === currentAttacker && slot.idx === currentAttackIndex && !state.finished,
+    });
+  }
+
+  return {
+    pieces,
+    names: state.player_names || {A:"", B:"", C:"", D:""},
+    physToSeat,
+    turn: state.turn,
+    aiThinkingSeat,
+    isStarted: !!state.is_started,
+    finished: !!state.finished,
+    round: state.round_count || 1,
+    scores: {
+      AC: state.total_team_score?.AC || 0,
+      BD: state.total_team_score?.BD || 0,
+    },
+  };
+}
+
+function renderBoard3D(state) {
+  if(gid !== DEBUG_GID || personalSettings.boardViewMode !== "3d") return;
+  if(window.goitaBoard3D?.isAvailable?.() !== true) return;
+  window.goitaBoard3D.setVisible(true);
+  window.goitaBoard3D.render(buildBoard3DSnapshot(state));
+}
+
 async function claimSeat(seat){
   try{
     const res = await fetch(`${API}/games/${gid}/claim?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"});
@@ -4523,6 +4939,7 @@ function renderBoard(state){
       `;
       board.appendChild(scoreDiv);
   }
+  renderBoard3D(state);
 }
 
 // 盤面下の独立した手札エリアの描画
@@ -5106,6 +5523,10 @@ async function refresh(){
     setAiThinking(false);
   }
 }
+
+window.addEventListener("goita-board3d-ready", () => {
+  applyBoardViewMode();
+});
 
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();

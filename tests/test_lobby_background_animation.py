@@ -15,7 +15,7 @@ def test_lobby_uses_a_faint_diagonal_piece_animation() -> None:
     assert "grid-template-columns: repeat(22, 1fr)" in html
     assert "grid-template-rows: repeat(18, 1fr)" in html
     assert "opacity: 0.055" in html
-    assert "animation: lobby-piece-drift 18s linear infinite" in html
+    assert "animation: lobby-piece-drift 14s linear infinite" in html
     assert "font-size: clamp(32px, 3.8vmax, 60px)" in html
     assert "@keyframes lobby-piece-drift" in html
     assert "translate3d(-8.1818vmax, 10vmax, 0)" in html
