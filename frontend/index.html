@@ -35,6 +35,7 @@
       border-radius: 6px; 
       padding: 12px; 
       box-shadow: 0 8px 16px rgba(0,0,0,0.3); 
+      position: relative;
     }
     .board {
       display: grid;
@@ -251,6 +252,13 @@
       overflow: visible;
       text-overflow: clip;
       padding: 0;
+      gap: 5px;
+    }
+    .name-thinking-spinner {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 16px;
+      opacity: 0.72;
     }
     
     .combo-label.is-turn {
@@ -266,6 +274,11 @@
     }
     .combo-label.combo-side .combo-inner {
       padding: 0;
+    }
+    .combo-label.combo-side .name-thinking-spinner {
+      width: 13px;
+      height: 13px;
+      flex-basis: 13px;
     }
     .name-side-cell {
       border: 0;
@@ -1980,6 +1993,8 @@ let mySeat = WATCH;
 let lastSeat = "A";
 
 let isProcessingCpu = false; 
+let aiThinkingSeat = null;
+let aiThinkingTimer = null;
 let lastLogCount = 0;
 let logAudioPrimed = false;
 let suppressLogAudioUntil = Date.now() + 1200;
@@ -2143,6 +2158,27 @@ function connectWS(targetGid) {
     socket.onerror = (err) => {
         console.error("WebSocket Error:", err);
     };
+}
+
+function setAiThinking(active, seat = "") {
+    if (!active && aiThinkingTimer) {
+        clearTimeout(aiThinkingTimer);
+        aiThinkingTimer = null;
+    }
+    aiThinkingSeat = active && seat ? seat : null;
+    if (latestState) {
+        renderBoard(latestState);
+    }
+}
+
+function scheduleAiThinking(seat) {
+    setAiThinking(false);
+    aiThinkingTimer = setTimeout(() => {
+        aiThinkingTimer = null;
+        if (isProcessingCpu && latestState && latestState.turn === seat) {
+            setAiThinking(true, seat);
+        }
+    }, 2000);
 }
 
 function forceDisablePreset() {
@@ -2318,6 +2354,7 @@ async function enterRoom(targetGid, roomName) {
         cpuTimer = null;
     }
     isProcessingCpu = false;
+    setAiThinking(false);
 
     if(!isSpectator()){
         await releaseSeat(mySeat);
@@ -2351,6 +2388,7 @@ async function returnToLobby() {
         cpuTimer = null;
     }
     isProcessingCpu = false;
+    setAiThinking(false);
 
     if(!isSpectator()){
         await releaseSeat(mySeat);
@@ -4276,8 +4314,19 @@ function renderBoard(state){
           inner.style.alignItems = "center";
           inner.style.justifyContent = "center";
           
-          let displayName = names[seat] ? sanitizeName(names[seat]) : "";
-          inner.textContent = displayName ? `${seat}: ${displayName}` : seat;
+          const displayName = names[seat] ? sanitizeName(names[seat]) : "";
+          const nameText = document.createElement("span");
+          nameText.textContent = displayName ? `${seat}: ${displayName}` : seat;
+          inner.appendChild(nameText);
+
+          if (aiThinkingSeat === seat) {
+            const spinner = document.createElement("img");
+            spinner.className = "name-thinking-spinner";
+            spinner.src = "/static/svg-loading-spinner.svg";
+            spinner.alt = "";
+            inner.appendChild(spinner);
+            inner.setAttribute("aria-label", `${nameText.textContent} AIが思考中`);
+          }
           
           div.appendChild(inner);
           board.appendChild(div);
@@ -4570,6 +4619,7 @@ async function startNewGame(keepScore = false){
       cpuTimer = null;
   }
   isProcessingCpu = false;
+  setAiThinking(false);
 
   isGameStarted = false; 
   keepScoreForPendingSetup = !!keepScore;
@@ -4898,30 +4948,40 @@ async function refresh(){
   if(isGameStarted && !state.finished && !isProcessingCpu){
     if(seatIsAi(state, state.turn)){
       isProcessingCpu = true;
+      scheduleAiThinking(state.turn);
       cpuTimer = setTimeout(async () => {
         try {
           await fetch(`${API}/games/${gid}/cpu_step`, { method: "POST" });
         } catch(e) {
           console.error("CPU step error:", e);
+        } finally {
+          isProcessingCpu = false;
+          cpuTimer = null;
+          setAiThinking(false);
+          refresh();
         }
-        isProcessingCpu = false;
-        cpuTimer = null;
-        refresh();
       }, 1000);
     }else if(autoPlayEnabled && state.turn === mySeat && !isSpectator()){
       isProcessingCpu = true;
       pending = null;
+      scheduleAiThinking(state.turn);
       cpuTimer = setTimeout(async () => {
         try {
           await fetch(`${API}/games/${gid}/auto_step?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`, { method: "POST" });
         } catch(e) {
           console.error("Auto step error:", e);
+        } finally {
+          isProcessingCpu = false;
+          cpuTimer = null;
+          setAiThinking(false);
+          refresh();
         }
-        isProcessingCpu = false;
-        cpuTimer = null;
-        refresh();
       }, 450);
+    }else{
+      setAiThinking(false);
     }
+  }else if(!isProcessingCpu){
+    setAiThinking(false);
   }
 }
 
