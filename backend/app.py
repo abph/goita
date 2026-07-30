@@ -451,7 +451,19 @@ def _sanitize_ai_answer(s: str) -> str:
     return s
 
 
-def _beginner_support_move_answer(question: str) -> Optional[str]:
+def _normalize_ui_language(language: str) -> str:
+    normalized = str(language or "").strip().lower()
+    if normalized.startswith("zh"):
+        return "zh"
+    if normalized.startswith("en"):
+        return "en"
+    return "ja"
+
+
+def _beginner_support_move_answer(
+    question: str,
+    language: str = "ja",
+) -> Optional[str]:
     """Redirect concrete in-game move questions to the beginner support UI."""
     compact = "".join((question or "").lower().split())
     piece_choice = any(
@@ -491,8 +503,61 @@ def _beginner_support_move_answer(question: str) -> Optional[str]:
             "パスか受け",
         )
     )
+    if _normalize_ui_language(language) == "zh":
+        piece_choice = piece_choice or any(
+            phrase in compact
+            for phrase in ("出哪张", "应该出什么", "打哪张", "推荐哪张", "该出什么")
+        )
+        hidden_choice = hidden_choice or any(
+            phrase in compact
+            for phrase in ("伏哪张", "扣哪张", "应该伏什么", "该扣什么")
+        )
+        receive_or_pass = receive_or_pass or any(
+            phrase in compact
+            for phrase in ("该接", "要不要接", "该跳过", "接还是跳过", "跳过还是接")
+        )
+    elif _normalize_ui_language(language) == "en":
+        piece_choice = piece_choice or any(
+            phrase in compact
+            for phrase in (
+                "whichpieceshouldiplay",
+                "whatshouldiplay",
+                "whatpiecetoplay",
+                "whichpieceshouldiuse",
+                "recommendedpiece",
+            )
+        )
+        hidden_choice = hidden_choice or any(
+            phrase in compact
+            for phrase in (
+                "whatshouldihide",
+                "whichpieceshouldihide",
+                "whatshouldiplacefacedown",
+                "whichpieceshouldiplacefacedown",
+            )
+        )
+        receive_or_pass = receive_or_pass or any(
+            phrase in compact
+            for phrase in (
+                "shouldidefend",
+                "shouldipass",
+                "defendorpass",
+                "passordefend",
+            )
+        )
     if not (piece_choice or hidden_choice or receive_or_pass):
         return None
+    if _normalize_ui_language(language) == "zh":
+        return (
+            "对局中如果不知道该出哪张棋子，请在设置中开启“新手辅助”。"
+            "系统会突出显示推荐棋子，并给出简短理由。"
+        )
+    if _normalize_ui_language(language) == "en":
+        return (
+            "If you are unsure which piece to play, open Settings and enable "
+            "Beginner Support. It highlights a recommended piece and gives a "
+            "short explanation."
+        )
     return (
         "ゲーム中にどの駒を出すか迷った場合は、設定から"
         "「初心者サポートを有効にする」をオンにしてください。"
@@ -504,15 +569,38 @@ def _gemini_api_key() -> str:
     return (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
 
 
-def _request_gemini_help(question: str) -> str:
+def _request_gemini_help(question: str, language: str = "ja") -> str:
     api_key = _gemini_api_key()
     if not api_key:
         raise RuntimeError("Gemini API key is not configured")
 
     model = urllib.parse.quote(GEMINI_MODEL, safe="")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    system_prompt = AI_HELP_SYSTEM_PROMPT
+    if _normalize_ui_language(language) == "zh":
+        system_prompt = system_prompt.replace(
+            "ユーザーの質問には日本語で、簡潔に1〜4文で答えてください。",
+            "请仅使用简体中文，以简洁的1至4句话回答用户。",
+        )
+        system_prompt += (
+            "\n当前页面语言为简体中文。按钮名和操作说明也请使用简体中文，"
+            "但URL必须保持原样。日文说明只作为内部参考，不要在回答中照抄日文界面文字。"
+            "常用名称为：设置、新手辅助、询问AI、开始、自动、跳过、观战。"
+        )
+    elif _normalize_ui_language(language) == "en":
+        system_prompt = system_prompt.replace(
+            "ユーザーの質問には日本語で、簡潔に1〜4文で答えてください。",
+            "Answer the user in concise, natural English using one to four sentences.",
+        )
+        system_prompt += (
+            "\nThe current page language is English. Translate all button names and "
+            "instructions into English, but keep URLs unchanged. The Japanese text "
+            "above is reference material only; do not copy Japanese UI labels into "
+            "the answer. Common labels are Settings, Beginner Support, Ask AI, Start, "
+            "Auto, Pass, and Spectator."
+        )
     payload = {
-        "systemInstruction": {"parts": [{"text": AI_HELP_SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": question}]}],
         "generationConfig": {
             "temperature": 0.2,
@@ -849,7 +937,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatAiRequest(ChatRequest):
-    pass
+    language: str = "ja"
 
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
@@ -1910,7 +1998,8 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     question = _sanitize_chat_message(req.message)
     if not question:
         raise HTTPException(status_code=400, detail="質問を入力してください。")
-    local_answer = _beginner_support_move_answer(question)
+    language = _normalize_ui_language(req.language)
+    local_answer = _beginner_support_move_answer(question, language)
     if local_answer is None and not _gemini_api_key():
         raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
 
@@ -1942,7 +2031,7 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
         try:
             async with AI_HELP_SEMAPHORE:
                 answer = await asyncio.wait_for(
-                    asyncio.to_thread(_request_gemini_help, question),
+                    asyncio.to_thread(_request_gemini_help, question, language),
                     timeout=30,
                 )
         except (RuntimeError, asyncio.TimeoutError):

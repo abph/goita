@@ -6,18 +6,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_3d_board_is_debug_only_and_defaults_to_2d() -> None:
+def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
     assert 'id="board3d"' in html
     assert 'id="board3dCanvas"' in html
     assert 'id="board3dZoomIn"' in html
     assert 'id="board3dZoomOut"' in html
-    assert 'import("/static/board3d.js?v=20260730s")' in html
+    assert 'import("/static/board3d.js?v=20260730t")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
-    assert 'targetGid === DEBUG_GID ? "block" : "none"' in html
-    assert 'gid === DEBUG_GID && personalSettings.boardViewMode === "3d"' in html
+    assert "const PRIVATE_ROOM_IDS = new Set([" in html
+    assert "PRIVATE_A_GID," in html
+    assert '"room-silver-02"' in html
+    assert '"room-bronze-03"' in html
+    assert '"room-copper-04"' in html
+    assert "function supportsAlternateBoardViews(roomId)" in html
+    assert "return roomId === DEBUG_GID || PRIVATE_ROOM_IDS.has(roomId);" in html
+    assert "supportsAlternateBoardViews(targetGid) ? \"block\" : \"none\"" in html
+    assert "const boardViewsEnabled = supportsAlternateBoardViews(gid);" in html
+    assert 'boardViewsEnabled && personalSettings.boardViewMode === "3d"' in html
+    assert 'if(!supportsAlternateBoardViews(gid) || personalSettings.boardViewMode !== "3d") return;' in html
     assert 'boardViewMode: normalizeBoardViewMode(saved.boardViewMode)' in html
     assert 'boardViewMode: "2d"' in html
 
@@ -45,8 +54,8 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "position: [0, SIDE_SHELF_Y, -SIDE_SHELF_OFFSET]" in board_module
     assert "function createFloatingScore(snapshot)" in board_module
     assert "new THREE.Mesh(new THREE.PlaneGeometry(8.4, 2.95), material)" in board_module
-    assert "context.fillText(`AC  ${snapshot.scores.AC}点`, width / 2, 170)" in board_module
-    assert "context.fillText(`BD  ${snapshot.scores.BD}点`, width / 2, 292)" in board_module
+    assert "context.fillText(tr(`AC  ${snapshot.scores.AC}点`), width / 2, 170)" in board_module
+    assert "context.fillText(tr(`BD  ${snapshot.scores.BD}点`), width / 2, 292)" in board_module
     assert "score.position.set(0, -0.6, -10.8)" in board_module
     assert "labelLayer.add(createFloatingScore(snapshot))" in board_module
     assert "score.position.set(0, 0.73, 0)" not in board_module
@@ -80,6 +89,6 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
 
 
 if __name__ == "__main__":
-    test_3d_board_is_debug_only_and_defaults_to_2d()
+    test_3d_board_is_available_in_private_and_debug_rooms()
     test_3d_board_uses_local_threejs_and_public_board_state()
     print("DEBUG_BOARD_3D_TEST_OK")

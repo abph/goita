@@ -1,0 +1,578 @@
+/*
+ * Japanese remains the source language for the application.
+ * This layer translates static UI and dynamically inserted notices to Simplified Chinese or English,
+ * while preserving player names, ordinary chat messages, and Goita piece faces.
+ */
+(() => {
+  const STORAGE_KEY = "goita-ui-language";
+  const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"]);
+  const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label"];
+
+  const ZH_EXACT = Object.freeze({
+    "そろうごいた": "Solo Goita",
+    "そろうごいた（β）": "Solo Goita（β）",
+    "© そろうごいた": "© Solo Goita",
+    "オンライン対局室へようこそ。": "欢迎来到在线对局室。",
+    "不足人数に応じて、": "人数不足时，",
+    "ルームで選択したAI": "房间中选择的AI",
+    "が参戦します。1人からでも対局可能です。": "会加入对局。即使只有1人也可以开始。",
+    "※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。": "※目前尚未实现5张以上“し”的发牌（一定为4张以下）。",
+    "🌐 公開部屋": "🌐 公开房间",
+    "誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。": "任何人都可以自由参加或观战。请轻松享受对局。",
+    "🏯 プライベートルーム": "🏯 私人房间",
+    "合言葉を知っている人だけが入れる専用の部屋です。": "只有知道口令的人才能进入的专用房间。",
+    "「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。": "提供指定发牌、指定庄家等适合搭档练习和研究的功能。",
+    "※いまはお試し期間で、プライベートAを自由に使えます。": "※目前为试用期，可以自由使用私人房间A。",
+    "そろうごいたの案内": "Solo Goita 指南",
+    "そろうごいたとは": "什么是 Solo Goita",
+    "ごいたを知る": "了解Goita",
+    "サイト情報": "网站信息",
+    "表示言語": "显示语言",
+    "お問い合わせ": "联系我们",
+    "プライバシーポリシー": "隐私政策",
+    "利用上の注意": "使用须知",
+    "⚙️ 設定": "⚙️ 设置",
+    "設定": "设置",
+    "ルーム設定": "房间设置",
+    "🏠 ロビーへ": "🏠 返回大厅",
+    "ロビーへ": "返回大厅",
+    "AIに打たせる席は、A/B/C/DからAIモードを選んでください。": "要让AI操作某个座位，请从A/B/C/D中选择AI模式。",
+    "ボイスチャット": "语音聊天",
+    "参加": "加入",
+    "退出": "退出",
+    "マイクON": "开启麦克风",
+    "ミュート": "静音",
+    "未参加": "未加入",
+    "音声は録音・保存されません。": "语音不会被录音或保存。",
+    "3D盤面": "3D棋盘",
+    "2D盤面": "2D棋盘",
+    "3D盤面の拡大縮小": "缩放3D棋盘",
+    "縮小": "缩小",
+    "拡大": "放大",
+    "この端末では3D盤面を表示できないため、2D盤面に戻しました。": "此设备无法显示3D棋盘，已切换回2D棋盘。",
+    "3D盤面を読み込めませんでした。": "无法加载3D棋盘。",
+    "ピクセル盤面": "像素棋盘",
+    "ピクセル盤面を読み込めませんでした。": "无法加载像素棋盘。",
+    "チャット": "聊天",
+    "閉じる": "关闭",
+    "送信先": "发送对象",
+    "AIに質問": "询问AI",
+    "チャットを入力": "输入聊天内容",
+    "AIへの質問を入力": "输入给AI的问题",
+    "送信": "发送",
+    "Auto": "自动",
+    "AIモード": "AI模式",
+    "人間": "玩家",
+    "自分": "自己",
+    "観戦中です。A/B/C/Dを選ぶと操作できます。": "正在观战。选择A/B/C/D后即可操作。",
+    "▶ 開始": "▶ 开始",
+    "みんな手札公開": "公开所有人的手牌",
+    "手札表示を戻す": "恢复隐藏手牌",
+    "（デバッグ用）合法手": "（调试用）合法行动",
+    "観戦中は空になります。": "观战时此处为空。",
+    "ログ": "日志",
+    "席の設定": "座位设置",
+    "席に着く": "入座",
+    "席を離れる": "离开座位",
+    "AIモードにする": "设为AI模式",
+    "空席にする": "设为空位",
+    "デバッグルーム": "调试房间",
+    "管理用パスワード": "管理员密码",
+    "キャンセル": "取消",
+    "入室": "进入房间",
+    "設定を閉じる": "关闭设置",
+    "設定の種類": "设置类别",
+    "個人設定": "个人设置",
+    "対局設定": "对局设置",
+    "ルーム管理": "房间管理",
+    "名前（最大9文字）": "名称（最多9个字符）",
+    "名前を入力": "输入名称",
+    "▶ モバイル版のチャット設定を開く": "▶ 展开手机版聊天设置",
+    "▼ モバイル版のチャット設定を閉じる": "▼ 收起手机版聊天设置",
+    "配置": "位置",
+    "右側": "右侧",
+    "上側": "上方",
+    "幅": "宽度",
+    "太い": "宽",
+    "普通": "普通",
+    "細い": "窄",
+    "透明度": "透明度",
+    "▶ 対局中の表示・サポートを開く": "▶ 展开对局显示与辅助",
+    "▼ 対局中の表示・サポートを閉じる": "▼ 收起对局显示与辅助",
+    "盤面表示": "棋盘显示",
+    "ピクセル": "像素",
+    "カラー": "彩色",
+    "モノクロ": "黑白",
+    "必殺技（かかりごたえ等）の演出を有効にする": "启用特殊招式（接力等）动画",
+    "初心者サポートを有効にする": "启用新手辅助",
+    "おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。": "显示推荐棋子和简短理由。仅可在私人房间使用。",
+    "▶ 音の設定を開く": "▶ 展开声音设置",
+    "▼ 音の設定を閉じる": "▼ 收起声音设置",
+    "効果音（駒を出す音など）を有効にする": "启用音效（出牌声等）",
+    "駒を打つ音": "出牌声音",
+    "新しい音（既定）": "新声音（默认）",
+    "これまでの音": "原有声音",
+    "Cの声を有効にする": "启用C的语音",
+    "▶ 棋譜保存を開く": "▶ 展开对局记录保存",
+    "▼ 棋譜保存を閉じる": "▼ 收起对局记录保存",
+    "棋譜を保存する": "保存对局记录",
+    "匿名で棋譜を保存する": "匿名保存对局记录",
+    "親と手札の変更は、ゲーム開始前なら現在の配牌へすぐ反映されます。対局中の変更は次の新規ゲームから適用されます。": "在游戏开始前更改庄家和手牌会立即应用到当前发牌。对局中的更改将在下一场新游戏生效。",
+    "▶ 親設定を開く": "▶ 展开庄家设置",
+    "▼ 親設定を閉じる": "▼ 收起庄家设置",
+    "親の決め方": "庄家决定方式",
+    "勝者 (winner)": "胜者（winner）",
+    "ランダム (random)": "随机（random）",
+    "現在の親:": "当前庄家：",
+    "winnerは前回の勝者、初回はランダムになります。": "winner表示由上一局胜者坐庄，首局随机决定。",
+    "▶ 手札指定を開く": "▶ 展开指定手牌",
+    "▼ 手札指定を閉じる": "▼ 收起指定手牌",
+    "棋譜から手札を読み込む": "从对局记录读取手牌",
+    "棋譜ID": "对局记录ID",
+    "何局目": "第几局",
+    "手札へ反映": "应用到手牌",
+    "有効": "启用",
+    "各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。": "每格输入1位半角数字（0～9）。系统会自动限制A/B/C/D总数不超过上限（し10/香4/马4/银4/金4/角2/飞2/玉1/王1）。",
+    "さらに「し」は各プレイヤー4枚まで（5以上は不可）。": "另外，每位玩家最多持有4张“し”（不可为5张以上）。",
+    "※この設定は「新規ゲーム」では保持され、「リセット」で消えます。": "※此设置在“新游戏”时保留，按“重置”后清除。",
+    "確認": "确认",
+    "ルーム名（最大9文字）": "房间名（最多9个字符）",
+    "入室用の合言葉を変更・解除する": "更改或取消入室口令",
+    "空欄にすると誰でも入れる公開部屋になります": "留空后将成为任何人都能进入的公开房间",
+    "AIの選択": "选择AI",
+    "強化中AI": "强化中AI",
+    "中級者（下）": "中级（初阶）",
+    "初級者（上）": "初级（高阶）",
+    "（デバッグ用）合法手を表示する": "显示（调试用）合法行动",
+    "ログを表示する": "显示日志",
+    "ルーム管理を保存": "保存房间管理设置",
+    "個人設定を保存": "保存个人设置",
+    "保存しました。": "已保存。",
+    "保存できませんでした。": "保存失败。",
+    "ごいたの概要、遊び方、戦略を知りたい方は、目的に合ったページをご覧ください。": "想了解Goita概要、玩法或策略时，请查看相应页面。",
+    "ごいたの概要や歴史、基本ルール、遊べる場所を紹介しています。": "介绍Goita的概要、历史、基本规则和可游玩场所。",
+    "ごいたのルールについて知る": "了解Goita规则",
+    "駒の種類、受けと攻め、上がり方、点数などを解説しています。": "介绍棋子种类、防守与进攻、和牌方式以及得分。",
+    "ごいたの戦略について知る": "了解Goita策略",
+    "攻め方、受け方、読み合いなど、対局で役立つ考え方を紹介しています。": "介绍进攻、防守和推测等对局思路。",
+    "詳しく見る": "查看详情",
+    "お問い合わせは、": "联系方式：",
+    "までお願いします。": "。",
+    "対局室のチャットは他の利用者にも表示されます。個人情報や公開したくない内容は書き込まないでください。": "对局室聊天会向其他用户显示。请勿填写个人信息或不希望公开的内容。",
+    "そろうごいたでは、対局や各機能の提供に必要な範囲で、設定した名前、チャット内容、対局情報、棋譜情報などを取り扱います。個人設定の一部は、ご利用のブラウザー内に保存されます。": "Solo Goita 会在提供对局及各项功能所需的范围内处理设置的名称、聊天内容、对局信息和记录信息。部分个人设置会保存在您的浏览器中。",
+    "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。ただし、運営側がその情報を勝手に棋譜として保存・収集することはありません。また、本人の同意なく、棋譜から個人の打ち方を分析したり、AI開発、研究、記事などに利用したりすることもありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。": "对局期间，服务器会为推进游戏而临时保存操作信息。但运营方绝不会擅自将这些信息保存或收集为对局记录，也不会在未经本人同意的情况下分析个人打法，或用于AI开发、研究及文章。设置中的“保存对局记录”和“匿名保存对局记录”只会把记录文件保存到用户自己的设备。",
+    "デバッグルームのボイスチャットは、参加者同士を直接つなぐためにWebRTCを利用します。音声を録音・保存することはありません。": "调试房间的语音聊天使用WebRTC直接连接参与者。语音不会被录音或保存。",
+    "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。": "输入到“询问AI”的内容会发送至Google Gemini API以生成回答。请勿输入个人信息、密码或机密信息。",
+    "取得した情報は、サービスの提供、改善、不具合調査のために必要な範囲で利用します。": "获取的信息仅在提供服务、改进功能和调查故障所需的范围内使用。",
+    "そろうごいたは現在ベータ版です。予告なく機能の変更、停止、データの初期化などを行う場合があります。": "Solo Goita 目前处于测试阶段，可能会在不另行通知的情况下更改或停止功能、初始化数据。",
+    "通信状況や不具合などにより、対局が中断したり、操作内容が正しく反映されなかったりする場合があります。": "由于网络状况或故障，对局可能中断，操作也可能无法正确反映。",
+    "他の利用者が不快になる発言や、対局・サービスの運営を妨げる行為はお控えください。": "请勿发表令其他用户不适的言论，也不要妨碍对局或服务运行。",
+    "準備中...": "准备中……",
+    "マイクを準備中...": "正在准备麦克风……",
+    "再接続中...": "正在重新连接……",
+    "着席すると利用できます": "入座后可使用",
+    "この端末では利用できません": "此设备无法使用",
+    "ボイスチャットを読み込めませんでした。": "无法加载语音聊天。",
+    "デバッグルームが有効になっていません。": "调试房间尚未启用。",
+    "URLのパスワードが正しくありません。": "URL中的密码不正确。",
+    "デバッグルームへの接続に失敗しました。": "连接调试房间失败。",
+    "背景画像はプライベートAでのみ設定できます": "背景图片只能在私人房间A中设置。",
+    "背景画像には /static/ から始まる画像パスを指定してください": "背景图片必须使用以 /static/ 开头的图片路径。",
+    "部屋が存在しません": "房间不存在。",
+    "合言葉が違います": "口令不正确。",
+    "管理用パスワードが違います": "管理员密码不正确。",
+    "管理用パスワードを入力してください。": "请输入管理员密码。",
+    "確認しています...": "正在确认……",
+    "管理用パスワードが正しくありません。": "管理员密码不正确。",
+    "合言葉（パスワード）を入力してください": "请输入口令（密码）",
+    "合言葉が正しくありません。": "口令不正确。",
+    "通信エラーが発生しました。": "发生通信错误。",
+    "空席": "空位",
+    "※合言葉が必要です": "※需要口令",
+    "部屋リストの取得に失敗:": "获取房间列表失败：",
+    "ルーム管理の設定を保存しました。": "已保存房间管理设置。",
+    "設定の保存に失敗しました。": "保存设置失败。",
+    "AIモードの変更に失敗しました。サーバーを再起動してから、もう一度試してください。": "更改AI模式失败。请重启服务器后重试。",
+    "AIモードの変更に失敗しました。通信状態を確認してください。": "更改AI模式失败。请检查网络连接。",
+    "現在: AIモード": "当前：AI模式",
+    "現在: 人間": "当前：玩家",
+    "現在: 空席": "当前：空位",
+    "リセット": "重置",
+    "棋譜データの形式が正しくありません。": "对局记录数据格式不正确。",
+    "棋譜の手札指定は、プライベートルームのホストだけが利用できます。": "只有私人房间的房主可以从对局记录指定手牌。",
+    "棋譜IDを入力してください。": "请输入对局记录ID。",
+    "何局目かを1以上の整数で入力してください。": "请输入大于等于1的局数。",
+    "読込中...": "读取中……",
+    "棋譜を読み込んでいます。": "正在读取对局记录。",
+    "棋譜の手札データを読み取れませんでした。": "无法读取对局记录中的手牌数据。",
+    "棋譜データの読み込みに失敗しました。": "读取对局记录失败。",
+    "今の手駒を指定": "指定当前手牌",
+    "連絡": "通知",
+    "他のプレイヤーの番です": "现在是其他玩家的回合",
+    "まだメッセージはありません": "暂无消息",
+    "観戦": "观战",
+    "AIに聞きたいことを入力してください。": "请输入想询问AI的内容。",
+    "質問を入力してください。": "请输入问题。",
+    "AI案内はまだ設定されていません。": "AI指南尚未配置。",
+    "AIから回答を取得できませんでした。": "无法获取AI回答。",
+    "チャットの送信に失敗しました。": "发送聊天失败。",
+    "チャットの送信に失敗しました。通信状態を確認してください。": "发送聊天失败。请检查网络连接。",
+    "AIへの接続に失敗しました。通信状態を確認してください。": "连接AI失败。请检查网络连接。",
+    "しと香は、王・玉では受けられません。": "王和玉不能接“し”或“香”。",
+    "操作": "操作",
+    "おすすめ": "推荐",
+    "受けられる駒がないため、パスしてください。": "没有可以接的棋子，请跳过。",
+    "まず伏せる駒を選びます。": "请先选择要伏下的棋子。",
+    "次に攻める駒を選びます。": "接着选择进攻棋子。",
+    "受ける駒を選びます。": "请选择用于接牌的棋子。",
+    "攻める駒を選びます。": "请选择进攻棋子。",
+    "今回はパスを選びます。": "本次选择跳过。",
+    "攻め": "进攻",
+    "受け": "防守",
+    "終了": "结束",
+    "着席の通信に失敗しました。": "入座通信失败。",
+    "まずは「開始」ボタンを押して対局を始めてください。": "请先按“开始”按钮开始对局。",
+    "観戦中は操作できません。A/B/C/Dを選んでください。": "观战时无法操作。请选择A/B/C/D。",
+    "この局は終了しています。": "本局已经结束。",
+    "選択をキャンセルしました。": "已取消选择。",
+    "同じ駒で複数候補があります。デバッグ用ボタンから選んでください。": "同一种棋子有多个候选，请从调试按钮中选择。",
+    "その駒は選べません。": "无法选择该棋子。",
+    "その駒は今は出せません。（パスは手札横のボタンから）": "现在不能打出该棋子。（请使用手牌旁的跳过按钮）",
+    "まず伏せの駒を選んでください。次に攻めを選びます。": "请先选择伏牌，然后选择进攻。",
+    "複数候補があり確定できません。デバッグ用ボタンから選んでください。": "存在多个候选，无法确定。请从调试按钮中选择。",
+    "今はパスできません。": "现在不能跳过。",
+    "受けられる駒があります。本当にパスしますか？": "有可以接的棋子。确定要跳过吗？",
+    "パス": "跳过",
+    "伏": "伏",
+    "新規ゲーム (スコアリセット)": "新游戏（重置分数）",
+    "次の一局へ": "下一局",
+    "強制リセット": "强制重置",
+    "待機中... ホスト（👑A）が「開始」を押すのをお待ちください。\n使い方で分からないことがあれば、チャットの「AIに質問」をご利用ください。": "等待中……请等待房主（👑A）按下“开始”。\n如对使用方法有疑问，请使用聊天中的“询问AI”。",
+    "👑 あなたはホストです。設定や配牌を確認し、「▶ 開始」を押してください。": "👑 你是房主。请确认设置和发牌后按“▶ 开始”。",
+    "観戦中です。空いている席のボタンを押すと参加できます。": "正在观战。按下空位按钮即可加入。",
+    "あなたの手番です。手札をクリックしてください。": "轮到你了。请点击手牌。",
+    "かかりごたえ！": "接力攻势！",
+    "だまだま！": "双王突击！",
+    "リーチ！": "听牌！",
+    "倍付け！": "加倍！",
+    "だまだまあがり！": "双王和牌！",
+    "王あがり！": "王牌和牌！",
+    "ゲーム中にどの駒を出すか迷った場合は、設定から「初心者サポートを有効にする」をオンにしてください。おすすめの駒が強調表示され、簡単な理由も確認できます。": "对局中如果不知道该出哪张棋子，请在设置中开启“新手辅助”。系统会突出显示推荐棋子，并给出简短理由。"
+  });
+
+  const ZH_RULES = [
+    [/^観戦(\d+)人$/, (_m, n) => `观战 ${n} 人`],
+    [/^(\d+)人参加・ミュート中$/, (_m, n) => `${n}人参加・已静音`],
+    [/^(\d+)人参加・マイクON$/, (_m, n) => `${n}人参加・麦克风开启`],
+    [/^\((\d+)\/4人\)$/, (_m, n) => `(${n}/4人)`],
+    [/^第\s*(\d+)\s*局$/, (_m, n) => `第 ${n} 局`],
+    [/^(AC|BD):?\s*(\d+)点$/, (_m, team, score) => `${team}：${score}分`],
+    [/^(\d+)時(\d+)分(\d+)秒$/, (_m, h, m, s) => `${h}时${m}分${s}秒`],
+    [/^チャット\s+(\d+)$/, (_m, n) => `聊天 ${n}`],
+    [/^(.+)\s+\(自分\)(.*)$/, (_m, name, suffix) => `${name}（自己）${suffix}`],
+    [/^(.+)\s+\[人\](.*)$/, (_m, name, suffix) => `${name} [玩家]${suffix}`],
+    [/^(.+)\s+\[AI\](.*)$/, (_m, name, suffix) => `${name} [AI]${suffix}`],
+    [/^(.+) の設定$/, (_m, seat) => `${seat}的设置`],
+    [/^(.+) は他の人が座っています。$/, (_m, seat) => `${seat}已被其他玩家占用。`],
+    [/^(.+) は、すでに別の端末で使われています。$/, (_m, seat) => `${seat}已在其他设备上使用。`],
+    [/^(.+) への着席に失敗しました。$/, (_m, seat) => `未能入座${seat}。`],
+    [/^(.+) に入室しました。手番をお待ち下さい。$/, (_m, room) => `已进入${translateCore(room)}。请等待轮到你。`],
+    [/^いまは(.+)の手番です。（あなたは:(.+)）$/, (_m, turn, seat) => `现在轮到${turn}。（你是：${seat}）`],
+    [/^伏せに (.+)。次に攻めを選んでください。$/, (_m, piece) => `已选择${piece}作为伏牌。接着请选择进攻棋子。`],
+    [/^(.+): この手駒を指定$/, (_m, seat) => `${seat}：指定当前手牌`],
+    [/^棋譜ID (.+) は見つかりませんでした。$/, (_m, id) => `未找到对局记录ID ${id}。`],
+    [/^棋譜ID (.+) に (\d+)局目はありません。$/, (_m, id, round) => `对局记录ID ${id}中没有第${round}局。`],
+    [/^棋譜ID (.+)・(\d+)局目の手札を反映しました。$/, (_m, id, round) => `已应用对局记录ID ${id}第${round}局的手牌。`],
+    [/^棋譜データを取得できませんでした（(.+)）$/, (_m, status) => `无法获取对局记录数据（${status}）。`],
+    [/^(.+) の合計が上限を超えています（(\d+)\/(\d+)）$/, (_m, piece, total, max) => `${piece}的总数超过上限（${total}/${max}）。`],
+    [/^([ABCD]) の合計が8を超えています（(\d+)）$/, (_m, seat, total) => `${seat}的总数超过8（${total}）。`],
+    [/^👑 あなたはホストです。「▶ 開始」を押して第(\d+)局を始めてください。$/, (_m, round) => `👑 你是房主。请按“▶ 开始”开始第${round}局。`],
+    [/^🎊 (.+)ペアの勝利です！\(150点到達\) 「新規ゲーム」でスコアをリセットします。$/, (_m, team) => `🎊 ${team}队获胜！（达到150分）请用“新游戏”重置分数。`],
+    [/^🎊 (.+)ペアの勝利です！\(150点到達\) ホストの操作をお待ちください。$/, (_m, team) => `🎊 ${team}队获胜！（达到150分）请等待房主操作。`],
+    [/^勝者:(.+)、(\d+)点獲得。「次の一局へ」を押してください。$/, (_m, winner, score) => `胜者：${winner}，获得${score}分。请按“下一局”。`],
+    [/^勝者:(.+)、(\d+)点獲得。ホストの操作をお待ちください。$/, (_m, winner, score) => `胜者：${winner}，获得${score}分。请等待房主操作。`],
+    [/^AIへの質問は、あと(\d+)秒お待ちください。$/, (_m, seconds) => `再次询问AI前请等待${seconds}秒。`],
+    [/^(.+)で受けて、次の攻めにつなげるのがおすすめです。$/, (_m, piece) => `建议用${piece}接牌，并衔接下一次进攻。`],
+    [/^(.+)で受けて、攻め返すのがおすすめです。$/, (_m, piece) => `建议用${piece}接牌后反攻。`],
+    [/^(.+)を伏せて、(.+)で攻めるのがおすすめです。$/, (_m, block, attack) => `建议伏下${block}，再用${attack}进攻。`],
+    [/^(.+)で攻めるのがおすすめです。$/, (_m, piece) => `建议用${piece}进攻。`],
+    [/^この手で上がると(\d+)点です。$/, (_m, score) => `以此手和牌可得${score}分。`]
+  ];
+
+  const ZH_SEGMENT_RULES = [
+    [/([^。\n]+)で受けて、次の攻めにつなげるのがおすすめです。/g, (_m, piece) => `建议用${piece}接牌，并衔接下一次进攻。`],
+    [/([^。\n]+)で受けて、攻め返すのがおすすめです。/g, (_m, piece) => `建议用${piece}接牌后反攻。`],
+    [/([^。\n]+)を伏せて、([^。\n]+)で攻めるのがおすすめです。/g, (_m, block, attack) => `建议伏下${block}，再用${attack}进攻。`],
+    [/([^。\n]+)で攻めるのがおすすめです。/g, (_m, piece) => `建议用${piece}进攻。`],
+    [/この手で上がると(\d+)点です。/g, (_m, score) => `以此手和牌可得${score}分。`],
+    [/いまは([^。\n]+)の手番です。/g, (_m, turn) => `现在轮到${turn}。`],
+    [/勝者:([^、。\n]+)、(\d+)点獲得。/g, (_m, winner, score) => `胜者：${winner}，获得${score}分。`]
+  ];
+
+  const ZH_PHRASES = [
+    ["各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。", "每格输入1位半角数字（0～9）。系统会自动限制A/B/C/D总数不超过上限（し10/香4/马4/银4/金4/角2/飞2/玉1/王1）。"],
+    ["さらに「し」は各プレイヤー4枚まで（5以上は不可）。", "另外，每位玩家最多持有4张“し”（不可为5张以上）。"],
+    ["※この設定は「新規ゲーム」では保持され、「リセット」で消えます。", "※此设置在“新游戏”时保留，按“重置”后清除。"],
+    ["メインルームA", "主房间A"],
+    ["メインルームB", "主房间B"],
+    ["プライベートA", "私人房间A"],
+    ["プライベートB", "私人房间B"],
+    ["プライベートC", "私人房间C"],
+    ["プライベートD", "私人房间D"],
+    ["サポーター", "支持者"],
+    ["案内AI", "引导AI"],
+    ["プレイヤー", "玩家"],
+    ["空席", "空位"],
+    ["ホスト", "房主"],
+    ["の手番です", "的回合"],
+    ["あなたは", "你是"],
+    ["点獲得", "分"],
+    ["点です", "分"],
+    ["点", "分"],
+    ["局目", "局"],
+    ["観戦:", "观战："],
+    ["現在の親", "当前庄家"],
+    ["AIが思考中", "AI思考中"],
+    ["この手で上がれます。", "此手可以和牌。"],
+    ["上がりにつながる攻め筋を優先します。", "优先选择能通向和牌的进攻路线。"],
+    ["味方の攻めに合わせて圧力をかけます。", "配合队友的进攻施加压力。"],
+    ["より高い点数の上がりを狙います。", "争取以更高分和牌。"],
+    ["同じ種類の駒を続けて、相手に圧力をかけます。", "连续打出同类棋子，向对手施压。"],
+    ["しを多く持っていることを味方に伝えます。", "向队友传达自己持有较多“し”。"],
+    ["王（玉）を温存するため、今回はパスがおすすめです。", "为了保留王（玉），本次建议跳过。"],
+    ["味方の反応を見るため、今回はパスがおすすめです。", "为了观察队友的反应，本次建议跳过。"],
+    ["大切な駒を温存するため、今回はパスがおすすめです。", "为了保留重要棋子，本次建议跳过。"],
+    ["味方の駒は基本的にパスします。", "面对队友的棋子通常选择跳过。"],
+    ["大きな理由がない限りはパスしましょう。", "若无重要理由，建议跳过。"],
+    ["3香を持っている、しを持っていないなど、", "例如持有3张香、没有“し”等，"],
+    ["Game start.", "游戏开始。"],
+    ["Round finished.", "本局结束。"],
+    ["Match finished!", "比赛结束！"],
+    ["dealer=", "庄家="],
+    ["winner=", "胜者="],
+    ["gained=", "获得="],
+    ["pass", "跳过"],
+    ["receive", "接牌"],
+    ["attack", "进攻"],
+    ["block", "伏牌"]
+  ];
+  const EN_PACK = window.GOITA_I18N_EN || {
+    exact: Object.freeze({}),
+    rules: [],
+    segmentRules: [],
+    phrases: [],
+  };
+
+  const originalText = new WeakMap();
+  const lastRenderedText = new WeakMap();
+  const originalAttributes = new WeakMap();
+  const lastRenderedAttributes = new WeakMap();
+  let currentLanguage = readStoredLanguage();
+  let observer = null;
+
+  function readStoredLanguage() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return SUPPORTED_LANGUAGES.has(saved) ? saved : "ja";
+    } catch (_error) {
+      return "ja";
+    }
+  }
+
+  function normalizeLanguage(language) {
+    return SUPPORTED_LANGUAGES.has(language) ? language : "ja";
+  }
+
+  function translationPack() {
+    if (currentLanguage === "zh") {
+      return {
+        exact: ZH_EXACT,
+        rules: ZH_RULES,
+        segmentRules: ZH_SEGMENT_RULES,
+        phrases: ZH_PHRASES,
+      };
+    }
+    if (currentLanguage === "en") return EN_PACK;
+    return null;
+  }
+
+  function translateCore(value) {
+    const source = String(value ?? "");
+    const pack = translationPack();
+    if (!pack || !source) return source;
+    if (Object.prototype.hasOwnProperty.call(pack.exact, source)) return pack.exact[source];
+    for (const [pattern, replacement] of pack.rules) {
+      if (pattern.test(source)) return source.replace(pattern, replacement);
+    }
+    let translated = source;
+    for (const [pattern, replacement] of pack.segmentRules) {
+      translated = translated.replace(pattern, replacement);
+    }
+    for (const [from, to] of pack.phrases) {
+      if (translated.includes(from)) translated = translated.split(from).join(to);
+    }
+    return translated;
+  }
+
+  function translate(value) {
+    const source = String(value ?? "");
+    if (currentLanguage === "ja" || !source.trim()) return source;
+    const leading = source.match(/^\s*/)?.[0] || "";
+    const trailing = source.match(/\s*$/)?.[0] || "";
+    const coreEnd = source.length - trailing.length;
+    const core = source.slice(leading.length, coreEnd);
+    return `${leading}${translateCore(core)}${trailing}`;
+  }
+
+  function shouldSkipTextNode(node) {
+    const parent = node?.parentElement;
+    if (!parent) return true;
+    if (parent.closest("[data-i18n-ignore]")) return true;
+    if (parent.closest(".hand .val, .cell .val, .piece-value")) return true;
+    const chatRow = parent.closest(".chat-message");
+    if (chatRow && !chatRow.classList.contains("notice") && !chatRow.classList.contains("ai-answer")) {
+      return true;
+    }
+    return ["SCRIPT", "STYLE", "TEXTAREA"].includes(parent.tagName);
+  }
+
+  function renderTextNode(node, fromMutation = false) {
+    if (!node || node.nodeType !== Node.TEXT_NODE || shouldSkipTextNode(node)) return;
+    const current = node.nodeValue || "";
+    const last = lastRenderedText.get(node);
+    if (fromMutation && current === last) return;
+    if (!originalText.has(node) || (fromMutation && current !== last)) {
+      originalText.set(node, current);
+    }
+    const source = originalText.get(node) || "";
+    const desired = currentLanguage === "ja" ? source : translate(source);
+    lastRenderedText.set(node, desired);
+    if (current !== desired) node.nodeValue = desired;
+  }
+
+  function attributeMaps(element) {
+    if (!originalAttributes.has(element)) originalAttributes.set(element, new Map());
+    if (!lastRenderedAttributes.has(element)) lastRenderedAttributes.set(element, new Map());
+    return {
+      originals: originalAttributes.get(element),
+      rendered: lastRenderedAttributes.get(element),
+    };
+  }
+
+  function renderAttribute(element, attribute, fromMutation = false) {
+    if (!element?.hasAttribute?.(attribute) || element.closest("[data-i18n-ignore]")) return;
+    const current = element.getAttribute(attribute) || "";
+    const { originals, rendered } = attributeMaps(element);
+    const last = rendered.get(attribute);
+    if (fromMutation && current === last) return;
+    if (!originals.has(attribute) || (fromMutation && current !== last)) {
+      originals.set(attribute, current);
+    }
+    const source = originals.get(attribute) || "";
+    const desired = currentLanguage === "ja" ? source : translate(source);
+    rendered.set(attribute, desired);
+    if (current !== desired) element.setAttribute(attribute, desired);
+  }
+
+  function renderElementAttributes(element, fromMutation = false) {
+    for (const attribute of TRANSLATABLE_ATTRIBUTES) {
+      renderAttribute(element, attribute, fromMutation);
+    }
+  }
+
+  function renderTree(root) {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+      renderTextNode(root);
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+    if (root.nodeType === Node.ELEMENT_NODE) renderElementAttributes(root);
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT
+    );
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE) renderTextNode(node);
+      else renderElementAttributes(node);
+      node = walker.nextNode();
+    }
+  }
+
+  function updateLanguageButtons() {
+    document.querySelectorAll("[data-language-choice]").forEach((button) => {
+      const selected = button.getAttribute("data-language-choice") === currentLanguage;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+  }
+
+  function setLanguage(language, options = {}) {
+    const nextLanguage = normalizeLanguage(language);
+    const changed = nextLanguage !== currentLanguage;
+    currentLanguage = nextLanguage;
+    document.documentElement.lang = currentLanguage === "zh"
+      ? "zh-CN"
+      : (currentLanguage === "en" ? "en" : "ja");
+    try {
+      localStorage.setItem(STORAGE_KEY, currentLanguage);
+    } catch (_error) {}
+    renderTree(document.documentElement);
+    updateLanguageButtons();
+    if (changed && options.dispatch !== false) {
+      window.dispatchEvent(new CustomEvent("goita-language-change", {
+        detail: { language: currentLanguage },
+      }));
+    }
+  }
+
+  function startObserver() {
+    if (observer || !document.documentElement) return;
+    observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "characterData") {
+          renderTextNode(mutation.target, true);
+        } else if (mutation.type === "attributes") {
+          renderAttribute(mutation.target, mutation.attributeName, true);
+        } else {
+          mutation.addedNodes.forEach((node) => renderTree(node));
+        }
+      }
+      updateLanguageButtons();
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: TRANSLATABLE_ATTRIBUTES,
+    });
+  }
+
+  const nativeAlert = window.alert.bind(window);
+  const nativeConfirm = window.confirm.bind(window);
+  const nativePrompt = window.prompt.bind(window);
+  window.alert = (message) => nativeAlert(translate(message));
+  window.confirm = (message) => nativeConfirm(translate(message));
+  window.prompt = (message, defaultValue) => nativePrompt(translate(message), defaultValue);
+
+  window.goitaI18n = {
+    getLanguage: () => currentLanguage,
+    isChinese: () => currentLanguage === "zh",
+    setLanguage,
+    translate,
+    refresh: () => renderTree(document.documentElement),
+  };
+  window.setSiteLanguage = (language) => setLanguage(language);
+
+  const initialize = () => {
+    setLanguage(currentLanguage, { dispatch: false });
+    startObserver();
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  } else {
+    initialize();
+  }
+})();

@@ -24,7 +24,7 @@ async def _run() -> None:
         assert app_module._beginner_support_move_answer("受けるべき？それともパス？") is not None
         assert app_module._beginner_support_move_answer("ごいたの攻め方を教えて") is None
         os.environ["GEMINI_API_KEY"] = "test-key"
-        app_module._request_gemini_help = lambda question: f"案内回答: {question}"
+        app_module._request_gemini_help = lambda question, language="ja": f"案内回答: {question}"
 
         request = Request({
             "type": "http",
@@ -55,7 +55,7 @@ async def _run() -> None:
         else:
             raise AssertionError("cooldown was not enforced")
 
-        app_module._request_gemini_help = lambda question: (_ for _ in ()).throw(
+        app_module._request_gemini_help = lambda question, language="ja": (_ for _ in ()).throw(
             AssertionError("concrete move questions must not call Gemini")
         )
         move_payload = payload.model_copy(update={
@@ -66,6 +66,24 @@ async def _run() -> None:
         assert "初心者サポートを有効にする" in move_result["answer"]
         assert "おすすめの駒が強調表示" in move_result["answer"]
         assert "strategy" not in move_result["answer"]
+
+        zh_move_payload = payload.model_copy(update={
+            "client_id": "zh-move-help-client",
+            "message": "这时应该出哪张棋子？",
+            "language": "zh",
+        })
+        zh_move_result = await app_module.ask_chat_ai("main", zh_move_payload, request)
+        assert "新手辅助" in zh_move_result["answer"]
+        assert "推荐棋子" in zh_move_result["answer"]
+
+        en_move_payload = payload.model_copy(update={
+            "client_id": "en-move-help-client",
+            "message": "Which piece should I play here?",
+            "language": "en",
+        })
+        en_move_result = await app_module.ask_chat_ai("main", en_move_payload, request)
+        assert "Beginner Support" in en_move_result["answer"]
+        assert "recommended piece" in en_move_result["answer"]
 
         os.environ.pop("GEMINI_API_KEY", None)
         no_key_payload = payload.model_copy(update={"client_id": "no-key-client"})

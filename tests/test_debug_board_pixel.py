@@ -6,16 +6,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_pixel_board_is_debug_only_and_defaults_to_2d() -> None:
+def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20260730i")' in html
+    assert 'import("/static/boardPixel.js?v=20260730j")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
-    assert 'PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)' in html
+    assert "const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);" in html
+    assert "if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;" in html
     assert 'boardViewMode: "2d"' in html
 
 
@@ -69,6 +70,6 @@ def test_pixel_board_uses_low_resolution_canvas_and_public_snapshot() -> None:
 
 
 if __name__ == "__main__":
-    test_pixel_board_is_debug_only_and_defaults_to_2d()
+    test_pixel_board_is_available_in_private_and_debug_rooms()
     test_pixel_board_uses_low_resolution_canvas_and_public_snapshot()
     print("DEBUG_BOARD_PIXEL_TEST_OK")

@@ -56,6 +56,10 @@ const PASS_WORLD_POSITIONS = {
   D: [-3.12, 1.12, 0],
 };
 
+function tr(text) {
+  return window.goitaI18n?.translate?.(text) ?? text;
+}
+
 function createPieceGeometry() {
   const shape = new THREE.Shape();
   shape.moveTo(-0.38, -0.48);
@@ -614,7 +618,7 @@ function showPass(phys) {
   const position = PASS_WORLD_POSITIONS[phys];
   if (!position) return false;
 
-  const marker = createTextSprite("パス", {
+  const marker = createTextSprite(tr("パス"), {
     width: 384,
     height: 168,
     background: "rgba(255, 250, 236, 0.96)",
@@ -651,13 +655,13 @@ function createFloatingScore(snapshot) {
 
   context.fillStyle = "#ffe7ad";
   context.font = '800 68px "Yu Kyokasho", "Yu Mincho", serif';
-  context.fillText(`第 ${snapshot.round} 局`, width / 2, 58);
+  context.fillText(tr(`第 ${snapshot.round} 局`), width / 2, 58);
 
   context.font = '900 98px "Yu Kyokasho", "Yu Mincho", serif';
   context.fillStyle = "#ffd08c";
-  context.fillText(`AC  ${snapshot.scores.AC}点`, width / 2, 170);
+  context.fillText(tr(`AC  ${snapshot.scores.AC}点`), width / 2, 170);
   context.fillStyle = "#bfe1ff";
-  context.fillText(`BD  ${snapshot.scores.BD}点`, width / 2, 292);
+  context.fillText(tr(`BD  ${snapshot.scores.BD}点`), width / 2, 292);
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;

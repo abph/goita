@@ -14,6 +14,10 @@ const PIECE_ROTATION = {
   D: Math.PI / 2,
 };
 
+function tr(text) {
+  return window.goitaI18n?.translate?.(text) ?? text;
+}
+
 let visible = false;
 let latestSnapshot = null;
 
@@ -189,9 +193,9 @@ function drawCenterPanel(snapshot) {
   context.lineWidth = 2;
   context.strokeRect(103, 123, 112, 72);
 
-  drawPixelText(`第${snapshot.round}局`, 159, 139, {size: 12});
-  drawPixelText(`AC ${snapshot.scores.AC}点`, 159, 159, {size: 12, color: palette.acText});
-  drawPixelText(`BD ${snapshot.scores.BD}点`, 159, 178, {size: 12, color: palette.bdText});
+  drawPixelText(tr(`第${snapshot.round}局`), 159, 139, {size: 12});
+  drawPixelText(tr(`AC ${snapshot.scores.AC}点`), 159, 159, {size: 12, color: palette.acText});
+  drawPixelText(tr(`BD ${snapshot.scores.BD}点`), 159, 178, {size: 12, color: palette.bdText});
 }
 
 function drawSeatLabel(snapshot, phys, x, y, align = "center") {

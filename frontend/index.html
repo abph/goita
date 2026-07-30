@@ -728,6 +728,43 @@
         position: relative;
         isolation: isolate;
     }
+    .language-switcher {
+        position: absolute;
+        top: 12px;
+        right: 0;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: #5f4935;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .language-switcher-buttons {
+        display: inline-grid;
+        grid-template-columns: repeat(3, minmax(58px, auto));
+        overflow: hidden;
+        border: 1px solid #8b5a2b;
+        border-radius: 6px;
+        background: rgba(255, 253, 245, 0.94);
+    }
+    .language-switcher button {
+        min-height: 30px;
+        border: 0;
+        border-right: 1px solid rgba(139, 90, 43, 0.35);
+        border-radius: 0;
+        background: transparent;
+        color: #5f4935;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    .language-switcher button:last-child { border-right: 0; }
+    .language-switcher button.active {
+        background: #8b5a2b;
+        color: #fffdf5;
+    }
     .lobby-piece-background {
         position: fixed;
         left: -50vmax;
@@ -818,6 +855,11 @@
     @media (max-width: 520px) {
         .lobby-piece-background {
             display: none;
+        }
+        .language-switcher {
+            position: static;
+            justify-content: flex-end;
+            padding-top: 10px;
         }
         .lobby-footer-links {
             flex-wrap: nowrap;
@@ -2408,6 +2450,14 @@
 
 <div id="lobbyView">
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
+  <div class="language-switcher" role="group" aria-label="表示言語">
+    <span>表示言語</span>
+    <div class="language-switcher-buttons">
+      <button type="button" data-language-choice="ja" aria-pressed="true" onclick="setSiteLanguage('ja')">日本語</button>
+      <button type="button" data-language-choice="zh" aria-pressed="false" onclick="setSiteLanguage('zh')">中文</button>
+      <button type="button" data-language-choice="en" aria-pressed="false" onclick="setSiteLanguage('en')">English</button>
+    </div>
+  </div>
   <div style="text-align: center; padding: 40px 0;">
      <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた（β）</h1>
      <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ。</p>
@@ -2819,13 +2869,15 @@
   </div>
 </div>
 
+<script src="/static/i18n-en.js?v=20260730a"></script>
+<script src="/static/i18n.js?v=20260730f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260730s").catch((error) => {
+  import("/static/board3d.js?v=20260730t").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260730i").catch((error) => {
+  import("/static/boardPixel.js?v=20260730j").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -2846,9 +2898,33 @@ const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b"]);
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
+const PRIVATE_ROOM_IDS = new Set([
+    PRIVATE_A_GID,
+    "room-silver-02",
+    "room-bronze-03",
+    "room-copper-04",
+]);
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
+function uiText(value) {
+    const source = String(value ?? "");
+    return window.goitaI18n?.translate?.(source) ?? source;
+}
+const BUILT_IN_ROOM_NAMES = new Set([
+    "メインルームA", "メインルームB", "プライベートA", "プライベートB",
+    "プライベートC", "プライベートD", "デバッグルーム"
+]);
+function isBuiltInRoomName(value) {
+    return BUILT_IN_ROOM_NAMES.has(String(value || ""));
+}
+function setRoomNameText(element, value) {
+    if(!element) return;
+    const roomName = String(value || "");
+    if(isBuiltInRoomName(roomName)) element.removeAttribute("data-i18n-ignore");
+    else element.setAttribute("data-i18n-ignore", "");
+    element.textContent = roomName;
+}
 const SITE_INFO = {
     learn: {
         title: "ごいたを知る",
@@ -2977,6 +3053,10 @@ function normalizeBoardViewMode(mode) {
     return mode === "3d" || PIXEL_BOARD_MODES.has(mode) ? mode : "2d";
 }
 
+function supportsAlternateBoardViews(roomId) {
+    return roomId === DEBUG_GID || PRIVATE_ROOM_IDS.has(roomId);
+}
+
 function loadPersonalSettings() {
     try {
         const saved = JSON.parse(localStorage.getItem(PERSONAL_SETTINGS_KEY) || "{}");
@@ -3046,8 +3126,9 @@ function setBoardViewControl(mode) {
 }
 
 function applyBoardViewMode() {
-    const requested3d = gid === DEBUG_GID && personalSettings.boardViewMode === "3d";
-    const requestedPixel = gid === DEBUG_GID && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);
+    const boardViewsEnabled = supportsAlternateBoardViews(gid);
+    const requested3d = boardViewsEnabled && personalSettings.boardViewMode === "3d";
+    const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);
     const pixelTheme = personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color";
     const use3d = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
     const usePixel = requestedPixel && window.goitaBoardPixel?.isAvailable?.() === true;
@@ -3605,7 +3686,7 @@ async function enterRoom(targetGid, roomName) {
     
     document.getElementById("lobbyView").style.display = "none";
     document.getElementById("gameView").style.display = "block";
-    document.getElementById("currentRoomName").textContent = roomName;
+    setRoomNameText(document.getElementById("currentRoomName"), roomName);
     
     connectWS(gid); 
     await refresh();
@@ -3686,7 +3767,8 @@ async function fetchRoomList() {
                     text = `${seatName}: ${displayName}`;
                 }
                 const badgeClass = isAi ? "ai" : (isEmpty ? "empty" : "human");
-                return `<div class="seat-badge ${badgeClass}" title="${text}">${text}</div>`;
+                const ignoreAttribute = !isAi && !isEmpty ? " data-i18n-ignore" : "";
+                return `<div class="seat-badge ${badgeClass}" title="${text}"${ignoreAttribute}>${text}</div>`;
             };
 
             const isMainRoom = room.is_main_room === true || isMainRoomId(room.game_id);
@@ -3694,13 +3776,14 @@ async function fetchRoomList() {
             const settingsIcon = (!isMainRoom)
                 ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event)" title="ルーム設定">⚙️</div>` 
                 : "";
+            const roomNameIgnore = isBuiltInRoomName(room.owner_name) ? "" : " data-i18n-ignore";
 
             if (requiresPassword) {
                 card.innerHTML = `
                     ${settingsIcon}
                     <div class="lock-icon">🔒</div>
                     <div class="center-info">
-                        <div class="title">${room.owner_name}</div>
+                        <div class="title"${roomNameIgnore}>${room.owner_name}</div>
                         <div class="count" style="color: #b00000; font-size: 12px; margin-top: 4px;">※合言葉が必要です</div>
                     </div>
                 `;
@@ -3710,7 +3793,7 @@ async function fetchRoomList() {
                     <div class="seat-top">${makeBadge('C', s['C'])}</div>
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
-                        <div class="title">${room.owner_name}</div>
+                        <div class="title"${roomNameIgnore}>${room.owner_name}</div>
                         <div class="count">(${room.player_count}/4人)</div>
                     </div>
                     <div class="seat-right">${makeBadge('B', s['B'])}</div>
@@ -3807,7 +3890,8 @@ function openSettingsModal(targetGid, event) {
         (targetGid === gid && isCurrentClientHost()) ? "block" : "none";
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
-    document.getElementById("boardViewSettingRow").style.display = targetGid === DEBUG_GID ? "block" : "none";
+    document.getElementById("boardViewSettingRow").style.display =
+        supportsAlternateBoardViews(targetGid) ? "block" : "none";
     ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
         const details = document.getElementById(id);
         if (details) details.open = false;
@@ -4836,7 +4920,21 @@ function formatChatTime(ts){
   const hh = d.getHours();
   const mm = String(d.getMinutes()).padStart(2, "0");
   const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${hh}時${mm}分${ss}秒`;
+  return uiText(`${hh}時${mm}分${ss}秒`);
+}
+
+function shouldTranslateChatItem(item){
+  return item?.local_notice === true || item?.ai_answer === true || item?.seat === "notice";
+}
+
+function localizedChatSender(item){
+  const raw = String(item?.sender || item?.seat || "観戦");
+  if(shouldTranslateChatItem(item)) return uiText(raw);
+  if(raw === "観戦") return uiText(raw);
+  if(raw.startsWith("観戦: ")){
+    return `${uiText("観戦")}：${raw.slice("観戦: ".length)}`;
+  }
+  return raw;
 }
 
 function showChatToast(item){
@@ -4850,9 +4948,14 @@ function showChatToast(item){
     return;
   }
 
-  sender.textContent = String(item?.sender || item?.seat || "観戦");
+  sender.setAttribute("data-i18n-ignore", "");
+  sender.textContent = localizedChatSender(item);
   time.textContent = formatChatTime(item?.ts);
-  text.textContent = String(item?.message || "");
+  const shouldTranslateMessage = shouldTranslateChatItem(item);
+  text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage);
+  text.textContent = shouldTranslateMessage
+    ? uiText(String(item?.message || ""))
+    : String(item?.message || "");
   toast.classList.toggle("notice", item?.local_notice === true);
 
   toast.classList.add("show");
@@ -4880,8 +4983,9 @@ function chatItemTimeValue(item){
   return Number.isFinite(n) ? n : 0;
 }
 
-function setChatMessageText(element, message){
-  const value = String(message || "");
+function setChatMessageText(element, message, translateMessage = false){
+  const rawValue = String(message || "");
+  const value = translateMessage ? uiText(rawValue) : rawValue;
   if(!CHAT_KNOWN_URLS.some((url) => value.includes(url))){
     element.textContent = value;
     return;
@@ -4978,7 +5082,7 @@ function renderChat(state){
 
       const sender = document.createElement("div");
       sender.className = "chat-sender";
-      sender.textContent = String(item?.sender || item?.seat || "観戦");
+      sender.textContent = localizedChatSender(item);
 
       const meta = document.createElement("div");
       meta.className = "chat-meta";
@@ -4994,7 +5098,7 @@ function renderChat(state){
 
       const text = document.createElement("div");
       text.className = "chat-text";
-      setChatMessageText(text, item?.message);
+      setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
 
       row.appendChild(meta);
       row.appendChild(text);
@@ -5121,7 +5225,8 @@ async function askChatAi(){
         seat: isSpectator() ? WATCH : mySeat,
         client_id: clientId,
         name: personalSettings.playerName || "",
-        message
+        message,
+        language: window.goitaI18n?.getLanguage?.() || "ja"
       })
     });
     if(!res.ok){
@@ -5472,14 +5577,14 @@ function buildBoard3DSnapshot(state) {
 }
 
 function renderBoard3D(state) {
-  if(gid !== DEBUG_GID || personalSettings.boardViewMode !== "3d") return;
+  if(!supportsAlternateBoardViews(gid) || personalSettings.boardViewMode !== "3d") return;
   if(window.goitaBoard3D?.isAvailable?.() !== true) return;
   window.goitaBoard3D.setVisible(true);
   window.goitaBoard3D.render(buildBoard3DSnapshot(state));
 }
 
 function renderBoardPixel(state) {
-  if(gid !== DEBUG_GID || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;
+  if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;
   if(window.goitaBoardPixel?.isAvailable?.() !== true) return;
   window.goitaBoardPixel.setTheme(personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color");
   window.goitaBoardPixel.setVisible(true);
@@ -5820,6 +5925,9 @@ function renderBoard(state){
           const displayName = names[seat] ? sanitizeName(names[seat]) : "";
           const nameText = document.createElement("span");
           const speakingSuffix = voiceChatIsSpeaking(seat) ? " 🎙" : "";
+          if(displayName && !/^プレイヤー[ABCD]$/.test(displayName)){
+            nameText.setAttribute("data-i18n-ignore", "");
+          }
           nameText.textContent = `${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
           inner.appendChild(nameText);
 
@@ -6264,7 +6372,7 @@ async function refresh(){
 
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
-      currentRoomNameEl.textContent = state.owner_name || (isMainRoomId(gid) ? "メインルームA" : "");
+      setRoomNameText(currentRoomNameEl, state.owner_name || (isMainRoomId(gid) ? "メインルームA" : ""));
   }
 
   // 古い盤面上のスコアボードは不要になったため、非表示で固定
@@ -6521,6 +6629,16 @@ window.addEventListener("goita-board-pixel-ready", () => {
 
 window.addEventListener("goita-voice-chat-ready", () => {
   initializeVoiceChat();
+});
+
+window.addEventListener("goita-language-change", () => {
+  updateChatComposerUi();
+  updateVoiceChatUi();
+  updateSeatButtons(latestState || {});
+  if(latestState) {
+    renderChat(latestState);
+    renderBoard();
+  }
 });
 
 window.addEventListener("beforeunload", () => {
