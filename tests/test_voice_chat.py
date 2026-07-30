@@ -94,7 +94,8 @@ def test_frontend_has_debug_only_voice_controls() -> None:
     assert 'id="voiceChatJoinButton"' in html
     assert 'id="voiceChatMuteButton"' in html
     assert "音声は録音・保存されません。" in html
-    assert 'bar.style.display = gid === DEBUG_GID ? "flex" : "none"' in html
+    assert "const VOICE_CHAT_UI_ENABLED = false;" in html
+    assert 'bar.style.display = VOICE_CHAT_UI_ENABLED && gid === DEBUG_GID ? "flex" : "none"' in html
     assert "await voiceChatController?.leave?.();" in html
     assert 'import("/static/voiceChat.js?v=20260730a")' in html
     assert "navigator.mediaDevices.getUserMedia" in module

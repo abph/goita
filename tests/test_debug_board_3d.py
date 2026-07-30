@@ -13,7 +13,7 @@ def test_3d_board_is_debug_only_and_defaults_to_2d() -> None:
     assert 'id="board3dCanvas"' in html
     assert 'id="board3dZoomIn"' in html
     assert 'id="board3dZoomOut"' in html
-    assert 'import("/static/board3d.js?v=20260730r")' in html
+    assert 'import("/static/board3d.js?v=20260730s")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert 'targetGid === DEBUG_GID ? "block" : "none"' in html

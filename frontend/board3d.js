@@ -2,12 +2,15 @@ import * as THREE from "./three.module.min.js";
 
 const canvas = document.getElementById("board3dCanvas");
 const container = document.getElementById("board3d");
+const zoomInButton = document.getElementById("board3dZoomIn");
+const zoomOutButton = document.getElementById("board3dZoomOut");
 
 let renderer = null;
 let scene = null;
 let camera = null;
 let pieceLayer = null;
 let labelLayer = null;
+let passLayer = null;
 let resizeObserver = null;
 let available = null;
 let visible = false;
@@ -17,8 +20,23 @@ let animationFrame = 0;
 let activeAnimations = [];
 let cameraYaw = 0;
 let cameraElevation = 0.72;
+let cameraRadius = 23.2;
 let pointerState = null;
+let pinchDistance = null;
+const activePointers = new Map();
 
+const DEFAULT_CAMERA_RADIUS = 23.2;
+const MIN_CAMERA_RADIUS = 15.8;
+const MAX_CAMERA_RADIUS = 31.5;
+const BOARD_TOP_Y = 0.17;
+const BOARD_BODY_HEIGHT = 3.44;
+const BOARD_BODY_TOP_Y = -0.37;
+const BOARD_BODY_BOTTOM_Y = BOARD_BODY_TOP_Y - BOARD_BODY_HEIGHT;
+const SIDE_SHELF_Y = BOARD_BODY_BOTTOM_Y + 1.5;
+const SIDE_SHELF_LENGTH = 5.2;
+const SIDE_SHELF_DEPTH = 2.36;
+const SIDE_SHELF_OFFSET = 5.28;
+const TABLE_FLOOR_Y = BOARD_BODY_BOTTOM_Y - 0.99;
 const pieceGeometry = createPieceGeometry();
 const highlightGeometry = new THREE.RingGeometry(0.43, 0.52, 32);
 const pieceMaterials = new Map();
@@ -31,14 +49,20 @@ const PHYS_ROTATION = {
   C: Math.PI,
   D: -Math.PI / 2,
 };
+const PASS_WORLD_POSITIONS = {
+  A: [0, 1.12, 3.12],
+  B: [3.12, 1.12, 0],
+  C: [0, 1.12, -3.12],
+  D: [-3.12, 1.12, 0],
+};
 
 function createPieceGeometry() {
   const shape = new THREE.Shape();
-  shape.moveTo(-0.38, -0.52);
-  shape.lineTo(0.38, -0.52);
-  shape.lineTo(0.34, 0.28);
-  shape.lineTo(0, 0.54);
-  shape.lineTo(-0.34, 0.28);
+  shape.moveTo(-0.38, -0.48);
+  shape.lineTo(0.38, -0.48);
+  shape.lineTo(0.35, 0.34);
+  shape.lineTo(0, 0.5);
+  shape.lineTo(-0.35, 0.34);
   shape.closePath();
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: 0.16,
@@ -90,9 +114,85 @@ function createWoodTexture() {
   return texture;
 }
 
+function createBoardLeg(material, x, z) {
+  const leg = new THREE.Group();
+  leg.position.set(x, 0, z);
+
+  const collar = new THREE.Mesh(
+    new THREE.BoxGeometry(0.72, 0.28, 0.72),
+    material
+  );
+  collar.position.y = BOARD_BODY_BOTTOM_Y - 0.13;
+
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.29, 0.43, 0.62, 8),
+    material
+  );
+  stem.position.y = BOARD_BODY_BOTTOM_Y - 0.54;
+  stem.rotation.y = Math.PI / 8;
+
+  const foot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.52, 0.46, 0.2, 8),
+    material
+  );
+  foot.position.y = BOARD_BODY_BOTTOM_Y - 0.87;
+  foot.rotation.y = Math.PI / 8;
+
+  [collar, stem, foot].forEach((part) => {
+    part.castShadow = true;
+    part.receiveShadow = true;
+    leg.add(part);
+  });
+  return leg;
+}
+
+function createSideShelves(material, supportMaterial) {
+  const shelves = new THREE.Group();
+  const shelfSpecs = [
+    {
+      size: [SIDE_SHELF_DEPTH, 0.18, SIDE_SHELF_LENGTH],
+      position: [-SIDE_SHELF_OFFSET, SIDE_SHELF_Y, 0],
+    },
+    {
+      size: [SIDE_SHELF_DEPTH, 0.18, SIDE_SHELF_LENGTH],
+      position: [SIDE_SHELF_OFFSET, SIDE_SHELF_Y, 0],
+    },
+    {
+      size: [SIDE_SHELF_LENGTH, 0.18, SIDE_SHELF_DEPTH],
+      position: [0, SIDE_SHELF_Y, -SIDE_SHELF_OFFSET],
+    },
+  ];
+
+  shelfSpecs.forEach(({ size, position }) => {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    shelf.position.set(...position);
+    shelf.castShadow = true;
+    shelf.receiveShadow = true;
+    shelves.add(shelf);
+  });
+
+  const supportSpecs = [
+    { size: [1.5, 0.68, 0.3], position: [-5, SIDE_SHELF_Y - 0.4, -1.6] },
+    { size: [1.5, 0.68, 0.3], position: [-5, SIDE_SHELF_Y - 0.4, 1.6] },
+    { size: [1.5, 0.68, 0.3], position: [5, SIDE_SHELF_Y - 0.4, -1.6] },
+    { size: [1.5, 0.68, 0.3], position: [5, SIDE_SHELF_Y - 0.4, 1.6] },
+    { size: [0.3, 0.68, 1.5], position: [-1.6, SIDE_SHELF_Y - 0.4, -5] },
+    { size: [0.3, 0.68, 1.5], position: [1.6, SIDE_SHELF_Y - 0.4, -5] },
+  ];
+
+  supportSpecs.forEach(({ size, position }) => {
+    const support = new THREE.Mesh(new THREE.BoxGeometry(...size), supportMaterial);
+    support.position.set(...position);
+    support.castShadow = true;
+    support.receiveShadow = true;
+    shelves.add(support);
+  });
+  return shelves;
+}
+
 function createScene() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xcda56f);
+  scene.background = new THREE.Color(0xd9c39c);
 
   camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
   updateCamera();
@@ -110,17 +210,78 @@ function createScene() {
   keyLight.shadow.camera.bottom = -7;
   scene.add(keyLight);
 
-  const board = new THREE.Mesh(
-    new THREE.BoxGeometry(9.05, 0.34, 9.05),
+  const woodTexture = createWoodTexture();
+  const boardTopMaterial = new THREE.MeshStandardMaterial({
+    map: woodTexture,
+    roughness: 0.72,
+    metalness: 0,
+  });
+  const boardSideMaterial = new THREE.MeshStandardMaterial({
+    map: woodTexture,
+    color: 0xa96f3d,
+    roughness: 0.78,
+    metalness: 0,
+  });
+  const legMaterial = new THREE.MeshStandardMaterial({
+    map: woodTexture,
+    color: 0x87502d,
+    roughness: 0.74,
+    metalness: 0,
+  });
+  const shelfMaterial = new THREE.MeshStandardMaterial({
+    map: woodTexture,
+    color: 0xa36a3b,
+    roughness: 0.72,
+    metalness: 0,
+  });
+
+  const boardTop = new THREE.Mesh(
+    new THREE.BoxGeometry(9.05, 0.54, 9.05),
+    boardTopMaterial
+  );
+  boardTop.position.y = BOARD_TOP_Y - 0.27;
+  boardTop.castShadow = true;
+  boardTop.receiveShadow = true;
+  scene.add(boardTop);
+
+  const boardBody = new THREE.Mesh(
+    new THREE.BoxGeometry(8.56, BOARD_BODY_HEIGHT, 8.56),
+    boardSideMaterial
+  );
+  boardBody.position.y = BOARD_BODY_TOP_Y - BOARD_BODY_HEIGHT / 2;
+  boardBody.castShadow = true;
+  boardBody.receiveShadow = true;
+  scene.add(boardBody);
+
+  const lowerTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(8.76, 0.18, 8.76),
+    legMaterial
+  );
+  lowerTrim.position.y = BOARD_BODY_BOTTOM_Y + 0.01;
+  lowerTrim.castShadow = true;
+  lowerTrim.receiveShadow = true;
+  scene.add(lowerTrim);
+
+  scene.add(createSideShelves(shelfMaterial, legMaterial));
+
+  [-4.02, 4.02].forEach((x) => {
+    [-4.02, 4.02].forEach((z) => {
+      scene.add(createBoardLeg(legMaterial, x, z));
+    });
+  });
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(24, 24),
     new THREE.MeshStandardMaterial({
-      map: createWoodTexture(),
-      roughness: 0.76,
+      color: 0xdac9a8,
+      roughness: 1,
       metalness: 0,
     })
   );
-  board.position.y = 0;
-  board.receiveShadow = true;
-  scene.add(board);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = TABLE_FLOOR_Y;
+  floor.receiveShadow = true;
+  scene.add(floor);
 
   const frameMaterial = new THREE.MeshStandardMaterial({
     color: 0x74421f,
@@ -151,7 +312,8 @@ function createScene() {
 
   pieceLayer = new THREE.Group();
   labelLayer = new THREE.Group();
-  scene.add(pieceLayer, labelLayer);
+  passLayer = new THREE.Group();
+  scene.add(pieceLayer, labelLayer, passLayer);
 }
 
 function isSmallScreen() {
@@ -203,22 +365,53 @@ function resizeAndRender() {
 
 function updateCamera() {
   if (!camera) return;
-  const radius = 13.7;
-  const horizontal = Math.cos(cameraElevation) * radius;
+  const horizontal = Math.cos(cameraElevation) * cameraRadius;
   camera.position.set(
     Math.sin(cameraYaw) * horizontal,
-    Math.sin(cameraElevation) * radius,
+    Math.sin(cameraElevation) * cameraRadius,
     Math.cos(cameraYaw) * horizontal
   );
-  camera.lookAt(0, 0.05, 0);
+  camera.lookAt(0, -2.02, 0);
+}
+
+function setCameraRadius(nextRadius) {
+  cameraRadius = THREE.MathUtils.clamp(nextRadius, MIN_CAMERA_RADIUS, MAX_CAMERA_RADIUS);
+  updateCamera();
+  renderFrame();
+}
+
+function getPinchDistance() {
+  const points = Array.from(activePointers.values());
+  if (points.length < 2) return null;
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
 }
 
 function attachInteraction() {
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    setCameraRadius(cameraRadius + event.deltaY * 0.012);
+  }, { passive: false });
+
   canvas.addEventListener("pointerdown", (event) => {
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     pointerState = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    if (activePointers.size >= 2) {
+      pointerState = null;
+      pinchDistance = getPinchDistance();
+    }
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener("pointermove", (event) => {
+    if (!activePointers.has(event.pointerId)) return;
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activePointers.size >= 2) {
+      const nextDistance = getPinchDistance();
+      if (pinchDistance && nextDistance) {
+        setCameraRadius(cameraRadius * (pinchDistance / nextDistance));
+      }
+      pinchDistance = nextDistance;
+      return;
+    }
     if (!pointerState || event.pointerId !== pointerState.id) return;
     const dx = event.clientX - pointerState.x;
     const dy = event.clientY - pointerState.y;
@@ -230,16 +423,26 @@ function attachInteraction() {
     renderFrame();
   });
   const releasePointer = (event) => {
-    if (pointerState?.id === event.pointerId) pointerState = null;
+    activePointers.delete(event.pointerId);
+    if (activePointers.size === 1) {
+      const [id, point] = activePointers.entries().next().value;
+      pointerState = { id, x: point.x, y: point.y };
+    } else {
+      pointerState = null;
+    }
+    pinchDistance = activePointers.size >= 2 ? getPinchDistance() : null;
   };
   canvas.addEventListener("pointerup", releasePointer);
   canvas.addEventListener("pointercancel", releasePointer);
   canvas.addEventListener("dblclick", () => {
     cameraYaw = 0;
     cameraElevation = 0.72;
+    cameraRadius = DEFAULT_CAMERA_RADIUS;
     updateCamera();
     renderFrame();
   });
+  zoomInButton?.addEventListener("click", () => setCameraRadius(cameraRadius - 1.8));
+  zoomOutButton?.addEventListener("click", () => setCameraRadius(cameraRadius + 1.8));
 }
 
 function pieceBaseMaterial(kind) {
@@ -317,7 +520,7 @@ function createPieceObject(piece) {
       new THREE.PlaneGeometry(0.58, 0.72),
       pieceTextMaterial(piece.label, piece.ai ? "#a31313" : "#17130f", piece.revealedHidden ? 0.55 : 1)
     );
-    textPlane.position.set(0, -0.01, 0.195);
+    textPlane.position.set(0, -0.05, 0.195);
     flat.add(textPlane);
   }
 
@@ -369,6 +572,11 @@ function createTextSprite(text, options = {}) {
     context.fillStyle = options.background;
     roundedRect(context, 8, 8, width - 16, height - 16, 20);
     context.fill();
+    if (options.borderColor) {
+      context.strokeStyle = options.borderColor;
+      context.lineWidth = options.borderWidth || 8;
+      context.stroke();
+    }
   }
 
   context.textAlign = "center";
@@ -389,8 +597,81 @@ function createTextSprite(text, options = {}) {
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = 20;
-  labelDisposables.push(sprite);
+  if (options.trackLabel !== false) labelDisposables.push(sprite);
   return sprite;
+}
+
+function removePassMarker(marker) {
+  if (!marker || !passLayer) return;
+  passLayer.remove(marker);
+  if (marker.material?.map) marker.material.map.dispose();
+  if (marker.material) marker.material.dispose();
+  renderFrame();
+}
+
+function showPass(phys) {
+  if (!ensureRenderer() || !passLayer) return false;
+  const position = PASS_WORLD_POSITIONS[phys];
+  if (!position) return false;
+
+  const marker = createTextSprite("パス", {
+    width: 384,
+    height: 168,
+    background: "rgba(255, 250, 236, 0.96)",
+    borderColor: "#9b2226",
+    borderWidth: 10,
+    color: "#9b2226",
+    fontSize: 76,
+    trackLabel: false,
+  });
+  marker.position.set(...position);
+  marker.scale.set(1.55, 0.68, 1);
+  marker.renderOrder = 40;
+  passLayer.add(marker);
+  renderFrame();
+
+  window.setTimeout(() => removePassMarker(marker), 2000);
+  return true;
+}
+
+function createFloatingScore(snapshot) {
+  const width = 1024;
+  const height = 360;
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = width;
+  textureCanvas.height = height;
+  const context = textureCanvas.getContext("2d");
+  context.clearRect(0, 0, width, height);
+
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.shadowColor = "rgba(55, 27, 11, 0.72)";
+  context.shadowBlur = 8;
+  context.shadowOffsetY = 4;
+
+  context.fillStyle = "#ffe7ad";
+  context.font = '800 68px "Yu Kyokasho", "Yu Mincho", serif';
+  context.fillText(`第 ${snapshot.round} 局`, width / 2, 58);
+
+  context.font = '900 98px "Yu Kyokasho", "Yu Mincho", serif';
+  context.fillStyle = "#ffd08c";
+  context.fillText(`AC  ${snapshot.scores.AC}点`, width / 2, 170);
+  context.fillStyle = "#bfe1ff";
+  context.fillText(`BD  ${snapshot.scores.BD}点`, width / 2, 292);
+
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const score = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 2.95), material);
+  score.position.set(0, -0.6, -10.8);
+  score.renderOrder = 12;
+  return score;
 }
 
 function rebuildLabels(snapshot) {
@@ -408,7 +689,8 @@ function rebuildLabels(snapshot) {
     const seat = snapshot.physToSeat[phys];
     const rawName = String(snapshot.names?.[seat] || "").slice(0, 9);
     const thinking = snapshot.aiThinkingSeat === seat ? "  ●" : "";
-    const label = `${seat}${rawName ? `: ${rawName}` : ""}${thinking}`;
+    const speaking = snapshot.voiceSpeakingSeats?.includes(seat) ? "  🎙" : "";
+    const label = `${seat}${rawName ? `: ${rawName}` : ""}${thinking}${speaking}`;
     const isTurn = snapshot.turn === seat && snapshot.isStarted && !snapshot.finished;
     const sprite = createTextSprite(label, {
       color: isTurn ? "#b00000" : "#302014",
@@ -420,20 +702,7 @@ function rebuildLabels(snapshot) {
   });
 
   if (snapshot.isStarted || snapshot.finished) {
-    const score = createTextSprite(
-      `第 ${snapshot.round} 局\nAC: ${snapshot.scores.AC}点   BD: ${snapshot.scores.BD}点`,
-      {
-        width: 640,
-        height: 260,
-        fontSize: 54,
-        lineHeight: 78,
-        color: "#4d321d",
-        background: "rgba(255, 250, 232, 0.82)",
-      }
-    );
-    score.position.set(0, 0.73, 0);
-    score.scale.set(2.65, 1.08, 1);
-    labelLayer.add(score);
+    labelLayer.add(createFloatingScore(snapshot));
   }
 }
 
@@ -500,6 +769,7 @@ window.goitaBoard3D = {
   isAvailable: ensureRenderer,
   render,
   setVisible,
+  showPass,
   getCanvas: () => canvas,
 };
 

@@ -11,7 +11,7 @@ def test_pixel_board_is_debug_only_and_defaults_to_2d() -> None:
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20260730h")' in html
+    assert 'import("/static/boardPixel.js?v=20260730i")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html

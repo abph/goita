@@ -2820,12 +2820,12 @@
 </div>
 
 <script type="module">
-  import("/static/board3d.js?v=20260730r").catch((error) => {
+  import("/static/board3d.js?v=20260730s").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260730h").catch((error) => {
+  import("/static/boardPixel.js?v=20260730i").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -2844,6 +2844,7 @@ const API = "";
 const MAIN_GID = "main";
 const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b"]);
 const DEBUG_GID = "debug";
+const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
@@ -3204,7 +3205,7 @@ function voiceChatContext() {
         roomId: gid,
         seat: mySeat,
         clientId,
-        eligible: gid === DEBUG_GID && ownsSeat,
+        eligible: VOICE_CHAT_UI_ENABLED && gid === DEBUG_GID && ownsSeat,
     };
 }
 
@@ -3220,8 +3221,8 @@ function updateVoiceChatUi() {
     const status = document.getElementById("voiceChatStatus");
     if (!bar || !joinButton || !muteButton || !status) return;
 
-    bar.style.display = gid === DEBUG_GID ? "flex" : "none";
-    if (gid !== DEBUG_GID) return;
+    bar.style.display = VOICE_CHAT_UI_ENABLED && gid === DEBUG_GID ? "flex" : "none";
+    if (!VOICE_CHAT_UI_ENABLED || gid !== DEBUG_GID) return;
 
     const eligible = voiceChatContext().eligible;
     const active = voiceChatState.active || voiceChatState.joining;
