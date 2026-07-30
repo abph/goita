@@ -13,7 +13,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dCanvas"' in html
     assert 'id="board3dZoomIn"' in html
     assert 'id="board3dZoomOut"' in html
-    assert 'import("/static/board3d.js?v=20260730u")' in html
+    assert 'import("/static/board3d.js?v=20260730v")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html

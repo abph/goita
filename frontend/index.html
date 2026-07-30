@@ -186,7 +186,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 1px;
+      gap: 3px;
       line-height: 0.9;
       transform: translateY(2px);
     }
@@ -196,7 +196,7 @@
       max-width: 100%;
       color: currentColor;
       font-family: Arial, sans-serif;
-      font-size: 7px;
+      font-size: 8px;
       font-weight: 800;
       line-height: 1;
       letter-spacing: 0;
@@ -816,9 +816,9 @@
     }
     html[lang="en"] .lobby-piece-background span::after {
         content: attr(data-piece-en);
-        margin-top: 0.18em;
+        margin-top: 0.24em;
         font-family: Arial, sans-serif;
-        font-size: 0.2em;
+        font-size: 0.24em;
         font-weight: 800;
         line-height: 1;
         letter-spacing: 0;
@@ -1757,7 +1757,7 @@
       .hand .val{ font-size: 18px; }
       html[lang="en"] .slot .val[data-piece-en]::after,
       html[lang="en"] .hand .val[data-piece-en]::after {
-        font-size: 5px;
+        font-size: 6px;
       }
       
       .pass{ font-size: 12px; }
@@ -2966,12 +2966,12 @@
 <script src="/static/i18n-en.js?v=20260730d"></script>
 <script src="/static/i18n.js?v=20260730h"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260730u").catch((error) => {
+  import("/static/board3d.js?v=20260730v").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260730k").catch((error) => {
+  import("/static/boardPixel.js?v=20260730l").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));

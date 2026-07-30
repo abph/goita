@@ -36,7 +36,7 @@ def test_english_piece_names_are_rendered_across_board_modes() -> None:
     assert "setPieceValue(" in html.split("function renderHands", 1)[1]
     assert 'englishLabel: currentUiLanguage() === "en"' in html
     assert "piece.englishLabel || \"\"" in board_3d
-    assert "context.fillText(englishLabel, 128, 249)" in board_3d
+    assert "context.fillText(englishLabel, 128, 260)" in board_3d
     assert "if (piece.englishLabel)" in board_pixel
     assert "drawPixelText(piece.englishLabel" in board_pixel
 

@@ -482,9 +482,9 @@ function pieceTextMaterial(label, englishLabel, color, opacity) {
   context.textBaseline = "middle";
   if (englishLabel) {
     context.font = '900 150px "Yu Kyokasho", "Yu Mincho", serif';
-    context.fillText(label, 128, 142);
-    context.font = '800 31px Arial, sans-serif';
-    context.fillText(englishLabel, 128, 249);
+    context.fillText(label, 128, 136);
+    context.font = '800 36px Arial, sans-serif';
+    context.fillText(englishLabel, 128, 260);
   } else {
     context.font = '900 184px "Yu Kyokasho", "Yu Mincho", serif';
     context.fillText(label, 128, 170);
