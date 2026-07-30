@@ -16,8 +16,10 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('ja')" in html
     assert "setSiteLanguage('zh')" in html
     assert "setSiteLanguage('en')" in html
-    assert '<script src="/static/i18n-en.js?v=20260730a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260730f"></script>' in html
+    assert "openSiteInfo('support')" in html
+    assert '"https://i22.fanbox.cc/plans"' in html
+    assert '<script src="/static/i18n-en.js?v=20260730b"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260730g"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
@@ -25,6 +27,7 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert 'parent.closest(".hand .val, .cell .val, .piece-value")' in i18n
     assert 'parent.closest(".chat-message")' in i18n
     assert '"そろうごいた": "Solo Goita"' in i18n
+    assert '"支援について": "关于支持"' in i18n
     assert "凑齐Goita" not in i18n
 
 
@@ -46,6 +49,8 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert "window.goitaI18n?.translate?.(text)" in board_3d
     assert "window.goitaI18n?.translate?.(text)" in board_pixel
     assert '"そろうごいた": "Solo Goita"' in english
+    assert '"支援について": "Support"' in english
+    assert '"支援ページを開く": "Open Support Page"' in english
     assert '"設定": "Settings"' in english
     assert "window.GOITA_I18N_EN" in english
     assert 'language: str = "ja"' in backend

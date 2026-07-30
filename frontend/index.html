@@ -2492,6 +2492,7 @@
     <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
       <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('support')">支援について</button>
     </nav>
     <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('contact')">お問い合わせ</button>
@@ -2869,8 +2870,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260730a"></script>
-<script src="/static/i18n.js?v=20260730f"></script>
+<script src="/static/i18n-en.js?v=20260730b"></script>
+<script src="/static/i18n.js?v=20260730g"></script>
 <script type="module">
   import("/static/board3d.js?v=20260730t").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
@@ -2961,6 +2962,19 @@ const SITE_INFO = {
             "対局室のチャットは他の利用者にも表示されます。個人情報や公開したくない内容は書き込まないでください。",
         ],
     },
+    support: {
+        title: "支援について",
+        paragraphs: [
+            "AIの強化、バグ修正、機能追加には時間がかかります。もし応援していただける場合は、支援ページから支援できます。",
+        ],
+        link: {
+            prefix: "",
+            label: "支援ページを開く",
+            suffix: "",
+            href: "https://i22.fanbox.cc/plans",
+            afterParagraphs: true,
+        },
+    },
     privacy: {
         title: "プライバシーポリシー",
         paragraphs: [
@@ -2999,7 +3013,8 @@ function openSiteInfo(infoKey) {
         link.rel = "noopener noreferrer";
         link.textContent = info.link.label;
         paragraph.append(info.link.prefix, link, info.link.suffix);
-        contents.unshift(paragraph);
+        if (info.link.afterParagraphs) contents.push(paragraph);
+        else contents.unshift(paragraph);
     }
     if (info.resources) {
         const resourceList = document.createElement("div");
