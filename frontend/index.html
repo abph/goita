@@ -868,6 +868,52 @@
         }
         .lobby-footer-link { font-size: 11px; }
     }
+
+    .linked-kifu-notice {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 auto 24px;
+        padding: 14px 16px;
+        border: 1px solid #8b5a2b;
+        border-left-width: 5px;
+        border-radius: 8px;
+        background: #fff8df;
+        color: #3f2d1b;
+        box-shadow: 0 3px 10px rgba(78, 48, 21, 0.08);
+    }
+    .linked-kifu-notice[hidden] { display: none; }
+    .linked-kifu-notice strong {
+        display: block;
+        margin-bottom: 3px;
+        color: #6d3d16;
+        font-size: 15px;
+    }
+    .linked-kifu-notice p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.65;
+    }
+    .linked-kifu-notice button {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 6px 12px;
+        border: 1px solid #8b5a2b;
+        border-radius: 6px;
+        background: #fff;
+        color: #6d3d16;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    @media (max-width: 520px) {
+        .linked-kifu-notice {
+            align-items: stretch;
+            flex-direction: column;
+            margin-bottom: 18px;
+        }
+        .linked-kifu-notice button { align-self: flex-end; }
+    }
     
     /* ロビーの正方形ルームカードデザイン */
     .room-card-container {
@@ -2470,6 +2516,14 @@
      </div>
   </div>
 
+  <div id="linkedKifuNotice" class="linked-kifu-notice" hidden>
+    <div>
+      <strong id="linkedKifuNoticeTitle"></strong>
+      <p id="linkedKifuNoticeText"></p>
+    </div>
+    <button id="linkedKifuCancelButton" type="button" onclick="cancelLinkedKifuPreset()"></button>
+  </div>
+
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
     <h2>🌐 公開部屋</h2>
     <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
@@ -2908,6 +2962,114 @@ const PRIVATE_ROOM_IDS = new Set([
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
+const LINKED_KIFU_QUERY_KEYS = ["kifu", "round", "seat"];
+
+function readLinkedKifuPresetFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const id = String(params.get("kifu") || "").trim();
+    const round = Number(params.get("round"));
+    const requestedSeat = String(params.get("seat") || "").trim().toUpperCase();
+    if(!id || !Number.isInteger(round) || round < 1) return null;
+    return {
+        id: id.slice(0, 40),
+        round,
+        seat: ["A", "B", "C", "D"].includes(requestedSeat) ? requestedSeat : "",
+        autoLoadAttempted: false,
+        loading: false,
+        applied: false,
+    };
+}
+
+let linkedKifuPreset = readLinkedKifuPresetFromUrl();
+
+function linkedKifuLanguage() {
+    const language = window.goitaI18n?.getLanguage?.() || "ja";
+    return ["ja", "zh", "en"].includes(language) ? language : "ja";
+}
+
+function linkedKifuSeatText(preset, language) {
+    if(!preset?.seat) return "";
+    if(language === "zh") return `搜索的手牌属于${preset.seat}席。`;
+    if(language === "en") return `The searched hand belongs to seat ${preset.seat}.`;
+    return `検索した手駒は${preset.seat}席です。`;
+}
+
+function clearLinkedKifuQueryParams() {
+    const url = new URL(window.location.href);
+    LINKED_KIFU_QUERY_KEYS.forEach(key => url.searchParams.delete(key));
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+}
+
+function cancelLinkedKifuPreset() {
+    linkedKifuPreset = null;
+    clearLinkedKifuQueryParams();
+    renderLinkedKifuNotice();
+}
+
+function renderLinkedKifuNotice() {
+    const notice = document.getElementById("linkedKifuNotice");
+    const title = document.getElementById("linkedKifuNoticeTitle");
+    const text = document.getElementById("linkedKifuNoticeText");
+    const cancelButton = document.getElementById("linkedKifuCancelButton");
+    if(!notice || !title || !text || !cancelButton) return;
+
+    const preset = linkedKifuPreset;
+    notice.hidden = !preset || preset.applied;
+    if(!preset || preset.applied) return;
+
+    const language = linkedKifuLanguage();
+    const seatText = linkedKifuSeatText(preset, language);
+    if(language === "zh") {
+        title.textContent = "使用棋谱手牌进行游戏";
+        text.textContent = `正在准备棋谱ID ${preset.id}的第${preset.round}局。请选择私人房间并坐到A席，系统会自动载入4人的手牌。${seatText}`;
+        cancelButton.textContent = "取消";
+    } else if(language === "en") {
+        title.textContent = "Play with hands from a game record";
+        text.textContent = `Preparing game record ${preset.id}, round ${preset.round}. Choose a private room and take seat A to load all four hands automatically. ${seatText}`.trim();
+        cancelButton.textContent = "Cancel";
+    } else {
+        title.textContent = "棋譜の手駒で遊ぶ";
+        text.textContent = `棋譜ID ${preset.id}・${preset.round}局目を準備しています。プライベートルームを選び、A席に着くと4人分の手札を自動で反映します。${seatText}`;
+        cancelButton.textContent = "解除";
+    }
+}
+
+function linkedKifuRoomHint(state) {
+    const preset = linkedKifuPreset;
+    if(!preset) return "";
+    const language = linkedKifuLanguage();
+    const seatText = linkedKifuSeatText(preset, language);
+    const roomIsMain = isMainRoomId(gid);
+    const activeGame = state?.is_started && !state?.finished;
+
+    if(language === "zh") {
+        if(preset.applied) return `已载入棋谱ID ${preset.id}的第${preset.round}局。${seatText}请确认手牌后按“▶ 开始”。`;
+        if(roomIsMain) return "棋谱手牌只能在私人房间中使用。请返回大厅并选择私人房间。";
+        if(activeGame) return "当前对局结束后，A席的房主可以载入这份棋谱手牌。";
+        if(!isCurrentClientHost()) return `要载入棋谱ID ${preset.id}，请在A席选择“入座”。${seatText}`;
+        if(preset.loading) return "正在载入棋谱手牌……";
+        if(preset.autoLoadAttempted) return "自动载入失败。请在房间设置的对局设置中再次选择“应用到手牌”。";
+        return "正在准备棋谱手牌……";
+    }
+    if(language === "en") {
+        if(preset.applied) return `Loaded game record ${preset.id}, round ${preset.round}. ${seatText} Check the hands, then press Start.`;
+        if(roomIsMain) return "Game-record hands are available only in private rooms. Return to the lobby and choose a private room.";
+        if(activeGame) return "After this game ends, the host in seat A can load these game-record hands.";
+        if(!isCurrentClientHost()) return `To load game record ${preset.id}, choose Take seat for seat A. ${seatText}`;
+        if(preset.loading) return "Loading hands from the game record...";
+        if(preset.autoLoadAttempted) return "Automatic loading failed. Try Apply to hands again under Match settings in Room settings.";
+        return "Preparing hands from the game record...";
+    }
+    if(preset.applied) return `棋譜ID ${preset.id}・${preset.round}局目を反映しました。${seatText}配牌を確認し、「▶ 開始」を押してください。`;
+    if(roomIsMain) return "棋譜の手札指定はプライベートルームで使えます。ロビーへ戻り、プライベートルームを選んでください。";
+    if(activeGame) return "この対局が終わった後、A席のホストが棋譜の手札を読み込めます。";
+    if(!isCurrentClientHost()) return `棋譜ID ${preset.id}を読み込むには、A席の「席に着く」を選んでください。${seatText}`;
+    if(preset.loading) return "棋譜の手札を読み込んでいます...";
+    if(preset.autoLoadAttempted) return "自動読込に失敗しました。ルーム設定の「対局設定」から、もう一度「手札へ反映」を押してください。";
+    return "棋譜の手札を準備しています...";
+}
+
 function uiText(value) {
     const source = String(value ?? "");
     return window.goitaI18n?.translate?.(source) ?? source;
@@ -4566,7 +4728,7 @@ function parseKifuHand(handText){
   return labels.map(label => labelToPiece[label]);
 }
 
-function applyKifuHandsToPreset(round){
+function applyKifuHandsToPreset(round, options = {}){
   const handSource = round?.hand;
   const seatKeys = {A: "p0", B: "p1", C: "p2", D: "p3"};
   const parsedHands = {};
@@ -4589,33 +4751,32 @@ function applyKifuHandsToPreset(round){
 
   presetSetEnabled(true);
   presetValidateAndClamp();
-  scheduleApplyCurrentSetup();
+  if(options.scheduleApply !== false) scheduleApplyCurrentSetup();
   return true;
 }
 
-async function loadPresetFromKifu(event){
-  event?.preventDefault();
-  if(kifuPresetLoading) return;
+async function loadKifuPresetByValues(requestedIdValue, requestedRoundValue, options = {}){
+  if(kifuPresetLoading) return false;
   if(!isCurrentClientHost() || isMainRoomId(gid)){
     setKifuPresetStatus("棋譜の手札指定は、プライベートルームのホストだけが利用できます。", "error");
-    return;
+    return false;
   }
 
   const idInput = document.getElementById("kifuPresetId");
   const roundInput = document.getElementById("kifuPresetRound");
   const loadButton = document.getElementById("kifuPresetLoadButton");
-  const requestedId = String(idInput?.value || "").trim();
-  const requestedRound = Number(roundInput?.value);
+  const requestedId = String(requestedIdValue || "").trim();
+  const requestedRound = Number(requestedRoundValue);
 
   if(!requestedId){
     setKifuPresetStatus("棋譜IDを入力してください。", "error");
     idInput?.focus();
-    return;
+    return false;
   }
   if(!Number.isInteger(requestedRound) || requestedRound < 1){
     setKifuPresetStatus("何局目かを1以上の整数で入力してください。", "error");
     roundInput?.focus();
-    return;
+    return false;
   }
 
   kifuPresetLoading = true;
@@ -4630,7 +4791,7 @@ async function loadPresetFromKifu(event){
     const match = findKifuMatch(archive.matches, requestedId);
     if(!match){
       setKifuPresetStatus(`棋譜ID ${requestedId} は見つかりませんでした。`, "error");
-      return;
+      return false;
     }
 
     const round = Array.isArray(match.rounds)
@@ -4638,24 +4799,74 @@ async function loadPresetFromKifu(event){
       : null;
     if(!round){
       setKifuPresetStatus(`棋譜ID ${match.id} に ${requestedRound}局目はありません。`, "error");
-      return;
+      return false;
     }
-    if(!applyKifuHandsToPreset(round)){
+    if(!applyKifuHandsToPreset(round, {scheduleApply: options.scheduleApply !== false})){
       setKifuPresetStatus("棋譜の手札データを読み取れませんでした。", "error");
-      return;
+      return false;
     }
 
     if(idInput) idInput.value = String(match.id);
+    if(roundInput) roundInput.value = String(requestedRound);
     setKifuPresetStatus(`棋譜ID ${match.id}・${requestedRound}局目の手札を反映しました。`, "success");
+    return true;
   }catch(error){
     console.error("Kifu preset load error:", error);
     setKifuPresetStatus(error?.message || "棋譜データの読み込みに失敗しました。", "error");
+    return false;
   }finally{
     kifuPresetLoading = false;
     if(loadButton){
       loadButton.disabled = false;
       loadButton.textContent = "手札へ反映";
     }
+  }
+}
+
+async function loadPresetFromKifu(event){
+  event?.preventDefault();
+  const idInput = document.getElementById("kifuPresetId");
+  const roundInput = document.getElementById("kifuPresetRound");
+  return loadKifuPresetByValues(idInput?.value, roundInput?.value);
+}
+
+async function maybeApplyLinkedKifuPreset(state){
+  const preset = linkedKifuPreset;
+  if(!preset || preset.applied || preset.loading || preset.autoLoadAttempted) return false;
+
+  const idInput = document.getElementById("kifuPresetId");
+  const roundInput = document.getElementById("kifuPresetRound");
+  if(idInput) idInput.value = preset.id;
+  if(roundInput) roundInput.value = String(preset.round);
+
+  if(isMainRoomId(gid) || !isCurrentClientHost()) return false;
+  if(state?.is_started || state?.finished) return false;
+
+  preset.loading = true;
+  preset.autoLoadAttempted = true;
+  try{
+    const loaded = await loadKifuPresetByValues(preset.id, preset.round, {scheduleApply: false});
+    if(!loaded) return false;
+
+    const applied = await applyCurrentSetupToWaitingGame({
+      keepScore: false,
+      refreshAfter: false,
+    });
+    if(!applied){
+      setKifuPresetStatus("棋譜の手札を対局に反映できませんでした。", "error");
+      return false;
+    }
+
+    preset.applied = true;
+    clearLinkedKifuQueryParams();
+    renderLinkedKifuNotice();
+    return true;
+  }catch(error){
+    console.error("Linked kifu preset load error:", error);
+    setKifuPresetStatus(error?.message || "棋譜データの読み込みに失敗しました。", "error");
+    return false;
+  }finally{
+    preset.loading = false;
   }
 }
 
@@ -6379,6 +6590,10 @@ async function refresh(){
   updateRoomUI(); 
   updateSeatButtons(state);
   updateVoiceChatUi();
+  const linkedKifuAppliedNow = await maybeApplyLinkedKifuPreset(state);
+  if(linkedKifuAppliedNow) {
+      window.setTimeout(() => refresh(), 0);
+  }
   
   const toggleBtn = document.getElementById("toggleHandsBtn");
   if (toggleBtn) {
@@ -6447,7 +6662,9 @@ async function refresh(){
   }
 
   if (!state.is_started) {
-      if (mySeat === "A") {
+      if (linkedKifuPreset) {
+          setHint(linkedKifuRoomHint(state));
+      } else if (mySeat === "A") {
           if (state.round_count > 1) {
               setHint(`👑 あなたはホストです。「▶ 開始」を押して第${state.round_count}局を始めてください。`);
           } else {
@@ -6647,10 +6864,14 @@ window.addEventListener("goita-voice-chat-ready", () => {
 });
 
 window.addEventListener("goita-language-change", () => {
+  renderLinkedKifuNotice();
   updateChatComposerUi();
   updateVoiceChatUi();
   updateSeatButtons(latestState || {});
   if(latestState) {
+    if(linkedKifuPreset && !latestState.is_started) {
+      setHint(linkedKifuRoomHint(latestState));
+    }
     renderChat(latestState);
     renderBoard();
   }
@@ -6662,6 +6883,7 @@ window.addEventListener("beforeunload", () => {
 
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();
+  renderLinkedKifuNotice();
   initializeVoiceChat();
   window.addEventListener("resize", () => {
     if(latestState) renderChat(latestState);
