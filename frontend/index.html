@@ -180,6 +180,28 @@
       color: #1a1a1a; 
       transform: translateY(4px); 
     }
+    html[lang="en"] .slot .val[data-piece-en],
+    html[lang="en"] .hand .val[data-piece-en] {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
+      line-height: 0.9;
+      transform: translateY(2px);
+    }
+    html[lang="en"] .slot .val[data-piece-en]::after,
+    html[lang="en"] .hand .val[data-piece-en]::after {
+      content: attr(data-piece-en);
+      max-width: 100%;
+      color: currentColor;
+      font-family: Arial, sans-serif;
+      font-size: 7px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
 
     .slot.ai, .hand.ai { 
       background: linear-gradient(135deg, #fcd0b5, #e69d75);
@@ -784,9 +806,22 @@
         animation: lobby-piece-drift 14s linear infinite;
     }
     .lobby-piece-background span {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         font-size: clamp(32px, 3.8vmax, 60px);
         font-weight: 900;
         line-height: 1;
+    }
+    html[lang="en"] .lobby-piece-background span::after {
+        content: attr(data-piece-en);
+        margin-top: 0.18em;
+        font-family: Arial, sans-serif;
+        font-size: 0.2em;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0;
     }
     .lobby-piece-background span:nth-child(3n) {
         opacity: 0.65;
@@ -1720,6 +1755,10 @@
       
       .slot .val{ font-size: 18px; }
       .hand .val{ font-size: 18px; }
+      html[lang="en"] .slot .val[data-piece-en]::after,
+      html[lang="en"] .hand .val[data-piece-en]::after {
+        font-size: 5px;
+      }
       
       .pass{ font-size: 12px; }
       .hint { font-size: 13px; padding: 10px; }
@@ -2927,12 +2966,12 @@
 <script src="/static/i18n-en.js?v=20260730d"></script>
 <script src="/static/i18n.js?v=20260730h"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260730t").catch((error) => {
+  import("/static/board3d.js?v=20260730u").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260730j").catch((error) => {
+  import("/static/boardPixel.js?v=20260730k").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -3007,7 +3046,7 @@ function readLinkedKifuPresetFromUrl() {
 
 let linkedKifuPreset = readLinkedKifuPresetFromUrl();
 
-function linkedKifuLanguage() {
+function currentUiLanguage() {
     const language = window.goitaI18n?.getLanguage?.() || "ja";
     return ["ja", "zh", "en"].includes(language) ? language : "ja";
 }
@@ -3043,7 +3082,7 @@ function renderLinkedKifuNotice() {
     notice.hidden = !preset || preset.applied;
     if(!preset || preset.applied) return;
 
-    const language = linkedKifuLanguage();
+    const language = currentUiLanguage();
     const seatText = linkedKifuSeatText(preset, language);
     if(language === "zh") {
         title.textContent = "使用棋谱手牌进行游戏";
@@ -3063,7 +3102,7 @@ function renderLinkedKifuNotice() {
 function linkedKifuRoomHint(state) {
     const preset = linkedKifuPreset;
     if(!preset) return "";
-    const language = linkedKifuLanguage();
+    const language = currentUiLanguage();
     const seatText = linkedKifuSeatText(preset, language);
     const roomIsMain = isMainRoomId(gid);
     const activeGame = state?.is_started && !state?.finished;
@@ -4136,7 +4175,9 @@ function setupLobbyPieceBackground() {
     for (let row = 0; row < rows; row += 1) {
         for (let column = 0; column < columns; column += 1) {
             const piece = document.createElement("span");
-            piece.textContent = pieces[(row + column) % pieces.length];
+            const label = pieces[(row + column) % pieces.length];
+            piece.textContent = label;
+            piece.dataset.pieceEn = pieceEnglishName(label);
             fragment.appendChild(piece);
         }
     }
@@ -4482,10 +4523,34 @@ function getSeatToPhys(){
 }
 
 const PIECE_LABEL = {"9":"王","8":"玉","7":"飛","6":"角","5":"金","4":"銀","3":"馬","2":"香","1":"し"};
+const PIECE_ENGLISH = {
+  "1": "Pawn",
+  "2": "Lance",
+  "3": "Knight",
+  "4": "Silver",
+  "5": "Gold",
+  "6": "Bishop",
+  "7": "Rook",
+  "8": "King",
+  "9": "King",
+};
 const PRESET_TOTALS = {"1":10,"2":4,"3":4,"4":4,"5":4,"6":2,"7":2,"8":1,"9":1};
 const PRESET_PIECES = ["1","2","3","4","5","6","7","8","9"];
 
 function pieceToLabel(v){ if(!v) return ""; if(v==="■"||v==="□") return v; return PIECE_LABEL[v] ?? v; }
+function pieceEnglishName(v){
+  const value = String(v || "");
+  if(PIECE_ENGLISH[value]) return PIECE_ENGLISH[value];
+  const piece = Object.keys(PIECE_LABEL).find(key => PIECE_LABEL[key] === value);
+  return piece ? PIECE_ENGLISH[piece] : "";
+}
+function setPieceValue(element, piece, label = pieceToLabel(piece)){
+  if(!element) return;
+  element.textContent = label;
+  const englishName = label ? pieceEnglishName(piece) : "";
+  if(englishName) element.dataset.pieceEn = englishName;
+  else delete element.dataset.pieceEn;
+}
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
 function countPieces(arr){
@@ -5821,6 +5886,7 @@ function buildBoard3DSnapshot(state) {
       kind: kindKey,
       piece: String(piece),
       label: pieceToLabel(piece),
+      englishLabel: currentUiLanguage() === "en" ? pieceEnglishName(piece) : "",
       hidden: kindKey === "receive" && (isPendingReceive || isHiddenReceive) && !isRevealedHidden,
       pending: !!isPendingReceive,
       revealedHand: !!isRevealedHand,
@@ -6260,9 +6326,9 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = isPendingReceive || isHiddenReceive;
-            val.textContent = (hidden && !isRevealedHidden) ? "" : pieceToLabel(piece);
+            setPieceValue(val, piece, (hidden && !isRevealedHidden) ? "" : pieceToLabel(piece));
           }else{
-            val.textContent = pieceToLabel(piece);
+            setPieceValue(val, piece);
           }
           div.appendChild(val);
         }
@@ -6368,7 +6434,12 @@ function renderHands(state) {
 
           const valDiv = document.createElement("div");
           valDiv.className = "val";
-          valDiv.textContent = isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card));
+          setPieceValue(
+            valDiv,
+            card,
+            isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card))
+          );
+          if(isPendingHidden) delete valDiv.dataset.pieceEn;
           pieceDiv.appendChild(valDiv);
 
           if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){

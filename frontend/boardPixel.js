@@ -177,11 +177,18 @@ function drawPiece(piece) {
   drawPieceShape(fill, palette.pieceEdge);
 
   if (!piece.hidden && piece.label) {
-    drawPixelText(piece.label, 0, 2, {
-      size: 19,
+    drawPixelText(piece.label, 0, piece.englishLabel ? -3 : 2, {
+      size: piece.englishLabel ? 17 : 19,
       color: piece.ai ? palette.aiText : palette.text,
       weight: "900",
     });
+    if (piece.englishLabel) {
+      drawPixelText(piece.englishLabel, 0, 11, {
+        size: 6,
+        color: piece.ai ? palette.aiText : palette.text,
+        weight: "700",
+      });
+    }
   }
   context.restore();
 }

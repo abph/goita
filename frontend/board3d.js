@@ -468,8 +468,8 @@ function pieceBaseMaterial(kind) {
   return material;
 }
 
-function pieceTextMaterial(label, color, opacity) {
-  const cacheKey = `${label}-${color}-${opacity}`;
+function pieceTextMaterial(label, englishLabel, color, opacity) {
+  const cacheKey = `${label}-${englishLabel}-${color}-${opacity}`;
   if (pieceTextMaterials.has(cacheKey)) return pieceTextMaterials.get(cacheKey);
 
   const textureCanvas = document.createElement("canvas");
@@ -480,8 +480,15 @@ function pieceTextMaterial(label, color, opacity) {
   context.fillStyle = color;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.font = '900 184px "Yu Kyokasho", "Yu Mincho", serif';
-  context.fillText(label, 128, 170);
+  if (englishLabel) {
+    context.font = '900 150px "Yu Kyokasho", "Yu Mincho", serif';
+    context.fillText(label, 128, 142);
+    context.font = '800 31px Arial, sans-serif';
+    context.fillText(englishLabel, 128, 249);
+  } else {
+    context.font = '900 184px "Yu Kyokasho", "Yu Mincho", serif';
+    context.fillText(label, 128, 170);
+  }
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -522,7 +529,12 @@ function createPieceObject(piece) {
   if (!piece.hidden && piece.label) {
     const textPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.58, 0.72),
-      pieceTextMaterial(piece.label, piece.ai ? "#a31313" : "#17130f", piece.revealedHidden ? 0.55 : 1)
+      pieceTextMaterial(
+        piece.label,
+        piece.englishLabel || "",
+        piece.ai ? "#a31313" : "#17130f",
+        piece.revealedHidden ? 0.55 : 1
+      )
     );
     textPlane.position.set(0, -0.05, 0.195);
     flat.add(textPlane);

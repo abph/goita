@@ -11,7 +11,7 @@ def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20260730j")' in html
+    assert 'import("/static/boardPixel.js?v=20260730k")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
