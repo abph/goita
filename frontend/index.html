@@ -74,8 +74,65 @@
       cursor: grab;
     }
     .board-3d canvas:active { cursor: grabbing; }
+    .board-3d-controls {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      z-index: 5;
+      display: flex;
+      gap: 6px;
+    }
+    .board-3d-zoom {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border: 1px solid rgba(91, 48, 22, 0.72);
+      border-radius: 4px;
+      background: rgba(255, 246, 222, 0.86);
+      color: #542d16;
+      box-shadow: 0 2px 5px rgba(52, 27, 12, 0.22);
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .board-3d-zoom:hover { background: rgba(255, 250, 235, 0.98); }
+    .board-3d-zoom:focus-visible {
+      outline: 2px solid #b94d24;
+      outline-offset: 2px;
+    }
+    .board-3d.is-unavailable .board-3d-controls { display: none; }
     body.board-view-3d #board { display: none; }
     body.board-view-3d #board3d { display: block; }
+    .board-pixel {
+      display: none;
+      position: relative;
+      width: calc((var(--cell) * 8) + (var(--gap) * 7));
+      max-width: 100%;
+      aspect-ratio: 1;
+      margin: 0 auto;
+      overflow: hidden;
+      background: #b9783d;
+    }
+    .board-pixel canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    body.board-view-pixel #board { display: none; }
+    body.board-view-pixel #boardPixel { display: block; }
+    body.board-view-pixel .board-wrap {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    body.board-view-pixel #boardPixel {
+      width: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);
+    }
     .board-3d-fallback {
       display: none;
       position: absolute;
@@ -246,6 +303,46 @@
       font-size: clamp(18px, 5vw, 26px);
       padding: 4px 14px;
       white-space: nowrap;
+    }
+    .pass-anim-wrapper.pass-anim-overlay {
+      position: absolute;
+      z-index: 100;
+    }
+    .pass-anim-overlay.pass-position-a {
+      left: 50%;
+      bottom: 8%;
+      transform: translateX(-50%);
+    }
+    .pass-anim-overlay.pass-position-b {
+      right: 8%;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .pass-anim-overlay.pass-position-c {
+      left: 50%;
+      top: 8%;
+      transform: translateX(-50%);
+    }
+    .pass-anim-overlay.pass-position-d {
+      left: 8%;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .pass-anim-overlay > [class^="phys-"] {
+      transform: none;
+    }
+    body.board-view-pixel .pass-anim-overlay .pass-anim-text {
+      border: 3px solid #9b2226;
+      border-radius: 0;
+      background: #fff7d6;
+      box-shadow: none;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      letter-spacing: 0;
+    }
+    body.board-view-pixel-mono .pass-anim-overlay .pass-anim-text {
+      border-color: #000000;
+      background: #ffffff;
+      color: #000000;
     }
 
     /* 必殺技・上がり演出テキスト */
@@ -557,6 +654,54 @@
       color: #999;
       border-color: #bfa88f;
       cursor: not-allowed;
+    }
+    .voice-chat-bar {
+      display: none;
+      width: 100%;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 8px;
+      border-top: 1px solid rgba(139, 90, 43, 0.25);
+      font-size: 12px;
+    }
+    .voice-chat-title {
+      font-weight: 900;
+      color: #5c351c;
+    }
+    .voice-chat-button {
+      min-height: 30px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .voice-chat-button.active {
+      border-color: #8f2f26;
+      background: #8f2f26;
+      color: #ffffff;
+    }
+    .voice-chat-button:disabled {
+      border-color: #bba990;
+      background: #e6dfd2;
+      color: #8a8175;
+      cursor: not-allowed;
+    }
+    .voice-chat-status {
+      color: #4d463e;
+      font-weight: 700;
+    }
+    .voice-chat-privacy {
+      margin-left: auto;
+      color: #777068;
+    }
+    @media (max-width: 701px) {
+      .voice-chat-bar {
+        gap: 6px;
+      }
+      .voice-chat-privacy {
+        width: 100%;
+        margin-left: 0;
+      }
     }
 
     /* ロビー画面用のボタンスタイル */
@@ -1148,6 +1293,9 @@
       .play-layout {
         position: relative;
       }
+      body.board-view-pixel #boardPixel {
+        width: 100%;
+      }
       .chat-toggle {
         position: absolute;
         top: calc(12px + (var(--cell) * 0.5));
@@ -1347,7 +1495,7 @@
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
     .board-view-segmented {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0;
       overflow: hidden;
       border: 1px solid #a87b4d;
@@ -1363,6 +1511,7 @@
     }
     .board-view-option + .board-view-option { border-left: 1px solid #a87b4d; }
     .board-view-option.active { background: #8b5a2b; color: #fff; }
+    .board-view-option span { display: block; line-height: 1.15; }
     .settings-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid rgba(139,90,43,0.25); }
     .settings-footer .settings-save-button { margin-bottom: 8px; }
     .settings-footer button { width: 100%; background: #e0d8c8; color: #333; font-weight: bold; padding: 10px; }
@@ -1472,6 +1621,9 @@
       }
       .play-layout .chat-panel {
         height: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
+      }
+      body.board-view-pixel #boardPixel {
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
       }
     }
   
@@ -1636,6 +1788,620 @@
         background: rgba(244, 239, 223, 0.52);
       }
     }
+
+    /* ピクセル盤面を選んだときは、チャットも同じ世界観へ切り替える。 */
+    body.board-view-pixel .chat-panel,
+    body.board-view-pixel .chat-toggle,
+    body.board-view-pixel .chat-toast,
+    body.board-view-pixel .chat-form,
+    body.board-view-pixel .chat-form input,
+    body.board-view-pixel .chat-form button {
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      letter-spacing: 0;
+    }
+    body.board-view-pixel .chat-panel {
+      background: #ffe7a3;
+      border: 4px solid #263d35;
+      border-radius: 0;
+      box-shadow: none;
+      transition: none;
+    }
+    body.board-view-pixel .chat-close {
+      color: #263d35;
+      font-size: 21px;
+    }
+    body.board-view-pixel .chat-messages {
+      background: #f2c985;
+      padding: 9px 32px 9px 9px;
+    }
+    body.board-view-pixel .chat-empty {
+      color: #4e3826;
+    }
+    body.board-view-pixel .chat-message {
+      margin-bottom: 8px;
+      padding: 0 3px 7px;
+      border-bottom: 2px solid #9a582e;
+    }
+    body.board-view-pixel .chat-message.notice {
+      background: #ffd4ad;
+      border-left: 4px solid #9b2226;
+    }
+    body.board-view-pixel .chat-message.ai-answer {
+      background: #d9ebdf;
+      border-left: 4px solid #265e58;
+    }
+    body.board-view-pixel .chat-sender {
+      color: #422b1d;
+    }
+    body.board-view-pixel .chat-time {
+      color: #66503d;
+    }
+    body.board-view-pixel .chat-text {
+      color: #231a13;
+    }
+    body.board-view-pixel .chat-form {
+      gap: 5px;
+      padding: 7px;
+      background: #f7d59a;
+      border-top: 4px solid #263d35;
+    }
+    body.board-view-pixel .chat-form input {
+      border: 3px solid #61391f;
+      border-radius: 0;
+      background: #fff7d6;
+      box-shadow: none;
+      outline: 0;
+    }
+    body.board-view-pixel .chat-form input:focus {
+      border-color: #263d35;
+      outline: 2px solid #f5e542;
+    }
+    body.board-view-pixel .chat-compose-modes {
+      gap: 2px;
+      padding: 2px;
+      border: 3px solid #61391f;
+      border-radius: 0;
+      background: #e9bd78;
+    }
+    body.board-view-pixel .chat-form button,
+    body.board-view-pixel .chat-form .chat-mode-button {
+      border: 2px solid #61391f;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    body.board-view-pixel .chat-form .chat-mode-button {
+      background: #fff7d6;
+      color: #422b1d;
+    }
+    body.board-view-pixel .chat-form .chat-mode-button.chat.active,
+    body.board-view-pixel .chat-form .chat-submit-button {
+      background: #9a582e;
+      color: #fff8d8;
+      border-color: #263d35;
+    }
+    body.board-view-pixel .chat-form .chat-mode-button.ai.active,
+    body.board-view-pixel .chat-form .chat-submit-button.ai-mode {
+      background: #2e7064;
+      color: #fff;
+      border-color: #263d35;
+      box-shadow: none;
+    }
+    body.board-view-pixel .chat-toggle {
+      border: 3px solid #263d35;
+      border-right: 0;
+      border-radius: 0;
+      background: #ffe7a3;
+      color: #263d35;
+      box-shadow: none;
+    }
+    body.board-view-pixel .chat-toast {
+      border: 3px solid #263d35;
+      border-radius: 0;
+      background: #ffe7a3;
+      box-shadow: none;
+      transition: none;
+    }
+    body.board-view-pixel .chat-toast.notice {
+      border-color: #9b2226;
+    }
+    body.board-view-pixel .hands-area {
+      gap: 8px;
+    }
+    body.board-view-pixel .hand-row {
+      gap: 12px;
+      background: #f2c985;
+      border: 4px solid #263d35;
+      border-radius: 0;
+      box-shadow: none;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      letter-spacing: 0;
+    }
+    body.board-view-pixel .hand-row-title {
+      color: #9b2226;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+    }
+    body.board-view-pixel .hand-row-pieces .hand {
+      position: relative;
+      box-sizing: border-box;
+      overflow: visible;
+      background: #61391f;
+      filter: none;
+      transition: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand::before {
+      content: "";
+      position: absolute;
+      inset: 2px;
+      background: #ffe19a;
+      clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
+    }
+    body.board-view-pixel .hand-row-pieces .hand.ai::before {
+      background: #ffc9a3;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.disabled::before {
+      background: #dde9df;
+    }
+    body.board-view-pixel .hand-row-pieces .hand .val {
+      position: relative;
+      z-index: 1;
+      color: #231a13;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      text-shadow: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.ai .val {
+      color: #a1181c;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.disabled .val {
+      color: #665f56;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.clickable:hover {
+      transform: translateY(-2px) !important;
+      filter: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.face-down {
+      background: transparent;
+      clip-path: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.face-down::before {
+      display: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.face-down.pending-hidden {
+      background: #61391f;
+      clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
+    }
+    body.board-view-pixel .hand-row-pieces .hand.face-down.pending-hidden::before {
+      display: block;
+      background: #f7d59a;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.pending-hidden .val {
+      color: #61391f;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.beginner-recommended {
+      background: #174936;
+      outline: 3px solid #f5e542;
+      outline-offset: 2px;
+      animation: none;
+    }
+    body.board-view-pixel .hand-row-pieces .hand.beginner-recommended::before {
+      background: #d9ebdf;
+    }
+    body.board-view-pixel .pass,
+    body.board-view-pixel .auto-play {
+      border-radius: 0;
+      box-shadow: none;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      letter-spacing: 0;
+    }
+    body.board-view-pixel .pass {
+      border: 3px solid #9b2226;
+      background: #fff7d6;
+      color: #9b2226;
+    }
+    body.board-view-pixel .pass:hover {
+      background: #ffd4ad;
+    }
+    body.board-view-pixel .auto-play {
+      border: 3px solid #263d35;
+      background: #fff7d6;
+      color: #315b37;
+    }
+    body.board-view-pixel .auto-play.active {
+      background: #2e7064;
+      color: #fff;
+      border-color: #263d35;
+    }
+    body.board-view-pixel .pass.beginner-recommended {
+      border-color: #174936;
+      outline: 3px solid #f5e542;
+      box-shadow: none;
+      animation: none;
+    }
+    body.board-view-pixel .beginner-support-note {
+      border: 3px solid #263d35;
+      border-radius: 0;
+      background: #d9ebdf;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-wrapper {
+      padding: 12px;
+      background: transparent;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text {
+      max-width: 100%;
+      padding: 10px 18px;
+      border: 4px solid #61391f;
+      border-radius: 0;
+      background: #fff7d6;
+      color: #422b1d;
+      box-shadow: none;
+      text-shadow: none;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      font-size: clamp(28px, 6vw, 56px);
+      letter-spacing: 0;
+      animation: pixelColorSpecial 1.5s steps(1, end) forwards;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.kakarigotae {
+      border-color: #9b2226;
+      background: #ffd4ad;
+      color: #861f24;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.damadama {
+      border-color: #b87543;
+      border-style: dashed;
+      background: #ffe58a;
+      color: #6b3f17;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.uchidome {
+      border-color: #445d6e;
+      background: #e7eef4;
+      color: #34495e;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.reach {
+      border-color: #63265f;
+      background: #e65bb6;
+      color: #ffffff;
+      font-size: clamp(32px, 7vw, 64px);
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.baizuke {
+      border-color: #9b2226;
+      border-style: double;
+      border-width: 8px;
+      background: #ffe34f;
+      color: #9b2226;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.ou_agari {
+      border-color: #174936;
+      border-style: double;
+      border-width: 8px;
+      background: #4b9a8e;
+      color: #ffffff;
+    }
+    body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text.damadama_agari {
+      border-color: #7b275e;
+      border-style: double;
+      border-width: 8px;
+      background: #d85f93;
+      color: #fff8d8;
+    }
+    @keyframes pixelColorSpecial {
+      0% {
+        opacity: 0;
+        transform: translate(0, 10px) scale(0.78);
+      }
+      8% {
+        opacity: 1;
+        transform: translate(-6px, -4px) scale(1.06);
+      }
+      14% {
+        opacity: 1;
+        transform: translate(6px, 3px) scale(1.06);
+      }
+      20% {
+        opacity: 1;
+        transform: translate(-3px, 1px) scale(1);
+      }
+      26%,
+      78% {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+      }
+      86% {
+        opacity: 1;
+        transform: translate(0, -4px) scale(1);
+      }
+      94% {
+        opacity: 1;
+        transform: translate(0, -9px) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(0, -16px) scale(1);
+      }
+    }
+
+    @media (max-width: 701px) {
+      body.board-view-pixel .chat-panel,
+      body.board-view-pixel .chat-panel:focus-within {
+        background: rgba(255, 231, 163, var(--mobile-chat-opacity, 1));
+        border-color: #263d35;
+        box-shadow: none;
+      }
+      body.board-view-pixel .chat-messages {
+        background: rgba(242, 201, 133, var(--mobile-chat-opacity, 1));
+      }
+      body.board-view-pixel .chat-form {
+        background: rgba(247, 213, 154, var(--mobile-chat-opacity, 1));
+      }
+      body.board-view-pixel .chat-form input {
+        background: rgba(255, 247, 214, 0.94);
+      }
+      body.board-view-pixel.mobile-chat-placement-top .chat-panel {
+        border-radius: 0;
+        box-shadow: none;
+      }
+      body.board-view-pixel:not(.board-view-pixel-mono) .special-anim-text {
+        padding: 8px 12px;
+        font-size: clamp(24px, 8vw, 36px);
+      }
+    }
+
+    body.board-view-pixel-mono .chat-panel {
+      background: #ffffff !important;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-close,
+    body.board-view-pixel-mono .chat-empty,
+    body.board-view-pixel-mono .chat-sender,
+    body.board-view-pixel-mono .chat-text,
+    body.board-view-pixel-mono .chat-message.notice .chat-sender,
+    body.board-view-pixel-mono .chat-message.notice .chat-text,
+    body.board-view-pixel-mono .chat-message.ai-answer .chat-sender {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .chat-time {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .chat-messages {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .chat-message {
+      border-bottom-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-message.notice {
+      background: #ffffff !important;
+      border-left-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-message.ai-answer {
+      background: #ffffff !important;
+      border-left-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-text a {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form {
+      background: #ffffff !important;
+      border-top-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form input,
+    body.board-view-pixel-mono .chat-form input.ai-mode {
+      background: #ffffff !important;
+      border-color: #000000;
+      color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form input:focus,
+    body.board-view-pixel-mono .chat-form input.ai-mode:focus {
+      border-color: #000000;
+      outline-color: #ffffff;
+    }
+    body.board-view-pixel-mono .chat-compose-modes {
+      background: #ffffff !important;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form .chat-mode-button {
+      background: #ffffff !important;
+      color: #000000;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form .chat-mode-button.chat.active,
+    body.board-view-pixel-mono .chat-form .chat-mode-button.ai.active,
+    body.board-view-pixel-mono .chat-form .chat-submit-button,
+    body.board-view-pixel-mono .chat-form .chat-submit-button.ai-mode {
+      background: #000000 !important;
+      color: #ffffff;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-toggle,
+    body.board-view-pixel-mono .chat-toast {
+      background: #ffffff !important;
+      color: #000000;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-toast.notice,
+    body.board-view-pixel-mono .chat-toast.notice .chat-toast-meta,
+    body.board-view-pixel-mono .chat-toast.notice .chat-toast-text {
+      color: #000000;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form button:disabled {
+      opacity: 1;
+    }
+    body.board-view-pixel-mono .hand-row {
+      background: #ffffff !important;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-title {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand {
+      background: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand::before {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.ai::before {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.disabled::before {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand .val,
+    body.board-view-pixel-mono .hand-row-pieces .hand.ai .val {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.face-down.pending-hidden {
+      background: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.face-down.pending-hidden::before {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.pending-hidden .val {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.beginner-recommended {
+      background: #000000;
+      outline-color: #ffffff;
+    }
+    body.board-view-pixel-mono .hand-row-pieces .hand.beginner-recommended::before {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .pass {
+      border-color: #000000;
+      background: #ffffff !important;
+      color: #000000;
+    }
+    body.board-view-pixel-mono .pass:hover {
+      background: #ffffff !important;
+    }
+    body.board-view-pixel-mono .auto-play,
+    body.board-view-pixel-mono .auto-play.active {
+      border-color: #000000;
+      background: #000000;
+      color: #ffffff;
+    }
+    body.board-view-pixel-mono .pass.disabled,
+    body.board-view-pixel-mono .auto-play:disabled {
+      opacity: 1;
+    }
+    body.board-view-pixel-mono .pass.beginner-recommended {
+      border-color: #000000;
+      outline-color: #ffffff;
+    }
+    body.board-view-pixel-mono .beginner-support-note {
+      border-color: #000000;
+      background: #ffffff !important;
+      color: #000000;
+    }
+    body.board-view-pixel-mono .beginner-support-note strong,
+    body.board-view-pixel-mono .beginner-support-rule {
+      color: #000000;
+    }
+    body.board-view-pixel-mono .special-anim-wrapper {
+      padding: 12px;
+      background: transparent;
+    }
+    body.board-view-pixel-mono .special-anim-text,
+    body.board-view-pixel-mono .special-anim-text.kakarigotae,
+    body.board-view-pixel-mono .special-anim-text.damadama,
+    body.board-view-pixel-mono .special-anim-text.uchidome,
+    body.board-view-pixel-mono .special-anim-text.reach,
+    body.board-view-pixel-mono .special-anim-text.baizuke,
+    body.board-view-pixel-mono .special-anim-text.ou_agari,
+    body.board-view-pixel-mono .special-anim-text.damadama_agari {
+      max-width: 100%;
+      padding: 10px 18px;
+      border: 4px solid #000000;
+      border-radius: 0;
+      background: #ffffff;
+      color: #000000;
+      box-shadow: none;
+      text-shadow: none;
+      font-family: "MS Gothic", "Yu Gothic", sans-serif;
+      font-size: clamp(28px, 6vw, 56px);
+      letter-spacing: 0;
+      animation: pixelMonoSpecial 1.5s steps(1, end) forwards;
+    }
+    body.board-view-pixel-mono .special-anim-text.damadama {
+      border-style: dashed;
+    }
+    body.board-view-pixel-mono .special-anim-text.reach,
+    body.board-view-pixel-mono .special-anim-text.ou_agari,
+    body.board-view-pixel-mono .special-anim-text.damadama_agari {
+      border-color: #ffffff;
+      outline: 4px solid #000000;
+      background: #000000;
+      color: #ffffff;
+    }
+    body.board-view-pixel-mono .special-anim-text.baizuke,
+    body.board-view-pixel-mono .special-anim-text.damadama_agari {
+      border-style: double;
+      border-width: 8px;
+    }
+    body.board-view-pixel-mono .special-anim-text.reach {
+      font-size: clamp(32px, 7vw, 64px);
+    }
+    @keyframes pixelMonoSpecial {
+      0% {
+        opacity: 0;
+        transform: translate(0, 10px) scale(0.78);
+      }
+      8% {
+        opacity: 1;
+        transform: translate(-6px, -4px) scale(1.06);
+      }
+      14% {
+        opacity: 1;
+        transform: translate(6px, 3px) scale(1.06);
+      }
+      20% {
+        opacity: 1;
+        transform: translate(-3px, 1px) scale(1);
+      }
+      26%,
+      78% {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+      }
+      86% {
+        opacity: 1;
+        transform: translate(0, -4px) scale(1);
+      }
+      94% {
+        opacity: 1;
+        transform: translate(0, -9px) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(0, -16px) scale(1);
+      }
+    }
+
+    @media (max-width: 701px) {
+      body.board-view-pixel-mono .chat-panel,
+      body.board-view-pixel-mono .chat-panel:focus-within {
+        background: rgba(255, 255, 255, var(--mobile-chat-opacity, 1)) !important;
+        border-color: #000000;
+      }
+      body.board-view-pixel-mono .chat-messages {
+        background: rgba(255, 255, 255, var(--mobile-chat-opacity, 1)) !important;
+      }
+      body.board-view-pixel-mono .chat-form {
+        background: rgba(255, 255, 255, var(--mobile-chat-opacity, 1)) !important;
+      }
+      body.board-view-pixel-mono .chat-form input {
+        background: rgba(255, 255, 255, 0.94) !important;
+      }
+      body.board-view-pixel-mono .special-anim-text,
+      body.board-view-pixel-mono .special-anim-text.kakarigotae,
+      body.board-view-pixel-mono .special-anim-text.damadama,
+      body.board-view-pixel-mono .special-anim-text.uchidome,
+      body.board-view-pixel-mono .special-anim-text.reach,
+      body.board-view-pixel-mono .special-anim-text.baizuke,
+      body.board-view-pixel-mono .special-anim-text.ou_agari,
+      body.board-view-pixel-mono .special-anim-text.damadama_agari {
+        padding: 8px 12px;
+        font-size: clamp(24px, 8vw, 36px);
+      }
+    }
   </style>
 </head>
 <body>
@@ -1709,6 +2475,14 @@
       </span>
       <div class="small seat-ai-note">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</div>
     </div>
+    <div id="voiceChatBar" class="voice-chat-bar">
+      <span class="voice-chat-title">ボイスチャット</span>
+      <button id="voiceChatJoinButton" class="voice-chat-button" type="button" onclick="toggleVoiceChatJoin()">参加</button>
+      <button id="voiceChatMuteButton" class="voice-chat-button" type="button" onclick="toggleVoiceChatMute()" disabled>マイクON</button>
+      <span id="voiceChatStatus" class="voice-chat-status">未参加</span>
+      <span class="voice-chat-privacy">音声は録音・保存されません。</span>
+      <div id="voiceAudioOutputs" hidden></div>
+    </div>
   </div>
 
   <div class="game-content-layout">
@@ -1718,7 +2492,14 @@
           <div id="board" class="board"></div>
           <div id="board3d" class="board-3d" aria-hidden="true">
             <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
+            <div class="board-3d-controls" aria-label="3D盤面の拡大縮小">
+              <button id="board3dZoomOut" class="board-3d-zoom" type="button" aria-label="縮小" title="縮小">−</button>
+              <button id="board3dZoomIn" class="board-3d-zoom" type="button" aria-label="拡大" title="拡大">＋</button>
+            </div>
             <div class="board-3d-fallback">この端末では3D盤面を表示できないため、2D盤面に戻しました。</div>
+          </div>
+          <div id="boardPixel" class="board-pixel" aria-hidden="true">
+            <canvas id="boardPixelCanvas" width="320" height="320" aria-label="ピクセル盤面"></canvas>
           </div>
         </div>
         <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
@@ -1836,14 +2617,6 @@
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
       </div>
-      <div id="boardViewSettingRow" class="settings-row" style="display:none;">
-        <label>盤面表示</label>
-        <input id="boardViewMode" type="hidden" value="2d">
-        <div class="board-view-segmented" role="group" aria-label="盤面表示">
-          <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
-          <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
-        </div>
-      </div>
       <details id="mobileChatSettingsDetails" class="settings-disclosure">
         <summary>
           <span class="when-closed">▶ モバイル版のチャット設定を開く</span>
@@ -1877,6 +2650,16 @@
           <span class="when-open">▼ 対局中の表示・サポートを閉じる</span>
         </summary>
         <div class="settings-disclosure-content">
+          <div id="boardViewSettingRow" class="settings-row" style="display:none;">
+            <label>盤面表示</label>
+            <input id="boardViewMode" type="hidden" value="2d">
+            <div class="board-view-segmented" role="group" aria-label="盤面表示">
+              <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
+              <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
+              <button id="boardViewPixelColorButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
+              <button id="boardViewPixelMonoButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
+            </div>
+          </div>
           <div class="settings-row">
             <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
           </div>
@@ -2037,10 +2820,23 @@
 </div>
 
 <script type="module">
-  import("/static/board3d.js?v=20260730").catch((error) => {
+  import("/static/board3d.js?v=20260730r").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
+  });
+  import("/static/boardPixel.js?v=20260730h").catch((error) => {
+    window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
+    console.warn("Pixel board module failed to load:", error);
+    window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
+  });
+  import("/static/voiceChat.js?v=20260730a").then((module) => {
+    window.createGoitaVoiceChatController = module.createVoiceChatController;
+    window.dispatchEvent(new CustomEvent("goita-voice-chat-ready"));
+  }).catch((error) => {
+    window.goitaVoiceChatLoadError = String(error?.message || error || "ボイスチャットを読み込めませんでした。");
+    console.warn("Voice chat module failed to load:", error);
+    window.dispatchEvent(new CustomEvent("goita-voice-chat-ready"));
   });
 </script>
 <script>
@@ -2093,6 +2889,7 @@ const SITE_INFO = {
         paragraphs: [
             "そろうごいたでは、対局や各機能の提供に必要な範囲で、設定した名前、チャット内容、対局情報、棋譜情報などを取り扱います。個人設定の一部は、ご利用のブラウザー内に保存されます。",
             "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。ただし、運営側がその情報を勝手に棋譜として保存・収集することはありません。また、本人の同意なく、棋譜から個人の打ち方を分析したり、AI開発、研究、記事などに利用したりすることもありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。",
+            "デバッグルームのボイスチャットは、参加者同士を直接つなぐためにWebRTCを利用します。音声を録音・保存することはありません。",
             "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
             "取得した情報は、サービスの提供、改善、不具合調査のために必要な範囲で利用します。",
         ],
@@ -2172,6 +2969,13 @@ let settingTargetGid = null;
 let seatModeTarget = null;
 
 const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
+const PIXEL_BOARD_MODES = new Set(["pixel-color", "pixel-mono"]);
+
+function normalizeBoardViewMode(mode) {
+    if (mode === "pixel") return "pixel-color";
+    return mode === "3d" || PIXEL_BOARD_MODES.has(mode) ? mode : "2d";
+}
+
 function loadPersonalSettings() {
     try {
         const saved = JSON.parse(localStorage.getItem(PERSONAL_SETTINGS_KEY) || "{}");
@@ -2186,7 +2990,7 @@ function loadPersonalSettings() {
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
-            boardViewMode: saved.boardViewMode === "3d" ? "3d" : "2d",
+            boardViewMode: normalizeBoardViewMode(saved.boardViewMode),
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
                 ? saved.mobileChatWidth
@@ -2232,25 +3036,36 @@ function applyPersonalSettingsAppearance() {
 }
 
 function setBoardViewControl(mode) {
-    const normalized = mode === "3d" ? "3d" : "2d";
+    const normalized = normalizeBoardViewMode(mode);
     document.getElementById("boardViewMode").value = normalized;
     document.getElementById("boardView2dButton").classList.toggle("active", normalized === "2d");
     document.getElementById("boardView3dButton").classList.toggle("active", normalized === "3d");
+    document.getElementById("boardViewPixelColorButton").classList.toggle("active", normalized === "pixel-color");
+    document.getElementById("boardViewPixelMonoButton").classList.toggle("active", normalized === "pixel-mono");
 }
 
 function applyBoardViewMode() {
     const requested3d = gid === DEBUG_GID && personalSettings.boardViewMode === "3d";
-    const rendererReady = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
-    const use3d = requested3d && rendererReady;
+    const requestedPixel = gid === DEBUG_GID && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);
+    const pixelTheme = personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color";
+    const use3d = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
+    const usePixel = requestedPixel && window.goitaBoardPixel?.isAvailable?.() === true;
     const board3d = document.getElementById("board3d");
+    const boardPixel = document.getElementById("boardPixel");
 
     document.body.classList.toggle("board-view-3d", use3d);
+    document.body.classList.toggle("board-view-pixel", usePixel);
+    document.body.classList.toggle("board-view-pixel-mono", usePixel && pixelTheme === "mono");
     if (board3d) {
         board3d.setAttribute("aria-hidden", use3d ? "false" : "true");
         board3d.classList.toggle("is-unavailable", requested3d && window.goitaBoard3D?.isAvailable?.() === false);
     }
+    if (boardPixel) boardPixel.setAttribute("aria-hidden", usePixel ? "false" : "true");
     window.goitaBoard3D?.setVisible?.(use3d);
+    window.goitaBoardPixel?.setTheme?.(pixelTheme);
+    window.goitaBoardPixel?.setVisible?.(usePixel);
     if (use3d && latestState) renderBoard3D(latestState);
+    if (usePixel && latestState) renderBoardPixel(latestState);
 }
 
 function updateMobileChatTransparencyDisplay(value) {
@@ -2295,6 +3110,15 @@ let chatToastTimer = null;
 let localChatNotices = [];
 let lastHintNoticeKey = "";
 let socket = null;
+let voiceChatController = null;
+let voiceChatState = {
+    joining: false,
+    joined: false,
+    active: false,
+    muted: true,
+    participants: [],
+    speakingSeats: [],
+};
 let fixedHandMemory = {};
 let setupApplyTimer = null;
 let kifuArchiveCache = null;
@@ -2346,6 +3170,128 @@ cVoiceAttack1Sound.volume = 0.85;
 cVoiceAttack2Sound.volume = 0.85;
 cVoiceAttack3Sound.volume = 0.85;
 cVoiceWinSound.volume = 0.85;
+const gameAudioBaseVolumes = new Map([
+    [effectSound, 0.65],
+    [winSound, 0.75],
+    [passSound, 0.55],
+    ...Object.values(pieceSounds).map((audio) => [audio, 0.6]),
+    [nextRoundSound, 0.65],
+    [cVoiceHeavySound, 0.85],
+    [cVoiceKuoSound, 0.85],
+    [cVoiceUwaaSound, 0.85],
+    [cVoiceKakugoSound, 0.85],
+    [cVoiceAttack1Sound, 0.85],
+    [cVoiceAttack2Sound, 0.85],
+    [cVoiceAttack3Sound, 0.85],
+    [cVoiceWinSound, 0.85],
+]);
+
+function setVoiceChatDucking(active) {
+    const multiplier = active ? 0.32 : 1;
+    gameAudioBaseVolumes.forEach((baseVolume, audio) => {
+        audio.volume = baseVolume * multiplier;
+    });
+}
+
+function voiceChatContext() {
+    const ownedSeats = latestState?.owned_human_seats;
+    const ownsSeat = (
+        mySeat !== WATCH
+        && (!Array.isArray(ownedSeats) || ownedSeats.includes(mySeat))
+        && seatIsHuman(latestState, mySeat)
+    );
+    return {
+        roomId: gid,
+        seat: mySeat,
+        clientId,
+        eligible: gid === DEBUG_GID && ownsSeat,
+    };
+}
+
+function voiceChatIsSpeaking(seat) {
+    return Array.isArray(voiceChatState.speakingSeats)
+        && voiceChatState.speakingSeats.includes(seat);
+}
+
+function updateVoiceChatUi() {
+    const bar = document.getElementById("voiceChatBar");
+    const joinButton = document.getElementById("voiceChatJoinButton");
+    const muteButton = document.getElementById("voiceChatMuteButton");
+    const status = document.getElementById("voiceChatStatus");
+    if (!bar || !joinButton || !muteButton || !status) return;
+
+    bar.style.display = gid === DEBUG_GID ? "flex" : "none";
+    if (gid !== DEBUG_GID) return;
+
+    const eligible = voiceChatContext().eligible;
+    const active = voiceChatState.active || voiceChatState.joining;
+    const participantCount = Array.isArray(voiceChatState.participants)
+        ? voiceChatState.participants.length
+        : 0;
+    joinButton.disabled = !voiceChatController || (!eligible && !active);
+    joinButton.textContent = active ? "退出" : "参加";
+    joinButton.classList.toggle("active", active);
+
+    muteButton.disabled = !voiceChatState.active;
+    muteButton.textContent = voiceChatState.muted ? "マイクON" : "ミュート";
+    muteButton.classList.toggle("active", voiceChatState.active && !voiceChatState.muted);
+
+    if (!voiceChatController) {
+        status.textContent = window.goitaVoiceChatLoadError
+            ? "この端末では利用できません"
+            : "準備中...";
+    } else if (voiceChatState.joining) {
+        status.textContent = "マイクを準備中...";
+    } else if (voiceChatState.active && !voiceChatState.joined) {
+        status.textContent = "再接続中...";
+    } else if (voiceChatState.joined) {
+        status.textContent = `${participantCount}人参加・${voiceChatState.muted ? "ミュート中" : "マイクON"}`;
+    } else if (!eligible) {
+        status.textContent = "着席すると利用できます";
+    } else {
+        status.textContent = "未参加";
+    }
+}
+
+function initializeVoiceChat() {
+    if (voiceChatController || typeof window.createGoitaVoiceChatController !== "function") {
+        updateVoiceChatUi();
+        return;
+    }
+    voiceChatController = window.createGoitaVoiceChatController({
+        getContext: voiceChatContext,
+        onHint: (message) => setHint(message),
+        onDuckingChange: setVoiceChatDucking,
+        onChange: (nextState) => {
+            voiceChatState = nextState;
+            updateVoiceChatUi();
+            if (latestState) {
+                updateSeatButtons(latestState);
+                renderBoard(latestState);
+            }
+        },
+    });
+    updateVoiceChatUi();
+}
+
+async function toggleVoiceChatJoin() {
+    if (!voiceChatController) {
+        initializeVoiceChat();
+    }
+    if (!voiceChatController) {
+        setHint("ボイスチャットを読み込めませんでした。");
+        return;
+    }
+    if (voiceChatState.active || voiceChatState.joining) {
+        await voiceChatController.leave();
+    } else {
+        await voiceChatController.join();
+    }
+}
+
+function toggleVoiceChatMute() {
+    voiceChatController?.toggleMute();
+}
 
 function unlockAudio(){
     if(audioUnlocked) return;
@@ -2634,6 +3580,7 @@ async function enterRoom(targetGid, roomName) {
     }
     isProcessingCpu = false;
     setAiThinking(false);
+    await voiceChatController?.leave?.();
 
     if(!isSpectator()){
         await releaseSeat(mySeat);
@@ -2670,6 +3617,7 @@ async function returnToLobby() {
     }
     isProcessingCpu = false;
     setAiThinking(false);
+    await voiceChatController?.leave?.();
 
     if(!isSpectator()){
         await releaseSeat(mySeat);
@@ -2921,7 +3869,7 @@ async function savePersonalSettings() {
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
-        boardViewMode: document.getElementById("boardViewMode").value === "3d" ? "3d" : "2d",
+        boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
     };
     latestBeginnerRecommendation = null;
     beginnerRecommendationKey = "";
@@ -3040,6 +3988,7 @@ function updateSeatButtons(state) {
         const isHuman = humanSeats.includes(s);
         const isAi = aiSeats.includes(s);
         const occupiedByOther = isHuman && mySeat !== s;
+        const speakingSuffix = voiceChatIsSpeaking(s) ? " 🎙" : "";
 
         btn.classList.toggle('active', mySeat === s);
         btn.classList.toggle('ai-mode', isAi);
@@ -3047,11 +3996,11 @@ function updateSeatButtons(state) {
         btn.disabled = occupiedByOther;
 
         if (mySeat === s) {
-            btn.textContent = `${displayName} (自分)`;
+            btn.textContent = `${displayName} (自分)${speakingSuffix}`;
         } else if (isAi) {
             btn.textContent = `${displayName} [AI]`;
         } else if (isHuman) {
-            btn.textContent = `${displayName} [人]`;
+            btn.textContent = `${displayName} [人]${speakingSuffix}`;
         } else {
             btn.textContent = displayName;
         }
@@ -3060,12 +4009,14 @@ function updateSeatButtons(state) {
 
 async function selectSpectator() {
     if (isSpectator()) return;
+    await voiceChatController?.leave?.();
     await leaveSeat(mySeat);
 }
 
 async function selectSeat(next) {
     if (next === mySeat) return;
 
+    await voiceChatController?.leave?.();
     forceDisablePreset();
 
     pending = null;
@@ -3089,6 +4040,7 @@ async function selectSeat(next) {
 
 async function setSeatAiMode(seat, enabled) {
     if (!seat || seat === WATCH) return;
+    if (mySeat === seat) await voiceChatController?.leave?.();
     pending = null;
     setAutoPlayEnabled(false);
 
@@ -3119,6 +4071,7 @@ async function clearSeatMode(seat) {
     setAutoPlayEnabled(false);
 
     if (mySeat === seat) {
+        await voiceChatController?.leave?.();
         await releaseSeat(seat);
         mySeat = WATCH;
     }
@@ -3127,6 +4080,7 @@ async function clearSeatMode(seat) {
 
 async function leaveSeat(seat) {
     if (!seat || seat === WATCH || mySeat !== seat) return;
+    await voiceChatController?.leave?.();
     pending = null;
     setAutoPlayEnabled(false);
     await releaseSeat(seat);
@@ -4503,6 +5457,9 @@ function buildBoard3DSnapshot(state) {
     physToSeat,
     turn: state.turn,
     aiThinkingSeat,
+    voiceSpeakingSeats: Array.isArray(voiceChatState.speakingSeats)
+      ? voiceChatState.speakingSeats
+      : [],
     isStarted: !!state.is_started,
     finished: !!state.finished,
     round: state.round_count || 1,
@@ -4518,6 +5475,14 @@ function renderBoard3D(state) {
   if(window.goitaBoard3D?.isAvailable?.() !== true) return;
   window.goitaBoard3D.setVisible(true);
   window.goitaBoard3D.render(buildBoard3DSnapshot(state));
+}
+
+function renderBoardPixel(state) {
+  if(gid !== DEBUG_GID || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;
+  if(window.goitaBoardPixel?.isAvailable?.() !== true) return;
+  window.goitaBoardPixel.setTheme(personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color");
+  window.goitaBoardPixel.setVisible(true);
+  window.goitaBoardPixel.render(buildBoard3DSnapshot(state));
 }
 
 async function claimSeat(seat){
@@ -4853,7 +5818,8 @@ function renderBoard(state){
           
           const displayName = names[seat] ? sanitizeName(names[seat]) : "";
           const nameText = document.createElement("span");
-          nameText.textContent = displayName ? `${seat}: ${displayName}` : seat;
+          const speakingSuffix = voiceChatIsSpeaking(seat) ? " 🎙" : "";
+          nameText.textContent = `${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
           inner.appendChild(nameText);
 
           if (aiThinkingSeat === seat) {
@@ -4940,6 +5906,7 @@ function renderBoard(state){
       board.appendChild(scoreDiv);
   }
   renderBoard3D(state);
+  renderBoardPixel(state);
 }
 
 // 盤面下の独立した手札エリアの描画
@@ -5096,8 +6063,20 @@ async function renderActions(){
   });
 }
 
+function activePassAnimationTarget() {
+  if(document.body.classList.contains("board-view-pixel")){
+    return {element: document.getElementById("boardPixel"), overlay: true};
+  }
+  return {element: document.getElementById("board"), overlay: false};
+}
+
 function showPassAnimation(phys) {
-  const board = document.getElementById("board");
+  if(document.body.classList.contains("board-view-3d")
+      && window.goitaBoard3D?.showPass?.(phys)){
+    return;
+  }
+  const target = activePassAnimationTarget();
+  const board = target.element;
   if (!board) return;
   
   const wrapper = document.createElement("div");
@@ -5105,11 +6084,15 @@ function showPassAnimation(phys) {
   const isMobilePass = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
   if(isMobilePass) wrapper.classList.add("pass-anim-mobile");
   
-  /* 8x8盤面に合わせてアニメーション出現位置をずらす */
-  if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
-  else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
-  else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
-  else if (phys === "D") { wrapper.style.gridColumn = "1 / 3"; wrapper.style.gridRow = "4 / 6"; }
+  if(target.overlay){
+    wrapper.classList.add("pass-anim-overlay", `pass-position-${String(phys).toLowerCase()}`);
+  }else{
+    /* 8x8盤面に合わせてアニメーション出現位置をずらす */
+    if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
+    else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
+    else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
+    else if (phys === "D") { wrapper.style.gridColumn = "1 / 3"; wrapper.style.gridRow = "4 / 6"; }
+  }
   
   const inner = document.createElement("div");
   inner.className = "phys-" + phys;
@@ -5259,16 +6242,19 @@ async function refresh(){
   if(seatOwnershipLost){
     pending = null;
     setAutoPlayEnabled(false);
+    await voiceChatController?.leave?.();
     mySeat = WATCH;
     latestState = state;
     await returnToLobby();
     return;
   }
   latestState = state;
+  voiceChatController?.syncContext?.();
   applyRoomBackground(state);
   
   updateRoomUI(); 
   updateSeatButtons(state);
+  updateVoiceChatUi();
   
   const toggleBtn = document.getElementById("toggleHandsBtn");
   if (toggleBtn) {
@@ -5528,8 +6514,21 @@ window.addEventListener("goita-board3d-ready", () => {
   applyBoardViewMode();
 });
 
+window.addEventListener("goita-board-pixel-ready", () => {
+  applyBoardViewMode();
+});
+
+window.addEventListener("goita-voice-chat-ready", () => {
+  initializeVoiceChat();
+});
+
+window.addEventListener("beforeunload", () => {
+  voiceChatController?.leave?.();
+});
+
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();
+  initializeVoiceChat();
   window.addEventListener("resize", () => {
     if(latestState) renderChat(latestState);
   });

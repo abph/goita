@@ -42,6 +42,8 @@ AI_CHAT_MAX_LEN = 600
 AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
+VOICE_SIGNAL_MAX_CHARS = 64_000
+VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
@@ -92,6 +94,7 @@ AI_HELP_SYSTEM_PROMPT = """
 - 「みんな手札公開」では盤面上に各プレイヤーの手駒が表示される。
 - 「棋譜を保存する」は名前入り、「匿名で棋譜を保存する」はプレイヤー名を伏せて保存する。
 - チャットは観戦者も利用できる。「AIに聞く」は入力した質問をこの案内AIへ送る。
+- デバッグルームでは、着席者だけがボイスチャットへ参加できる。参加直後はミュートで、音声は録音・保存されない。
 
 制約:
 - 管理用パスワード、APIキー、非公開情報、他プレイヤーの伏せ駒や非公開手駒は答えない。
@@ -177,11 +180,129 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+class VoiceConnectionManager:
+    """Tracks debug-room voice peers and relays WebRTC signaling only."""
+
+    def __init__(self):
+        self.connections: Dict[str, Dict[str, Tuple[str, WebSocket]]] = {}
+        self.muted: Dict[str, Dict[str, bool]] = {}
+        self.speaking: Dict[str, Dict[str, bool]] = {}
+
+    def has_client_connection(self, game_id: str, client_id: str) -> bool:
+        return any(
+            owner_client_id == client_id
+            for owner_client_id, _websocket in self.connections.get(game_id, {}).values()
+        )
+
+    async def connect(
+        self,
+        websocket: WebSocket,
+        game_id: str,
+        seat: str,
+        client_id: str,
+    ) -> None:
+        await websocket.accept()
+        room = self.connections.setdefault(game_id, {})
+        previous = room.get(seat)
+        room[seat] = (client_id, websocket)
+        self.muted.setdefault(game_id, {})[seat] = True
+        self.speaking.setdefault(game_id, {})[seat] = False
+        if previous and previous[1] is not websocket:
+            try:
+                await previous[1].close(code=4001, reason="voice connection replaced")
+            except Exception:
+                pass
+        await self.broadcast_roster(game_id)
+
+    async def disconnect(self, websocket: WebSocket, game_id: str, seat: str) -> None:
+        room = self.connections.get(game_id, {})
+        current = room.get(seat)
+        if not current or current[1] is not websocket:
+            return
+        room.pop(seat, None)
+        self.muted.get(game_id, {}).pop(seat, None)
+        self.speaking.get(game_id, {}).pop(seat, None)
+        if not room:
+            self.connections.pop(game_id, None)
+            self.muted.pop(game_id, None)
+            self.speaking.pop(game_id, None)
+        await self.broadcast_roster(game_id)
+
+    async def disconnect_seat(
+        self,
+        game_id: str,
+        seat: str,
+        client_id: str = "",
+    ) -> None:
+        current = self.connections.get(game_id, {}).get(seat)
+        if not current or (client_id and current[0] != client_id):
+            return
+        websocket = current[1]
+        await self.disconnect(websocket, game_id, seat)
+        try:
+            await websocket.close(code=4002, reason="seat released")
+        except Exception:
+            pass
+
+    async def relay(
+        self,
+        game_id: str,
+        source_seat: str,
+        target_seat: str,
+        message_type: str,
+        data: Any,
+    ) -> None:
+        target = self.connections.get(game_id, {}).get(target_seat)
+        if not target:
+            return
+        try:
+            await target[1].send_json(
+                {"type": message_type, "from": source_seat, "data": data}
+            )
+        except Exception:
+            pass
+
+    async def update_state(
+        self,
+        game_id: str,
+        seat: str,
+        *,
+        muted: bool,
+        speaking: bool,
+    ) -> None:
+        self.muted.setdefault(game_id, {})[seat] = muted
+        self.speaking.setdefault(game_id, {})[seat] = speaking and not muted
+        await self.broadcast_roster(game_id)
+
+    async def broadcast_roster(self, game_id: str) -> None:
+        room = self.connections.get(game_id, {})
+        participants = [
+            {
+                "seat": seat,
+                "muted": bool(self.muted.get(game_id, {}).get(seat, True)),
+                "speaking": bool(self.speaking.get(game_id, {}).get(seat, False)),
+            }
+            for seat in sorted(room)
+        ]
+        payload = {"type": "voice_roster", "participants": participants}
+        for _seat, (_client_id, websocket) in list(room.items()):
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                pass
+
+
+voice_manager = VoiceConnectionManager()
+
+
 async def _release_disconnected_client_after_grace(game_id: str, client_id: str) -> None:
     key = (game_id, client_id)
     try:
         await asyncio.sleep(DISCONNECT_SEAT_GRACE_SECONDS)
-        if manager.has_client_connection(game_id, client_id):
+        if (
+            manager.has_client_connection(game_id, client_id)
+            or voice_manager.has_client_connection(game_id, client_id)
+        ):
             return
         game = GAMES.get(game_id)
         if not game:
@@ -194,6 +315,7 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
             if owner_client_id == client_id:
                 del human_seats[seat]
                 _clear_player_name(game, seat)
+                await voice_manager.disconnect_seat(game_id, seat, client_id)
                 removed = True
         if removed:
             await manager.broadcast_update(game_id)
@@ -540,6 +662,118 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
             await manager.broadcast_update(game_id)
         if client_id and is_fully_disconnected:
             manager.schedule_disconnect_release(game_id, client_id)
+
+
+def _voice_ice_servers() -> List[Dict[str, Any]]:
+    default_servers: List[Dict[str, Any]] = [
+        {"urls": ["stun:stun.l.google.com:19302"]}
+    ]
+    raw = (os.getenv("WEBRTC_ICE_SERVERS_JSON") or "").strip()
+    if not raw:
+        return default_servers
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return default_servers
+    if not isinstance(parsed, list):
+        return default_servers
+
+    servers: List[Dict[str, Any]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        urls = item.get("urls")
+        if isinstance(urls, str):
+            urls = [urls]
+        if not isinstance(urls, list) or not all(isinstance(url, str) and url for url in urls):
+            continue
+        server: Dict[str, Any] = {"urls": urls}
+        if isinstance(item.get("username"), str):
+            server["username"] = item["username"]
+        if isinstance(item.get("credential"), str):
+            server["credential"] = item["credential"]
+        servers.append(server)
+    return servers or default_servers
+
+
+@app.get("/games/{game_id}/voice/config")
+def get_voice_config(game_id: str, seat: str, client_id: str = ""):
+    if game_id != DEBUG_GID:
+        raise HTTPException(status_code=404, detail="voice chat is debug-room only")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    seat = _validate_seat(seat, name="seat")
+    _require_human_seat_owner(game, seat, client_id)
+    return {
+        "enabled": True,
+        "iceServers": _voice_ice_servers(),
+        "recording": False,
+    }
+
+
+@app.websocket("/voice/{game_id}")
+async def voice_websocket_endpoint(
+    websocket: WebSocket,
+    game_id: str,
+    seat: str = "",
+    client_id: str = "",
+):
+    normalized_seat = (seat or "").strip().upper()
+    game = GAMES.get(game_id)
+    if (
+        game_id != DEBUG_GID
+        or normalized_seat not in ALL_SEATS
+        or not client_id
+        or not game
+        or not _client_owns_human_seat(game, normalized_seat, client_id)
+    ):
+        await websocket.close(code=4403, reason="voice chat requires an owned debug-room seat")
+        return
+
+    await voice_manager.connect(websocket, game_id, normalized_seat, client_id)
+    try:
+        while True:
+            message = await websocket.receive_json()
+            game = GAMES.get(game_id)
+            if not game or not _client_owns_human_seat(
+                game, normalized_seat, client_id
+            ):
+                await websocket.close(code=4403, reason="seat ownership lost")
+                break
+            if not isinstance(message, dict):
+                continue
+            try:
+                message_size = len(json.dumps(message, ensure_ascii=False))
+            except (TypeError, ValueError):
+                continue
+            if message_size > VOICE_SIGNAL_MAX_CHARS:
+                continue
+
+            message_type = str(message.get("type") or "")
+            if message_type in VOICE_SIGNAL_TYPES:
+                target = str(message.get("target") or "").strip().upper()
+                if target in ALL_SEATS and target != normalized_seat:
+                    await voice_manager.relay(
+                        game_id,
+                        normalized_seat,
+                        target,
+                        message_type,
+                        message.get("data"),
+                    )
+            elif message_type == "voice_state":
+                muted = bool(message.get("muted", True))
+                speaking = bool(message.get("speaking", False))
+                await voice_manager.update_state(
+                    game_id,
+                    normalized_seat,
+                    muted=muted,
+                    speaking=speaking,
+                )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await voice_manager.disconnect(websocket, game_id, normalized_seat)
 
 
 def _hand_to_kifu_string(hand: List[Any]) -> str:
@@ -1521,6 +1755,7 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     game = GAMES[game_id]
     
     hs = game.setdefault("human_seats", {})
+    released_seats: List[str] = []
     if isinstance(hs, dict):
         current_owner = hs.get(seat)
         if current_owner and current_owner != client_id:
@@ -1529,11 +1764,14 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
             if v == client_id and k != seat:
                 del hs[k]
                 _clear_player_name(game, k)
+                released_seats.append(k)
         hs[seat] = client_id
     else:
         game["human_seats"] = {seat: client_id}
         hs = game["human_seats"]
     manager.cancel_disconnect_release(game_id, client_id)
+    for released_seat in released_seats:
+        await voice_manager.disconnect_seat(game_id, released_seat, client_id)
 
     ai_seats = _ai_seat_set(game)
     if seat in ai_seats:
@@ -1563,6 +1801,7 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
         if seat in hs and hs[seat] == client_id:
             del hs[seat]
             _clear_player_name(game, seat)
+            await voice_manager.disconnect_seat(game_id, seat, client_id)
     
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -1593,7 +1832,9 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
                 raise HTTPException(status_code=409, detail=f"Seat {seat} is already occupied.")
         ai_seats.add(seat)
         if isinstance(hs, dict) and seat in hs:
+            owner_client_id = hs.get(seat, "")
             del hs[seat]
+            await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
         _clear_player_name(game, seat)
     else:
         ai_seats.discard(seat)

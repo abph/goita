@@ -74,6 +74,8 @@ def test_effects_and_beginner_support_are_grouped() -> None:
     details_end = html.index("</details>", details_start)
     details = html[details_start:details_end]
 
+    assert 'id="boardViewSettingRow"' in details
+    assert 'id="boardViewMode"' in details
     assert 'id="checkEnableEffects"' in details
     assert 'id="beginnerSupportSettingRow"' in details
     assert 'id="checkEnableBeginnerSupport"' in details
