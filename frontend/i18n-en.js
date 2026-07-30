@@ -16,7 +16,7 @@
     "🌐 公開部屋": "🌐 Public Rooms",
     "誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。": "Anyone may join or watch these rooms. Feel free to start a game.",
     "🏯 プライベートルーム": "🏯 Private Rooms",
-    "合言葉を知っている人だけが入れる専用の部屋です。": "These rooms are available only to people who know the passphrase.",
+    "支援していただいた人のための専用の部屋です。": "Dedicated rooms for people who support the project.",
     "「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。": "They include tools for practice and study, such as preset hands and dealer selection.",
     "※いまはお試し期間で、プライベートAを自由に使えます。": "Private A is currently available for anyone to try.",
     "そろうごいたの案内": "Solo Goita Guide",
