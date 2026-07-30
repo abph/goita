@@ -2962,7 +2962,31 @@ const PRIVATE_ROOM_IDS = new Set([
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
-const LINKED_KIFU_QUERY_KEYS = ["kifu", "round", "seat"];
+const LINKED_KIFU_QUERY_KEYS = ["kifu", "round", "seat", "hands"];
+const LINKED_KIFU_HAND_COUNTS = {
+    "1": 10,
+    "2": 4,
+    "3": 4,
+    "4": 4,
+    "5": 4,
+    "6": 2,
+    "7": 2,
+    "8": 1,
+    "9": 1,
+};
+
+function parseLinkedKifuHands(value) {
+    const hands = String(value || "").split("-");
+    if(hands.length !== 4 || hands.some(hand => !/^[1-9]{8}$/.test(hand))) return null;
+
+    const counts = {};
+    Array.from(hands.join("")).forEach(piece => {
+        counts[piece] = (counts[piece] || 0) + 1;
+    });
+    const hasValidDeck = Object.entries(LINKED_KIFU_HAND_COUNTS)
+        .every(([piece, expected]) => counts[piece] === expected);
+    return hasValidDeck ? hands : null;
+}
 
 function readLinkedKifuPresetFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -2974,6 +2998,7 @@ function readLinkedKifuPresetFromUrl() {
         id: id.slice(0, 40),
         round,
         seat: ["A", "B", "C", "D"].includes(requestedSeat) ? requestedSeat : "",
+        hands: parseLinkedKifuHands(params.get("hands")),
         autoLoadAttempted: false,
         loading: false,
         applied: false,
@@ -4755,6 +4780,17 @@ function applyKifuHandsToPreset(round, options = {}){
   return true;
 }
 
+function applyLinkedKifuHandsToPreset(encodedHands, options = {}){
+  if(!Array.isArray(encodedHands) || encodedHands.length !== 4) return false;
+  const hand = {};
+  ["p0", "p1", "p2", "p3"].forEach((seat, index) => {
+    hand[seat] = Array.from(encodedHands[index])
+      .map(piece => PIECE_LABEL[piece] || "")
+      .join("");
+  });
+  return applyKifuHandsToPreset({hand}, options);
+}
+
 async function loadKifuPresetByValues(requestedIdValue, requestedRoundValue, options = {}){
   if(kifuPresetLoading) return false;
   if(!isCurrentClientHost() || isMainRoomId(gid)){
@@ -4845,8 +4881,19 @@ async function maybeApplyLinkedKifuPreset(state){
   preset.loading = true;
   preset.autoLoadAttempted = true;
   try{
-    const loaded = await loadKifuPresetByValues(preset.id, preset.round, {scheduleApply: false});
+    if(!preset.hands){
+      setKifuPresetStatus(
+        "この連携URLには手札データがありません。棋譜ページの「この棋譜の手駒をそろうごいたで遊ぶ」から開き直してください。",
+        "error"
+      );
+      return false;
+    }
+
+    setKifuPresetStatus("棋譜の手札を読み込んでいます。");
+
+    const loaded = applyLinkedKifuHandsToPreset(preset.hands, {scheduleApply: false});
     if(!loaded) return false;
+    setKifuPresetStatus(`棋譜ID ${preset.id}・${preset.round}局目の手札を反映しました。`, "success");
 
     const applied = await applyCurrentSetupToWaitingGame({
       keepScore: false,

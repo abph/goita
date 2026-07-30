@@ -13,6 +13,9 @@ def test_linked_kifu_query_is_presented_in_the_lobby() -> None:
     assert 'params.get("kifu")' in html
     assert 'params.get("round")' in html
     assert 'params.get("seat")' in html
+    assert 'params.get("hands")' in html
+    assert "function parseLinkedKifuHands(value)" in html
+    assert "LINKED_KIFU_HAND_COUNTS" in html
     assert "function renderLinkedKifuNotice()" in html
     assert "棋譜の手駒で遊ぶ" in html
     assert "使用棋谱手牌进行游戏" in html
@@ -28,7 +31,9 @@ def test_linked_kifu_auto_load_is_private_host_only() -> None:
     assert "if(isMainRoomId(gid) || !isCurrentClientHost()) return false;" in auto_load
     assert "if(state?.is_started || state?.finished) return false;" in auto_load
     assert "autoLoadAttempted" in auto_load
-    assert "loadKifuPresetByValues" in auto_load
+    assert "applyLinkedKifuHandsToPreset" in auto_load
+    assert "loadKifuPresetByValues" not in auto_load
+    assert "getKifuArchive" not in auto_load
     assert "applyCurrentSetupToWaitingGame" in auto_load
     assert "keepScore: false" in auto_load
     assert "clearLinkedKifuQueryParams()" in auto_load
