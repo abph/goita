@@ -3,10 +3,9 @@
 
   const MESSAGES = Object.freeze([
     "こんにちは！",
-    "最近の広告は姑息すぎて",
-    "その類の広告は絶滅すべきだと思います！",
+    "最近の広告は姑息すぎて、ほんと嫌ですね。",
   ]);
-  const MESSAGE_HOLD_MS = Object.freeze([1150, 1650]);
+  const MESSAGE_HOLD_MS = Object.freeze([1150]);
   const SURPRISE_MESSAGE = "なにもありませんよ笑";
   const MILESTONE_MESSAGE = "100回目おめでとう。そんな暇なあなたには、プライベートルームを一つ、1年間、授けます。希望するなら、連絡をください。";
   const EXIT_ANIMATION_MS = 220;

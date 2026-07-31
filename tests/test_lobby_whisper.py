@@ -35,11 +35,11 @@ def test_whisper_switches_message_and_can_be_closed() -> None:
     html = INDEX.read_text(encoding="utf-8")
     script = SCRIPT.read_text(encoding="utf-8")
 
-    assert '/static/lobbyWhisper.js?v=20260731e' in html
+    assert '/static/lobbyWhisper.js?v=20260731f' in html
     assert '"こんにちは！"' in script
-    assert '"最近の広告は姑息すぎて"' in script
-    assert '"その類の広告は絶滅すべきだと思います！"' in script
-    assert "MESSAGE_HOLD_MS = Object.freeze([1150, 1650])" in script
+    assert '"最近の広告は姑息すぎて、ほんと嫌ですね。"' in script
+    assert '"その類の広告は絶滅すべきだと思います！"' not in script
+    assert "MESSAGE_HOLD_MS = Object.freeze([1150])" in script
     assert "function showMessage(index)" in script
     assert 'SURPRISE_MESSAGE = "なにもありませんよ笑"' in script
     assert 'MILESTONE_MESSAGE = "100回目おめでとう。' in script
@@ -67,8 +67,7 @@ def test_whisper_supports_chinese_and_english() -> None:
         "1222のつぶやき",
         "つぶやきを閉じる",
         "こんにちは！",
-        "最近の広告は姑息すぎて",
-        "その類の広告は絶滅すべきだと思います！",
+        "最近の広告は姑息すぎて、ほんと嫌ですね。",
         "なにもありませんよ笑",
         "100回目おめでとう。そんな暇なあなたには、プライベートルームを一つ、1年間、授けます。希望するなら、連絡をください。",
     ):

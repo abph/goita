@@ -19,6 +19,7 @@
     "つぶやきを閉じる": "Close this note",
     "こんにちは！": "Hello!",
     "最近の広告は姑息すぎて": "Ads have become far too sneaky lately",
+    "最近の広告は姑息すぎて、ほんと嫌ですね。": "Sneaky ads really are annoying, aren't they?",
     "その類の広告は絶滅すべきだと思います！": "I think that kind of advertising should disappear entirely!",
     "なにもありませんよ笑": "There is nothing here, haha.",
     "100回目おめでとう。そんな暇なあなたには、プライベートルームを一つ、1年間、授けます。希望するなら、連絡をください。": "Congratulations on click 100. Since you have this much time, I will grant you one private room for a year. Contact me if you would like it.",
