@@ -957,6 +957,115 @@
         justify-content: center;
         gap: 20px;
     }
+    .lobby-whisper {
+        position: relative;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 156px;
+        max-width: 560px;
+        margin: 24px auto 0;
+        border: 2px solid #292929;
+        border-radius: 0;
+        background: #ffffff;
+        box-shadow: 7px 7px 0 rgba(74, 43, 19, 0.18);
+        color: #3d2b1d;
+        padding: 44px 24px 24px;
+        overflow: hidden;
+    }
+    .lobby-whisper[hidden] {
+        display: none !important;
+    }
+    .lobby-whisper-close {
+        position: absolute;
+        top: 8px;
+        left: 9px;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 0;
+        background: transparent;
+        color: #6a4930;
+        padding: 0;
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .lobby-whisper-close:hover {
+        color: #a83a27;
+    }
+    .lobby-whisper-label {
+        position: absolute;
+        top: 13px;
+        left: 48px;
+        color: #8d3022;
+        font-size: 12px;
+        font-weight: 900;
+        line-height: 1.3;
+    }
+    .lobby-whisper-message {
+        display: block;
+        width: 100%;
+        min-height: 2.9em;
+        margin: 0 !important;
+        color: #3d2b1d !important;
+        font-size: 21px;
+        font-weight: 900;
+        line-height: 1.4;
+        text-align: center;
+        opacity: 1;
+        will-change: transform, opacity;
+    }
+    .lobby-whisper-message.is-entering {
+        animation: lobby-whisper-enter 420ms cubic-bezier(.17,.84,.3,1.08) both;
+    }
+    .lobby-whisper-message.is-leaving {
+        animation: lobby-whisper-leave 220ms ease-in both;
+    }
+    @keyframes lobby-whisper-enter {
+        0% {
+            opacity: 0;
+            transform: translate(-105px, 62px) scale(.86);
+        }
+        68% {
+            opacity: 1;
+            transform: translate(7px, -5px) scale(1.02);
+        }
+        100% {
+            opacity: 1;
+            transform: translate(0, 0) scale(1);
+        }
+    }
+    @keyframes lobby-whisper-leave {
+        from {
+            opacity: 1;
+            transform: translate(0, 0) scale(1);
+        }
+        to {
+            opacity: 0;
+            transform: translate(88px, -48px) scale(.94);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .lobby-whisper-message.is-entering,
+        .lobby-whisper-message.is-leaving {
+            animation-duration: 1ms;
+        }
+    }
+    @media (max-width: 520px) {
+        .lobby-whisper {
+            min-height: 148px;
+            margin-top: 20px;
+            padding: 42px 16px 20px;
+        }
+        .lobby-whisper-close {
+            top: 7px;
+            left: 7px;
+        }
+        .lobby-whisper-message { font-size: 17px; }
+    }
     .room-card {
         width: 240px;
         height: 240px;
@@ -2530,6 +2639,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
 </head>
 <body>
 
@@ -2562,6 +2672,16 @@
     </div>
     <button id="linkedKifuCancelButton" type="button" onclick="cancelLinkedKifuPreset()"></button>
   </div>
+
+  <section id="dailyMoveCard" class="daily-move-card" data-i18n-ignore hidden>
+    <div class="daily-move-copy">
+      <span id="dailyMoveEyebrow" class="daily-move-eyebrow">今日の一手</span>
+      <h2 id="dailyMoveCardTitle">この場面、あなたならどうする？</h2>
+      <p id="dailyMoveSummary">実戦で勝負を分けた一手です。Dの立場で考えてみましょう。</p>
+      <div id="dailyMoveMeta" class="daily-move-meta">棋譜ID：0206　第6局・12ターン目</div>
+    </div>
+    <button id="dailyMoveOpenButton" class="daily-move-open" type="button">挑戦する</button>
+  </section>
 
   <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
     <h2>🌐 公開部屋</h2>
@@ -2697,6 +2817,12 @@
     </div>
   </div>
 
+  <aside id="lobbyWhisper" class="lobby-whisper" aria-label="1222のつぶやき" hidden>
+    <button id="lobbyWhisperClose" class="lobby-whisper-close" type="button" aria-label="つぶやきを閉じる">×</button>
+    <div class="lobby-whisper-label">1222のつぶやき</div>
+    <p id="lobbyWhisperMessage" class="lobby-whisper-message" aria-live="polite">こんにちは！</p>
+  </aside>
+
 </div>
 
 <div id="chatToast" class="chat-toast" aria-live="polite">
@@ -2705,6 +2831,38 @@
     <span id="chatToastTime" class="chat-toast-time"></span>
   </div>
   <div id="chatToastText" class="chat-toast-text"></div>
+</div>
+
+<div id="dailyMoveModal" class="modal-overlay" data-i18n-ignore>
+  <div id="dailyMoveModalContent" class="modal-content daily-move-modal-content" role="dialog" aria-modal="true" aria-labelledby="dailyMoveModalTitle">
+    <button id="dailyMoveCloseButton" class="daily-move-close" type="button" aria-label="閉じる" title="閉じる">×</button>
+    <h3 id="dailyMoveModalTitle">今日の一手</h3>
+    <p id="dailyMovePrompt" class="daily-move-prompt"></p>
+    <div class="daily-move-scoreline">
+      <span id="dailyMoveScore"></span>
+      <span id="dailyMoveTurn"></span>
+    </div>
+
+    <div id="dailyMoveBoard" class="daily-move-board" aria-label="12ターン目の盤面"></div>
+
+    <section class="daily-move-hand-section">
+      <div id="dailyMoveHandLabel" class="daily-move-hand-label"></div>
+      <div id="dailyMoveHand" class="daily-move-hand"></div>
+    </section>
+
+    <section class="daily-move-question">
+      <div id="dailyMoveQuestionTitle" class="daily-move-question-title"></div>
+      <div id="dailyMoveChoices" class="daily-move-choices" role="group" aria-label="回答">
+        <button id="dailyMoveChoicePawn" class="daily-move-choice" type="button" data-daily-move-choice="pawn"></button>
+        <button id="dailyMoveChoiceLance" class="daily-move-choice" type="button" data-daily-move-choice="lance"></button>
+      </div>
+    </section>
+
+    <section id="dailyMoveResult" class="daily-move-result" aria-live="polite" hidden></section>
+    <div id="dailyMoveResultActions" class="daily-move-result-actions" hidden>
+      <button id="dailyMoveRetryButton" type="button">別の手を試す</button>
+    </div>
+  </div>
 </div>
 
 <div id="seatModeModal" class="modal-overlay">
@@ -2963,8 +3121,10 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260730d"></script>
-<script src="/static/i18n.js?v=20260730h"></script>
+<script src="/static/i18n-en.js?v=20260731a"></script>
+<script src="/static/i18n.js?v=20260731a"></script>
+<script src="/static/dailyMove.js?v=20260731b"></script>
+<script src="/static/lobbyWhisper.js?v=20260731c"></script>
 <script type="module">
   import("/static/board3d.js?v=20260730v").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
@@ -3927,6 +4087,7 @@ async function enterRoom(targetGid, roomName) {
     
     document.getElementById("lobbyView").style.display = "none";
     document.getElementById("gameView").style.display = "block";
+    window.goitaLobbyWhisper?.setRoomVisibility?.(isMainRoomId(gid));
     setRoomNameText(document.getElementById("currentRoomName"), roomName);
     
     connectWS(gid); 
@@ -3967,6 +4128,7 @@ async function returnToLobby() {
     
     document.getElementById("gameView").style.display = "none";
     document.getElementById("lobbyView").style.display = "block";
+    window.goitaLobbyWhisper?.setRoomVisibility?.(false);
     clearRoomBackground();
     document.body.classList.remove("board-view-3d");
     window.goitaBoard3D?.setVisible?.(false);
