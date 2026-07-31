@@ -25,6 +25,8 @@ def test_whisper_appears_inside_public_game_rooms() -> None:
     assert "min-height: 136px" in html
     assert "border-radius: 0" in html
     assert "background: #ffffff" in html
+    assert "-webkit-user-select: none" in html
+    assert "user-select: none" in html
     assert "@keyframes lobby-whisper-enter" in html
     assert "translate(-105px, 62px)" in html
 
