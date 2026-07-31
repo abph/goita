@@ -15,6 +15,14 @@
     "※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。": "Hands with five or more し are not yet supported (every hand will contain four or fewer).",
     "🌐 公開部屋": "🌐 Public Rooms",
     "誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。": "Anyone may join or watch these rooms. Feel free to start a game.",
+    "1222のつぶやき": "A note from 1222",
+    "つぶやきを閉じる": "Close this note",
+    "こんにちは！": "Hello!",
+    "最近の広告は姑息すぎて": "Ads have become far too sneaky lately",
+    "その類の広告は絶滅すべきだと思います！": "I think that kind of advertising should disappear entirely!",
+    "なにもありませんよ笑": "There is nothing here, haha.",
+    "100回目おめでとう。そんな暇なあなたには、プライベートルームを一つ、1年間、授けます。希望するなら、連絡をください。": "Congratulations on click 100. Since you have this much time, I will grant you one private room for a year. Contact me if you would like it.",
+    "最近の広告は姑息すぎて、その類の広告は絶滅すべきだと思います！": "Ads have become far too sneaky lately. I think that kind of advertising should disappear entirely!",
     "🏯 プライベートルーム": "🏯 Private Rooms",
     "支援していただいた人のための専用の部屋です。": "Dedicated rooms for people who support the project.",
     "「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。": "They include tools for practice and study, such as preset hands and dealer selection.",
@@ -268,6 +276,7 @@
   const simpleTranslate = (value) => exact[String(value ?? "")] ?? String(value ?? "");
 
   const rules = [
+    [/^なにもありませんよ（笑）(\d+)回目$/, (_m, n) => `There is nothing here, haha. Click ${n}.`],
     [/^観戦(\d+)人$/, (_m, n) => `${n} spectator${n === "1" ? "" : "s"}`],
     [/^(\d+)人参加・ミュート中$/, (_m, n) => `${n} joined · Muted`],
     [/^(\d+)人参加・マイクON$/, (_m, n) => `${n} joined · Mic on`],
