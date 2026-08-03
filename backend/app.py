@@ -31,11 +31,41 @@ MAIN_GID = "main"
 MAIN_ROOM_NAMES: Dict[str, str] = {
     MAIN_GID: "メインルームA",
     "main-b": "メインルームB",
+    "main-c": "メインルームC",
+    "main-d": "メインルームD",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 DEBUG_GID = "debug"
 PRIVATE_A_GID = "room-gold-01"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
+DEFAULT_LOBBY_ADMIN_PASSWORD = "admin-lobby"
+LOBBY_ADMIN_PASSWORD = (
+    os.getenv("LOBBY_ADMIN_PASSWORD") or DEFAULT_LOBBY_ADMIN_PASSWORD
+).strip()
+PRIVATE_ROOM_DEFINITIONS = (
+    {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
+    {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
+    {"gid": "room-bronze-03", "pass": None, "admin": "admin-c", "owner": "プライベートC"},
+    {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
+)
+
+
+def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(env_name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+LOBBY_ROOM_SETTINGS = {
+    "main_room_count": _initial_room_count(
+        "LOBBY_MAIN_ROOM_COUNT", 2, 1, len(MAIN_ROOM_NAMES)
+    ),
+    "private_room_count": _initial_room_count(
+        "LOBBY_PRIVATE_ROOM_COUNT", 2, 0, len(PRIVATE_ROOM_DEFINITIONS)
+    ),
+}
 NAME_MAX_LEN = 9
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
@@ -741,6 +771,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
     await manager.connect(websocket, game_id, client_id)
     if game_id != "lobby":
         await manager.broadcast_update(game_id)
+        await manager.broadcast_update("lobby")
     try:
         while True:
             await websocket.receive_text()
@@ -748,6 +779,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str 
         is_fully_disconnected = manager.disconnect(websocket, game_id, client_id)
         if game_id != "lobby":
             await manager.broadcast_update(game_id)
+            await manager.broadcast_update("lobby")
         if client_id and is_fully_disconnected:
             manager.schedule_disconnect_release(game_id, client_id)
 
@@ -955,6 +987,12 @@ class SettingsUpdateRequest(BaseModel):
     show_legal_actions: bool = False
     show_log: bool = False
     room_background_image: Optional[str] = None
+
+
+class LobbySettingsUpdateRequest(BaseModel):
+    admin_password: str
+    main_room_count: int = Field(ge=1, le=len(MAIN_ROOM_NAMES))
+    private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
 
 
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
@@ -1359,29 +1397,14 @@ def _ensure_main_game(game_id: str = MAIN_GID, dealer: Optional[str] = None) -> 
 
 
 def setup_main_rooms() -> None:
-    for game_id in MAIN_ROOM_NAMES:
+    visible_count = LOBBY_ROOM_SETTINGS["main_room_count"]
+    for index, game_id in enumerate(MAIN_ROOM_NAMES):
         _ensure_main_game(game_id)
+        GAMES[game_id]["hidden_from_lobby"] = index >= visible_count
 
 def setup_supporter_rooms():
-    supporter_data = [
-        {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
-        {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
-        {
-            "gid": "room-bronze-03",
-            "pass": None,
-            "admin": "admin-c",
-            "owner": "プライベートC",
-            "hidden_from_lobby": True,
-        },
-        {
-            "gid": "room-copper-04",
-            "pass": None,
-            "admin": "admin-d",
-            "owner": "プライベートD",
-            "hidden_from_lobby": True,
-        },
-    ]
-    for data in supporter_data:
+    visible_count = LOBBY_ROOM_SETTINGS["private_room_count"]
+    for index, data in enumerate(PRIVATE_ROOM_DEFINITIONS):
         if data["gid"] not in GAMES:
             d = random.choice(["A", "B", "C", "D"])
             room = _create_game_obj(dealer=d)
@@ -1389,9 +1412,7 @@ def setup_supporter_rooms():
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
             GAMES[data["gid"]] = room
-        GAMES[data["gid"]]["hidden_from_lobby"] = bool(
-            data.get("hidden_from_lobby", False)
-        )
+        GAMES[data["gid"]]["hidden_from_lobby"] = index >= visible_count
 
 
 def setup_debug_room() -> None:
@@ -1545,6 +1566,7 @@ def list_rooms():
         hs = data.get("human_seats", {})
         human_set = _seat_set(hs)
         ai_set = _ai_seat_set(data)
+        spectator_count = manager.spectator_count(gid, data)
         pn = data.get("player_names", {})
         seats_info = {}
         for s in ALL_SEATS:
@@ -1567,18 +1589,68 @@ def list_rooms():
             "ai_profile": _normalize_ai_profile(data.get("ai_profile")),
             "ai_profile_label": _ai_profile_label(data.get("ai_profile")),
             "player_count": len(human_set | ai_set),
+            "human_count": len(human_set),
+            "spectator_count": spectator_count,
+            "people_count": len(human_set) + spectator_count,
             "seats": seats_info
         }
 
     rooms = [
         build_room_info(gid, GAMES[gid])
         for gid in MAIN_ROOM_NAMES
+        if not GAMES[gid].get("hidden_from_lobby", False)
     ]
     for gid, data in GAMES.items():
         if not _is_main_game_id(gid) and not data.get("hidden_from_lobby", False):
             rooms.append(build_room_info(gid, data))
-            
-    return {"rooms": rooms}
+
+    counted_rooms = [
+        build_room_info(gid, data)
+        for gid, data in GAMES.items()
+        if gid != DEBUG_GID and not data.get("is_debug_room", False)
+    ]
+    room_totals = {
+        "main_people_count": sum(
+            room["people_count"] for room in counted_rooms if room["is_main_room"]
+        ),
+        "private_people_count": sum(
+            room["people_count"] for room in counted_rooms if not room["is_main_room"]
+        ),
+    }
+
+    return {"rooms": rooms, "room_totals": room_totals}
+
+
+def _lobby_admin_payload() -> Dict[str, Any]:
+    room_data = list_rooms()
+    return {
+        "ok": True,
+        "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
+        "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
+        "main_room_max": len(MAIN_ROOM_NAMES),
+        "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
+        "room_totals": room_data["room_totals"],
+    }
+
+
+@app.post("/lobby/admin/verify")
+def verify_lobby_admin(password: str = Body(..., embed=True)):
+    if password != LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+    return _lobby_admin_payload()
+
+
+@app.post("/lobby/admin/settings")
+async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
+    if req.admin_password != LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+
+    LOBBY_ROOM_SETTINGS["main_room_count"] = req.main_room_count
+    LOBBY_ROOM_SETTINGS["private_room_count"] = req.private_room_count
+    setup_main_rooms()
+    setup_supporter_rooms()
+    await manager.broadcast_update("lobby")
+    return _lobby_admin_payload()
 
 
 @app.post("/games/{game_id}/verify_password")

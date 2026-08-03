@@ -8,34 +8,51 @@ import backend.app as app_module
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
-    app_module.setup_main_rooms()
-    app_module.setup_supporter_rooms()
-    rooms = app_module.list_rooms()["rooms"]
+    old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
+    try:
+        app_module.LOBBY_ROOM_SETTINGS.update(
+            main_room_count=2,
+            private_room_count=2,
+        )
+        app_module.setup_main_rooms()
+        app_module.setup_supporter_rooms()
+        rooms = app_module.list_rooms()["rooms"]
 
-    main_rooms = [room for room in rooms if room["is_main_room"]]
-    private_rooms = [room for room in rooms if not room["is_main_room"]]
+        main_rooms = [room for room in rooms if room["is_main_room"]]
+        private_rooms = [room for room in rooms if not room["is_main_room"]]
 
-    assert [room["game_id"] for room in main_rooms] == list(
-        app_module.MAIN_ROOM_NAMES
-    )
-    assert [room["owner_name"] for room in main_rooms] == list(
-        app_module.MAIN_ROOM_NAMES.values()
-    )
-    assert {room["game_id"] for room in private_rooms} == {
-        "room-gold-01",
-        "room-silver-02",
-    }
-    assert len(rooms) == len(app_module.MAIN_ROOM_NAMES) + 2
-    assert app_module.DEBUG_GID not in {room["game_id"] for room in rooms}
+        assert [room["game_id"] for room in main_rooms] == list(
+            app_module.MAIN_ROOM_NAMES
+        )[:2]
+        assert [room["owner_name"] for room in main_rooms] == list(
+            app_module.MAIN_ROOM_NAMES.values()
+        )[:2]
+        assert {room["game_id"] for room in private_rooms} == {
+            "room-gold-01",
+            "room-silver-02",
+        }
+        assert len(rooms) == 4
+        assert app_module.DEBUG_GID not in {room["game_id"] for room in rooms}
+    finally:
+        app_module.LOBBY_ROOM_SETTINGS.update(old_settings)
+        app_module.setup_main_rooms()
+        app_module.setup_supporter_rooms()
 
 
 def test_private_c_and_d_exist_but_are_hidden_from_lobby() -> None:
-    room_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
+    old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
+    try:
+        app_module.LOBBY_ROOM_SETTINGS["private_room_count"] = 2
+        app_module.setup_supporter_rooms()
+        room_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
 
-    for game_id in ("room-bronze-03", "room-copper-04"):
-        assert game_id in app_module.GAMES
-        assert app_module.GAMES[game_id]["hidden_from_lobby"] is True
-        assert game_id not in room_ids
+        for game_id in ("room-bronze-03", "room-copper-04"):
+            assert game_id in app_module.GAMES
+            assert app_module.GAMES[game_id]["hidden_from_lobby"] is True
+            assert game_id not in room_ids
+    finally:
+        app_module.LOBBY_ROOM_SETTINGS.update(old_settings)
+        app_module.setup_supporter_rooms()
 
 
 def test_every_main_room_disables_beginner_support() -> None:
@@ -86,8 +103,150 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     expected_set = f"const MAIN_ROOM_IDS = new Set([{', '.join(frontend_ids)}]);"
     assert expected_set in html
     assert "room.is_main_room === true" in html
-    assert "<h2>🌐 公開部屋</h2>" in html
+    assert 'id="mainRoomPeopleCount"' not in html
+    assert 'id="privateRoomPeopleCount"' not in html
+    assert 'id="lobbySettingsModal"' in html
+    assert 'id="lobbyAdminFields"' in html
+    assert 'id="lobbyMainPeopleCount"' in html
+    assert 'id="lobbyPrivatePeopleCount"' in html
+    assert 'id="lobbyAllPeopleCount"' in html
+    assert 'id="lobbyMainRoomCount"' in html
+    assert 'id="lobbyPrivateRoomCount"' in html
+    assert "function updateLobbyAdminPeopleCounts(roomTotals = null)" in html
+    assert "data.room_totals" in html
+    assert "function openLobbySettings()" in html
+    assert "async function unlockLobbyAdminSettings()" in html
+    assert "async function saveLobbyAdminSettings()" in html
+    assert "`${API}/lobby/admin/verify`" in html
+    assert "`${API}/lobby/admin/settings`" in html
+    assert 'safeCount === 1 ? "person" : "people"' in html
     assert 'toggleBtn.style.display = isHost ? "" : "none"' in html
+
+
+def test_lobby_admin_can_change_visible_room_counts() -> None:
+    old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
+    try:
+        payload = app_module.verify_lobby_admin(app_module.LOBBY_ADMIN_PASSWORD)
+        assert payload["main_room_max"] == len(app_module.MAIN_ROOM_NAMES)
+        assert payload["private_room_max"] == len(
+            app_module.PRIVATE_ROOM_DEFINITIONS
+        )
+
+        expanded = asyncio.run(
+            app_module.update_lobby_admin_settings(
+                app_module.LobbySettingsUpdateRequest(
+                    admin_password=app_module.LOBBY_ADMIN_PASSWORD,
+                    main_room_count=4,
+                    private_room_count=4,
+                )
+            )
+        )
+        expanded_rooms = app_module.list_rooms()["rooms"]
+        assert expanded["main_room_count"] == 4
+        assert expanded["private_room_count"] == 4
+        assert len([room for room in expanded_rooms if room["is_main_room"]]) == 4
+        assert len([room for room in expanded_rooms if not room["is_main_room"]]) == 4
+
+        reduced = asyncio.run(
+            app_module.update_lobby_admin_settings(
+                app_module.LobbySettingsUpdateRequest(
+                    admin_password=app_module.LOBBY_ADMIN_PASSWORD,
+                    main_room_count=1,
+                    private_room_count=0,
+                )
+            )
+        )
+        reduced_rooms = app_module.list_rooms()["rooms"]
+        assert reduced["main_room_count"] == 1
+        assert reduced["private_room_count"] == 0
+        assert len([room for room in reduced_rooms if room["is_main_room"]]) == 1
+        assert not [room for room in reduced_rooms if not room["is_main_room"]]
+
+        try:
+            app_module.verify_lobby_admin("wrong-password")
+        except HTTPException as exc:
+            assert exc.status_code == 401
+        else:
+            raise AssertionError("wrong lobby admin password must be rejected")
+    finally:
+        app_module.LOBBY_ROOM_SETTINGS.update(old_settings)
+        app_module.setup_main_rooms()
+        app_module.setup_supporter_rooms()
+
+
+def test_room_list_counts_human_players_and_spectators_without_ai() -> None:
+    app_module.setup_main_rooms()
+    game_id = next(iter(app_module.MAIN_ROOM_NAMES))
+    game = app_module.GAMES[game_id]
+    old_human_seats = game.get("human_seats")
+    old_ai_seats = game.get("ai_seats")
+    connection_keys = [
+        (game_id, "player-a"),
+        (game_id, "watcher-one"),
+        (game_id, "watcher-two"),
+    ]
+    old_connections = {
+        key: app_module.manager.client_connections.get(key)
+        for key in connection_keys
+    }
+
+    try:
+        game["human_seats"] = {"A": "player-a"}
+        game["ai_seats"] = {"B", "C"}
+        for key in connection_keys:
+            app_module.manager.client_connections[key] = {object()}
+
+        room = next(
+            room
+            for room in app_module.list_rooms()["rooms"]
+            if room["game_id"] == game_id
+        )
+
+        assert room["player_count"] == 3
+        assert room["human_count"] == 1
+        assert room["spectator_count"] == 2
+        assert room["people_count"] == 3
+        expected_main_people = sum(
+            len(app_module._human_seat_set(data))
+            + app_module.manager.spectator_count(room_id, data)
+            for room_id, data in app_module.GAMES.items()
+            if app_module._is_main_game_id(room_id)
+        )
+        assert app_module.list_rooms()["room_totals"]["main_people_count"] == expected_main_people
+    finally:
+        game["human_seats"] = old_human_seats
+        game["ai_seats"] = old_ai_seats
+        for key, old_value in old_connections.items():
+            if old_value is None:
+                app_module.manager.client_connections.pop(key, None)
+            else:
+                app_module.manager.client_connections[key] = old_value
+
+
+def test_private_total_includes_hidden_private_rooms_but_not_debug_room() -> None:
+    app_module.setup_supporter_rooms()
+    hidden_game_id = "room-bronze-03"
+    hidden_game = app_module.GAMES[hidden_game_id]
+    old_human_seats = hidden_game.get("human_seats")
+
+    try:
+        hidden_game["human_seats"] = {"A": "hidden-private-player"}
+        response = app_module.list_rooms()
+        listed_ids = {room["game_id"] for room in response["rooms"]}
+        expected_private_people = sum(
+            len(app_module._human_seat_set(data))
+            + app_module.manager.spectator_count(room_id, data)
+            for room_id, data in app_module.GAMES.items()
+            if not app_module._is_main_game_id(room_id)
+            and room_id != app_module.DEBUG_GID
+            and not data.get("is_debug_room", False)
+        )
+
+        assert hidden_game_id not in listed_ids
+        assert response["room_totals"]["private_people_count"] == expected_private_people
+        assert response["room_totals"]["private_people_count"] >= 1
+    finally:
+        hidden_game["human_seats"] = old_human_seats
 
 
 if __name__ == "__main__":
@@ -96,4 +255,7 @@ if __name__ == "__main__":
     test_every_main_room_disables_beginner_support()
     test_main_room_host_can_toggle_all_hands()
     test_frontend_recognizes_all_main_room_ids()
+    test_lobby_admin_can_change_visible_room_counts()
+    test_room_list_counts_human_players_and_spectators_without_ai()
+    test_private_total_includes_hidden_private_rooms_but_not_debug_room()
     print("ROOM_INVENTORY_TEST_OK")

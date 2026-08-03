@@ -750,11 +750,32 @@
         position: relative;
         isolation: isolate;
     }
-    .language-switcher {
+    .lobby-toolbar {
         position: absolute;
         top: 12px;
+        left: 0;
         right: 0;
         z-index: 3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .lobby-settings-button {
+        min-height: 32px;
+        border: 1px solid #8b5a2b;
+        border-radius: 6px;
+        background: rgba(255, 253, 245, 0.94);
+        color: #5f4935;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    .lobby-settings-button:hover {
+        background: #f3df9d;
+    }
+    .language-switcher {
         display: flex;
         align-items: center;
         gap: 7px;
@@ -891,11 +912,12 @@
         .lobby-piece-background {
             display: none;
         }
-        .language-switcher {
+        .lobby-toolbar {
             position: static;
-            justify-content: flex-end;
+            align-items: flex-start;
             padding-top: 10px;
         }
+        .language-switcher { justify-content: flex-end; }
         .lobby-footer-links {
             flex-wrap: nowrap;
             column-gap: 10px;
@@ -1728,6 +1750,63 @@
     .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
     .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
+    .lobby-admin-modal-content {
+      position: relative;
+      max-width: 440px;
+      max-height: min(620px, calc(100vh - 32px));
+      overflow-y: auto;
+    }
+    .lobby-admin-modal-content > h3 { padding-right: 36px; }
+    .lobby-admin-counts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    .lobby-admin-count-item {
+      min-width: 0;
+      padding: 10px 6px;
+      border: 1px solid rgba(139, 90, 43, 0.32);
+      background: rgba(255,255,255,0.46);
+      text-align: center;
+    }
+    .lobby-admin-count-item span {
+      display: block;
+      color: #6d5540;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+    .lobby-admin-count-item strong {
+      display: block;
+      margin-top: 4px;
+      color: #6d461f;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+    .lobby-room-count-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .lobby-room-count-fields input[type="number"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      font-size: 16px;
+    }
+    .lobby-admin-help {
+      margin: -4px 0 14px;
+      color: #665746;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    @media (max-width: 520px) {
+      .lobby-admin-counts { gap: 5px; }
+      .lobby-admin-count-item { padding: 8px 3px; }
+      .lobby-admin-count-item strong { font-size: 17px; }
+      .lobby-room-count-fields { grid-template-columns: 1fr; gap: 0; }
+    }
     .board-view-segmented {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2648,12 +2727,15 @@
 
 <div id="lobbyView">
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
-  <div class="language-switcher" role="group" aria-label="表示言語">
-    <span>表示言語</span>
-    <div class="language-switcher-buttons">
-      <button type="button" data-language-choice="ja" aria-pressed="true" onclick="setSiteLanguage('ja')">日本語</button>
-      <button type="button" data-language-choice="zh" aria-pressed="false" onclick="setSiteLanguage('zh')">中文</button>
-      <button type="button" data-language-choice="en" aria-pressed="false" onclick="setSiteLanguage('en')">English</button>
+  <div class="lobby-toolbar">
+    <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
+    <div class="language-switcher" role="group" aria-label="表示言語">
+      <span>表示言語</span>
+      <div class="language-switcher-buttons">
+        <button type="button" data-language-choice="ja" aria-pressed="true" onclick="setSiteLanguage('ja')">日本語</button>
+        <button type="button" data-language-choice="zh" aria-pressed="false" onclick="setSiteLanguage('zh')">中文</button>
+        <button type="button" data-language-choice="en" aria-pressed="false" onclick="setSiteLanguage('en')">English</button>
+      </div>
     </div>
   </div>
   <div style="text-align: center; padding: 40px 0;">
@@ -2888,6 +2970,53 @@
     <div id="siteInfoBody" class="site-info-body"></div>
     <div class="settings-footer">
       <button type="button" onclick="closeSiteInfo()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="lobbySettingsModal" class="modal-overlay" onclick="closeLobbySettings(event)">
+  <div class="modal-content lobby-admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbySettingsTitle" onclick="event.stopPropagation()">
+    <button class="settings-modal-close" type="button" onclick="closeLobbySettings()" aria-label="トップページ設定を閉じる" title="閉じる">×</button>
+    <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
+    <details class="settings-disclosure" open>
+      <summary>管理者用設定</summary>
+      <div class="settings-disclosure-content">
+        <div id="lobbyAdminAuthArea" class="settings-row">
+          <label for="lobbyAdminPassword">管理用パスワード</label>
+          <div class="settings-inline-action">
+            <input type="password" id="lobbyAdminPassword" autocomplete="current-password">
+            <button type="button" onclick="unlockLobbyAdminSettings()">確認</button>
+          </div>
+          <div id="lobbyAdminAuthStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+
+        <div id="lobbyAdminFields" style="display:none;">
+          <div class="settings-row">
+            <label>現在の人数</label>
+            <div class="lobby-admin-counts">
+              <div class="lobby-admin-count-item"><span>公開部屋</span><strong id="lobbyMainPeopleCount" data-i18n-ignore>0人</strong></div>
+              <div class="lobby-admin-count-item"><span>プライベートルーム</span><strong id="lobbyPrivatePeopleCount" data-i18n-ignore>0人</strong></div>
+              <div class="lobby-admin-count-item"><span>全体</span><strong id="lobbyAllPeopleCount" data-i18n-ignore>0人</strong></div>
+            </div>
+          </div>
+          <div class="lobby-room-count-fields">
+            <div class="settings-row">
+              <label for="lobbyMainRoomCount">表示する公開部屋数</label>
+              <input type="number" id="lobbyMainRoomCount" min="1" max="4" step="1" inputmode="numeric">
+            </div>
+            <div class="settings-row">
+              <label for="lobbyPrivateRoomCount">表示するプライベートルーム数</label>
+              <input type="number" id="lobbyPrivateRoomCount" min="0" max="4" step="1" inputmode="numeric">
+            </div>
+          </div>
+          <p class="lobby-admin-help">部屋を減らすとロビーから非表示になります。進行中の対局は中断されません。</p>
+          <button class="settings-save-button" type="button" onclick="saveLobbyAdminSettings()">設定を保存</button>
+          <div id="lobbyAdminSaveStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+      </div>
+    </details>
+    <div class="settings-footer">
+      <button type="button" onclick="closeLobbySettings()">閉じる</button>
     </div>
   </div>
 </div>
@@ -3151,7 +3280,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
-const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b"]);
+const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-d"]);
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
@@ -3447,6 +3576,8 @@ const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
 let settingTargetGid = null; 
+let lobbyAdminPasswordValue = "";
+let latestLobbyRoomTotals = { main_people_count: 0, private_people_count: 0 };
 let seatModeTarget = null;
 
 const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
@@ -4140,6 +4271,140 @@ async function returnToLobby() {
     fetchRoomList();
 }
 
+function formatLobbyPeopleCount(count) {
+    const safeCount = Math.max(0, Number(count) || 0);
+    const language = currentUiLanguage();
+    if (language === "en") return `${safeCount} ${safeCount === 1 ? "person" : "people"}`;
+    return `${safeCount}人`;
+}
+
+function updateLobbyAdminPeopleCounts(roomTotals = null) {
+    if (roomTotals) {
+        latestLobbyRoomTotals = {
+            main_people_count: Math.max(0, Number(roomTotals.main_people_count) || 0),
+            private_people_count: Math.max(0, Number(roomTotals.private_people_count) || 0),
+        };
+    }
+    const mainCount = latestLobbyRoomTotals.main_people_count;
+    const privateCount = latestLobbyRoomTotals.private_people_count;
+    const values = {
+        lobbyMainPeopleCount: mainCount,
+        lobbyPrivatePeopleCount: privateCount,
+        lobbyAllPeopleCount: mainCount + privateCount,
+    };
+    Object.entries(values).forEach(([elementId, count]) => {
+        const element = document.getElementById(elementId);
+        if (element) element.textContent = formatLobbyPeopleCount(count);
+    });
+}
+
+function applyLobbyAdminPayload(data) {
+    const mainInput = document.getElementById("lobbyMainRoomCount");
+    const privateInput = document.getElementById("lobbyPrivateRoomCount");
+    mainInput.min = "1";
+    mainInput.max = String(data.main_room_max || 4);
+    mainInput.value = String(data.main_room_count || 1);
+    privateInput.min = "0";
+    privateInput.max = String(data.private_room_max || 4);
+    privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
+    updateLobbyAdminPeopleCounts(data.room_totals);
+}
+
+function openLobbySettings() {
+    lobbyAdminPasswordValue = "";
+    document.getElementById("lobbyAdminPassword").value = "";
+    document.getElementById("lobbyAdminAuthStatus").textContent = "";
+    document.getElementById("lobbyAdminSaveStatus").textContent = "";
+    document.getElementById("lobbyAdminAuthArea").style.display = "block";
+    document.getElementById("lobbyAdminFields").style.display = "none";
+    document.getElementById("lobbySettingsModal").style.display = "flex";
+    setTimeout(() => document.getElementById("lobbyAdminPassword")?.focus(), 0);
+}
+
+function closeLobbySettings(event) {
+    if (event && event.target !== event.currentTarget) return;
+    lobbyAdminPasswordValue = "";
+    document.getElementById("lobbySettingsModal").style.display = "none";
+}
+
+async function unlockLobbyAdminSettings() {
+    const passwordInput = document.getElementById("lobbyAdminPassword");
+    const status = document.getElementById("lobbyAdminAuthStatus");
+    const password = passwordInput.value;
+    if (!password) {
+        status.textContent = "管理用パスワードを入力してください。";
+        passwordInput.focus();
+        return;
+    }
+    passwordInput.disabled = true;
+    status.textContent = "確認しています...";
+    try {
+        const response = await fetch(`${API}/lobby/admin/verify`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password}),
+        });
+        if (!response.ok) {
+            status.textContent = "管理用パスワードが正しくありません。";
+            return;
+        }
+        const data = await response.json();
+        lobbyAdminPasswordValue = password;
+        applyLobbyAdminPayload(data);
+        document.getElementById("lobbyAdminAuthArea").style.display = "none";
+        document.getElementById("lobbyAdminFields").style.display = "block";
+    } catch (_error) {
+        status.textContent = "通信エラーが発生しました。";
+    } finally {
+        passwordInput.disabled = false;
+    }
+}
+
+async function saveLobbyAdminSettings() {
+    if (!lobbyAdminPasswordValue) return;
+    const mainInput = document.getElementById("lobbyMainRoomCount");
+    const privateInput = document.getElementById("lobbyPrivateRoomCount");
+    const status = document.getElementById("lobbyAdminSaveStatus");
+    const mainRoomCount = Number(mainInput.value);
+    const privateRoomCount = Number(privateInput.value);
+    if (
+        !Number.isInteger(mainRoomCount)
+        || mainRoomCount < Number(mainInput.min)
+        || mainRoomCount > Number(mainInput.max)
+        || !Number.isInteger(privateRoomCount)
+        || privateRoomCount < Number(privateInput.min)
+        || privateRoomCount > Number(privateInput.max)
+    ) {
+        status.textContent = "部屋数を入力範囲内の整数にしてください。";
+        return;
+    }
+
+    status.textContent = "保存しています...";
+    try {
+        const response = await fetch(`${API}/lobby/admin/settings`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                admin_password: lobbyAdminPasswordValue,
+                main_room_count: mainRoomCount,
+                private_room_count: privateRoomCount,
+            }),
+        });
+        if (!response.ok) {
+            status.textContent = response.status === 401
+                ? "管理用パスワードが正しくありません。"
+                : "設定の保存に失敗しました。";
+            return;
+        }
+        const data = await response.json();
+        applyLobbyAdminPayload(data);
+        status.textContent = "設定を保存しました。";
+        await fetchRoomList();
+    } catch (_error) {
+        status.textContent = "通信エラーが発生しました。";
+    }
+}
+
 async function fetchRoomList() {
     try {
         const res = await fetch(`${API}/games/list`);
@@ -4152,6 +4417,7 @@ async function fetchRoomList() {
         
         mainContainer.innerHTML = ""; 
         privateContainer.innerHTML = ""; 
+        updateLobbyAdminPeopleCounts(data.room_totals);
         
         if (!data.rooms || data.rooms.length === 0) {
             return;
@@ -7148,6 +7414,7 @@ window.addEventListener("goita-voice-chat-ready", () => {
 
 window.addEventListener("goita-language-change", () => {
   renderLinkedKifuNotice();
+  updateLobbyAdminPeopleCounts();
   updateChatComposerUi();
   updateVoiceChatUi();
   updateSeatButtons(latestState || {});
