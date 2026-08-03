@@ -4303,7 +4303,7 @@ function applyLobbyAdminPayload(data) {
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
     mainInput.min = "1";
     mainInput.max = String(data.main_room_max || 4);
-    mainInput.value = String(data.main_room_count || 1);
+    mainInput.value = String(data.main_room_count || 4);
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 4);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
