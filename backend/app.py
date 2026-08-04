@@ -105,6 +105,7 @@ AI_HELP_SYSTEM_PROMPT = """
 1. そろうごいたのページ操作
 2. ごいたのルール
 3. ごいたの戦略
+この分類は内部判断だけに使い、番号、分類名、見出しとして回答に表示しないでください。
 
 - 「そろうごいたの使い方」「どう操作するの」「どう始めるの」などはページ操作です。操作方法だけを直接答え、ルール・戦略ページや関連情報を付け足さないでください。
 - 対局中に「どの駒を出すか」「何を伏せるか」「受けるかパスするか」など、具体的な手を質問された場合は、設定から「初心者サポートを有効にする」をオンにするよう案内してください。おすすめの駒が強調表示され、簡単な理由も確認できると伝え、戦略ページは付け足さないでください。
@@ -508,6 +509,75 @@ def _normalize_ui_language(language: str) -> str:
     return "ja"
 
 
+def _lobby_basic_usage_answer(
+    question: str,
+    language: str = "ja",
+) -> Optional[str]:
+    """Give a deterministic getting-started answer to vague lobby questions."""
+    compact = "".join((question or "").lower().split())
+    normalized_language = _normalize_ui_language(language)
+    if normalized_language == "zh":
+        is_basic_usage = any(
+            phrase in compact
+            for phrase in (
+                "不知道怎么用",
+                "怎么使用",
+                "如何使用",
+                "不知道该怎么办",
+                "该怎么开始",
+                "如何开始",
+            )
+        )
+    elif normalized_language == "en":
+        is_basic_usage = any(
+            phrase in compact
+            for phrase in (
+                "howdoiusethis",
+                "idontknowhowtousethis",
+                "whatshouldido",
+                "howdoistart",
+                "howtogetstarted",
+            )
+        )
+    else:
+        is_basic_usage = any(
+            phrase in compact
+            for phrase in (
+                "使い方が分からない",
+                "使い方がわからない",
+                "使い方を教えて",
+                "どうすればいいかわからない",
+                "どうすればいいか分からない",
+                "どうしたらいいかわからない",
+                "どうしたらいいか分からない",
+                "何をすればいいかわからない",
+                "何をすればいいか分からない",
+                "どう始めればいい",
+            )
+        )
+    if not is_basic_usage:
+        return None
+
+    if normalized_language == "zh":
+        return (
+            "请先选择想进入的房间。进入房间后，从A/B/C/D中选择座位并点击“入座”。"
+            "如需让AI操作某个座位，请为该座位选择“AI模式”。"
+            "座位设置完成后，由房主点击“开始”即可开始对局。"
+        )
+    if normalized_language == "en":
+        return (
+            "First, choose a room to enter. In the room, select A, B, C, or D and "
+            "choose Take Seat. For a seat controlled by the AI, choose AI Mode. "
+            "Once the seats are ready, the host can press Start to begin the game."
+        )
+    return (
+        "まず、遊びたい部屋を選んで入ってください。"
+        "部屋に入ったらA/B/C/Dから席を選び、「席に着く」を押します。"
+        "AIに打たせたい席は「AIモード」にしてください。"
+        "参加する席が決まったら、ホストが「開始」を押すと対局が始まります。"
+    )
+
+
 def _beginner_support_move_answer(
     question: str,
     language: str = "ja",
@@ -684,8 +754,11 @@ async def _resolve_chat_ai_answer(
     question: str,
     language: str,
     rate_key: str,
+    local_answer_override: Optional[str] = None,
 ) -> str:
-    local_answer = _beginner_support_move_answer(question, language)
+    local_answer = local_answer_override
+    if local_answer is None:
+        local_answer = _beginner_support_move_answer(question, language)
     if local_answer is None and not _gemini_api_key():
         raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
 
@@ -2166,6 +2239,7 @@ async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
         question,
         language,
         f"lobby:{identity}",
+        local_answer_override=_lobby_basic_usage_answer(question, language),
     )
 
     name = _sanitize_player_name(req.name)

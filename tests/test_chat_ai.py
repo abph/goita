@@ -21,6 +21,18 @@ async def _run() -> None:
         assert "https://vrcgoita.com/goita/strategy/" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "操作回答の末尾" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "初心者サポートを有効にする" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "分類名、見出しとして回答に表示しない" in app_module.AI_HELP_SYSTEM_PROMPT
+        basic_usage_answer = app_module._lobby_basic_usage_answer("使い方が分からない")
+        assert basic_usage_answer is not None
+        assert basic_usage_answer.startswith("まず、遊びたい部屋を選んで入ってください。")
+        assert "ホストが「開始」を押す" in basic_usage_answer
+        assert "1. そろうごいたのページ操作" not in basic_usage_answer
+        assert "房主点击“开始”" in app_module._lobby_basic_usage_answer(
+            "不知道怎么用", "zh"
+        )
+        assert "host can press Start" in app_module._lobby_basic_usage_answer(
+            "How do I use this?", "en"
+        )
         assert app_module._beginner_support_move_answer("どの駒を出せばいい？") is not None
         assert app_module._beginner_support_move_answer("何を伏せるべき？") is not None
         assert app_module._beginner_support_move_answer("受けるべき？それともパス？") is not None
@@ -65,6 +77,17 @@ async def _run() -> None:
         assert lobby_messages[-1]["ai_answer"] is True
         assert lobby_messages[-1] in app_module._chat_messages_for_game(
             "main", app_module.GAMES["main"]
+        )
+
+        basic_lobby_payload = payload.model_copy(update={
+            "client_id": "lobby-basic-help-client",
+            "message": "どうすればいいかわからない",
+        })
+        basic_lobby_result = await app_module.ask_lobby_chat_ai(
+            basic_lobby_payload, request
+        )
+        assert basic_lobby_result["answer"] == app_module._lobby_basic_usage_answer(
+            basic_lobby_payload.message
         )
 
         try:
