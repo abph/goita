@@ -94,6 +94,7 @@ PIECE_POINTS = {
     "9": 50  # 王
 }
 PARTNER_SEAT = {"A": "C", "C": "A", "B": "D", "D": "B"}
+PUBLIC_CHAT_MESSAGES: List[Dict[str, Any]] = []
 
 AI_HELP_SYSTEM_PROMPT = """
 あなたは、ブラウザゲーム「そろうごいた」の操作案内AIです。
@@ -208,6 +209,23 @@ class ConnectionManager:
                     pass
 
 manager = ConnectionManager()
+
+
+async def _broadcast_public_chat_update() -> None:
+    await asyncio.gather(*(
+        manager.broadcast_update(channel)
+        for channel in ("lobby", *MAIN_ROOM_NAMES.keys())
+    ))
+
+
+def _chat_messages_for_game(game_id: str, game: Dict[str, Any]) -> List[Dict[str, Any]]:
+    room_messages = list(game.get("chat_messages", []))
+    if not _is_main_game_id(game_id):
+        return room_messages[-100:]
+
+    combined = [*PUBLIC_CHAT_MESSAGES, *room_messages]
+    combined.sort(key=lambda item: int(item.get("ts", 0) or 0))
+    return combined[-100:]
 
 
 class VoiceConnectionManager:
@@ -1255,7 +1273,7 @@ def _state_public_view(
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
-    chat_messages = list(game_obj.get("chat_messages", []))[-100:]
+    chat_messages = _chat_messages_for_game(game_id, game_obj)
 
     hands_view: Dict[str, Any] = {}
     init_hands_view: Dict[str, Any] = {}
@@ -1618,7 +1636,11 @@ def list_rooms():
         ),
     }
 
-    return {"rooms": rooms, "room_totals": room_totals}
+    return {
+        "rooms": rooms,
+        "room_totals": room_totals,
+        "public_chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:],
+    }
 
 
 def _lobby_admin_payload() -> Dict[str, Any]:
@@ -2039,24 +2061,58 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     message = _sanitize_chat_message(req.message)
+    is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
     if not message:
-        return {"ok": False, "chat_messages": chat_messages[-100:]}
+        return {
+            "ok": False,
+            "chat_messages": _chat_messages_for_game(game_id, game),
+        }
 
     seat = _normalize_chat_seat(req.seat)
     if seat in ALL_SEATS and not _client_owns_human_seat(game, seat, req.client_id):
         seat = "W"
-    chat_messages.append({
+    chat_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
         "message": message,
         "ts": int(time.time() * 1000),
-    })
+    }
+    if is_public_chat:
+        chat_item.update({
+            "origin": "public_room",
+            "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
+        })
+    chat_messages.append(chat_item)
     if len(chat_messages) > 100:
         del chat_messages[:-100]
 
     await manager.broadcast_update(game_id)
-    return {"ok": True, "chat_messages": chat_messages[-100:]}
+    return {
+        "ok": True,
+        "chat_messages": _chat_messages_for_game(game_id, game),
+    }
+
+
+@app.post("/lobby/chat")
+async def post_lobby_chat_message(req: ChatRequest):
+    message = _sanitize_chat_message(req.message)
+    if not message:
+        return {"ok": False, "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:]}
+
+    name = _sanitize_player_name(req.name)
+    PUBLIC_CHAT_MESSAGES.append({
+        "seat": "W",
+        "sender": name or "ゲスト",
+        "message": message,
+        "ts": int(time.time() * 1000),
+        "origin": "lobby",
+    })
+    if len(PUBLIC_CHAT_MESSAGES) > 100:
+        del PUBLIC_CHAT_MESSAGES[:-100]
+
+    await _broadcast_public_chat_update()
+    return {"ok": True, "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:]}
 
 
 @app.post("/games/{game_id}/chat/ask_ai")
@@ -2111,28 +2167,39 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
                 AI_HELP_LAST_REQUEST.pop(rate_key, None)
             raise HTTPException(status_code=502, detail="AIから回答を取得できませんでした。")
 
+    is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
     ts = int(time.time() * 1000)
-    chat_messages.extend([
-        {
-            "seat": seat,
-            "sender": _chat_sender_label(game, seat, req.name),
-            "message": question,
-            "ts": ts,
-        },
-        {
-            "seat": "AI",
-            "sender": "案内AI",
-            "message": answer,
-            "ts": ts + 1,
-            "ai_answer": True,
-        },
-    ])
+    question_item = {
+        "seat": seat,
+        "sender": _chat_sender_label(game, seat, req.name),
+        "message": question,
+        "ts": ts,
+    }
+    answer_item = {
+        "seat": "AI",
+        "sender": "案内AI",
+        "message": answer,
+        "ts": ts + 1,
+        "ai_answer": True,
+    }
+    if is_public_chat:
+        origin = {
+            "origin": "public_room",
+            "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
+        }
+        question_item.update(origin)
+        answer_item.update(origin)
+    chat_messages.extend([question_item, answer_item])
     if len(chat_messages) > 100:
         del chat_messages[:-100]
 
     await manager.broadcast_update(game_id)
-    return {"ok": True, "answer": answer, "chat_messages": chat_messages[-100:]}
+    return {
+        "ok": True,
+        "answer": answer,
+        "chat_messages": _chat_messages_for_game(game_id, game),
+    }
 
 
 @app.post("/games/{game_id}/step")

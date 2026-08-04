@@ -758,7 +758,7 @@
         z-index: 3;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         gap: 12px;
     }
     .lobby-settings-button {
@@ -791,7 +791,7 @@
         border-radius: 6px;
         background: rgba(255, 253, 245, 0.94);
     }
-    .language-switcher button {
+    .language-switcher-buttons button {
         min-height: 30px;
         border: 0;
         border-right: 1px solid rgba(139, 90, 43, 0.35);
@@ -803,8 +803,8 @@
         font-weight: 800;
         cursor: pointer;
     }
-    .language-switcher button:last-child { border-right: 0; }
-    .language-switcher button.active {
+    .language-switcher-buttons button:last-child { border-right: 0; }
+    .language-switcher-buttons button.active {
         background: #8b5a2b;
         color: #fffdf5;
     }
@@ -917,7 +917,6 @@
             align-items: flex-start;
             padding-top: 10px;
         }
-        .language-switcher { justify-content: flex-end; }
         .lobby-footer-links {
             flex-wrap: nowrap;
             column-gap: 10px;
@@ -1558,10 +1557,21 @@
         top: calc(12px + (var(--cell) * 0.5));
         right: 0;
         transform: translateY(-50%);
-        background: rgba(255, 253, 245, 0.56);
-        border-color: rgba(139, 90, 43, 0.58);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        writing-mode: horizontal-tb;
+        text-orientation: mixed;
+        background: rgba(255, 253, 245, 0.76);
+        border: 2px solid rgba(139, 90, 43, 0.65);
+        border-radius: 7px;
         color: rgba(109, 70, 31, 0.82);
-        box-shadow: 0 3px 9px rgba(0,0,0,0.12);
+        font-size: 24px;
+        line-height: 1;
+        box-shadow: 0 3px 9px rgba(0,0,0,0.14);
       }
       .chat-panel {
         top: 0;
@@ -1569,9 +1579,22 @@
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
       }
+      #chatPanel,
+      #lobbyChatPanel {
+        top: 54px;
+      }
       .chat-toast {
         top: 8px;
         z-index: 950;
+      }
+      .chat-toast-text {
+        display: -webkit-box;
+        max-height: calc(1.45em * 3);
+        white-space: normal;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
       }
       .chat-panel:focus-within {
         background: rgba(255, 253, 245, var(--mobile-chat-opacity, 0.26));
@@ -1654,6 +1677,70 @@
       }
     }
 
+    .lobby-chat-toggle {
+      position: fixed;
+      right: 14px;
+      bottom: 18px;
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      height: 46px;
+      padding: 7px;
+      border: 2px solid #8b5a2b;
+      border-radius: 8px;
+      background: rgba(255, 253, 245, 0.94);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      cursor: pointer;
+      font-size: 24px;
+      line-height: 1;
+    }
+    .lobby-chat-toggle.open { display: none !important; }
+    .lobby-chat-unread {
+      position: absolute;
+      top: -7px;
+      right: -7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      border: 2px solid #fffdf5;
+      border-radius: 10px;
+      background: #b00000;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .lobby-chat-unread[hidden] { display: none !important; }
+    .lobby-chat-panel { display: none; }
+    .lobby-chat-panel.open { display: flex; }
+    .lobby-chat-panel[hidden],
+    .lobby-chat-toggle[hidden] { display: none !important; }
+    .lobby-chat-status {
+      margin: 0;
+      color: #9b2226;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .lobby-chat-status:empty { display: none; }
+    @media (max-width: 701px) {
+      .lobby-chat-toggle {
+        right: 10px;
+        bottom: 14px;
+        width: 42px;
+        height: 42px;
+        padding: 6px;
+        background: rgba(255, 253, 245, 0.76);
+        border-color: rgba(139, 90, 43, 0.65);
+        box-shadow: 0 3px 9px rgba(0,0,0,0.14);
+      }
+    }
+
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); 
       display: none; align-items: center; justify-content: center; z-index: 1000;
@@ -1682,9 +1769,9 @@
       user-select: none;
     }
     .settings-disclosure summary::-webkit-details-marker { display: none; }
-    .settings-disclosure .when-open { display: none; }
-    .settings-disclosure[open] .when-closed { display: none; }
-    .settings-disclosure[open] .when-open { display: inline; }
+    .settings-disclosure > summary .when-open { display: none; }
+    .settings-disclosure[open] > summary .when-closed { display: none; }
+    .settings-disclosure[open] > summary .when-open { display: inline; }
     .settings-disclosure-content {
       padding: 2px 12px 12px;
       border-top: 1px solid rgba(139, 90, 43, 0.2);
@@ -2729,14 +2816,6 @@
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
   <div class="lobby-toolbar">
     <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
-    <div class="language-switcher" role="group" aria-label="表示言語">
-      <span>表示言語</span>
-      <div class="language-switcher-buttons">
-        <button type="button" data-language-choice="ja" aria-pressed="true" onclick="setSiteLanguage('ja')">日本語</button>
-        <button type="button" data-language-choice="zh" aria-pressed="false" onclick="setSiteLanguage('zh')">中文</button>
-        <button type="button" data-language-choice="en" aria-pressed="false" onclick="setSiteLanguage('en')">English</button>
-      </div>
-    </div>
   </div>
   <div style="text-align: center; padding: 40px 0;">
      <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた（β）</h1>
@@ -2799,6 +2878,24 @@
     </nav>
     <div class="lobby-footer-copy">© そろうごいた</div>
   </footer>
+
+  <button id="lobbyChatToggle" class="lobby-chat-toggle" type="button" onclick="toggleLobbyChatPanel()" aria-label="チャットを開く" aria-expanded="false">
+    <span aria-hidden="true">💬</span>
+    <span id="lobbyChatUnread" class="lobby-chat-unread" hidden></span>
+  </button>
+  <aside id="lobbyChatPanel" class="chat-panel lobby-chat-panel" aria-label="ロビーチャット" aria-live="polite" hidden>
+    <div class="chat-header">
+      <button class="chat-close" type="button" onclick="toggleLobbyChatPanel(false)" aria-label="閉じる">×</button>
+    </div>
+    <div id="lobbyChatMessages" class="chat-messages"></div>
+    <form class="chat-form" onsubmit="sendLobbyChatMessage(event)">
+      <div class="chat-compose-entry">
+        <input id="lobbyChatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力">
+        <button id="lobbyChatSendButton" class="chat-submit-button" type="submit">送信</button>
+      </div>
+      <div id="lobbyChatStatus" class="lobby-chat-status" aria-live="polite"></div>
+    </form>
+  </aside>
 </div>
 
 <div id="gameView" style="display: none;">
@@ -2851,7 +2948,10 @@
             <canvas id="boardPixelCanvas" width="320" height="320" aria-label="ピクセル盤面"></canvas>
           </div>
         </div>
-        <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;">チャット</button>
+        <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;" aria-label="チャットを開く" aria-expanded="false">
+          <span aria-hidden="true">💬</span>
+          <span id="chatUnread" class="lobby-chat-unread" hidden></span>
+        </button>
         <div id="chatPanel" class="chat-panel" aria-live="polite">
           <div class="chat-header">
             <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
@@ -2978,9 +3078,102 @@
   <div class="modal-content lobby-admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbySettingsTitle" onclick="event.stopPropagation()">
     <button class="settings-modal-close" type="button" onclick="closeLobbySettings()" aria-label="トップページ設定を閉じる" title="閉じる">×</button>
     <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
-    <details class="settings-disclosure" open>
-      <summary>管理者用設定</summary>
-      <div class="settings-disclosure-content">
+    <div class="settings-tabs" role="tablist" aria-label="トップページ設定の種類">
+      <button id="lobbyPersonalSettingsTab" class="settings-tab active" type="button" role="tab" aria-selected="true" onclick="showLobbySettingsTab('personal')">個人設定</button>
+      <button id="lobbyAdminSettingsTab" class="settings-tab" type="button" role="tab" aria-selected="false" onclick="showLobbySettingsTab('admin')">管理者用設定</button>
+    </div>
+    <section id="lobbyPersonalSettingsPanel" class="settings-panel active" role="tabpanel" aria-labelledby="lobbyPersonalSettingsTab">
+        <div class="settings-row">
+          <div class="language-switcher" role="group" aria-label="表示言語">
+            <span>表示言語</span>
+            <div class="language-switcher-buttons">
+              <button type="button" data-language-choice="ja" aria-pressed="true" onclick="setSiteLanguage('ja')">日本語</button>
+              <button type="button" data-language-choice="zh" aria-pressed="false" onclick="setSiteLanguage('zh')">中文</button>
+              <button type="button" data-language-choice="en" aria-pressed="false" onclick="setSiteLanguage('en')">English</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label for="lobbyPersonalPlayerName">名前（最大9文字）</label>
+          <input type="text" id="lobbyPersonalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+        </div>
+        <details id="lobbyMobileChatSettingsDetails" class="settings-disclosure">
+          <summary>
+            <span class="when-closed">▶ モバイル版のチャット設定を開く</span>
+            <span class="when-open">▼ モバイル版のチャット設定を閉じる</span>
+          </summary>
+          <div class="settings-disclosure-content">
+            <div class="settings-row">
+              <label for="lobbyMobileChatPlacement">配置</label>
+              <select id="lobbyMobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+                <option value="right">右側</option>
+                <option value="top">上側</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="lobbyMobileChatWidth">幅</label>
+              <select id="lobbyMobileChatWidth" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+                <option value="wide">太い</option>
+                <option value="normal">普通</option>
+                <option value="narrow">細い</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="lobbyMobileChatTransparency">透明度（<span id="lobbyMobileChatTransparencyValue">0%</span>）</label>
+              <input type="range" id="lobbyMobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateLobbyMobileChatTransparencyDisplay(this.value)">
+            </div>
+          </div>
+        </details>
+        <details id="lobbyPlaySupportSettingsDetails" class="settings-disclosure">
+          <summary>
+            <span class="when-closed">▶ 対局中の表示・サポートを開く</span>
+            <span class="when-open">▼ 対局中の表示・サポートを閉じる</span>
+          </summary>
+          <div class="settings-disclosure-content">
+            <div class="settings-row">
+              <label>盤面表示</label>
+              <input id="lobbyBoardViewMode" type="hidden" value="2d">
+              <div class="board-view-segmented" role="group" aria-label="盤面表示">
+                <button id="lobbyBoardView2dButton" class="board-view-option active" type="button" onclick="setLobbyBoardViewControl('2d')">2D</button>
+                <button id="lobbyBoardView3dButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('3d')">3D</button>
+                <button id="lobbyBoardViewPixelColorButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
+                <button id="lobbyBoardViewPixelMonoButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
+            </div>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
+              <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+            </div>
+          </div>
+        </details>
+        <details id="lobbySoundSettingsDetails" class="settings-disclosure">
+          <summary>
+            <span class="when-closed">▶ 音の設定を開く</span>
+            <span class="when-open">▼ 音の設定を閉じる</span>
+          </summary>
+          <div class="settings-disclosure-content">
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckEnableSoundEffects" style="width:auto;"> 効果音（駒を出す音など）を有効にする</label>
+            </div>
+            <div class="settings-row">
+              <label for="lobbyPieceSoundChoice">駒を打つ音</label>
+              <select id="lobbyPieceSoundChoice" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+                <option value="notanomori">新しい音（既定）</option>
+                <option value="standard">これまでの音</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckEnableCVoice" style="width:auto;"> Cの声を有効にする</label>
+            </div>
+          </div>
+        </details>
+        <button class="settings-save-button" type="button" onclick="saveLobbyPersonalSettings()">個人設定を保存</button>
+        <div id="lobbyPersonalSettingsStatus" class="settings-status" aria-live="polite"></div>
+    </section>
+    <section id="lobbyAdminSettingsPanel" class="settings-panel" role="tabpanel" aria-labelledby="lobbyAdminSettingsTab">
         <div id="lobbyAdminAuthArea" class="settings-row">
           <label for="lobbyAdminPassword">管理用パスワード</label>
           <div class="settings-inline-action">
@@ -3013,8 +3206,7 @@
           <button class="settings-save-button" type="button" onclick="saveLobbyAdminSettings()">設定を保存</button>
           <div id="lobbyAdminSaveStatus" class="settings-status" aria-live="polite"></div>
         </div>
-      </div>
-    </details>
+    </section>
     <div class="settings-footer">
       <button type="button" onclick="closeLobbySettings()">閉じる</button>
     </div>
@@ -3690,6 +3882,60 @@ function updateMobileChatTransparencyDisplay(value) {
     document.getElementById("mobileChatTransparencyValue").textContent = `${transparency}%`;
 }
 
+function updateLobbyMobileChatTransparencyDisplay(value) {
+    const transparency = Math.max(0, Math.min(90, Number(value) || 0));
+    document.getElementById("lobbyMobileChatTransparencyValue").textContent = `${transparency}%`;
+}
+
+function setLobbyBoardViewControl(mode) {
+    const normalized = normalizeBoardViewMode(mode);
+    document.getElementById("lobbyBoardViewMode").value = normalized;
+    document.getElementById("lobbyBoardView2dButton").classList.toggle("active", normalized === "2d");
+    document.getElementById("lobbyBoardView3dButton").classList.toggle("active", normalized === "3d");
+    document.getElementById("lobbyBoardViewPixelColorButton").classList.toggle("active", normalized === "pixel-color");
+    document.getElementById("lobbyBoardViewPixelMonoButton").classList.toggle("active", normalized === "pixel-mono");
+}
+
+function syncLobbyPersonalSettingsControls() {
+    document.getElementById("lobbyPersonalPlayerName").value = personalSettings.playerName || "";
+    document.getElementById("lobbyMobileChatPlacement").value =
+        personalSettings.mobileChatPlacement === "top" ? "top" : "right";
+    document.getElementById("lobbyMobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
+    document.getElementById("lobbyMobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
+    updateLobbyMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
+    document.getElementById("lobbyCheckEnableEffects").checked = personalSettings.enableEffects !== false;
+    document.getElementById("lobbyCheckEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
+    document.getElementById("lobbyPieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
+    document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
+    document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    setLobbyBoardViewControl(personalSettings.boardViewMode);
+    document.getElementById("lobbyPersonalSettingsStatus").textContent = "";
+}
+
+function saveLobbyPersonalSettings() {
+    personalSettings = {
+        playerName: sanitizeName(document.getElementById("lobbyPersonalPlayerName").value),
+        mobileChatPlacement: document.getElementById("lobbyMobileChatPlacement").value === "top" ? "top" : "right",
+        mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("lobbyMobileChatWidth").value)
+            ? document.getElementById("lobbyMobileChatWidth").value
+            : "normal",
+        mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("lobbyMobileChatTransparency").value) || 0)),
+        enableEffects: document.getElementById("lobbyCheckEnableEffects").checked,
+        enableSoundEffects: document.getElementById("lobbyCheckEnableSoundEffects").checked,
+        pieceSound: document.getElementById("lobbyPieceSoundChoice").value === "standard" ? "standard" : "notanomori",
+        enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
+        enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
+        boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
+    };
+    applyPersonalSettingsAppearance();
+    try {
+        localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
+        document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存しました。";
+    } catch (_error) {
+        document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存できませんでした。";
+    }
+}
+
 applyPersonalSettingsAppearance();
 
 let clientId = sessionStorage.getItem("goita_client_id");
@@ -3718,6 +3964,11 @@ let pending = null;
 let isGameStarted = false; 
 let activeRoomId = null;
 let chatOpen = false;
+let lobbyChatOpen = false;
+let lobbyChatMessages = [];
+let lobbyChatLastReadTs = 0;
+let lobbyChatLastToastTs = 0;
+let lobbyChatSending = false;
 let lastChatCount = 0;
 let lastChatToastCount = 0;
 let chatSending = false;
@@ -4203,6 +4454,7 @@ async function enterRoom(targetGid, roomName) {
         await releaseSeat(mySeat);
     }
     setAutoPlayEnabled(false);
+    toggleLobbyChatPanel(false);
     toggleChatPanel(false);
     hideChatToast();
     renderChat.roomId = null;
@@ -4242,6 +4494,7 @@ async function returnToLobby() {
     }
     setAutoPlayEnabled(false);
     setChatComposeMode("chat", false);
+    toggleLobbyChatPanel(false);
     toggleChatPanel(false);
     hideChatToast();
     renderChat.roomId = null;
@@ -4266,6 +4519,7 @@ async function returnToLobby() {
     clearRoomBackground();
     document.body.classList.remove("board-view-3d");
     window.goitaBoard3D?.setVisible?.(false);
+    renderLobbyChat.initialized = false;
     
     connectWS("lobby");
     fetchRoomList();
@@ -4310,15 +4564,34 @@ function applyLobbyAdminPayload(data) {
     updateLobbyAdminPeopleCounts(data.room_totals);
 }
 
+function showLobbySettingsTab(tabName) {
+    const isAdmin = tabName === "admin";
+    const personalTab = document.getElementById("lobbyPersonalSettingsTab");
+    const adminTab = document.getElementById("lobbyAdminSettingsTab");
+    personalTab.classList.toggle("active", !isAdmin);
+    adminTab.classList.toggle("active", isAdmin);
+    personalTab.setAttribute("aria-selected", String(!isAdmin));
+    adminTab.setAttribute("aria-selected", String(isAdmin));
+    document.getElementById("lobbyPersonalSettingsPanel").classList.toggle("active", !isAdmin);
+    document.getElementById("lobbyAdminSettingsPanel").classList.toggle("active", isAdmin);
+    if (isAdmin) {
+        setTimeout(() => document.getElementById("lobbyAdminPassword")?.focus(), 0);
+    }
+}
+
 function openLobbySettings() {
     lobbyAdminPasswordValue = "";
+    syncLobbyPersonalSettingsControls();
+    ["lobbyMobileChatSettingsDetails", "lobbyPlaySupportSettingsDetails", "lobbySoundSettingsDetails"].forEach((id) => {
+        document.getElementById(id).open = false;
+    });
     document.getElementById("lobbyAdminPassword").value = "";
     document.getElementById("lobbyAdminAuthStatus").textContent = "";
     document.getElementById("lobbyAdminSaveStatus").textContent = "";
     document.getElementById("lobbyAdminAuthArea").style.display = "block";
     document.getElementById("lobbyAdminFields").style.display = "none";
+    showLobbySettingsTab("personal");
     document.getElementById("lobbySettingsModal").style.display = "flex";
-    setTimeout(() => document.getElementById("lobbyAdminPassword")?.focus(), 0);
 }
 
 function closeLobbySettings(event) {
@@ -4410,6 +4683,7 @@ async function fetchRoomList() {
         const res = await fetch(`${API}/games/list`);
         if (!res.ok) return;
         const data = await res.json();
+        renderLobbyChat(data.public_chat_messages || []);
         
         const mainContainer = document.getElementById("lobbyMainRoom");
         const privateContainer = document.getElementById("lobbyRoomList");
@@ -5658,18 +5932,50 @@ function isDesktopChatDocked(){
   return window.matchMedia("(min-width: 702px)").matches;
 }
 
+function toggleLobbyChatPanel(open){
+  lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
+  const panel = document.getElementById("lobbyChatPanel");
+  const btn = document.getElementById("lobbyChatToggle");
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  if(panel){
+    panel.classList.toggle("open", inLobby && lobbyChatOpen);
+    panel.hidden = !inLobby || !lobbyChatOpen;
+  }
+  if(btn){
+    btn.classList.toggle("open", lobbyChatOpen);
+    btn.setAttribute("aria-expanded", String(lobbyChatOpen));
+    btn.hidden = !inLobby;
+  }
+  if(lobbyChatOpen){
+    hideChatToast();
+    lobbyChatLastReadTs = Math.max(
+      lobbyChatLastReadTs,
+      ...lobbyChatMessages.map(chatItemTimeValue),
+    );
+    renderLobbyChat(lobbyChatMessages);
+    setTimeout(() => {
+      const box = document.getElementById("lobbyChatMessages");
+      const input = document.getElementById("lobbyChatInput");
+      if(box) box.scrollTop = box.scrollHeight;
+      if(input) input.focus();
+    }, 0);
+  }
+}
+
 function toggleChatPanel(open){
   if(isDesktopChatDocked()) return;
   chatOpen = (typeof open === "boolean") ? open : !chatOpen;
   const panel = document.getElementById("chatPanel");
   const btn = document.getElementById("chatToggle");
+  const badge = document.getElementById("chatUnread");
   if(panel) panel.classList.toggle("open", chatOpen);
   if(btn) {
     btn.classList.toggle("open", chatOpen);
-    btn.textContent = "チャット";
+    btn.setAttribute("aria-expanded", String(chatOpen));
   }
   if(chatOpen){
     hideChatToast();
+    if(badge) badge.hidden = true;
     const messages = Array.isArray(latestState?.chat_messages) ? latestState.chat_messages : [];
     lastChatCount = messages.length;
     setTimeout(() => {
@@ -5698,12 +6004,20 @@ function shouldTranslateChatItem(item){
 
 function localizedChatSender(item){
   const raw = String(item?.sender || item?.seat || "観戦");
-  if(shouldTranslateChatItem(item)) return uiText(raw);
-  if(raw === "観戦") return uiText(raw);
-  if(raw.startsWith("観戦: ")){
-    return `${uiText("観戦")}：${raw.slice("観戦: ".length)}`;
+  let sender = raw;
+  if(shouldTranslateChatItem(item) || raw === "観戦" || raw === "ゲスト"){
+    sender = uiText(raw);
   }
-  return raw;
+  if(raw.startsWith("観戦: ")){
+    sender = `${uiText("観戦")}：${raw.slice("観戦: ".length)}`;
+  }
+  if(item?.origin === "lobby"){
+    return `${uiText("ロビー")}｜${sender}`;
+  }
+  if(item?.origin === "public_room" && item?.room_name){
+    return `${uiText(String(item.room_name))}｜${sender}`;
+  }
+  return sender;
 }
 
 function showChatToast(item){
@@ -5712,7 +6026,8 @@ function showChatToast(item){
   const time = document.getElementById("chatToastTime");
   const text = document.getElementById("chatToastText");
   if(!toast || !sender || !time || !text) return;
-  if(!isDesktopChatDocked() && chatOpen){
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  if((inLobby && lobbyChatOpen) || (!inLobby && !isDesktopChatDocked() && chatOpen)){
     hideChatToast();
     return;
   }
@@ -5795,22 +6110,113 @@ function mergedChatMessages(serverMessages){
   ].sort((a, b) => chatItemTimeValue(a) - chatItemTimeValue(b));
 }
 
+function renderChatItems(box, messages, isMine = null){
+  box.replaceChildren();
+  if(messages.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "chat-empty";
+    empty.textContent = "まだメッセージはありません";
+    box.appendChild(empty);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for(const item of messages){
+    const row = document.createElement("div");
+    row.className = "chat-message";
+    if(typeof isMine === "function" && isMine(item)) row.classList.add("mine");
+    if(item?.local_notice) row.classList.add("notice");
+    if(item?.ai_answer) row.classList.add("ai-answer");
+
+    const sender = document.createElement("div");
+    sender.className = "chat-sender";
+    sender.textContent = localizedChatSender(item);
+
+    const meta = document.createElement("div");
+    meta.className = "chat-meta";
+    meta.appendChild(sender);
+
+    const timeText = formatChatTime(item?.ts);
+    if(timeText){
+      const time = document.createElement("span");
+      time.className = "chat-time";
+      time.textContent = timeText;
+      meta.appendChild(time);
+    }
+
+    const text = document.createElement("div");
+    text.className = "chat-text";
+    setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
+
+    row.appendChild(meta);
+    row.appendChild(text);
+    frag.appendChild(row);
+  }
+  box.appendChild(frag);
+}
+
+function renderLobbyChat(serverMessages){
+  const panel = document.getElementById("lobbyChatPanel");
+  const btn = document.getElementById("lobbyChatToggle");
+  const badge = document.getElementById("lobbyChatUnread");
+  const box = document.getElementById("lobbyChatMessages");
+  if(!panel || !btn || !badge || !box) return;
+
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  lobbyChatMessages = Array.isArray(serverMessages) ? serverMessages : [];
+  btn.hidden = !inLobby;
+  panel.hidden = !inLobby || !lobbyChatOpen;
+  panel.classList.toggle("open", inLobby && lobbyChatOpen);
+  if(!inLobby) return;
+
+  const latestTs = Math.max(0, ...lobbyChatMessages.map(chatItemTimeValue));
+  if(renderLobbyChat.initialized !== true){
+    renderLobbyChat.initialized = true;
+    lobbyChatLastReadTs = latestTs;
+    lobbyChatLastToastTs = latestTs;
+  }else if(latestTs > lobbyChatLastToastTs){
+    const newest = [...lobbyChatMessages]
+      .reverse()
+      .find((item) => chatItemTimeValue(item) > lobbyChatLastToastTs);
+    if(newest) showChatToast(newest);
+    lobbyChatLastToastTs = latestTs;
+  }
+
+  const unread = lobbyChatOpen
+    ? 0
+    : lobbyChatMessages.filter((item) => chatItemTimeValue(item) > lobbyChatLastReadTs).length;
+  badge.hidden = unread === 0;
+  badge.textContent = unread > 99 ? "99+" : String(unread);
+
+  const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  renderChatItems(box, lobbyChatMessages);
+  if(lobbyChatOpen){
+    lobbyChatLastReadTs = latestTs;
+    badge.hidden = true;
+    if(wasNearBottom || unread > 0){
+      setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
+    }
+  }
+}
+
 function renderChat(state){
   const panel = document.getElementById("chatPanel");
   const btn = document.getElementById("chatToggle");
+  const badge = document.getElementById("chatUnread");
   const box = document.getElementById("chatMessages");
-  if(!panel || !btn || !box) return;
+  if(!panel || !btn || !badge || !box) return;
 
   const inRoom = document.getElementById("gameView")?.style.display !== "none";
   const docked = isDesktopChatDocked();
   const chatVisible = docked || chatOpen;
-  btn.style.display = inRoom && !docked ? "block" : "none";
+  btn.style.display = inRoom && !docked ? "flex" : "none";
   panel.style.display = inRoom ? "flex" : "none";
   panel.classList.toggle("open", inRoom && chatVisible);
   if(!inRoom){
     chatOpen = false;
     panel.classList.remove("open");
     btn.classList.remove("open");
+    badge.hidden = true;
     hideChatToast();
     lastChatToastCount = 0;
     return;
@@ -5831,50 +6237,15 @@ function renderChat(state){
   }
 
   const unread = Math.max(0, serverMessages.length - lastChatCount);
-  btn.textContent = (!chatVisible && unread > 0) ? `チャット ${unread}` : "チャット";
+  badge.hidden = chatVisible || unread === 0;
+  badge.textContent = unread > 99 ? "99+" : String(unread);
 
   const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-  box.replaceChildren();
-  if(messages.length === 0){
-    const empty = document.createElement("div");
-    empty.className = "chat-empty";
-    empty.textContent = "まだメッセージはありません";
-    box.appendChild(empty);
-  } else {
-    const frag = document.createDocumentFragment();
-    for(const item of messages){
-      const row = document.createElement("div");
-      row.className = "chat-message";
-      if(item?.seat === mySeat && !isSpectator()) row.classList.add("mine");
-      if(item?.local_notice) row.classList.add("notice");
-      if(item?.ai_answer) row.classList.add("ai-answer");
-
-      const sender = document.createElement("div");
-      sender.className = "chat-sender";
-      sender.textContent = localizedChatSender(item);
-
-      const meta = document.createElement("div");
-      meta.className = "chat-meta";
-      meta.appendChild(sender);
-
-      const timeText = formatChatTime(item?.ts);
-      if(timeText){
-        const time = document.createElement("span");
-        time.className = "chat-time";
-        time.textContent = timeText;
-        meta.appendChild(time);
-      }
-
-      const text = document.createElement("div");
-      text.className = "chat-text";
-      setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
-
-      row.appendChild(meta);
-      row.appendChild(text);
-      frag.appendChild(row);
-    }
-    box.appendChild(frag);
-  }
+  renderChatItems(
+    box,
+    messages,
+    (item) => item?.seat === mySeat && !isSpectator(),
+  );
 
   if(chatVisible){
     lastChatCount = serverMessages.length;
@@ -5969,6 +6340,49 @@ async function sendChatMessage(event){
     chatSending = false;
     setChatComposerDisabled(false);
     updateChatComposerUi();
+    input.focus();
+  }
+}
+
+async function sendLobbyChatMessage(event){
+  if(event) event.preventDefault();
+  if(lobbyChatSending) return;
+  const input = document.getElementById("lobbyChatInput");
+  const sendButton = document.getElementById("lobbyChatSendButton");
+  const status = document.getElementById("lobbyChatStatus");
+  if(!input || !sendButton || !status) return;
+  const message = input.value.trim();
+  if(!message) return;
+
+  lobbyChatSending = true;
+  input.disabled = true;
+  sendButton.disabled = true;
+  status.textContent = "";
+  try{
+    const res = await fetch(`${API}/lobby/chat`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        seat: WATCH,
+        client_id: clientId,
+        name: personalSettings.playerName || "",
+        message,
+      }),
+    });
+    if(!res.ok){
+      status.textContent = "チャットの送信に失敗しました。";
+    }else{
+      const data = await res.json();
+      input.value = "";
+      renderLobbyChat(data?.chat_messages || []);
+    }
+  }catch(error){
+    console.error("Lobby chat send error:", error);
+    status.textContent = "チャットの送信に失敗しました。通信状態を確認してください。";
+  }finally{
+    lobbyChatSending = false;
+    input.disabled = false;
+    sendButton.disabled = false;
     input.focus();
   }
 }
@@ -7415,6 +7829,7 @@ window.addEventListener("goita-voice-chat-ready", () => {
 window.addEventListener("goita-language-change", () => {
   renderLinkedKifuNotice();
   updateLobbyAdminPeopleCounts();
+  renderLobbyChat(lobbyChatMessages);
   updateChatComposerUi();
   updateVoiceChatUi();
   updateSeatButtons(latestState || {});
