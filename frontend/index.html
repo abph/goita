@@ -498,6 +498,9 @@
       gap: 10px;
       margin-top: 16px;
     }
+    .play-main-column {
+      min-width: 0;
+    }
     
     .hand-row {
       display: flex;
@@ -1481,20 +1484,30 @@
       }
       .play-layout {
         display: flex;
-        align-items: flex-start;
+        align-items: stretch;
         justify-content: center;
         gap: 16px;
         min-width: 0;
       }
+      .play-main-column {
+        flex: 0 0 auto;
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);
+        display: flex;
+        flex-direction: column;
+      }
+      .play-layout .board-wrap,
+      .play-layout .hands-area {
+        width: 100%;
+      }
       .play-layout .board-wrap {
         flex: 0 0 auto;
-        width: fit-content;
       }
       .play-layout .chat-panel {
         position: static;
         flex: 0 0 var(--chat-panel-width);
         width: var(--chat-panel-width);
-        height: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);
+        height: auto;
+        align-self: stretch;
         min-height: 0;
         z-index: auto;
         border: 3px solid #8b5a2b;
@@ -2179,8 +2192,8 @@
       #gameView {
         width: calc((var(--cell) * 8) + (var(--gap) * 7) + 40px + var(--chat-panel-width));
       }
-      .play-layout .chat-panel {
-        height: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
+      .play-main-column {
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
       }
       body.board-view-pixel #boardPixel {
         width: calc((var(--cell) * 8) + (var(--gap) * 7) + 24px);
@@ -3110,19 +3123,22 @@
   <div class="game-content-layout">
     <div class="game-content-main">
       <div class="play-layout">
-        <div class="board-wrap">
-          <div id="board" class="board"></div>
-          <div id="board3d" class="board-3d" aria-hidden="true">
-            <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
-            <div class="board-3d-controls" aria-label="3D盤面の拡大縮小">
-              <button id="board3dZoomOut" class="board-3d-zoom" type="button" aria-label="縮小" title="縮小">−</button>
-              <button id="board3dZoomIn" class="board-3d-zoom" type="button" aria-label="拡大" title="拡大">＋</button>
+        <div class="play-main-column">
+          <div class="board-wrap">
+            <div id="board" class="board"></div>
+            <div id="board3d" class="board-3d" aria-hidden="true">
+              <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
+              <div class="board-3d-controls" aria-label="3D盤面の拡大縮小">
+                <button id="board3dZoomOut" class="board-3d-zoom" type="button" aria-label="縮小" title="縮小">−</button>
+                <button id="board3dZoomIn" class="board-3d-zoom" type="button" aria-label="拡大" title="拡大">＋</button>
+              </div>
+              <div class="board-3d-fallback">この端末では3D盤面を表示できないため、2D盤面に戻しました。</div>
             </div>
-            <div class="board-3d-fallback">この端末では3D盤面を表示できないため、2D盤面に戻しました。</div>
+            <div id="boardPixel" class="board-pixel" aria-hidden="true">
+              <canvas id="boardPixelCanvas" width="320" height="320" aria-label="ピクセル盤面"></canvas>
+            </div>
           </div>
-          <div id="boardPixel" class="board-pixel" aria-hidden="true">
-            <canvas id="boardPixelCanvas" width="320" height="320" aria-label="ピクセル盤面"></canvas>
-          </div>
+          <div id="handsArea" class="hands-area"></div>
         </div>
         <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;" aria-label="チャットを開く" aria-expanded="false">
           <span aria-hidden="true">💬</span>
@@ -3145,8 +3161,6 @@
           </form>
         </div>
       </div>
-
-      <div id="handsArea" class="hands-area"></div>
 
       <div class="hint" id="handHint">観戦中です。A/B/C/Dを選ぶと操作できます。</div>
 
