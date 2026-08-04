@@ -27,6 +27,9 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "chatMentionScope = \"\";" in html
     assert "lobbyChatMentionScope = \"\";" in html
     assert html.count("scopePicker.hidden = isAiMode") == 2
+    assert ".chat-compose-entry.ai-mode" in html
+    assert "grid-template-columns: minmax(0, 1fr) auto;" in html
+    assert "composeEntry?.classList.toggle(\"ai-mode\", isAiMode);" in html
     assert 'id="lobbyChatUnread"' in html
     assert "function toggleLobbyChatPanel(open)" in html
     assert "function renderLobbyChat(serverMessages)" in html

@@ -1240,8 +1240,7 @@
       flex-direction: column;
       background: #fffdf5;
       border: 3px solid #8b5a2b;
-      border-right: none;
-      border-radius: 10px 0 0 10px;
+      border-radius: 10px;
       box-shadow: -8px 8px 22px rgba(0,0,0,0.24);
       transform: translateX(calc(100% + 8px));
       transition: transform 0.18s ease, opacity 0.18s ease;
@@ -1394,7 +1393,23 @@
     .chat-compose-entry {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 6px;
+      gap: 0;
+    }
+    .chat-compose-entry.ai-mode {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .chat-compose-entry > input {
+      position: relative;
+      z-index: 1;
+      margin-left: -2px;
+      border-radius: 0;
+    }
+    .chat-compose-entry > input:focus {
+      z-index: 2;
+    }
+    .chat-compose-entry.ai-mode > input {
+      margin-left: 0;
+      border-radius: 6px 0 0 6px;
     }
     .chat-scope-picker {
       position: relative;
@@ -1413,6 +1428,7 @@
       box-shadow: none;
       font-size: 18px;
       line-height: 1;
+      border-radius: 6px 0 0 6px;
     }
     .chat-form .chat-scope-button.active {
       background: #8b5a2b;
@@ -1490,6 +1506,8 @@
     }
     .chat-form .chat-submit-button {
       min-width: 58px;
+      margin-left: -2px;
+      border-radius: 0 6px 6px 0;
       background: #8b5a2b;
       border-color: #71451f;
     }
@@ -1693,7 +1711,7 @@
         position: fixed;
         right: 0;
         left: 0;
-        width: 100%;
+        width: auto;
       }
       :root {
         --chat-panel-width: min(var(--mobile-chat-width, 200px), calc(100vw - 28px));
@@ -1865,6 +1883,9 @@
         width: 34px;
         padding: 5px;
         font-size: 16px;
+      }
+      .chat-form .chat-submit-button {
+        min-width: 48px;
       }
       .chat-scope-menu {
         min-width: 98px;
@@ -6885,6 +6906,7 @@ document.addEventListener("keydown", (event) => {
 function updateChatComposerUi(){
   const isAiMode = chatComposeMode === "ai";
   const input = document.getElementById("chatInput");
+  const composeEntry = input?.closest(".chat-compose-entry");
   const scopePicker = document.getElementById("chatScopePicker");
   const chatButton = document.getElementById("chatModeChatButton");
   const aiButton = document.getElementById("chatModeAiButton");
@@ -6893,6 +6915,7 @@ function updateChatComposerUi(){
     input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
     input.classList.toggle("ai-mode", isAiMode);
   }
+  composeEntry?.classList.toggle("ai-mode", isAiMode);
   if(scopePicker) scopePicker.hidden = isAiMode;
   if(isAiMode) closeChatScopeMenus();
   updateChatScopePicker("room");
@@ -6991,6 +7014,7 @@ async function sendChatMessage(event){
 function updateLobbyChatComposerUi(){
   const isAiMode = lobbyChatComposeMode === "ai";
   const input = document.getElementById("lobbyChatInput");
+  const composeEntry = input?.closest(".chat-compose-entry");
   const scopePicker = document.getElementById("lobbyChatScopePicker");
   const chatButton = document.getElementById("lobbyChatModeChatButton");
   const aiButton = document.getElementById("lobbyChatModeAiButton");
@@ -6999,6 +7023,7 @@ function updateLobbyChatComposerUi(){
     input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
     input.classList.toggle("ai-mode", isAiMode);
   }
+  composeEntry?.classList.toggle("ai-mode", isAiMode);
   if(scopePicker) scopePicker.hidden = isAiMode;
   if(isAiMode) closeChatScopeMenus();
   updateChatScopePicker("lobby");

@@ -15,6 +15,10 @@ def test_mobile_room_chat_matches_lobby_toggle_and_clears_settings() -> None:
     assert "#chatPanel,\n      #lobbyChatPanel {\n        top: 54px;" in html
     assert "width: 42px" in html
     assert "height: 42px" in html
+    panel_css = html.split("    .chat-panel {", 1)[1].split("    }", 1)[0]
+    assert "border: 3px solid #8b5a2b;" in panel_css
+    assert "border-right: none;" not in panel_css
+    assert "border-radius: 10px;" in panel_css
 
 
 def test_mobile_chat_scroll_stays_inside_the_open_panel() -> None:
@@ -26,6 +30,11 @@ def test_mobile_chat_scroll_stays_inside_the_open_panel() -> None:
     assert 'document.body.style.top = `-${mobileChatLockedScrollY}px`' in html
     assert "overscroll-behavior-y: contain;" in html
     assert "-webkit-overflow-scrolling: touch;" in html
+    lock_css = html.split("      body.mobile-chat-scroll-locked {", 1)[1].split("      }", 1)[0]
+    assert "right: 0;" in lock_css
+    assert "left: 0;" in lock_css
+    assert "width: auto;" in lock_css
+    assert "width: 100%;" not in lock_css
 
 
 def test_chat_people_rows_use_compact_spacing() -> None:
