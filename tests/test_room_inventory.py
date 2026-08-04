@@ -7,6 +7,18 @@ from fastapi import HTTPException
 import backend.app as app_module
 
 
+def test_public_rooms_default_to_six_and_six_is_the_limit() -> None:
+    assert list(app_module.MAIN_ROOM_NAMES) == [
+        "main",
+        "main-b",
+        "main-c",
+        "main-d",
+        "main-e",
+        "main-f",
+    ]
+    assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 6
+
+
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
     old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
     try:

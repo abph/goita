@@ -33,6 +33,8 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     "main-b": "メインルームB",
     "main-c": "メインルームC",
     "main-d": "メインルームD",
+    "main-e": "メインルームE",
+    "main-f": "メインルームF",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 DEBUG_GID = "debug"
@@ -60,7 +62,7 @@ def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int)
 
 LOBBY_ROOM_SETTINGS = {
     "main_room_count": _initial_room_count(
-        "LOBBY_MAIN_ROOM_COUNT", 4, 1, len(MAIN_ROOM_NAMES)
+        "LOBBY_MAIN_ROOM_COUNT", 6, 1, len(MAIN_ROOM_NAMES)
     ),
     "private_room_count": _initial_room_count(
         "LOBBY_PRIVATE_ROOM_COUNT", 2, 0, len(PRIVATE_ROOM_DEFINITIONS)

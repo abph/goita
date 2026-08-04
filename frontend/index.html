@@ -13,6 +13,8 @@
       --chat-panel-width: min(240px, calc(100vw - 28px));
       --chat-panel-height: min(430px, calc(100vh - 90px));
       --chat-people-width: 168px;
+      --mobile-chat-height: 340px;
+      --mobile-chat-top-height: 138px;
     }
     * , *::before, *::after { box-sizing: border-box; }
     
@@ -1257,13 +1259,6 @@
       background: #f4efdf;
       border-right: 2px solid #d1ab75;
     }
-    .room-chat-people-title {
-      padding: 11px 9px 9px;
-      border-bottom: 1px solid #d8bd95;
-      color: #5d3a1b;
-      font-size: 13px;
-      font-weight: 900;
-    }
     .room-chat-people-list {
       flex: 1;
       min-height: 0;
@@ -1553,6 +1548,30 @@
       .play-layout .chat-messages {
         padding: 9px;
       }
+      #lobbyChatPanel.chat-people-visible {
+        width: min(
+          calc(var(--chat-panel-width) + var(--chat-people-width)),
+          calc(100vw - 28px)
+        );
+        display: grid !important;
+        grid-template-columns: var(--chat-people-width) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+      }
+      #lobbyChatPanel.chat-people-visible .room-chat-people {
+        display: flex;
+        flex-direction: column;
+        grid-column: 1;
+        grid-row: 1 / 3;
+      }
+      #lobbyChatPanel.chat-people-visible .chat-messages {
+        grid-column: 2;
+        grid-row: 1;
+        min-height: 0;
+      }
+      #lobbyChatPanel.chat-people-visible .chat-form {
+        grid-column: 2;
+        grid-row: 2;
+      }
       .chat-toggle {
         display: none !important;
       }
@@ -1618,7 +1637,7 @@
     @media (max-width: 701px) {
       :root {
         --chat-panel-width: min(var(--mobile-chat-width, 200px), calc(100vw - 28px));
-        --chat-panel-height: min(340px, calc(100vh - 120px));
+        --chat-panel-height: min(var(--mobile-chat-height), calc(100vh - 120px));
         --mobile-chat-people-width: 92px;
       }
       .seat-btn {
@@ -1683,7 +1702,7 @@
         left: 10px;
         right: 10px;
         width: auto;
-        height: min(138px, calc(100vh - 120px));
+        height: min(var(--mobile-chat-top-height), calc(100vh - 120px));
         background: rgba(255, 253, 245, var(--mobile-chat-opacity, 1));
         border: 3px solid #8b5a2b;
         border-radius: 0 0 6px 6px;
@@ -1693,7 +1712,8 @@
         background: rgba(255, 253, 245, var(--mobile-chat-opacity, 1));
         border-color: #8b5a2b;
       }
-      #chatPanel.chat-people-visible {
+      #chatPanel.chat-people-visible,
+      #lobbyChatPanel.chat-people-visible {
         width: min(
           calc(var(--mobile-chat-width, 200px) + var(--mobile-chat-people-width)),
           calc(100vw - 10px)
@@ -1702,43 +1722,47 @@
         grid-template-columns: var(--mobile-chat-people-width) minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr) auto;
       }
-      #chatPanel.chat-people-visible .room-chat-people {
+      #chatPanel.chat-people-visible .room-chat-people,
+      #lobbyChatPanel.chat-people-visible .room-chat-people {
         display: flex;
         flex-direction: column;
         grid-column: 1;
         grid-row: 1 / 3;
       }
-      #chatPanel.chat-people-visible .chat-messages {
+      #chatPanel.chat-people-visible .chat-messages,
+      #lobbyChatPanel.chat-people-visible .chat-messages {
         grid-column: 2;
         grid-row: 1;
         min-height: 0;
       }
-      #chatPanel.chat-people-visible .chat-form {
+      #chatPanel.chat-people-visible .chat-form,
+      #lobbyChatPanel.chat-people-visible .chat-form {
         grid-column: 2;
         grid-row: 2;
       }
-      body.mobile-chat-placement-top #chatPanel.chat-people-visible {
+      body.mobile-chat-placement-top #chatPanel.chat-people-visible,
+      body.mobile-chat-placement-top #lobbyChatPanel.chat-people-visible {
         width: auto;
       }
-      #chatPanel.chat-people-visible .room-chat-people-title {
-        padding: 9px 5px 7px;
-        font-size: 11px;
-        line-height: 1.35;
-      }
-      #chatPanel.chat-people-visible .room-chat-people-list {
+      #chatPanel.chat-people-visible .room-chat-people-list,
+      #lobbyChatPanel.chat-people-visible .room-chat-people-list {
         padding: 3px 5px 6px;
       }
-      #chatPanel.chat-people-visible .lobby-person-row {
+      #chatPanel.chat-people-visible .lobby-person-row,
+      #lobbyChatPanel.chat-people-visible .lobby-person-row {
         padding: 6px 0;
       }
-      #chatPanel.chat-people-visible .lobby-person-name {
+      #chatPanel.chat-people-visible .lobby-person-name,
+      #lobbyChatPanel.chat-people-visible .lobby-person-name {
         font-size: 11px;
       }
-      #chatPanel.chat-people-visible .lobby-person-location {
+      #chatPanel.chat-people-visible .lobby-person-location,
+      #lobbyChatPanel.chat-people-visible .lobby-person-location {
         font-size: 9px;
         line-height: 1.3;
       }
-      #chatPanel.chat-people-visible .lobby-people-empty {
+      #chatPanel.chat-people-visible .lobby-people-empty,
+      #lobbyChatPanel.chat-people-visible .lobby-people-empty {
         padding: 10px 0;
         font-size: 10px;
       }
@@ -1850,87 +1874,6 @@
     .lobby-chat-panel.open { display: flex; }
     .lobby-chat-panel[hidden],
     .lobby-chat-toggle[hidden] { display: none !important; }
-    .lobby-people-toggle {
-      position: fixed;
-      right: 14px;
-      top: 198px;
-      z-index: 899;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 46px;
-      height: 46px;
-      padding: 7px;
-      border: 2px solid #8b5a2b;
-      border-radius: 8px;
-      background: rgba(255, 253, 245, 0.94);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      color: #5d3a1b;
-      cursor: pointer;
-      font-size: 23px;
-      line-height: 1;
-    }
-    .lobby-people-toggle.open { display: none !important; }
-    .lobby-people-toggle[hidden],
-    .lobby-people-panel[hidden] { display: none !important; }
-    .lobby-people-count {
-      position: absolute;
-      top: -7px;
-      right: -7px;
-      display: grid;
-      place-items: center;
-      min-width: 20px;
-      height: 20px;
-      padding: 0 5px;
-      border: 2px solid #fffdf5;
-      border-radius: 10px;
-      background: #3f6f35;
-      color: #fff;
-      box-sizing: border-box;
-      font-size: 11px;
-      font-weight: 900;
-    }
-    .lobby-people-panel {
-      position: fixed;
-      top: 198px;
-      right: 14px;
-      z-index: 920;
-      width: min(280px, calc(100vw - 28px));
-      max-height: min(390px, calc(100vh - 220px));
-      border: 2px solid #8b5a2b;
-      border-radius: 7px;
-      background: rgba(255, 253, 245, 0.98);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.22);
-      overflow: hidden;
-    }
-    .lobby-people-panel.open { display: flex; flex-direction: column; }
-    .lobby-people-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 10px 11px;
-      border-bottom: 1px solid #d8bd95;
-      color: #5d3a1b;
-      font-size: 14px;
-      font-weight: 900;
-    }
-    .lobby-people-close {
-      width: 28px;
-      height: 28px;
-      border: 0;
-      background: transparent;
-      color: #6a4930;
-      padding: 0;
-      font-size: 21px;
-      line-height: 1;
-      cursor: pointer;
-    }
-    .lobby-people-list {
-      min-height: 52px;
-      padding: 5px 11px 9px;
-      overflow-y: auto;
-    }
     .lobby-person-row {
       display: flex;
       align-items: baseline;
@@ -1979,22 +1922,6 @@
         background: rgba(255, 253, 245, 0.76);
         border-color: rgba(139, 90, 43, 0.65);
         box-shadow: 0 3px 9px rgba(0,0,0,0.14);
-      }
-      .lobby-people-toggle {
-        right: 10px;
-        top: 194px;
-        width: 42px;
-        height: 42px;
-        padding: 6px;
-        background: rgba(255, 253, 245, 0.76);
-        border-color: rgba(139, 90, 43, 0.65);
-        box-shadow: 0 3px 9px rgba(0,0,0,0.14);
-        font-size: 22px;
-      }
-      .lobby-people-panel {
-        top: 194px;
-        right: 10px;
-        max-height: min(330px, calc(100vh - 210px));
       }
     }
 
@@ -2498,10 +2425,6 @@
       border-color: #263d35;
       font-family: "MS Gothic", "Yu Gothic", sans-serif;
     }
-    body.board-view-pixel .room-chat-people-title {
-      border-color: #263d35;
-      color: #263d35;
-    }
     body.board-view-pixel .chat-close {
       color: #263d35;
       font-size: 21px;
@@ -2849,7 +2772,6 @@
       background: #ffffff !important;
       border-color: #000000;
     }
-    body.board-view-pixel-mono .room-chat-people-title,
     body.board-view-pixel-mono .room-chat-people .lobby-person-name,
     body.board-view-pixel-mono .room-chat-people .lobby-person-location,
     body.board-view-pixel-mono .room-chat-people .lobby-people-empty {
@@ -3184,18 +3106,10 @@
     <span aria-hidden="true">💬</span>
     <span id="lobbyChatUnread" class="lobby-chat-unread" hidden></span>
   </button>
-  <button id="lobbyPeopleToggle" class="lobby-people-toggle" type="button" onclick="toggleLobbyPeoplePanel()" aria-label="現在いる人を表示" aria-expanded="false">
-    <span aria-hidden="true">👥</span>
-    <span id="lobbyPeopleCount" class="lobby-people-count">0</span>
-  </button>
-  <aside id="lobbyPeoplePanel" class="lobby-people-panel" aria-label="このサイトにいる人" aria-live="polite" hidden>
-    <div class="lobby-people-header">
-      <span>このサイトにいる人</span>
-      <button class="lobby-people-close" type="button" onclick="toggleLobbyPeoplePanel(false)" aria-label="人の一覧を閉じる">×</button>
-    </div>
-    <div id="lobbyPeopleList" class="lobby-people-list"></div>
-  </aside>
   <aside id="lobbyChatPanel" class="chat-panel lobby-chat-panel" aria-label="ロビーチャット" aria-live="polite" hidden>
+    <aside id="lobbyChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
+      <div id="lobbyChatPeopleList" class="room-chat-people-list"></div>
+    </aside>
     <div class="chat-header">
       <button class="chat-close" type="button" onclick="toggleLobbyChatPanel(false)" aria-label="閉じる">×</button>
     </div>
@@ -3275,7 +3189,6 @@
         </button>
         <div id="chatPanel" class="chat-panel" aria-live="polite">
           <aside id="roomChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
-            <div class="room-chat-people-title">このサイトにいる人</div>
             <div id="roomChatPeopleList" class="room-chat-people-list"></div>
           </aside>
           <div class="chat-header">
@@ -3445,6 +3358,14 @@
               </select>
             </div>
             <div class="settings-row">
+              <label for="lobbyMobileChatHeight">高さ</label>
+              <select id="lobbyMobileChatHeight" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+                <option value="tall">高い</option>
+                <option value="normal">普通</option>
+                <option value="short">低い</option>
+              </select>
+            </div>
+            <div class="settings-row">
               <label for="lobbyMobileChatTransparency">透明度（<span id="lobbyMobileChatTransparencyValue">0%</span>）</label>
               <input type="range" id="lobbyMobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateLobbyMobileChatTransparencyDisplay(this.value)">
             </div>
@@ -3521,7 +3442,7 @@
           <div class="lobby-room-count-fields">
             <div class="settings-row">
               <label for="lobbyMainRoomCount">表示する公開部屋数</label>
-              <input type="number" id="lobbyMainRoomCount" min="1" max="4" step="1" inputmode="numeric">
+              <input type="number" id="lobbyMainRoomCount" min="1" max="6" step="1" inputmode="numeric">
             </div>
             <div class="settings-row">
               <label for="lobbyPrivateRoomCount">表示するプライベートルーム数</label>
@@ -3591,6 +3512,14 @@
               <option value="wide">太い</option>
               <option value="normal" selected>普通</option>
               <option value="narrow">細い</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label for="mobileChatHeight">高さ</label>
+            <select id="mobileChatHeight" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="tall">高い</option>
+              <option value="normal" selected>普通</option>
+              <option value="short">低い</option>
             </select>
           </div>
           <div class="settings-row">
@@ -3801,7 +3730,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
-const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-d"]);
+const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-d", "main-e", "main-f"]);
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
@@ -4130,11 +4059,14 @@ function loadPersonalSettings() {
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
-            showPlayersInChat: saved.showPlayersInChat === true,
+            showPlayersInChat: saved.showPlayersInChat !== false,
             boardViewMode: normalizeBoardViewMode(saved.boardViewMode),
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
                 ? saved.mobileChatWidth
+                : "normal",
+            mobileChatHeight: ["tall", "normal", "short"].includes(saved.mobileChatHeight)
+                ? saved.mobileChatHeight
                 : "normal",
             mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
                 ? Math.max(0, Math.min(90, savedMobileChatTransparency))
@@ -4148,10 +4080,11 @@ function loadPersonalSettings() {
             pieceSound: "notanomori",
             enableCVoice: false,
             enableBeginnerSupport: false,
-            showPlayersInChat: false,
+            showPlayersInChat: true,
             boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
+            mobileChatHeight: "normal",
             mobileChatTransparency: 0,
         };
     }
@@ -4161,6 +4094,8 @@ let personalSettings = loadPersonalSettings();
 function applyPersonalSettingsAppearance() {
     const transparency = Math.max(0, Math.min(90, Number(personalSettings.mobileChatTransparency) || 0));
     const mobileChatWidths = { wide: "260px", normal: "200px", narrow: "160px" };
+    const mobileChatHeights = { tall: "430px", normal: "340px", short: "250px" };
+    const mobileTopChatHeights = { tall: "180px", normal: "138px", short: "108px" };
     document.body.classList.toggle(
         "mobile-chat-width-narrow",
         personalSettings.mobileChatWidth === "narrow"
@@ -4172,6 +4107,14 @@ function applyPersonalSettingsAppearance() {
     document.documentElement.style.setProperty(
         "--mobile-chat-width",
         mobileChatWidths[personalSettings.mobileChatWidth] || mobileChatWidths.normal
+    );
+    document.documentElement.style.setProperty(
+        "--mobile-chat-height",
+        mobileChatHeights[personalSettings.mobileChatHeight] || mobileChatHeights.normal
+    );
+    document.documentElement.style.setProperty(
+        "--mobile-chat-top-height",
+        mobileTopChatHeights[personalSettings.mobileChatHeight] || mobileTopChatHeights.normal
     );
     document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
     applyBoardViewMode();
@@ -4236,6 +4179,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyMobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("lobbyMobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
+    document.getElementById("lobbyMobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("lobbyMobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateLobbyMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("lobbyCheckEnableEffects").checked = personalSettings.enableEffects !== false;
@@ -4255,6 +4199,9 @@ function saveLobbyPersonalSettings() {
         mobileChatPlacement: document.getElementById("lobbyMobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("lobbyMobileChatWidth").value)
             ? document.getElementById("lobbyMobileChatWidth").value
+            : "normal",
+        mobileChatHeight: ["tall", "normal", "short"].includes(document.getElementById("lobbyMobileChatHeight").value)
+            ? document.getElementById("lobbyMobileChatHeight").value
             : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("lobbyMobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("lobbyCheckEnableEffects").checked,
@@ -4308,7 +4255,6 @@ let chatOpen = false;
 let lobbyChatOpen = false;
 let lobbyChatMessages = [];
 let lobbyChatNotices = [];
-let lobbyPeopleOpen = false;
 let lobbyChatLastReadTs = 0;
 let lobbyChatLastToastTs = 0;
 let lobbyChatSending = false;
@@ -4906,8 +4852,8 @@ function applyLobbyAdminPayload(data) {
     const mainInput = document.getElementById("lobbyMainRoomCount");
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
     mainInput.min = "1";
-    mainInput.max = String(data.main_room_max || 4);
-    mainInput.value = String(data.main_room_count || 4);
+    mainInput.max = String(data.main_room_max || 6);
+    mainInput.value = String(data.main_room_count || 6);
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 4);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
@@ -5161,6 +5107,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
+    document.getElementById("mobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
@@ -5248,6 +5195,9 @@ async function savePersonalSettings() {
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("mobileChatWidth").value)
             ? document.getElementById("mobileChatWidth").value
+            : "normal",
+        mobileChatHeight: ["tall", "normal", "short"].includes(document.getElementById("mobileChatHeight").value)
+            ? document.getElementById("mobileChatHeight").value
             : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         enableEffects: document.getElementById("checkEnableEffects").checked,
@@ -6291,7 +6241,6 @@ function isDesktopChatDocked(){
 
 function toggleLobbyChatPanel(open){
   lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
-  if(lobbyChatOpen && lobbyPeopleOpen) toggleLobbyPeoplePanel(false);
   const panel = document.getElementById("lobbyChatPanel");
   const btn = document.getElementById("lobbyChatToggle");
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
@@ -6320,24 +6269,6 @@ function toggleLobbyChatPanel(open){
   }
 }
 
-function toggleLobbyPeoplePanel(open){
-  const nextOpen = (typeof open === "boolean") ? open : !lobbyPeopleOpen;
-  if(nextOpen && lobbyChatOpen) toggleLobbyChatPanel(false);
-  lobbyPeopleOpen = nextOpen;
-  const panel = document.getElementById("lobbyPeoplePanel");
-  const btn = document.getElementById("lobbyPeopleToggle");
-  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
-  if(panel){
-    panel.classList.toggle("open", inLobby && lobbyPeopleOpen);
-    panel.hidden = !inLobby || !lobbyPeopleOpen;
-  }
-  if(btn){
-    btn.classList.toggle("open", lobbyPeopleOpen);
-    btn.setAttribute("aria-expanded", String(lobbyPeopleOpen));
-    btn.hidden = !inLobby;
-  }
-}
-
 function formatLobbyPersonLocation(person){
   const location = uiText(String(person?.location || "トップページ"));
   const seat = String(person?.seat || "").toUpperCase();
@@ -6349,20 +6280,8 @@ function formatLobbyPersonLocation(person){
 }
 
 function renderLobbyPeople(sitePeople){
-  const btn = document.getElementById("lobbyPeopleToggle");
-  const count = document.getElementById("lobbyPeopleCount");
-  const panel = document.getElementById("lobbyPeoplePanel");
-  const list = document.getElementById("lobbyPeopleList");
-  if(!btn || !count || !panel || !list) return;
-
   lobbySitePeople = Array.isArray(sitePeople) ? sitePeople : [];
-  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
-  btn.hidden = !inLobby;
-  count.textContent = lobbySitePeople.length > 99 ? "99+" : String(lobbySitePeople.length);
-  panel.hidden = !inLobby || !lobbyPeopleOpen;
-  panel.classList.toggle("open", inLobby && lobbyPeopleOpen);
-
-  list.replaceChildren(buildSitePeopleFragment(lobbySitePeople));
+  renderRoomChatPeople(lobbySitePeople);
 }
 
 function buildSitePeopleFragment(sitePeople){
@@ -6400,13 +6319,16 @@ function buildSitePeopleFragment(sitePeople){
 
 function renderRoomChatPeople(sitePeople){
   roomSitePeople = Array.isArray(sitePeople) ? sitePeople : [];
-  const list = document.getElementById("roomChatPeopleList");
-  if(list) list.replaceChildren(buildSitePeopleFragment(roomSitePeople));
+  ["roomChatPeopleList", "lobbyChatPeopleList"].forEach((listId) => {
+    const list = document.getElementById(listId);
+    if(list) list.replaceChildren(buildSitePeopleFragment(roomSitePeople));
+  });
 }
 
 function applyRoomChatPeopleSetting(){
   const enabled = personalSettings.showPlayersInChat === true;
   document.getElementById("chatPanel")?.classList.toggle("chat-people-visible", enabled);
+  document.getElementById("lobbyChatPanel")?.classList.toggle("chat-people-visible", enabled);
   document.getElementById("gameView")?.classList.toggle("chat-people-visible", enabled);
   if(enabled){
     renderRoomChatPeople(roomSitePeople.length ? roomSitePeople : lobbySitePeople);
