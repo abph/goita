@@ -2110,6 +2110,13 @@
       gap: 12px;
       flex: 0 0 auto;
     }
+    .game-header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
     .game-header {
       display: flex;
       justify-content: space-between;
@@ -2120,19 +2127,37 @@
     .game-header h1 { min-width: 0; margin: 0; font-size: 24px; }
     #currentRoomName { overflow-wrap: anywhere; }
     .lobby-return-btn {
-      border: 2px solid #8b5a2b;
-      background: #fffafa;
-      color: #8b5a2b;
-      font-weight: bold;
-      white-space: nowrap;
+      display: grid;
+      place-items: center;
+      flex: 0 0 40px;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #6d461f;
+      font-size: 29px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .lobby-return-btn:hover {
+      color: #a83a27;
+      transform: translateX(-1px);
     }
     @media (max-width: 701px) {
       .game-header { gap: 6px; }
+      .game-header-title { gap: 3px; }
       .game-header h1 { font-size: 18px; }
       .game-header-actions { gap: 4px; }
       .gear-btn { gap: 2px; padding: 6px; font-size: 14px; }
       .gear-icon { font-size: 18px; }
-      .lobby-return-btn { padding: 6px 8px; font-size: 13px; }
+      .lobby-return-btn {
+        flex-basis: 34px;
+        width: 34px;
+        height: 36px;
+        font-size: 25px;
+      }
     }
 
     @media (max-width: 980px){
@@ -3050,12 +3075,14 @@
 <div id="gameView" style="display: none;">
 
   <div class="game-header">
-    <h1>
-      <span id="currentRoomName"></span>
-    </h1>
+    <div class="game-header-title">
+      <button class="lobby-return-btn" type="button" onclick="returnToLobby()" aria-label="ロビーへ" title="ロビーへ"><span aria-hidden="true">←</span></button>
+      <h1>
+        <span id="currentRoomName"></span>
+      </h1>
+    </div>
     <div class="game-header-actions">
       <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定"><span class="gear-icon" aria-hidden="true">⚙️</span><span class="gear-label">設定</span></button>
-      <button class="lobby-return-btn" onclick="returnToLobby()">🏠 ロビーへ</button>
     </div>
   </div>
 
