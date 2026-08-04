@@ -1262,16 +1262,18 @@
     .room-chat-people-list {
       flex: 1;
       min-height: 0;
-      padding: 4px 8px 8px;
+      padding: 3px 7px 6px;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
     }
     .room-chat-people .lobby-person-row {
       display: block;
-      padding: 8px 1px;
+      padding: 4px 1px;
     }
     .room-chat-people .lobby-person-location {
       display: block;
-      margin-top: 2px;
+      margin-top: 1px;
       text-align: left;
     }
     .chat-header {
@@ -1296,6 +1298,8 @@
     .chat-messages {
       flex: 1;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
       padding: 8px 34px 8px 9px;
       background: rgba(244,239,223,0.6);
     }
@@ -1628,6 +1632,17 @@
       }
     }
     @media (max-width: 701px) {
+      html.mobile-chat-scroll-locked,
+      body.mobile-chat-scroll-locked {
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      body.mobile-chat-scroll-locked {
+        position: fixed;
+        right: 0;
+        left: 0;
+        width: 100%;
+      }
       :root {
         --chat-panel-width: min(var(--mobile-chat-width, 200px), calc(100vw - 28px));
         --chat-panel-height: min(var(--mobile-chat-height), calc(100vh - 120px));
@@ -1666,6 +1681,7 @@
       }
       .chat-panel {
         top: 0;
+        overscroll-behavior: contain;
         background: rgba(255, 253, 245, var(--mobile-chat-opacity, 0.26));
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
@@ -1739,11 +1755,11 @@
       }
       #chatPanel.chat-people-visible .room-chat-people-list,
       #lobbyChatPanel.chat-people-visible .room-chat-people-list {
-        padding: 3px 5px 6px;
+        padding: 2px 5px 4px;
       }
       #chatPanel.chat-people-visible .lobby-person-row,
       #lobbyChatPanel.chat-people-visible .lobby-person-row {
-        padding: 6px 0;
+        padding: 3px 0;
       }
       #chatPanel.chat-people-visible .lobby-person-name,
       #lobbyChatPanel.chat-people-visible .lobby-person-name {
@@ -4233,6 +4249,7 @@ let isGameStarted = false;
 let activeRoomId = null;
 let chatOpen = false;
 let lobbyChatOpen = false;
+let mobileChatLockedScrollY = 0;
 let lobbyChatMessages = [];
 let lobbyChatNotices = [];
 let lobbyChatLastReadTs = 0;
@@ -6220,6 +6237,28 @@ function isDesktopChatDocked(){
   return window.matchMedia("(min-width: 702px)").matches;
 }
 
+function updateMobileChatPageScrollLock(){
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  const shouldLock = !isDesktopChatDocked() && (
+    (inLobby && lobbyChatOpen) || (!inLobby && chatOpen)
+  );
+  const isLocked = document.body.classList.contains("mobile-chat-scroll-locked");
+  if(shouldLock === isLocked) return;
+
+  if(shouldLock){
+    mobileChatLockedScrollY = window.scrollY;
+    document.documentElement.classList.add("mobile-chat-scroll-locked");
+    document.body.classList.add("mobile-chat-scroll-locked");
+    document.body.style.top = `-${mobileChatLockedScrollY}px`;
+    return;
+  }
+
+  document.documentElement.classList.remove("mobile-chat-scroll-locked");
+  document.body.classList.remove("mobile-chat-scroll-locked");
+  document.body.style.removeProperty("top");
+  window.scrollTo(0, mobileChatLockedScrollY);
+}
+
 function toggleLobbyChatPanel(open){
   lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
   const panel = document.getElementById("lobbyChatPanel");
@@ -6248,6 +6287,7 @@ function toggleLobbyChatPanel(open){
       if(input) input.focus();
     }, 0);
   }
+  updateMobileChatPageScrollLock();
 }
 
 function formatLobbyPersonLocation(person){
@@ -6356,6 +6396,7 @@ function toggleChatPanel(open){
       if(input) input.focus();
     }, 0);
   }
+  updateMobileChatPageScrollLock();
 }
 
 function shouldTranslateChatItem(item){
@@ -6591,6 +6632,7 @@ function renderChat(state){
     badge.hidden = true;
     hideChatToast();
     lastChatToastCount = 0;
+    updateMobileChatPageScrollLock();
     return;
   }
 
@@ -8352,6 +8394,7 @@ window.addEventListener("load", async ()=>{
   initializeVoiceChat();
   window.setInterval(refreshRoomChatPeople, 10000);
   window.addEventListener("resize", () => {
+    updateMobileChatPageScrollLock();
     if(latestState) renderChat(latestState);
   });
   setupPresetSeatResetButtons();
