@@ -97,6 +97,9 @@ PIECE_POINTS = {
 }
 PARTNER_SEAT = {"A": "C", "C": "A", "B": "D", "D": "B"}
 PUBLIC_CHAT_MESSAGES: List[Dict[str, Any]] = []
+EVERYONE_CHAT_MESSAGES: List[Dict[str, Any]] = []
+LOBBY_HERE_CHAT_MESSAGES: List[Dict[str, Any]] = []
+LAST_CHAT_TIMESTAMP = 0
 
 AI_HELP_SYSTEM_PROMPT = """
 あなたは、ブラウザゲーム「そろうごいた」の操作案内AIです。
@@ -230,14 +233,55 @@ async def _broadcast_public_chat_update() -> None:
     ))
 
 
+async def _broadcast_everyone_chat_update() -> None:
+    channels = {"lobby", *GAMES.keys()}
+    await asyncio.gather(*(
+        manager.broadcast_update(channel)
+        for channel in channels
+    ))
+
+
+def _chat_mention_scope(message: str) -> str:
+    first_word = message.split(maxsplit=1)[0].lower() if message else ""
+    if first_word == "@everyone":
+        return "everyone"
+    if first_word == "@here":
+        return "here"
+    return ""
+
+
+def _next_chat_timestamp(span: int = 1) -> int:
+    global LAST_CHAT_TIMESTAMP
+    safe_span = max(1, int(span))
+    timestamp = max(int(time.time() * 1000), LAST_CHAT_TIMESTAMP + 1)
+    LAST_CHAT_TIMESTAMP = timestamp + safe_span - 1
+    return timestamp
+
+
+def _merged_chat_messages(*message_groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    combined = [item for group in message_groups for item in group]
+    combined.sort(key=lambda item: int(item.get("ts", 0) or 0))
+    return combined[-100:]
+
+
+def _chat_messages_for_lobby() -> List[Dict[str, Any]]:
+    return _merged_chat_messages(
+        PUBLIC_CHAT_MESSAGES,
+        LOBBY_HERE_CHAT_MESSAGES,
+        EVERYONE_CHAT_MESSAGES,
+    )
+
+
 def _chat_messages_for_game(game_id: str, game: Dict[str, Any]) -> List[Dict[str, Any]]:
     room_messages = list(game.get("chat_messages", []))
     if not _is_main_game_id(game_id):
-        return room_messages[-100:]
+        return _merged_chat_messages(EVERYONE_CHAT_MESSAGES, room_messages)
 
-    combined = [*PUBLIC_CHAT_MESSAGES, *room_messages]
-    combined.sort(key=lambda item: int(item.get("ts", 0) or 0))
-    return combined[-100:]
+    return _merged_chat_messages(
+        PUBLIC_CHAT_MESSAGES,
+        EVERYONE_CHAT_MESSAGES,
+        room_messages,
+    )
 
 
 class VoiceConnectionManager:
@@ -1826,7 +1870,7 @@ def list_rooms():
         "rooms": rooms,
         "room_totals": room_totals,
         "site_people": build_site_people(),
-        "public_chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:],
+        "public_chat_messages": _chat_messages_for_lobby(),
     }
 
 
@@ -2248,6 +2292,7 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     message = _sanitize_chat_message(req.message)
+    mention_scope = _chat_mention_scope(message)
     is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
     if not message:
@@ -2263,18 +2308,31 @@ async def post_chat_message(game_id: str, req: ChatRequest):
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
         "message": message,
-        "ts": int(time.time() * 1000),
+        "ts": _next_chat_timestamp(),
     }
+    if mention_scope:
+        chat_item["mention_scope"] = mention_scope
     if is_public_chat:
         chat_item.update({
             "origin": "public_room",
             "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
         })
-    chat_messages.append(chat_item)
-    if len(chat_messages) > 100:
-        del chat_messages[:-100]
+    elif mention_scope == "everyone":
+        chat_item.update({
+            "origin": "room",
+            "room_name": game.get("owner_name") or game_id,
+        })
 
-    await manager.broadcast_update(game_id)
+    if mention_scope == "everyone":
+        EVERYONE_CHAT_MESSAGES.append(chat_item)
+        if len(EVERYONE_CHAT_MESSAGES) > 100:
+            del EVERYONE_CHAT_MESSAGES[:-100]
+        await _broadcast_everyone_chat_update()
+    else:
+        chat_messages.append(chat_item)
+        if len(chat_messages) > 100:
+            del chat_messages[:-100]
+        await manager.broadcast_update(game_id)
     return {
         "ok": True,
         "chat_messages": _chat_messages_for_game(game_id, game),
@@ -2285,21 +2343,36 @@ async def post_chat_message(game_id: str, req: ChatRequest):
 async def post_lobby_chat_message(req: ChatRequest):
     message = _sanitize_chat_message(req.message)
     if not message:
-        return {"ok": False, "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:]}
+        return {"ok": False, "chat_messages": _chat_messages_for_lobby()}
 
     name = _sanitize_player_name(req.name)
-    PUBLIC_CHAT_MESSAGES.append({
+    mention_scope = _chat_mention_scope(message)
+    chat_item = {
         "seat": "W",
         "sender": name or "ゲスト",
         "message": message,
-        "ts": int(time.time() * 1000),
+        "ts": _next_chat_timestamp(),
         "origin": "lobby",
-    })
-    if len(PUBLIC_CHAT_MESSAGES) > 100:
-        del PUBLIC_CHAT_MESSAGES[:-100]
+    }
+    if mention_scope:
+        chat_item["mention_scope"] = mention_scope
 
-    await _broadcast_public_chat_update()
-    return {"ok": True, "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:]}
+    if mention_scope == "everyone":
+        EVERYONE_CHAT_MESSAGES.append(chat_item)
+        if len(EVERYONE_CHAT_MESSAGES) > 100:
+            del EVERYONE_CHAT_MESSAGES[:-100]
+        await _broadcast_everyone_chat_update()
+    elif mention_scope == "here":
+        LOBBY_HERE_CHAT_MESSAGES.append(chat_item)
+        if len(LOBBY_HERE_CHAT_MESSAGES) > 100:
+            del LOBBY_HERE_CHAT_MESSAGES[:-100]
+        await manager.broadcast_update("lobby")
+    else:
+        PUBLIC_CHAT_MESSAGES.append(chat_item)
+        if len(PUBLIC_CHAT_MESSAGES) > 100:
+            del PUBLIC_CHAT_MESSAGES[:-100]
+        await _broadcast_public_chat_update()
+    return {"ok": True, "chat_messages": _chat_messages_for_lobby()}
 
 
 @app.post("/lobby/chat/ask_ai")
@@ -2319,7 +2392,7 @@ async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
     )
 
     name = _sanitize_player_name(req.name)
-    ts = int(time.time() * 1000)
+    ts = _next_chat_timestamp(2)
     PUBLIC_CHAT_MESSAGES.extend([
         {
             "seat": "W",
@@ -2344,7 +2417,7 @@ async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
     return {
         "ok": True,
         "answer": answer,
-        "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:],
+        "chat_messages": _chat_messages_for_lobby(),
     }
 
 
@@ -2375,7 +2448,7 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
 
     is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
-    ts = int(time.time() * 1000)
+    ts = _next_chat_timestamp(2)
     question_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),

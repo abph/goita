@@ -6404,7 +6404,7 @@ function localizedChatSender(item){
   if(item?.origin === "lobby"){
     return `${uiText("ロビー")}｜${sender}`;
   }
-  if(item?.origin === "public_room" && item?.room_name){
+  if((item?.origin === "public_room" || item?.origin === "room") && item?.room_name){
     return `${uiText(String(item.room_name))}｜${sender}`;
   }
   return sender;
