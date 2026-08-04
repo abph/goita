@@ -147,9 +147,16 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self.client_connections: Dict[Tuple[str, str], Set[WebSocket]] = {}
+        self.client_names: Dict[Tuple[str, str], str] = {}
         self.disconnect_tasks: Dict[Tuple[str, str], Any] = {}
 
-    async def connect(self, websocket: WebSocket, game_id: str, client_id: str = ""):
+    async def connect(
+        self,
+        websocket: WebSocket,
+        game_id: str,
+        client_id: str = "",
+        name: str = "",
+    ):
         await websocket.accept()
         if game_id not in self.active_connections:
             self.active_connections[game_id] = []
@@ -157,6 +164,7 @@ class ConnectionManager:
         if client_id:
             key = (game_id, client_id)
             self.client_connections.setdefault(key, set()).add(websocket)
+            self.client_names[key] = _sanitize_player_name(name)
             self.cancel_disconnect_release(game_id, client_id)
 
     def disconnect(self, websocket: WebSocket, game_id: str, client_id: str = "") -> bool:
@@ -171,6 +179,7 @@ class ConnectionManager:
             connections.discard(websocket)
             if not connections:
                 self.client_connections.pop(key, None)
+                self.client_names.pop(key, None)
                 return True
         return False
 
@@ -896,18 +905,23 @@ def serve_index():
 
 
 @app.websocket("/ws/{game_id}")
-async def websocket_endpoint(websocket: WebSocket, game_id: str, client_id: str = ""):
-    await manager.connect(websocket, game_id, client_id)
+async def websocket_endpoint(
+    websocket: WebSocket,
+    game_id: str,
+    client_id: str = "",
+    name: str = "",
+):
+    await manager.connect(websocket, game_id, client_id, name)
+    await manager.broadcast_update(game_id)
     if game_id != "lobby":
-        await manager.broadcast_update(game_id)
         await manager.broadcast_update("lobby")
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         is_fully_disconnected = manager.disconnect(websocket, game_id, client_id)
+        await manager.broadcast_update(game_id)
         if game_id != "lobby":
-            await manager.broadcast_update(game_id)
             await manager.broadcast_update("lobby")
         if client_id and is_fully_disconnected:
             manager.schedule_disconnect_release(game_id, client_id)
@@ -1691,6 +1705,65 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
 @app.get("/games/list")
 def list_rooms():
     setup_main_rooms()
+
+    def build_site_people() -> List[Dict[str, Any]]:
+        candidates: Dict[str, Tuple[int, Dict[str, Any]]] = {}
+        for (connected_game_id, client_id), connections in manager.client_connections.items():
+            if not client_id or not connections:
+                continue
+
+            connection_name = manager.client_names.get((connected_game_id, client_id), "")
+            if connected_game_id == "lobby":
+                person = {
+                    "name": connection_name or "ゲスト",
+                    "name_is_default": not bool(connection_name),
+                    "location": "トップページ",
+                    "role": "lobby",
+                    "seat": "",
+                }
+                priority = 0
+            else:
+                game = GAMES.get(connected_game_id)
+                if not game:
+                    continue
+                human_seats = game.get("human_seats", {})
+                seat = ""
+                if isinstance(human_seats, dict):
+                    seat = next(
+                        (seat_name for seat_name, owner in human_seats.items() if owner == client_id),
+                        "",
+                    )
+                player_names = game.get("player_names", {})
+                seat_name = (
+                    _sanitize_player_name(player_names.get(seat, ""))
+                    if seat and isinstance(player_names, dict)
+                    else ""
+                )
+                is_main_room = _is_main_game_id(connected_game_id)
+                if is_main_room:
+                    location = MAIN_ROOM_NAMES.get(connected_game_id, "公開部屋")
+                elif connected_game_id == DEBUG_GID or game.get("is_debug_room", False):
+                    location = "デバッグルーム"
+                else:
+                    location = "プライベートルーム"
+                resolved_name = seat_name or connection_name
+                person = {
+                    "name": resolved_name or (f"プレイヤー{seat}" if seat else "観戦者"),
+                    "name_is_default": not bool(resolved_name),
+                    "location": location,
+                    "role": "player" if seat else "spectator",
+                    "seat": seat,
+                }
+                priority = 2 if seat else 1
+
+            previous = candidates.get(client_id)
+            if previous is None or priority > previous[0]:
+                candidates[client_id] = (priority, person)
+
+        people = [person for _priority, person in candidates.values()]
+        people.sort(key=lambda item: (item["location"], item["seat"], item["name"]))
+        return people
+
     def build_room_info(gid: str, data: dict):
         hs = data.get("human_seats", {})
         human_set = _seat_set(hs)
@@ -1750,6 +1823,7 @@ def list_rooms():
     return {
         "rooms": rooms,
         "room_totals": room_totals,
+        "site_people": build_site_people(),
         "public_chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:],
     }
 

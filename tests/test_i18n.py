@@ -72,7 +72,24 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert "Answer the user in concise, natural English" in backend
 
 
+def test_language_packs_cover_site_presence_ui() -> None:
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    for source in [
+        "このサイトにいる人",
+        "現在いる人を表示",
+        "人の一覧を閉じる",
+        "トップページ",
+        "観戦者",
+        "現在、このサイトにいる人はいません。",
+    ]:
+        assert source in chinese
+        assert source in english
+
+
 if __name__ == "__main__":
     test_language_switcher_and_translation_runtime_are_loaded()
     test_dynamic_ui_and_ai_help_follow_selected_language()
+    test_language_packs_cover_site_presence_ui()
     print("I18N_TEST_OK")

@@ -1727,6 +1727,117 @@
     .lobby-chat-panel.open { display: flex; }
     .lobby-chat-panel[hidden],
     .lobby-chat-toggle[hidden] { display: none !important; }
+    .lobby-people-toggle {
+      position: fixed;
+      right: 14px;
+      top: 198px;
+      z-index: 899;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      height: 46px;
+      padding: 7px;
+      border: 2px solid #8b5a2b;
+      border-radius: 8px;
+      background: rgba(255, 253, 245, 0.94);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      color: #5d3a1b;
+      cursor: pointer;
+      font-size: 23px;
+      line-height: 1;
+    }
+    .lobby-people-toggle.open { display: none !important; }
+    .lobby-people-toggle[hidden],
+    .lobby-people-panel[hidden] { display: none !important; }
+    .lobby-people-count {
+      position: absolute;
+      top: -7px;
+      right: -7px;
+      display: grid;
+      place-items: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      border: 2px solid #fffdf5;
+      border-radius: 10px;
+      background: #3f6f35;
+      color: #fff;
+      box-sizing: border-box;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .lobby-people-panel {
+      position: fixed;
+      top: 198px;
+      right: 14px;
+      z-index: 920;
+      width: min(280px, calc(100vw - 28px));
+      max-height: min(390px, calc(100vh - 220px));
+      border: 2px solid #8b5a2b;
+      border-radius: 7px;
+      background: rgba(255, 253, 245, 0.98);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+      overflow: hidden;
+    }
+    .lobby-people-panel.open { display: flex; flex-direction: column; }
+    .lobby-people-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 11px;
+      border-bottom: 1px solid #d8bd95;
+      color: #5d3a1b;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .lobby-people-close {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      background: transparent;
+      color: #6a4930;
+      padding: 0;
+      font-size: 21px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .lobby-people-list {
+      min-height: 52px;
+      padding: 5px 11px 9px;
+      overflow-y: auto;
+    }
+    .lobby-person-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 2px;
+      border-bottom: 1px solid rgba(139, 90, 43, 0.16);
+    }
+    .lobby-person-row:last-child { border-bottom: 0; }
+    .lobby-person-name {
+      min-width: 0;
+      color: #3d2b1d;
+      font-size: 13px;
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+    .lobby-person-location {
+      flex: 0 0 auto;
+      color: #80664e;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: right;
+    }
+    .lobby-people-empty {
+      margin: 0;
+      padding: 14px 2px 10px;
+      color: #80664e;
+      font-size: 12px;
+      text-align: center;
+    }
     .lobby-chat-status {
       margin: 0;
       color: #9b2226;
@@ -1745,6 +1856,22 @@
         background: rgba(255, 253, 245, 0.76);
         border-color: rgba(139, 90, 43, 0.65);
         box-shadow: 0 3px 9px rgba(0,0,0,0.14);
+      }
+      .lobby-people-toggle {
+        right: 10px;
+        top: 194px;
+        width: 42px;
+        height: 42px;
+        padding: 6px;
+        background: rgba(255, 253, 245, 0.76);
+        border-color: rgba(139, 90, 43, 0.65);
+        box-shadow: 0 3px 9px rgba(0,0,0,0.14);
+        font-size: 22px;
+      }
+      .lobby-people-panel {
+        top: 194px;
+        right: 10px;
+        max-height: min(330px, calc(100vh - 210px));
       }
     }
 
@@ -2890,6 +3017,17 @@
     <span aria-hidden="true">💬</span>
     <span id="lobbyChatUnread" class="lobby-chat-unread" hidden></span>
   </button>
+  <button id="lobbyPeopleToggle" class="lobby-people-toggle" type="button" onclick="toggleLobbyPeoplePanel()" aria-label="現在いる人を表示" aria-expanded="false">
+    <span aria-hidden="true">👥</span>
+    <span id="lobbyPeopleCount" class="lobby-people-count">0</span>
+  </button>
+  <aside id="lobbyPeoplePanel" class="lobby-people-panel" aria-label="このサイトにいる人" aria-live="polite" hidden>
+    <div class="lobby-people-header">
+      <span>このサイトにいる人</span>
+      <button class="lobby-people-close" type="button" onclick="toggleLobbyPeoplePanel(false)" aria-label="人の一覧を閉じる">×</button>
+    </div>
+    <div id="lobbyPeopleList" class="lobby-people-list"></div>
+  </aside>
   <aside id="lobbyChatPanel" class="chat-panel lobby-chat-panel" aria-label="ロビーチャット" aria-live="polite" hidden>
     <div class="chat-header">
       <button class="chat-close" type="button" onclick="toggleLobbyChatPanel(false)" aria-label="閉じる">×</button>
@@ -3924,6 +4062,7 @@ function syncLobbyPersonalSettingsControls() {
 }
 
 function saveLobbyPersonalSettings() {
+    const previousPlayerName = personalSettings.playerName || "";
     personalSettings = {
         playerName: sanitizeName(document.getElementById("lobbyPersonalPlayerName").value),
         mobileChatPlacement: document.getElementById("lobbyMobileChatPlacement").value === "top" ? "top" : "right",
@@ -3941,6 +4080,9 @@ function saveLobbyPersonalSettings() {
     applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
+        if(previousPlayerName !== personalSettings.playerName && currentWsGid){
+            connectWS(currentWsGid);
+        }
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存しました。";
     } catch (_error) {
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存できませんでした。";
@@ -3978,6 +4120,8 @@ let chatOpen = false;
 let lobbyChatOpen = false;
 let lobbyChatMessages = [];
 let lobbyChatNotices = [];
+let lobbyPeopleOpen = false;
+let lobbySitePeople = [];
 let lobbyChatLastReadTs = 0;
 let lobbyChatLastToastTs = 0;
 let lobbyChatSending = false;
@@ -4232,7 +4376,9 @@ function connectWS(targetGid) {
     currentWsGid = targetGid;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host || "localhost:8000"; 
-    const wsUrl = `${protocol}//${host}/ws/${targetGid}?client_id=${clientId}`;
+    const wsParams = new URLSearchParams({client_id: clientId});
+    if(personalSettings.playerName) wsParams.set("name", personalSettings.playerName);
+    const wsUrl = `${protocol}//${host}/ws/${targetGid}?${wsParams.toString()}`;
     
     socket = new WebSocket(wsUrl);
 
@@ -4699,6 +4845,7 @@ async function fetchRoomList() {
         if (!res.ok) return;
         const data = await res.json();
         renderLobbyChat(data.public_chat_messages || []);
+        renderLobbyPeople(data.site_people || []);
         
         const mainContainer = document.getElementById("lobbyMainRoom");
         const privateContainer = document.getElementById("lobbyRoomList");
@@ -4905,6 +5052,7 @@ function setupLobbyPieceBackground() {
 }
 
 async function savePersonalSettings() {
+    const previousPlayerName = personalSettings.playerName || "";
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
@@ -4927,6 +5075,9 @@ async function savePersonalSettings() {
         if (!isSpectator()) {
             await setName(mySeat, personalSettings.playerName);
             await refresh();
+        }
+        if(previousPlayerName !== personalSettings.playerName && currentWsGid){
+            connectWS(currentWsGid);
         }
         document.getElementById("personalSettingsStatus").textContent = "保存しました。";
     } catch (e) {
@@ -5949,6 +6100,7 @@ function isDesktopChatDocked(){
 
 function toggleLobbyChatPanel(open){
   lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
+  if(lobbyChatOpen && lobbyPeopleOpen) toggleLobbyPeoplePanel(false);
   const panel = document.getElementById("lobbyChatPanel");
   const btn = document.getElementById("lobbyChatToggle");
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
@@ -5975,6 +6127,79 @@ function toggleLobbyChatPanel(open){
       if(input) input.focus();
     }, 0);
   }
+}
+
+function toggleLobbyPeoplePanel(open){
+  const nextOpen = (typeof open === "boolean") ? open : !lobbyPeopleOpen;
+  if(nextOpen && lobbyChatOpen) toggleLobbyChatPanel(false);
+  lobbyPeopleOpen = nextOpen;
+  const panel = document.getElementById("lobbyPeoplePanel");
+  const btn = document.getElementById("lobbyPeopleToggle");
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  if(panel){
+    panel.classList.toggle("open", inLobby && lobbyPeopleOpen);
+    panel.hidden = !inLobby || !lobbyPeopleOpen;
+  }
+  if(btn){
+    btn.classList.toggle("open", lobbyPeopleOpen);
+    btn.setAttribute("aria-expanded", String(lobbyPeopleOpen));
+    btn.hidden = !inLobby;
+  }
+}
+
+function formatLobbyPersonLocation(person){
+  const location = uiText(String(person?.location || "トップページ"));
+  const seat = String(person?.seat || "").toUpperCase();
+  if(!seat) return location;
+  const language = currentUiLanguage();
+  if(language === "en") return `${location} · Seat ${seat}`;
+  if(language === "zh") return `${location}・${seat}座位`;
+  return `${location}・${seat}席`;
+}
+
+function renderLobbyPeople(sitePeople){
+  const btn = document.getElementById("lobbyPeopleToggle");
+  const count = document.getElementById("lobbyPeopleCount");
+  const panel = document.getElementById("lobbyPeoplePanel");
+  const list = document.getElementById("lobbyPeopleList");
+  if(!btn || !count || !panel || !list) return;
+
+  lobbySitePeople = Array.isArray(sitePeople) ? sitePeople : [];
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  btn.hidden = !inLobby;
+  count.textContent = lobbySitePeople.length > 99 ? "99+" : String(lobbySitePeople.length);
+  panel.hidden = !inLobby || !lobbyPeopleOpen;
+  panel.classList.toggle("open", inLobby && lobbyPeopleOpen);
+
+  const fragment = document.createDocumentFragment();
+  if(lobbySitePeople.length === 0){
+    const empty = document.createElement("p");
+    empty.className = "lobby-people-empty";
+    empty.textContent = uiText("現在、このサイトにいる人はいません。");
+    fragment.appendChild(empty);
+  }else{
+    lobbySitePeople.forEach((person) => {
+      const row = document.createElement("div");
+      row.className = "lobby-person-row";
+
+      const name = document.createElement("span");
+      name.className = "lobby-person-name";
+      const rawName = String(person?.name || "ゲスト");
+      if(person?.name_is_default === true){
+        name.textContent = uiText(rawName);
+      }else{
+        name.setAttribute("data-i18n-ignore", "");
+        name.textContent = rawName;
+      }
+
+      const location = document.createElement("span");
+      location.className = "lobby-person-location";
+      location.textContent = formatLobbyPersonLocation(person);
+      row.append(name, location);
+      fragment.appendChild(row);
+    });
+  }
+  list.replaceChildren(fragment);
 }
 
 function toggleChatPanel(open){
@@ -7965,6 +8190,7 @@ window.addEventListener("goita-language-change", () => {
   renderLinkedKifuNotice();
   updateLobbyAdminPeopleCounts();
   renderLobbyChat(lobbyChatMessages);
+  renderLobbyPeople(lobbySitePeople);
   updateLobbyChatComposerUi();
   updateChatComposerUi();
   updateVoiceChatUi();

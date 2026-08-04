@@ -249,6 +249,63 @@ def test_private_total_includes_hidden_private_rooms_but_not_debug_room() -> Non
         hidden_game["human_seats"] = old_human_seats
 
 
+def test_room_list_returns_named_site_presence_without_client_ids() -> None:
+    app_module.setup_main_rooms()
+    game_id = next(iter(app_module.MAIN_ROOM_NAMES))
+    game = app_module.GAMES[game_id]
+    old_human_seats = game.get("human_seats")
+    old_player_names = game.get("player_names")
+    connection_keys = [("lobby", "lobby-person"), (game_id, "room-person")]
+    old_connections = {
+        key: app_module.manager.client_connections.get(key)
+        for key in connection_keys
+    }
+    old_names = {
+        key: app_module.manager.client_names.get(key)
+        for key in connection_keys
+    }
+
+    try:
+        game["human_seats"] = {"B": "room-person"}
+        game["player_names"] = {"A": "", "B": "山田", "C": "", "D": ""}
+        for key in connection_keys:
+            app_module.manager.client_connections[key] = {object()}
+        app_module.manager.client_names[("lobby", "lobby-person")] = "鈴木"
+        app_module.manager.client_names[(game_id, "room-person")] = "山田"
+
+        people = app_module.list_rooms()["site_people"]
+
+        assert {
+            "name": "鈴木",
+            "name_is_default": False,
+            "location": "トップページ",
+            "role": "lobby",
+            "seat": "",
+        } in people
+        assert {
+            "name": "山田",
+            "name_is_default": False,
+            "location": app_module.MAIN_ROOM_NAMES[game_id],
+            "role": "player",
+            "seat": "B",
+        } in people
+        assert "lobby-person" not in str(people)
+        assert "room-person" not in str(people)
+    finally:
+        game["human_seats"] = old_human_seats
+        game["player_names"] = old_player_names
+        for key, old_value in old_connections.items():
+            if old_value is None:
+                app_module.manager.client_connections.pop(key, None)
+            else:
+                app_module.manager.client_connections[key] = old_value
+        for key, old_value in old_names.items():
+            if old_value is None:
+                app_module.manager.client_names.pop(key, None)
+            else:
+                app_module.manager.client_names[key] = old_value
+
+
 if __name__ == "__main__":
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_and_d_exist_but_are_hidden_from_lobby()
@@ -258,4 +315,5 @@ if __name__ == "__main__":
     test_lobby_admin_can_change_visible_room_counts()
     test_room_list_counts_human_players_and_spectators_without_ai()
     test_private_total_includes_hidden_private_rooms_but_not_debug_room()
+    test_room_list_returns_named_site_presence_without_client_ids()
     print("ROOM_INVENTORY_TEST_OK")
