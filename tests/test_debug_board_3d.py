@@ -13,7 +13,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dCanvas"' in html
     assert 'id="board3dZoomIn"' in html
     assert 'id="board3dZoomOut"' in html
-    assert 'import("/static/board3d.js?v=20260730v")' in html
+    assert 'import("/static/board3d.js?v=20260805a")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html
@@ -75,6 +75,7 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "requestAnimationFrame(animatePieces)" in board_module
     assert "state.board_public" in html
     assert "buildBoard3DSnapshot(state)" in html
+    assert "piece.ownHidden ? 0.32" in board_module
     assert 'document.body.classList.contains("board-view-3d")' in html
     assert 'window.goitaBoard3D?.showPass?.(phys)' in html
     assert "const PASS_WORLD_POSITIONS" in board_module

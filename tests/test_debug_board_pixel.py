@@ -11,7 +11,7 @@ def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20260730l")' in html
+    assert 'import("/static/boardPixel.js?v=20260805a")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
@@ -34,6 +34,7 @@ def test_pixel_board_uses_low_resolution_canvas_and_public_snapshot() -> None:
     assert 'context.fillStyle = "rgba(35, 23, 16, 0.38)"' not in board_module
     assert "palette.teal" not in board_module
     assert "buildBoard3DSnapshot(state)" in html
+    assert "piece.ownHidden) context.globalAlpha = 0.32" in board_module
     assert "window.goitaBoardPixel.render" in html
     assert "window.goitaBoardPixel.setTheme" in html
     assert "const palettes" in board_module

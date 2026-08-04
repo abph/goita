@@ -231,6 +231,11 @@
     .slot.ai.revealed-hidden .val {
       color: rgba(176, 0, 0, 0.66);
     }
+    .slot.own-hidden .val {
+      color: #1a1a1a;
+      font-weight: 500;
+      opacity: 0.32;
+    }
 
     /* 現在の攻め駒（静的に目立たせる） */
     .slot.current-attack {
@@ -3849,12 +3854,12 @@
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260730v").catch((error) => {
+  import("/static/board3d.js?v=20260805a").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260730l").catch((error) => {
+  import("/static/boardPixel.js?v=20260805a").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -7534,6 +7539,12 @@ function buildBoard3DSnapshot(state) {
     );
     const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
     const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+    const isOwnHidden = (
+      !isPendingReceive &&
+      isHiddenReceive &&
+      !isRevealedHidden &&
+      Array.isArray(state.face_down_pieces?.[slot.p])
+    );
     const isRevealedHand = !boardPiece && !isPendingReceive && !!revealedHandPiece;
     const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : revealedHandPiece);
     if(!piece) continue;
@@ -7547,8 +7558,9 @@ function buildBoard3DSnapshot(state) {
       kind: kindKey,
       piece: String(piece),
       label: pieceToLabel(piece),
-      englishLabel: currentUiLanguage() === "en" ? pieceEnglishName(piece) : "",
+      englishLabel: currentUiLanguage() === "en" && !isOwnHidden ? pieceEnglishName(piece) : "",
       hidden: kindKey === "receive" && (isPendingReceive || isHiddenReceive) && !isRevealedHidden,
+      ownHidden: isOwnHidden,
       pending: !!isPendingReceive,
       revealedHand: !!isRevealedHand,
       revealedHidden: !!isRevealedHidden,
@@ -7967,6 +7979,12 @@ function renderBoard(state){
         );
         const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
         const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+        const isOwnHidden = (
+          !isPendingReceive &&
+          isHiddenReceive &&
+          !isRevealedHidden &&
+          Array.isArray(state.face_down_pieces?.[slot.p])
+        );
         const isRevealedHand = !boardPiece && !isPendingReceive && !!revealedHandPiece;
         const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : revealedHandPiece);
 
@@ -7981,6 +7999,7 @@ function renderBoard(state){
             div.classList.add(seatIsAi(state, slot.p) ? "ai" : "human");
           }
           if(isRevealedHidden) div.classList.add("revealed-hidden");
+          if(isOwnHidden) div.classList.add("own-hidden");
           
           if(slot.kind==="A"){
             div.classList.add("attack");
@@ -7993,7 +8012,9 @@ function renderBoard(state){
 
           if(kindKey==="receive"){
             const hidden = isPendingReceive || isHiddenReceive;
-            setPieceValue(val, piece, (hidden && !isRevealedHidden) ? "" : pieceToLabel(piece));
+            const hiddenLabel = isOwnHidden ? pieceToLabel(piece) : "";
+            setPieceValue(val, piece, (hidden && !isRevealedHidden) ? hiddenLabel : pieceToLabel(piece));
+            if(isOwnHidden) delete val.dataset.pieceEn;
           }else{
             setPieceValue(val, piece);
           }

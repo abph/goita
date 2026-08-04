@@ -526,14 +526,14 @@ function createPieceObject(piece) {
   mesh.receiveShadow = true;
   flat.add(mesh);
 
-  if (!piece.hidden && piece.label) {
+  if ((!piece.hidden || piece.ownHidden) && piece.label) {
     const textPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.58, 0.72),
       pieceTextMaterial(
         piece.label,
         piece.englishLabel || "",
         piece.ai ? "#a31313" : "#17130f",
-        piece.revealedHidden ? 0.55 : 1
+        piece.ownHidden ? 0.32 : (piece.revealedHidden ? 0.55 : 1)
       )
     );
     textPlane.position.set(0, -0.05, 0.195);

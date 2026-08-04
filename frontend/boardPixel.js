@@ -176,7 +176,8 @@ function drawPiece(piece) {
 
   drawPieceShape(fill, palette.pieceEdge);
 
-  if (!piece.hidden && piece.label) {
+  if ((!piece.hidden || piece.ownHidden) && piece.label) {
+    if (piece.ownHidden) context.globalAlpha = 0.32;
     drawPixelText(piece.label, 0, piece.englishLabel ? -4 : 2, {
       size: piece.englishLabel ? 17 : 19,
       color: piece.ai ? palette.aiText : palette.text,
@@ -189,6 +190,7 @@ function drawPiece(piece) {
         weight: "700",
       });
     }
+    context.globalAlpha = piece.revealedHidden ? 0.56 : 1;
   }
   context.restore();
 }
