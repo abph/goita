@@ -1503,13 +1503,14 @@
       }
       .play-layout {
         display: flex;
-        align-items: stretch;
+        align-items: flex-start;
         justify-content: center;
         gap: 16px;
         min-width: 0;
       }
       .play-main-column {
         flex: 0 0 auto;
+        align-self: flex-start;
         width: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);
         display: flex;
         flex-direction: column;
@@ -2024,6 +2025,19 @@
     .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
     .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
+    .settings-danger-zone {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(176, 0, 0, 0.24);
+    }
+    .settings-danger-button {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #a62424;
+      background: #fffafa;
+      color: #a62424;
+      font-weight: 900;
+    }
     .lobby-admin-modal-content {
       position: relative;
       max-width: 440px;
@@ -3650,6 +3664,10 @@
           <div class="preset-err" id="presetErr" style="display:none;"></div>
         </div>
       </details>
+
+      <div id="forceResetSettingsRow" class="settings-danger-zone" style="display:none;">
+        <button id="forceResetSettingsButton" class="settings-danger-button" type="button" onclick="confirmForceReset()">強制リセット</button>
+      </div>
     </section>
 
     <section id="roomManagementPanel" class="settings-panel" role="tabpanel">
@@ -5486,6 +5504,7 @@ function updateRoomUI() {
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
+    const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
     const settingsBtn = document.getElementById("roomSettingsBtn");
     const hostControlsPanel = document.getElementById("hostControlsPanel");
     const hostToolsGrid = document.getElementById("hostToolsGrid");
@@ -5496,7 +5515,8 @@ function updateRoomUI() {
     const showLog = isHost && latestState?.show_log === true;
     const showActions = !isMain && isHost && latestState?.show_legal_actions === true;
     
-    if (btnNewGame) btnNewGame.style.display = isHost ? "" : "none";
+    if (btnNewGame) btnNewGame.style.display = (isHost && latestState?.finished) ? "" : "none";
+    if (forceResetSettingsRow) forceResetSettingsRow.style.display = (isHost && latestState && !latestState.finished) ? "block" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
     if (toggleBtn) toggleBtn.style.display = isHost ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
@@ -8010,6 +8030,22 @@ async function startNewGame(keepScore = false){
   pending=null; resetLogAudioSync(0);
 }
 
+async function confirmForceReset(){
+  if(!isCurrentClientHost()) return;
+  const confirmed = window.confirm(uiText("現在の対局と得点をリセットします。よろしいですか？"));
+  if(!confirmed) return;
+
+  const button = document.getElementById("forceResetSettingsButton");
+  if(button) button.disabled = true;
+  try{
+    await startNewGame(false);
+    closeSettings();
+    await refresh();
+  }finally{
+    if(button) button.disabled = false;
+  }
+}
+
 async function fetchLegal(){
   if(isSpectator()) return [];
   const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`);
@@ -8139,19 +8175,20 @@ async function refresh(){
   }
   
   const btnNewGame = document.getElementById("btnNewGame");
-  const isHost = (mySeat === "A"); 
+  const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
+  const isHost = isCurrentClientHost();
   if (btnNewGame) {
-      btnNewGame.style.display = isHost ? "" : "none";
+      btnNewGame.style.display = (isHost && state.finished) ? "" : "none";
       if (state.match_finished) {
           btnNewGame.textContent = "新規ゲーム (スコアリセット)";
           btnNewGame.onclick = () => startNewGame(false);
       } else if (state.finished) {
           btnNewGame.textContent = "次の一局へ";
           btnNewGame.onclick = () => startNewGame(true);
-      } else {
-          btnNewGame.textContent = "強制リセット";
-          btnNewGame.onclick = () => startNewGame(false);
       }
+  }
+  if (forceResetSettingsRow) {
+      forceResetSettingsRow.style.display = (isHost && !state.finished) ? "block" : "none";
   }
   
   const startGameBtn = document.getElementById("startGameBtn");

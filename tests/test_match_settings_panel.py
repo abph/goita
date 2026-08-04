@@ -20,6 +20,9 @@ def test_match_setup_is_grouped_in_the_settings_modal() -> None:
     assert 'id="kifuPresetId"' in panel
     assert 'id="kifuPresetRound"' in panel
     assert 'onsubmit="loadPresetFromKifu(event)"' in panel
+    assert 'id="forceResetSettingsRow"' in panel
+    assert 'id="forceResetSettingsButton"' in panel
+    assert 'onclick="confirmForceReset()"' in panel
     assert html.count('id="dealerDetails"') == 1
     assert html.count('id="presetHandsDetails"') == 1
 
@@ -35,6 +38,17 @@ def test_match_setup_is_host_only_and_private_hands_stay_private() -> None:
     assert 'fetch("/static/kifu_data.json", {cache: "force-cache"})' in html
     assert 'const seatKeys = {A: "p0", B: "p1", C: "p2", D: "p3"}' in html
     assert "Number(item?.round_index) === requestedRound" in html
+
+
+def test_force_reset_requires_confirmation_and_is_removed_from_the_play_controls() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "async function confirmForceReset()" in html
+    assert 'window.confirm(uiText("現在の対局と得点をリセットします。よろしいですか？"))' in html
+    assert 'await startNewGame(false);' in html
+    assert 'btnNewGame.style.display = (isHost && state.finished) ? "" : "none";' in html
+    assert 'forceResetSettingsRow.style.display = (isHost && !state.finished) ? "block" : "none";' in html
+    assert 'btnNewGame.textContent = "強制リセット"' not in html
 
 
 def test_kifu_0001_round_1_has_the_expected_four_hands() -> None:

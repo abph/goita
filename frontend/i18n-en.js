@@ -297,6 +297,7 @@
     "新規ゲーム (スコアリセット)": "New Game (Reset Score)",
     "次の一局へ": "Next Round",
     "強制リセット": "Force Reset",
+    "現在の対局と得点をリセットします。よろしいですか？": "This will reset the current game and scores. Continue?",
     "待機中... ホスト（👑A）が「開始」を押すのをお待ちください。\n使い方で分からないことがあれば、チャットの「AIに質問」をご利用ください。": "Waiting for the host (👑A) to press Start.\nIf you need help using the site, select Ask AI in the chat panel.",
     "👑 あなたはホストです。設定や配牌を確認し、「▶ 開始」を押してください。": "👑 You are the host. Check the settings and hands, then press Start.",
     "観戦中です。空いている席のボタンを押すと参加できます。": "You are watching. Select a vacant seat to join.",

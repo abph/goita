@@ -14,6 +14,16 @@ def test_board_and_hands_share_the_desktop_main_column():
 
 
 def test_desktop_chat_stretches_to_board_and_hands_height():
+    desktop_layout_start = HTML.index(".play-layout {")
+    desktop_layout_end = HTML.index("}", desktop_layout_start)
+    desktop_layout_css = HTML[desktop_layout_start:desktop_layout_end]
+    main_column_start = HTML.index(".play-main-column {", desktop_layout_end)
+    main_column_end = HTML.index("}", main_column_start)
+    main_column_css = HTML[main_column_start:main_column_end]
+
+    assert "align-items: flex-start;" in desktop_layout_css
+    assert "align-items: stretch;" not in desktop_layout_css
+    assert "align-self: flex-start;" in main_column_css
     assert ".play-layout .board-wrap,\n      .play-layout .hands-area" in HTML
     assert "height: var(--desktop-room-chat-height, auto);" in HTML
     assert "max-height: var(--desktop-room-chat-height, none);" in HTML
