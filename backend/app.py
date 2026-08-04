@@ -1451,11 +1451,13 @@ def _state_public_view(
 
     hands_view: Dict[str, Any] = {}
     init_hands_view: Dict[str, Any] = {}
+    face_down_pieces_view: Dict[str, Any] = {}
     
     if not is_started:
         for p in ALL_SEATS:
             hands_view[p] = {"count": 0}
             init_hands_view[p] = {"count": 0}
+            face_down_pieces_view[p] = {"count": 0}
         board_view = _new_board_snapshot()
         turn = None
         phase = ""
@@ -1470,9 +1472,11 @@ def _state_public_view(
             if reveal_hands or p in owned_human_seats:
                 hands_view[p] = list(state.hands[p])
                 init_hands_view[p] = list((game_obj.get("init_hands") or {}).get(p, []))
+                face_down_pieces_view[p] = list(state.face_down_hidden[p])
             else:
                 hands_view[p] = {"count": len(state.hands[p])}
                 init_hands_view[p] = {"count": 8}
+                face_down_pieces_view[p] = {"count": len(state.face_down_hidden[p])}
 
         if reveal_hands:
             board_view = copy.deepcopy(board_public)
@@ -1497,6 +1501,7 @@ def _state_public_view(
         "dealer": game_obj.get("dealer", "A"),
         "hands": hands_view,
         "init_hands": init_hands_view,
+        "face_down_pieces": face_down_pieces_view,
         "scores": scores,
         "board_public": board_view,
         "log": log[-200:],

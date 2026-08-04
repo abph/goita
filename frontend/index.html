@@ -580,6 +580,13 @@
       font-weight: 900;
       transform: none;
     }
+    .hand-row-pieces .hand.face-down.used-hidden .val {
+      display: block;
+      color: #5d5148;
+      font-weight: 500;
+      opacity: 0.32;
+      transform: translateY(2px);
+    }
     @keyframes beginner-support-pulse {
       0%, 100% { filter: drop-shadow(0 0 2px rgba(37, 112, 57, 0.55)); }
       50% { filter: drop-shadow(0 0 8px rgba(37, 112, 57, 0.95)); }
@@ -5727,8 +5734,9 @@ function fixedHandKey(state, seat, base){
   return `${gid}:${state.round_count || 1}:${seat}:${base.join(",")}`;
 }
 
-function reconcileFixedHandMemory(mem, current){
+function reconcileFixedHandMemory(mem, current, faceDownPieces = []){
   const currentCounts = countPieces(current);
+  const hiddenCounts = countPieces(faceDownPieces);
   const totalCounts = countPieces(mem.slots.map(slot => slot.piece));
   Object.keys(totalCounts).forEach(piece => {
     const desiredUsed = Math.max(0, totalCounts[piece] - (currentCounts[piece] || 0));
@@ -5752,6 +5760,28 @@ function reconcileFixedHandMemory(mem, current){
         }
       }
     }
+
+    pieceSlots.forEach(item => {
+      if(!item.slot.used) item.slot.hidden = false;
+    });
+    const usedPieceSlots = pieceSlots.filter(item => item.slot.used);
+    const desiredHidden = Math.min(desiredUsed, hiddenCounts[piece] || 0);
+    let hidden = usedPieceSlots.filter(item => item.slot.hidden).length;
+    if(hidden < desiredHidden){
+      for(let i = usedPieceSlots.length - 1; i >= 0 && hidden < desiredHidden; i--){
+        if(!usedPieceSlots[i].slot.hidden){
+          usedPieceSlots[i].slot.hidden = true;
+          hidden++;
+        }
+      }
+    }else if(hidden > desiredHidden){
+      for(let i = 0; i < usedPieceSlots.length && hidden > desiredHidden; i++){
+        if(usedPieceSlots[i].slot.hidden){
+          usedPieceSlots[i].slot.hidden = false;
+          hidden--;
+        }
+      }
+    }
   });
 }
 
@@ -5760,25 +5790,32 @@ function fixedHandSlots(state, seat){
   const key = fixedHandKey(state, seat, base);
   if(!fixedHandMemory[key]){
     fixedHandMemory[key] = {
-      slots: base.map((piece, index) => ({ piece, index, used: false }))
+      slots: base.map((piece, index) => ({ piece, index, used: false, hidden: false }))
     };
   }
   const mem = fixedHandMemory[key];
-  reconcileFixedHandMemory(mem, Array.isArray(state.hands?.[seat]) ? state.hands[seat].map(String) : []);
+  reconcileFixedHandMemory(
+    mem,
+    Array.isArray(state.hands?.[seat]) ? state.hands[seat].map(String) : [],
+    Array.isArray(state.face_down_pieces?.[seat]) ? state.face_down_pieces[seat].map(String) : []
+  );
   return mem.slots;
 }
 
-function markFixedHandSlotUsed(state, seat, slotIndex, piece){
+function markFixedHandSlotUsed(state, seat, slotIndex, piece, hidden = false){
   if(!state || slotIndex == null) return;
   const base = fixedHandBase(state, seat);
   const key = fixedHandKey(state, seat, base);
   if(!fixedHandMemory[key]){
     fixedHandMemory[key] = {
-      slots: base.map((slotPiece, index) => ({ piece: slotPiece, index, used: false }))
+      slots: base.map((slotPiece, index) => ({ piece: slotPiece, index, used: false, hidden: false }))
     };
   }
   const slot = fixedHandMemory[key].slots.find(item => item.index === slotIndex && item.piece === String(piece));
-  if(slot) slot.used = true;
+  if(slot){
+    slot.used = true;
+    slot.hidden = hidden;
+  }
 }
 
 function startGame() {
@@ -7608,7 +7645,13 @@ async function submitAction(actionObj, usedSlots = []){
     body: JSON.stringify({ player: mySeat, client_id: clientId, action: actionObj })
   });
   if(res.ok){
-    usedSlots.forEach(item => markFixedHandSlotUsed(latestState, item.seat || mySeat, item.slotIndex, item.piece));
+    usedSlots.forEach(item => markFixedHandSlotUsed(
+      latestState,
+      item.seat || mySeat,
+      item.slotIndex,
+      item.piece,
+      item.hidden === true
+    ));
   }else if(res.status === 403){
     pending = null;
     await refresh();
@@ -7636,8 +7679,8 @@ async function onHandPieceClick(piece, slotIndex){
     const matched = pending.candidates.filter(a => pending.need==="attack" ? a.attack===piece : a.block===piece);
     if(matched.length === 1){
       const usedSlots = [
-        { seat: mySeat, slotIndex: pending.blockSlot, piece: pending.block },
-        { seat: mySeat, slotIndex, piece },
+        { seat: mySeat, slotIndex: pending.blockSlot, piece: pending.block, hidden: true },
+        { seat: mySeat, slotIndex, piece, hidden: false },
       ].filter(item => item.slotIndex != null);
       await submitAction(matched[0], usedSlots);
       pending = null;
@@ -8046,24 +8089,25 @@ function renderHands(state) {
             pending.block === card
           );
           const isFaceDown = slot.used || isPendingHidden;
+          const isUsedHidden = slot.used && slot.hidden;
 
           const pieceDiv = document.createElement("div");
           pieceDiv.className = "hand";
           pieceDiv.classList.add(seatIsAi(state, seat) ? "ai" : "human");
           if(isFaceDown) pieceDiv.classList.add("face-down");
           if(isPendingHidden) pieceDiv.classList.add("pending-hidden");
+          if(isUsedHidden) pieceDiv.classList.add("used-hidden");
           if(!isFaceDown && beginnerRecommendedPiece(card)){
             pieceDiv.classList.add("beginner-recommended");
           }
 
           const valDiv = document.createElement("div");
           valDiv.className = "val";
-          setPieceValue(
-            valDiv,
-            card,
-            isPendingHidden ? "伏" : (isFaceDown ? "" : pieceToLabel(card))
-          );
-          if(isPendingHidden) delete valDiv.dataset.pieceEn;
+          const handLabel = isPendingHidden
+            ? "伏"
+            : (isFaceDown && !isUsedHidden ? "" : pieceToLabel(card));
+          setPieceValue(valDiv, card, handLabel);
+          if(isPendingHidden || isUsedHidden) delete valDiv.dataset.pieceEn;
           pieceDiv.appendChild(valDiv);
 
           if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
