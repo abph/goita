@@ -984,7 +984,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 136px;
+        min-height: 116px;
         max-width: 560px;
         margin: 24px auto 0;
         border: 2px solid #292929;
@@ -992,7 +992,7 @@
         background: #ffffff;
         box-shadow: 7px 7px 0 rgba(74, 43, 19, 0.18);
         color: #3d2b1d;
-        padding: 44px 24px 24px;
+        padding: 36px 20px 18px;
         overflow: hidden;
         cursor: pointer;
         -webkit-user-select: none;
@@ -1032,10 +1032,10 @@
     .lobby-whisper-message {
         display: block;
         width: 100%;
-        min-height: 2.9em;
+        min-height: 2.7em;
         margin: 0 !important;
         color: #3d2b1d !important;
-        font-size: 21px;
+        font-size: 19px;
         font-weight: 900;
         line-height: 1.4;
         text-align: center;
@@ -1080,15 +1080,15 @@
     }
     @media (max-width: 520px) {
         .lobby-whisper {
-            min-height: 132px;
+            min-height: 112px;
             margin-top: 20px;
-            padding: 42px 16px 20px;
+            padding: 36px 14px 16px;
         }
         .lobby-whisper-close {
             top: 7px;
             left: 7px;
         }
-        .lobby-whisper-message { font-size: 17px; }
+        .lobby-whisper-message { font-size: 16px; }
     }
     .room-card {
         width: 240px;
@@ -1461,12 +1461,17 @@
       font-weight: 700;
     }
     .chat-toast-text {
+      display: -webkit-box;
+      max-height: calc(1.45em * 3);
       color: #2b2b2b;
       font-size: 14px;
       line-height: 1.45;
-      white-space: nowrap;
+      white-space: normal;
       overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
     }
     @media (min-width: 702px) {
       #gameView {
@@ -3972,6 +3977,7 @@ let activeRoomId = null;
 let chatOpen = false;
 let lobbyChatOpen = false;
 let lobbyChatMessages = [];
+let lobbyChatNotices = [];
 let lobbyChatLastReadTs = 0;
 let lobbyChatLastToastTs = 0;
 let lobbyChatSending = false;
@@ -6062,6 +6068,23 @@ function showChatToast(item){
   }, 4000);
 }
 
+function showLobbyWelcomeToast(){
+  const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  if(!inLobby) return;
+  const notice = {
+    seat: "notice",
+    sender: "連絡",
+    message: "公開部屋またはプライベートルームを選んで入室してください。使い方で分からないことがあれば、チャットの「AIに質問」をご利用ください。",
+    ts: Date.now(),
+    local_notice: true,
+    lobby_notice: true,
+  };
+  lobbyChatNotices = [notice];
+  lobbyChatLastToastTs = Math.max(lobbyChatLastToastTs, notice.ts);
+  renderLobbyChat(lobbyChatMessages);
+  showChatToast(notice);
+}
+
 function hideChatToast(){
   const toast = document.getElementById("chatToast");
   if(toast) toast.classList.remove("show", "notice");
@@ -6172,7 +6195,11 @@ function renderLobbyChat(serverMessages){
   if(!panel || !btn || !badge || !box) return;
 
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
-  lobbyChatMessages = Array.isArray(serverMessages) ? serverMessages : [];
+  const sharedMessages = Array.isArray(serverMessages)
+    ? serverMessages.filter((item) => item?.lobby_notice !== true)
+    : [];
+  lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices]
+    .sort((left, right) => chatItemTimeValue(left) - chatItemTimeValue(right));
   btn.hidden = !inLobby;
   panel.hidden = !inLobby || !lobbyChatOpen;
   panel.classList.toggle("open", inLobby && lobbyChatOpen);
@@ -7995,7 +8022,8 @@ window.addEventListener("load", async ()=>{
   document.getElementById("gameView").style.display = "none";
 
   connectWS("lobby");
-  fetchRoomList();
+  await fetchRoomList();
+  showLobbyWelcomeToast();
 });
 </script>
 </body>

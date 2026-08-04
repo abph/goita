@@ -22,7 +22,9 @@ def test_whisper_appears_inside_public_game_rooms() -> None:
     assert "1222のつぶやき" in html
     assert "こんにちは！" in html
     assert ".lobby-whisper-close" in html
-    assert "min-height: 136px" in html
+    assert "min-height: 116px" in html
+    assert "min-height: 112px" in html
+    assert "font-size: 19px" in html
     assert "border-radius: 0" in html
     assert "background: #ffffff" in html
     assert "-webkit-user-select: none" in html

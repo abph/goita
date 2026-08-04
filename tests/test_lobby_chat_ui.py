@@ -21,6 +21,13 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "function submitLobbyChatInput(event)" in html
     assert "async function sendLobbyChatMessage(event)" in html
     assert "async function askLobbyChatAi()" in html
+    assert "function showLobbyWelcomeToast()" in html
+    assert "公開部屋またはプライベートルームを選んで入室してください。" in html
+    assert "let lobbyChatNotices = [];" in html
+    assert "lobbyChatNotices = [notice];" in html
+    assert "renderLobbyChat(lobbyChatMessages);" in html
+    assert "lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices]" in html
+    assert "await fetchRoomList();\n  showLobbyWelcomeToast();" in html
     assert "`${API}/lobby/chat`" in html
     assert "`${API}/lobby/chat/ask_ai`" in html
     assert "data.public_chat_messages" in html

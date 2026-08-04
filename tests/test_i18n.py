@@ -28,6 +28,7 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert 'parent.closest(".chat-message")' in i18n
     assert '"そろうごいた": "Solo Goita"' in i18n
     assert '"支援について": "关于支持"' in i18n
+    assert '"请选择公开房间或私人房间进入。' in i18n
     assert '"支援していただいた人のための専用の部屋です。": "这是为支持本项目的人准备的专用房间。"' in i18n
     assert "凑齐Goita" not in i18n
 
@@ -55,6 +56,7 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert "window.goitaI18n?.translate?.(text)" in board_pixel
     assert '"そろうごいた": "Solo Goita"' in english
     assert '"支援について": "Support"' in english
+    assert '"Choose a public or private room to enter.' in english
     assert '"支援ページを開く": "Open Support Page"' in english
     assert '"支援していただいた人のための専用の部屋です。": "Dedicated rooms for people who support the project."' in english
     assert '"空席": "Open"' in english

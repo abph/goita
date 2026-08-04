@@ -69,6 +69,7 @@
     "AIに質問": "Ask AI",
     "チャットを入力": "Type a chat message",
     "AIへの質問を入力": "Type a question for AI",
+    "公開部屋またはプライベートルームを選んで入室してください。使い方で分からないことがあれば、チャットの「AIに質問」をご利用ください。": "Choose a public or private room to enter. If you need help using the site, select Ask AI in the chat panel.",
     "送信": "Send",
     "Auto": "Auto",
     "AIモード": "AI Mode",
