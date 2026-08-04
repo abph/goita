@@ -318,6 +318,73 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
                 app_module.manager.client_names[key] = old_value
 
 
+def test_private_room_presence_masks_names_outside_the_same_room() -> None:
+    app_module.setup_supporter_rooms()
+    game_id = app_module.PRIVATE_A_GID
+    game = app_module.GAMES[game_id]
+    client_id = "private-room-person"
+    key = (game_id, client_id)
+    old_human_seats = game.get("human_seats")
+    old_player_names = game.get("player_names")
+    old_connections = app_module.manager.client_connections.get(key)
+    old_name = app_module.manager.client_names.get(key)
+
+    try:
+        game["human_seats"] = {"C": client_id}
+        game["player_names"] = {"A": "", "B": "", "C": "秘密の名前", "D": ""}
+        app_module.manager.client_connections[key] = {object()}
+        app_module.manager.client_names[key] = "秘密の名前"
+
+        lobby_response = app_module.list_rooms()
+        lobby_people = lobby_response["site_people"]
+        assert {
+            "name": "＊＊＊＊",
+            "name_is_default": False,
+            "location": app_module.PRIVATE_ROOM_NAMES[game_id],
+            "role": "player",
+            "seat": "C",
+        } in lobby_people
+        assert "秘密の名前" not in str(lobby_people)
+        lobby_room = next(
+            room for room in lobby_response["rooms"] if room["game_id"] == game_id
+        )
+        assert lobby_room["seats"]["C"] == "＊＊＊＊"
+
+        same_room_response = app_module.list_rooms(
+            viewer_game_id=game_id,
+            client_id=client_id,
+        )
+        same_room_people = same_room_response["site_people"]
+        assert {
+            "name": "秘密の名前",
+            "name_is_default": False,
+            "location": app_module.PRIVATE_ROOM_NAMES[game_id],
+            "role": "player",
+            "seat": "C",
+        } in same_room_people
+        same_room = next(
+            room for room in same_room_response["rooms"] if room["game_id"] == game_id
+        )
+        assert same_room["seats"]["C"] == "秘密の名前"
+
+        unrelated_people = app_module.list_rooms(
+            viewer_game_id=game_id,
+            client_id="not-connected",
+        )["site_people"]
+        assert "秘密の名前" not in str(unrelated_people)
+    finally:
+        game["human_seats"] = old_human_seats
+        game["player_names"] = old_player_names
+        if old_connections is None:
+            app_module.manager.client_connections.pop(key, None)
+        else:
+            app_module.manager.client_connections[key] = old_connections
+        if old_name is None:
+            app_module.manager.client_names.pop(key, None)
+        else:
+            app_module.manager.client_names[key] = old_name
+
+
 if __name__ == "__main__":
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_and_d_exist_but_are_hidden_from_lobby()

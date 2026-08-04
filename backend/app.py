@@ -50,6 +50,9 @@ PRIVATE_ROOM_DEFINITIONS = (
     {"gid": "room-bronze-03", "pass": None, "admin": "admin-c", "owner": "プライベートC"},
     {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
 )
+PRIVATE_ROOM_NAMES = {
+    room["gid"]: room["owner"] for room in PRIVATE_ROOM_DEFINITIONS
+}
 
 
 def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
@@ -1749,8 +1752,18 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
 
 
 @app.get("/games/list")
-def list_rooms():
+def list_rooms(viewer_game_id: str = "", client_id: str = ""):
     setup_main_rooms()
+
+    viewer_game_id = viewer_game_id.strip()
+    client_id = client_id.strip()
+    visible_private_room = ""
+    if (
+        viewer_game_id in PRIVATE_ROOM_NAMES
+        and client_id
+        and manager.has_client_connection(viewer_game_id, client_id)
+    ):
+        visible_private_room = viewer_game_id
 
     def build_site_people() -> List[Dict[str, Any]]:
         candidates: Dict[str, Tuple[int, Dict[str, Any]]] = {}
@@ -1786,16 +1799,26 @@ def list_rooms():
                     else ""
                 )
                 is_main_room = _is_main_game_id(connected_game_id)
+                is_private_room = connected_game_id in PRIVATE_ROOM_NAMES
                 if is_main_room:
                     location = MAIN_ROOM_NAMES.get(connected_game_id, "公開部屋")
                 elif connected_game_id == DEBUG_GID or game.get("is_debug_room", False):
                     location = "デバッグルーム"
+                elif is_private_room:
+                    location = PRIVATE_ROOM_NAMES[connected_game_id]
                 else:
                     location = "プライベートルーム"
                 resolved_name = seat_name or connection_name
+                private_name_is_hidden = (
+                    is_private_room and connected_game_id != visible_private_room
+                )
                 person = {
-                    "name": resolved_name or (f"プレイヤー{seat}" if seat else "観戦者"),
-                    "name_is_default": not bool(resolved_name),
+                    "name": (
+                        "＊＊＊＊"
+                        if private_name_is_hidden
+                        else resolved_name or (f"プレイヤー{seat}" if seat else "観戦者")
+                    ),
+                    "name_is_default": False if private_name_is_hidden else not bool(resolved_name),
                     "location": location,
                     "role": "player" if seat else "spectator",
                     "seat": seat,
@@ -1814,6 +1837,9 @@ def list_rooms():
         hs = data.get("human_seats", {})
         human_set = _seat_set(hs)
         ai_set = _ai_seat_set(data)
+        hide_private_names = (
+            gid in PRIVATE_ROOM_NAMES and gid != visible_private_room
+        )
         spectator_count = manager.spectator_count(gid, data)
         pn = data.get("player_names", {})
         seats_info = {}
@@ -1821,7 +1847,7 @@ def list_rooms():
             is_human = s in human_set
             name = pn.get(s, "").strip()
             if is_human:
-                seats_info[s] = name if name else "人間"
+                seats_info[s] = "＊＊＊＊" if hide_private_names else name or "人間"
             elif s in ai_set:
                 seats_info[s] = "AI"
             else:

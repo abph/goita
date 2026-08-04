@@ -6504,7 +6504,8 @@ async function refreshRoomChatPeople(){
   if(!inRoom || personalSettings.showPlayersInChat !== true || roomChatPeopleFetching || document.hidden) return;
   roomChatPeopleFetching = true;
   try{
-    const response = await fetch(`${API}/games/list`);
+    const query = new URLSearchParams({viewer_game_id: gid, client_id: clientId});
+    const response = await fetch(`${API}/games/list?${query.toString()}`);
     if(!response.ok) return;
     const data = await response.json();
     renderRoomChatPeople(data.site_people || []);

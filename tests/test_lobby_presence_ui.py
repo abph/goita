@@ -17,6 +17,7 @@ def test_lobby_presence_is_shown_only_inside_chat() -> None:
     assert 'id="lobbyChatPeopleList"' in html
     assert "function renderLobbyPeople(sitePeople)" in html
     assert "renderLobbyPeople(data.site_people || []);" in html
+    assert "new URLSearchParams({viewer_game_id: gid, client_id: clientId})" in html
     assert "new URLSearchParams({client_id: clientId})" in html
     assert 'wsParams.set("name", personalSettings.playerName)' in html
 
