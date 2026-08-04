@@ -14,6 +14,19 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert 'id="lobbyChatInput"' in html
     assert 'id="lobbyChatModeChatButton"' in html
     assert 'id="lobbyChatModeAiButton"' in html
+    assert 'id="lobbyChatScopeButton"' in html
+    assert 'id="lobbyChatScopeMenu"' in html
+    assert 'id="chatScopeButton"' in html
+    assert 'id="chatScopeMenu"' in html
+    assert 'data-chat-scope="here"' in html
+    assert 'data-chat-scope="everyone"' in html
+    assert "function toggleChatScopeMenu(kind)" in html
+    assert "function selectChatMentionScope(kind, scope)" in html
+    assert "function applyChatMentionScope(message, scope)" in html
+    assert 'button.textContent = "@";' in html
+    assert "chatMentionScope = \"\";" in html
+    assert "lobbyChatMentionScope = \"\";" in html
+    assert html.count("scopePicker.hidden = isAiMode") == 2
     assert 'id="lobbyChatUnread"' in html
     assert "function toggleLobbyChatPanel(open)" in html
     assert "function renderLobbyChat(serverMessages)" in html

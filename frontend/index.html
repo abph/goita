@@ -1393,8 +1393,59 @@
     }
     .chat-compose-entry {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 6px;
+    }
+    .chat-scope-picker {
+      position: relative;
+      display: flex;
+    }
+    .chat-scope-picker[hidden],
+    .chat-scope-menu[hidden] {
+      display: none;
+    }
+    .chat-form .chat-scope-button {
+      width: 38px;
+      padding: 6px;
+      background: #fff;
+      color: #6d461f;
+      border: 2px solid #8b5a2b;
+      box-shadow: none;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .chat-form .chat-scope-button.active {
+      background: #8b5a2b;
+      color: #fff;
+    }
+    .chat-scope-menu {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 5px);
+      z-index: 12;
+      display: grid;
+      gap: 3px;
+      min-width: 108px;
+      padding: 4px;
+      background: #fffdf5;
+      border: 2px solid #8b5a2b;
+      border-radius: 6px;
+      box-shadow: 0 5px 14px rgba(0, 0, 0, 0.2);
+    }
+    .chat-form .chat-scope-option {
+      width: 100%;
+      padding: 6px 8px;
+      background: #fff;
+      color: #6d461f;
+      border: 1px solid transparent;
+      box-shadow: none;
+      text-align: left;
+      font-size: 12px;
+    }
+    .chat-form .chat-scope-option:hover,
+    .chat-form .chat-scope-option.active {
+      background: #f4efdf;
+      border-color: #c8a77a;
     }
     .chat-compose-modes {
       display: grid;
@@ -1809,6 +1860,18 @@
         padding: 6px;
         font-size: 13px;
         background: rgba(255, 255, 255, 0.56);
+      }
+      .chat-form .chat-scope-button {
+        width: 34px;
+        padding: 5px;
+        font-size: 16px;
+      }
+      .chat-scope-menu {
+        min-width: 98px;
+      }
+      .chat-form .chat-scope-option {
+        padding: 5px 7px;
+        font-size: 11px;
       }
       .chat-form button {
         padding: 6px 7px;
@@ -2496,6 +2559,12 @@
       border-radius: 0;
       background: #e9bd78;
     }
+    body.board-view-pixel .chat-scope-menu {
+      background: #fff7d6;
+      border: 3px solid #61391f;
+      border-radius: 0;
+      box-shadow: none;
+    }
     body.board-view-pixel .chat-form button,
     body.board-view-pixel .chat-form .chat-mode-button {
       border: 2px solid #61391f;
@@ -2836,6 +2905,19 @@
       background: #ffffff !important;
       border-color: #000000;
     }
+    body.board-view-pixel-mono .chat-scope-menu {
+      background: #ffffff !important;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form .chat-scope-option {
+      background: #ffffff !important;
+      color: #000000;
+      border-color: #000000;
+    }
+    body.board-view-pixel-mono .chat-form .chat-scope-option.active {
+      background: #000000 !important;
+      color: #ffffff;
+    }
     body.board-view-pixel-mono .chat-form .chat-mode-button {
       background: #ffffff !important;
       color: #000000;
@@ -2843,6 +2925,7 @@
     }
     body.board-view-pixel-mono .chat-form .chat-mode-button.chat.active,
     body.board-view-pixel-mono .chat-form .chat-mode-button.ai.active,
+    body.board-view-pixel-mono .chat-form .chat-scope-button.active,
     body.board-view-pixel-mono .chat-form .chat-submit-button,
     body.board-view-pixel-mono .chat-form .chat-submit-button.ai-mode {
       background: #000000 !important;
@@ -3131,6 +3214,14 @@
         <button id="lobbyChatModeAiButton" class="chat-mode-button ai" type="button" role="tab" aria-selected="false" onclick="setLobbyChatComposeMode('ai')">AIに質問</button>
       </div>
       <div class="chat-compose-entry">
+        <div id="lobbyChatScopePicker" class="chat-scope-picker">
+          <button id="lobbyChatScopeButton" class="chat-scope-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="送信範囲: 通常" title="送信範囲: 通常" onclick="toggleChatScopeMenu('lobby')">@</button>
+          <div id="lobbyChatScopeMenu" class="chat-scope-menu" role="menu" hidden>
+            <button class="chat-scope-option active" type="button" role="menuitemradio" aria-checked="true" data-chat-scope="" onclick="selectChatMentionScope('lobby', '')">通常</button>
+            <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="here" onclick="selectChatMentionScope('lobby', 'here')">この場所</button>
+            <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="everyone" onclick="selectChatMentionScope('lobby', 'everyone')">全員</button>
+          </div>
+        </div>
         <input id="lobbyChatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力">
         <button id="lobbyChatSendButton" class="chat-submit-button" type="submit">送信</button>
       </div>
@@ -3212,6 +3303,14 @@
               <button id="chatModeAiButton" class="chat-mode-button ai" type="button" role="tab" aria-selected="false" onclick="setChatComposeMode('ai')">AIに質問</button>
             </div>
             <div class="chat-compose-entry">
+              <div id="chatScopePicker" class="chat-scope-picker">
+                <button id="chatScopeButton" class="chat-scope-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="送信範囲: 通常" title="送信範囲: 通常" onclick="toggleChatScopeMenu('room')">@</button>
+                <div id="chatScopeMenu" class="chat-scope-menu" role="menu" hidden>
+                  <button class="chat-scope-option active" type="button" role="menuitemradio" aria-checked="true" data-chat-scope="" onclick="selectChatMentionScope('room', '')">通常</button>
+                  <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="here" onclick="selectChatMentionScope('room', 'here')">この場所</button>
+                  <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="everyone" onclick="selectChatMentionScope('room', 'everyone')">全員</button>
+                </div>
+              </div>
               <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力" />
               <button id="chatSendButton" class="chat-submit-button" type="submit">送信</button>
             </div>
@@ -4275,11 +4374,13 @@ let lobbyChatLastToastTs = 0;
 let lobbyChatSending = false;
 let lobbyChatAiAsking = false;
 let lobbyChatComposeMode = "chat";
+let lobbyChatMentionScope = "";
 let lastChatCount = 0;
 let lastChatToastCount = 0;
 let chatSending = false;
 let chatAiAsking = false;
 let chatComposeMode = "chat";
+let chatMentionScope = "";
 let chatToastTimer = null;
 let desktopRoomChatHeightObserver = null;
 let localChatNotices = [];
@@ -4869,7 +4970,7 @@ function applyLobbyAdminPayload(data) {
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
     mainInput.min = "1";
     mainInput.max = String(data.main_room_max || 6);
-    mainInput.value = String(data.main_room_count || 6);
+    mainInput.value = String(data.main_room_count || 4);
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 4);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
@@ -6714,9 +6815,77 @@ function setupDesktopRoomChatHeightSync(){
   syncDesktopRoomChatHeight();
 }
 
+function chatScopeLabel(scope){
+  if(scope === "everyone") return "全員";
+  if(scope === "here") return "この場所";
+  return "通常";
+}
+
+function closeChatScopeMenus(){
+  for(const kind of ["room", "lobby"]){
+    const prefix = kind === "lobby" ? "lobbyChatScope" : "chatScope";
+    const menu = document.getElementById(`${prefix}Menu`);
+    const button = document.getElementById(`${prefix}Button`);
+    if(menu) menu.hidden = true;
+    if(button) button.setAttribute("aria-expanded", "false");
+  }
+}
+
+function updateChatScopePicker(kind){
+  const isLobby = kind === "lobby";
+  const prefix = isLobby ? "lobbyChatScope" : "chatScope";
+  const scope = isLobby ? lobbyChatMentionScope : chatMentionScope;
+  const button = document.getElementById(`${prefix}Button`);
+  const menu = document.getElementById(`${prefix}Menu`);
+  const sourceLabel = `送信範囲: ${chatScopeLabel(scope)}`;
+  const label = window.goitaI18n?.translate?.(sourceLabel) || sourceLabel;
+  if(button){
+    button.textContent = "@";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.classList.toggle("active", Boolean(scope));
+  }
+  menu?.querySelectorAll("[data-chat-scope]").forEach((option) => {
+    const selected = option.dataset.chatScope === scope;
+    option.classList.toggle("active", selected);
+    option.setAttribute("aria-checked", selected ? "true" : "false");
+  });
+}
+
+function toggleChatScopeMenu(kind){
+  const prefix = kind === "lobby" ? "lobbyChatScope" : "chatScope";
+  const menu = document.getElementById(`${prefix}Menu`);
+  const button = document.getElementById(`${prefix}Button`);
+  if(!menu || !button || button.disabled) return;
+  const shouldOpen = menu.hidden;
+  closeChatScopeMenus();
+  menu.hidden = !shouldOpen;
+  button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  if(shouldOpen){
+    menu.querySelector(".chat-scope-option.active")?.focus();
+  }
+}
+
+function selectChatMentionScope(kind, scope){
+  const normalized = scope === "everyone" || scope === "here" ? scope : "";
+  if(kind === "lobby") lobbyChatMentionScope = normalized;
+  else chatMentionScope = normalized;
+  updateChatScopePicker(kind);
+  closeChatScopeMenus();
+  document.getElementById(kind === "lobby" ? "lobbyChatInput" : "chatInput")?.focus();
+}
+
+document.addEventListener("click", (event) => {
+  if(!event.target.closest?.(".chat-scope-picker")) closeChatScopeMenus();
+});
+document.addEventListener("keydown", (event) => {
+  if(event.key === "Escape") closeChatScopeMenus();
+});
+
 function updateChatComposerUi(){
   const isAiMode = chatComposeMode === "ai";
   const input = document.getElementById("chatInput");
+  const scopePicker = document.getElementById("chatScopePicker");
   const chatButton = document.getElementById("chatModeChatButton");
   const aiButton = document.getElementById("chatModeAiButton");
   const sendButton = document.getElementById("chatSendButton");
@@ -6724,6 +6893,9 @@ function updateChatComposerUi(){
     input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
     input.classList.toggle("ai-mode", isAiMode);
   }
+  if(scopePicker) scopePicker.hidden = isAiMode;
+  if(isAiMode) closeChatScopeMenus();
+  updateChatScopePicker("room");
   if(chatButton){
     chatButton.classList.toggle("active", !isAiMode);
     chatButton.setAttribute("aria-selected", isAiMode ? "false" : "true");
@@ -6747,13 +6919,24 @@ function setChatComposeMode(mode, focusInput = true){
 
 function setChatComposerDisabled(disabled){
   const input = document.getElementById("chatInput");
+  const scopeButton = document.getElementById("chatScopeButton");
+  const scopeOptions = document.querySelectorAll("#chatScopeMenu .chat-scope-option");
   const chatButton = document.getElementById("chatModeChatButton");
   const aiButton = document.getElementById("chatModeAiButton");
   const sendButton = document.getElementById("chatSendButton");
   if(input) input.disabled = disabled;
+  if(scopeButton) scopeButton.disabled = disabled;
+  scopeOptions.forEach((option) => { option.disabled = disabled; });
   if(chatButton) chatButton.disabled = disabled;
   if(aiButton) aiButton.disabled = disabled;
   if(sendButton) sendButton.disabled = disabled;
+}
+
+function applyChatMentionScope(message, scope){
+  const text = String(message || "").trim();
+  if(!text || (scope !== "here" && scope !== "everyone")) return text;
+  const withoutMention = text.replace(/^@(everyone|here)(?:\s+|$)/i, "").trim();
+  return `@${scope}${withoutMention ? ` ${withoutMention}` : ""}`;
 }
 
 function submitChatInput(event){
@@ -6770,7 +6953,7 @@ async function sendChatMessage(event){
   if(chatSending || chatAiAsking) return;
   const input = document.getElementById("chatInput");
   if(!input) return;
-  const message = input.value.trim();
+  const message = applyChatMentionScope(input.value, chatMentionScope);
   if(!message) return;
 
   chatSending = true;
@@ -6790,6 +6973,8 @@ async function sendChatMessage(event){
       setHint("チャットの送信に失敗しました。");
     } else {
       input.value = "";
+      chatMentionScope = "";
+      updateChatScopePicker("room");
       await refresh();
     }
   }catch(e){
@@ -6806,6 +6991,7 @@ async function sendChatMessage(event){
 function updateLobbyChatComposerUi(){
   const isAiMode = lobbyChatComposeMode === "ai";
   const input = document.getElementById("lobbyChatInput");
+  const scopePicker = document.getElementById("lobbyChatScopePicker");
   const chatButton = document.getElementById("lobbyChatModeChatButton");
   const aiButton = document.getElementById("lobbyChatModeAiButton");
   const sendButton = document.getElementById("lobbyChatSendButton");
@@ -6813,6 +6999,9 @@ function updateLobbyChatComposerUi(){
     input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
     input.classList.toggle("ai-mode", isAiMode);
   }
+  if(scopePicker) scopePicker.hidden = isAiMode;
+  if(isAiMode) closeChatScopeMenus();
+  updateChatScopePicker("lobby");
   if(chatButton){
     chatButton.classList.toggle("active", !isAiMode);
     chatButton.setAttribute("aria-selected", isAiMode ? "false" : "true");
@@ -6836,10 +7025,14 @@ function setLobbyChatComposeMode(mode, focusInput = true){
 
 function setLobbyChatComposerDisabled(disabled){
   const input = document.getElementById("lobbyChatInput");
+  const scopeButton = document.getElementById("lobbyChatScopeButton");
+  const scopeOptions = document.querySelectorAll("#lobbyChatScopeMenu .chat-scope-option");
   const chatButton = document.getElementById("lobbyChatModeChatButton");
   const aiButton = document.getElementById("lobbyChatModeAiButton");
   const sendButton = document.getElementById("lobbyChatSendButton");
   if(input) input.disabled = disabled;
+  if(scopeButton) scopeButton.disabled = disabled;
+  scopeOptions.forEach((option) => { option.disabled = disabled; });
   if(chatButton) chatButton.disabled = disabled;
   if(aiButton) aiButton.disabled = disabled;
   if(sendButton) sendButton.disabled = disabled;
@@ -6860,7 +7053,7 @@ async function sendLobbyChatMessage(event){
   const input = document.getElementById("lobbyChatInput");
   const status = document.getElementById("lobbyChatStatus");
   if(!input || !status) return;
-  const message = input.value.trim();
+  const message = applyChatMentionScope(input.value, lobbyChatMentionScope);
   if(!message) return;
 
   lobbyChatSending = true;
@@ -6882,6 +7075,8 @@ async function sendLobbyChatMessage(event){
     }else{
       const data = await res.json();
       input.value = "";
+      lobbyChatMentionScope = "";
+      updateChatScopePicker("lobby");
       renderLobbyChat(data?.chat_messages || []);
     }
   }catch(error){
