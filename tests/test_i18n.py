@@ -41,9 +41,13 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     ask_chat_block = html.split("async function askChatAi(){", 1)[1].split(
         "function seatTurnLabel", 1
     )[0]
+    ask_lobby_chat_block = html.split("async function askLobbyChatAi(){", 1)[1].split(
+        "async function askChatAi(){", 1
+    )[0]
 
     assert "window.goitaI18n?.translate?.(source)" in html
     assert 'language: window.goitaI18n?.getLanguage?.() || "ja"' in ask_chat_block
+    assert 'language: window.goitaI18n?.getLanguage?.() || "ja"' in ask_lobby_chat_block
     assert 'window.addEventListener("goita-language-change"' in html
     assert "function shouldTranslateChatItem(item)" in html
     assert "function localizedChatSender(item)" in html

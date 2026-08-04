@@ -680,6 +680,44 @@ def _request_gemini_help(question: str, language: str = "ja") -> str:
     return answer
 
 
+async def _resolve_chat_ai_answer(
+    question: str,
+    language: str,
+    rate_key: str,
+) -> str:
+    local_answer = _beginner_support_move_answer(question, language)
+    if local_answer is None and not _gemini_api_key():
+        raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
+
+    now = time.monotonic()
+    last_request = AI_HELP_LAST_REQUEST.get(rate_key, 0.0)
+    wait_seconds = AI_HELP_COOLDOWN_SECONDS - (now - last_request)
+    if wait_seconds > 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"AIへの質問は、あと{max(1, int(wait_seconds + 0.999))}秒お待ちください。",
+        )
+    if len(AI_HELP_LAST_REQUEST) > 1000:
+        cutoff = now - 300
+        for key, requested_at in list(AI_HELP_LAST_REQUEST.items()):
+            if requested_at < cutoff:
+                AI_HELP_LAST_REQUEST.pop(key, None)
+    AI_HELP_LAST_REQUEST[rate_key] = now
+
+    if local_answer is not None:
+        return local_answer
+    try:
+        async with AI_HELP_SEMAPHORE:
+            return await asyncio.wait_for(
+                asyncio.to_thread(_request_gemini_help, question, language),
+                timeout=30,
+            )
+    except (RuntimeError, asyncio.TimeoutError):
+        if AI_HELP_LAST_REQUEST.get(rate_key) == now:
+            AI_HELP_LAST_REQUEST.pop(rate_key, None)
+        raise HTTPException(status_code=502, detail="AIから回答を取得できませんでした。")
+
+
 def _normalize_chat_seat(s: str) -> str:
     s = (s or "").strip().upper()
     if s in ALL_SEATS:
@@ -2115,6 +2153,51 @@ async def post_lobby_chat_message(req: ChatRequest):
     return {"ok": True, "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:]}
 
 
+@app.post("/lobby/chat/ask_ai")
+async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
+    question = _sanitize_chat_message(req.message)
+    if not question:
+        raise HTTPException(status_code=400, detail="質問を入力してください。")
+
+    language = _normalize_ui_language(req.language)
+    client_ip = request.client.host if request.client else "unknown"
+    identity = (req.client_id or "").strip()[:80] or f"{client_ip}:W"
+    answer = await _resolve_chat_ai_answer(
+        question,
+        language,
+        f"lobby:{identity}",
+    )
+
+    name = _sanitize_player_name(req.name)
+    ts = int(time.time() * 1000)
+    PUBLIC_CHAT_MESSAGES.extend([
+        {
+            "seat": "W",
+            "sender": name or "ゲスト",
+            "message": question,
+            "ts": ts,
+            "origin": "lobby",
+        },
+        {
+            "seat": "AI",
+            "sender": "案内AI",
+            "message": answer,
+            "ts": ts + 1,
+            "origin": "lobby",
+            "ai_answer": True,
+        },
+    ])
+    if len(PUBLIC_CHAT_MESSAGES) > 100:
+        del PUBLIC_CHAT_MESSAGES[:-100]
+
+    await _broadcast_public_chat_update()
+    return {
+        "ok": True,
+        "answer": answer,
+        "chat_messages": list(PUBLIC_CHAT_MESSAGES)[-100:],
+    }
+
+
 @app.post("/games/{game_id}/chat/ask_ai")
 async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     if _is_main_game_id(game_id):
@@ -2127,9 +2210,6 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     if not question:
         raise HTTPException(status_code=400, detail="質問を入力してください。")
     language = _normalize_ui_language(req.language)
-    local_answer = _beginner_support_move_answer(question, language)
-    if local_answer is None and not _gemini_api_key():
-        raise HTTPException(status_code=503, detail="AI案内はまだ設定されていません。")
 
     seat = _normalize_chat_seat(req.seat)
     if seat in ALL_SEATS and not _client_owns_human_seat(game, seat, req.client_id):
@@ -2137,35 +2217,11 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
 
     client_ip = request.client.host if request.client else "unknown"
     identity = (req.client_id or "").strip()[:80] or f"{client_ip}:{seat}"
-    rate_key = f"{game_id}:{identity}"
-    now = time.monotonic()
-    last_request = AI_HELP_LAST_REQUEST.get(rate_key, 0.0)
-    wait_seconds = AI_HELP_COOLDOWN_SECONDS - (now - last_request)
-    if wait_seconds > 0:
-        raise HTTPException(
-            status_code=429,
-            detail=f"AIへの質問は、あと{max(1, int(wait_seconds + 0.999))}秒お待ちください。",
-        )
-    if len(AI_HELP_LAST_REQUEST) > 1000:
-        cutoff = now - 300
-        for key, requested_at in list(AI_HELP_LAST_REQUEST.items()):
-            if requested_at < cutoff:
-                AI_HELP_LAST_REQUEST.pop(key, None)
-    AI_HELP_LAST_REQUEST[rate_key] = now
-
-    if local_answer is not None:
-        answer = local_answer
-    else:
-        try:
-            async with AI_HELP_SEMAPHORE:
-                answer = await asyncio.wait_for(
-                    asyncio.to_thread(_request_gemini_help, question, language),
-                    timeout=30,
-                )
-        except (RuntimeError, asyncio.TimeoutError):
-            if AI_HELP_LAST_REQUEST.get(rate_key) == now:
-                AI_HELP_LAST_REQUEST.pop(rate_key, None)
-            raise HTTPException(status_code=502, detail="AIから回答を取得できませんでした。")
+    answer = await _resolve_chat_ai_answer(
+        question,
+        language,
+        f"{game_id}:{identity}",
+    )
 
     is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])

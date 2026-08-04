@@ -1680,7 +1680,8 @@
     .lobby-chat-toggle {
       position: fixed;
       right: 14px;
-      bottom: 18px;
+      top: 142px;
+      bottom: auto;
       z-index: 900;
       display: flex;
       align-items: center;
@@ -1731,7 +1732,8 @@
     @media (max-width: 701px) {
       .lobby-chat-toggle {
         right: 10px;
-        bottom: 14px;
+        top: 142px;
+        bottom: auto;
         width: 42px;
         height: 42px;
         padding: 6px;
@@ -2888,7 +2890,11 @@
       <button class="chat-close" type="button" onclick="toggleLobbyChatPanel(false)" aria-label="閉じる">×</button>
     </div>
     <div id="lobbyChatMessages" class="chat-messages"></div>
-    <form class="chat-form" onsubmit="sendLobbyChatMessage(event)">
+    <form class="chat-form" onsubmit="submitLobbyChatInput(event)">
+      <div class="chat-compose-modes" role="tablist" aria-label="送信先">
+        <button id="lobbyChatModeChatButton" class="chat-mode-button chat active" type="button" role="tab" aria-selected="true" onclick="setLobbyChatComposeMode('chat')">チャット</button>
+        <button id="lobbyChatModeAiButton" class="chat-mode-button ai" type="button" role="tab" aria-selected="false" onclick="setLobbyChatComposeMode('ai')">AIに質問</button>
+      </div>
       <div class="chat-compose-entry">
         <input id="lobbyChatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力">
         <button id="lobbyChatSendButton" class="chat-submit-button" type="submit">送信</button>
@@ -3969,6 +3975,8 @@ let lobbyChatMessages = [];
 let lobbyChatLastReadTs = 0;
 let lobbyChatLastToastTs = 0;
 let lobbyChatSending = false;
+let lobbyChatAiAsking = false;
+let lobbyChatComposeMode = "chat";
 let lastChatCount = 0;
 let lastChatToastCount = 0;
 let chatSending = false;
@@ -4494,6 +4502,7 @@ async function returnToLobby() {
     }
     setAutoPlayEnabled(false);
     setChatComposeMode("chat", false);
+    setLobbyChatComposeMode("chat", false);
     toggleLobbyChatPanel(false);
     toggleChatPanel(false);
     hideChatToast();
@@ -6344,19 +6353,68 @@ async function sendChatMessage(event){
   }
 }
 
+function updateLobbyChatComposerUi(){
+  const isAiMode = lobbyChatComposeMode === "ai";
+  const input = document.getElementById("lobbyChatInput");
+  const chatButton = document.getElementById("lobbyChatModeChatButton");
+  const aiButton = document.getElementById("lobbyChatModeAiButton");
+  const sendButton = document.getElementById("lobbyChatSendButton");
+  if(input){
+    input.placeholder = isAiMode ? "AIへの質問を入力" : "チャットを入力";
+    input.classList.toggle("ai-mode", isAiMode);
+  }
+  if(chatButton){
+    chatButton.classList.toggle("active", !isAiMode);
+    chatButton.setAttribute("aria-selected", isAiMode ? "false" : "true");
+  }
+  if(aiButton){
+    aiButton.classList.toggle("active", isAiMode);
+    aiButton.setAttribute("aria-selected", isAiMode ? "true" : "false");
+  }
+  if(sendButton){
+    sendButton.textContent = "送信";
+    sendButton.classList.toggle("ai-mode", isAiMode);
+  }
+}
+
+function setLobbyChatComposeMode(mode, focusInput = true){
+  if(lobbyChatSending || lobbyChatAiAsking) return;
+  lobbyChatComposeMode = mode === "ai" ? "ai" : "chat";
+  updateLobbyChatComposerUi();
+  if(focusInput) document.getElementById("lobbyChatInput")?.focus();
+}
+
+function setLobbyChatComposerDisabled(disabled){
+  const input = document.getElementById("lobbyChatInput");
+  const chatButton = document.getElementById("lobbyChatModeChatButton");
+  const aiButton = document.getElementById("lobbyChatModeAiButton");
+  const sendButton = document.getElementById("lobbyChatSendButton");
+  if(input) input.disabled = disabled;
+  if(chatButton) chatButton.disabled = disabled;
+  if(aiButton) aiButton.disabled = disabled;
+  if(sendButton) sendButton.disabled = disabled;
+}
+
+function submitLobbyChatInput(event){
+  event.preventDefault();
+  if(lobbyChatComposeMode === "ai"){
+    askLobbyChatAi();
+  }else{
+    sendLobbyChatMessage();
+  }
+}
+
 async function sendLobbyChatMessage(event){
   if(event) event.preventDefault();
-  if(lobbyChatSending) return;
+  if(lobbyChatSending || lobbyChatAiAsking) return;
   const input = document.getElementById("lobbyChatInput");
-  const sendButton = document.getElementById("lobbyChatSendButton");
   const status = document.getElementById("lobbyChatStatus");
-  if(!input || !sendButton || !status) return;
+  if(!input || !status) return;
   const message = input.value.trim();
   if(!message) return;
 
   lobbyChatSending = true;
-  input.disabled = true;
-  sendButton.disabled = true;
+  setLobbyChatComposerDisabled(true);
   status.textContent = "";
   try{
     const res = await fetch(`${API}/lobby/chat`, {
@@ -6381,8 +6439,58 @@ async function sendLobbyChatMessage(event){
     status.textContent = "チャットの送信に失敗しました。通信状態を確認してください。";
   }finally{
     lobbyChatSending = false;
-    input.disabled = false;
-    sendButton.disabled = false;
+    setLobbyChatComposerDisabled(false);
+    updateLobbyChatComposerUi();
+    input.focus();
+  }
+}
+
+async function askLobbyChatAi(){
+  if(lobbyChatSending || lobbyChatAiAsking) return;
+  const input = document.getElementById("lobbyChatInput");
+  const status = document.getElementById("lobbyChatStatus");
+  if(!input || !status) return;
+  const message = input.value.trim();
+  if(!message){
+    status.textContent = "AIに聞きたいことを入力してください。";
+    input.focus();
+    return;
+  }
+
+  lobbyChatAiAsking = true;
+  setLobbyChatComposerDisabled(true);
+  status.textContent = "";
+  try{
+    const res = await fetch(`${API}/lobby/chat/ask_ai`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        seat: WATCH,
+        client_id: clientId,
+        name: personalSettings.playerName || "",
+        message,
+        language: window.goitaI18n?.getLanguage?.() || "ja",
+      }),
+    });
+    if(!res.ok){
+      let detail = "AIから回答を取得できませんでした。";
+      try{
+        const data = await res.json();
+        if(data?.detail) detail = String(data.detail);
+      }catch(_error){}
+      status.textContent = detail;
+    }else{
+      const data = await res.json();
+      input.value = "";
+      renderLobbyChat(data?.chat_messages || []);
+    }
+  }catch(error){
+    console.error("Lobby chat AI error:", error);
+    status.textContent = "AIへの接続に失敗しました。通信状態を確認してください。";
+  }finally{
+    lobbyChatAiAsking = false;
+    setLobbyChatComposerDisabled(false);
+    updateLobbyChatComposerUi();
     input.focus();
   }
 }
@@ -7830,6 +7938,7 @@ window.addEventListener("goita-language-change", () => {
   renderLinkedKifuNotice();
   updateLobbyAdminPeopleCounts();
   renderLobbyChat(lobbyChatMessages);
+  updateLobbyChatComposerUi();
   updateChatComposerUi();
   updateVoiceChatUi();
   updateSeatButtons(latestState || {});

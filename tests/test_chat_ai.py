@@ -12,8 +12,10 @@ import backend.app as app_module
 async def _run() -> None:
     original_request = app_module._request_gemini_help
     original_api_key = os.environ.get("GEMINI_API_KEY")
+    original_public_messages = list(app_module.PUBLIC_CHAT_MESSAGES)
     try:
         app_module.GAMES.clear()
+        app_module.PUBLIC_CHAT_MESSAGES.clear()
         app_module.AI_HELP_LAST_REQUEST.clear()
         assert "https://vrcgoita.com/goita/rule/" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "https://vrcgoita.com/goita/strategy/" in app_module.AI_HELP_SYSTEM_PROMPT
@@ -47,6 +49,23 @@ async def _run() -> None:
         assert messages[-1]["sender"] == "案内AI"
         assert messages[-1]["ai_answer"] is True
         assert "Auto" in messages[-1]["message"]
+
+        lobby_payload = payload.model_copy(update={
+            "client_id": "lobby-help-client",
+            "name": "ロビー利用者",
+            "message": "設定はどこですか？",
+        })
+        lobby_result = await app_module.ask_lobby_chat_ai(lobby_payload, request)
+        lobby_messages = lobby_result["chat_messages"]
+        assert lobby_result["ok"] is True
+        assert lobby_messages[-2]["sender"] == "ロビー利用者"
+        assert lobby_messages[-2]["origin"] == "lobby"
+        assert lobby_messages[-1]["sender"] == "案内AI"
+        assert lobby_messages[-1]["origin"] == "lobby"
+        assert lobby_messages[-1]["ai_answer"] is True
+        assert lobby_messages[-1] in app_module._chat_messages_for_game(
+            "main", app_module.GAMES["main"]
+        )
 
         try:
             await app_module.ask_chat_ai("main", payload, request)
@@ -95,6 +114,7 @@ async def _run() -> None:
             raise AssertionError("missing API key was not rejected")
     finally:
         app_module._request_gemini_help = original_request
+        app_module.PUBLIC_CHAT_MESSAGES[:] = original_public_messages
         if original_api_key is None:
             os.environ.pop("GEMINI_API_KEY", None)
         else:
