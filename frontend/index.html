@@ -1347,11 +1347,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .chat-time {
-      font-size: 11px;
-      color: rgba(85, 85, 85, 0.55);
-      font-weight: 700;
-    }
     .chat-text {
       white-space: pre-wrap;
       word-break: break-word;
@@ -1483,11 +1478,6 @@
       color: #6d461f;
       font-size: 13px;
     }
-    .chat-toast-time {
-      color: rgba(85, 85, 85, 0.55);
-      font-size: 11px;
-      font-weight: 700;
-    }
     .chat-toast-text {
       display: -webkit-box;
       max-height: calc(1.45em * 3);
@@ -1531,8 +1521,9 @@
         position: static;
         flex: 0 0 var(--chat-panel-width);
         width: var(--chat-panel-width);
-        height: auto;
-        align-self: stretch;
+        height: var(--desktop-room-chat-height, auto);
+        max-height: var(--desktop-room-chat-height, none);
+        align-self: flex-start;
         min-height: 0;
         z-index: auto;
         border: 3px solid #8b5a2b;
@@ -1546,6 +1537,8 @@
         display: none;
       }
       .play-layout .chat-messages {
+        min-height: 0;
+        overflow-y: auto;
         padding: 9px;
       }
       #lobbyChatPanel.chat-people-visible {
@@ -1786,9 +1779,6 @@
       .chat-sender {
         font-size: 11px;
       }
-      .chat-time {
-        font-size: 10px;
-      }
       .chat-text {
         font-size: 12px;
         line-height: 1.35;
@@ -1813,9 +1803,6 @@
       }
       body.mobile-chat-width-narrow .chat-sender {
         font-size: 10px;
-      }
-      body.mobile-chat-width-narrow .chat-time {
-        font-size: 9px;
       }
       body.mobile-chat-width-narrow .chat-text {
         font-size: 11px;
@@ -2452,9 +2439,6 @@
     body.board-view-pixel .chat-sender {
       color: #422b1d;
     }
-    body.board-view-pixel .chat-time {
-      color: #66503d;
-    }
     body.board-view-pixel .chat-text {
       color: #231a13;
     }
@@ -2784,9 +2768,6 @@
     body.board-view-pixel-mono .chat-message.notice .chat-sender,
     body.board-view-pixel-mono .chat-message.notice .chat-text,
     body.board-view-pixel-mono .chat-message.ai-answer .chat-sender {
-      color: #000000;
-    }
-    body.board-view-pixel-mono .chat-time {
       color: #000000;
     }
     body.board-view-pixel-mono .chat-messages {
@@ -3249,7 +3230,6 @@
 <div id="chatToast" class="chat-toast" aria-live="polite">
   <div class="chat-toast-meta">
     <span id="chatToastSender"></span>
-    <span id="chatToastTime" class="chat-toast-time"></span>
   </div>
   <div id="chatToastText" class="chat-toast-text"></div>
 </div>
@@ -4266,6 +4246,7 @@ let chatSending = false;
 let chatAiAsking = false;
 let chatComposeMode = "chat";
 let chatToastTimer = null;
+let desktopRoomChatHeightObserver = null;
 let localChatNotices = [];
 let lastHintNoticeKey = "";
 let socket = null;
@@ -6377,17 +6358,6 @@ function toggleChatPanel(open){
   }
 }
 
-function formatChatTime(ts){
-  const n = Number(ts);
-  if(!Number.isFinite(n)) return "";
-  const d = new Date(n);
-  if(Number.isNaN(d.getTime())) return "";
-  const hh = d.getHours();
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  return uiText(`${hh}時${mm}分${ss}秒`);
-}
-
 function shouldTranslateChatItem(item){
   return item?.local_notice === true || item?.ai_answer === true || item?.seat === "notice";
 }
@@ -6413,9 +6383,8 @@ function localizedChatSender(item){
 function showChatToast(item){
   const toast = document.getElementById("chatToast");
   const sender = document.getElementById("chatToastSender");
-  const time = document.getElementById("chatToastTime");
   const text = document.getElementById("chatToastText");
-  if(!toast || !sender || !time || !text) return;
+  if(!toast || !sender || !text) return;
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
   if((inLobby && lobbyChatOpen) || (!inLobby && !isDesktopChatDocked() && chatOpen)){
     hideChatToast();
@@ -6424,7 +6393,6 @@ function showChatToast(item){
 
   sender.setAttribute("data-i18n-ignore", "");
   sender.textContent = localizedChatSender(item);
-  time.textContent = formatChatTime(item?.ts);
   const shouldTranslateMessage = shouldTranslateChatItem(item);
   text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage);
   text.textContent = shouldTranslateMessage
@@ -6543,14 +6511,6 @@ function renderChatItems(box, messages, isMine = null){
     meta.className = "chat-meta";
     meta.appendChild(sender);
 
-    const timeText = formatChatTime(item?.ts);
-    if(timeText){
-      const time = document.createElement("span");
-      time.className = "chat-time";
-      time.textContent = timeText;
-      meta.appendChild(time);
-    }
-
     const text = document.createElement("div");
     text.className = "chat-text";
     setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
@@ -6624,6 +6584,7 @@ function renderChat(state){
   panel.style.display = inRoom ? "flex" : "none";
   panel.classList.toggle("open", inRoom && chatVisible);
   if(!inRoom){
+    panel.style.removeProperty("--desktop-room-chat-height");
     chatOpen = false;
     panel.classList.remove("open");
     btn.classList.remove("open");
@@ -6664,6 +6625,31 @@ function renderChat(state){
       setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
     }
   }
+  syncDesktopRoomChatHeight();
+}
+
+function syncDesktopRoomChatHeight(){
+  const panel = document.getElementById("chatPanel");
+  const mainColumn = document.querySelector(".play-main-column");
+  if(!panel || !mainColumn) return;
+  if(!isDesktopChatDocked()){
+    panel.style.removeProperty("--desktop-room-chat-height");
+    return;
+  }
+  const height = Math.ceil(mainColumn.getBoundingClientRect().height);
+  if(height > 0){
+    panel.style.setProperty("--desktop-room-chat-height", `${height}px`);
+  }
+}
+
+function setupDesktopRoomChatHeightSync(){
+  const mainColumn = document.querySelector(".play-main-column");
+  if(!mainColumn) return;
+  if(typeof ResizeObserver === "function"){
+    desktopRoomChatHeightObserver = new ResizeObserver(() => syncDesktopRoomChatHeight());
+    desktopRoomChatHeightObserver.observe(mainColumn);
+  }
+  syncDesktopRoomChatHeight();
 }
 
 function updateChatComposerUi(){
@@ -8361,6 +8347,7 @@ window.addEventListener("beforeunload", () => {
 
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();
+  setupDesktopRoomChatHeightSync();
   renderLinkedKifuNotice();
   initializeVoiceChat();
   window.setInterval(refreshRoomChatPeople, 10000);

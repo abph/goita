@@ -14,7 +14,27 @@ def test_board_and_hands_share_the_desktop_main_column():
 
 
 def test_desktop_chat_stretches_to_board_and_hands_height():
-    assert "align-items: stretch;" in HTML
     assert ".play-layout .board-wrap,\n      .play-layout .hands-area" in HTML
-    assert "height: auto;\n        align-self: stretch;" in HTML
+    assert "height: var(--desktop-room-chat-height, auto);" in HTML
+    assert "max-height: var(--desktop-room-chat-height, none);" in HTML
+    assert "align-self: flex-start;" in HTML
+    assert "function syncDesktopRoomChatHeight()" in HTML
+    assert 'document.querySelector(".play-main-column")' in HTML
+    assert 'panel.style.setProperty("--desktop-room-chat-height", `${height}px`);' in HTML
+    assert "desktopRoomChatHeightObserver = new ResizeObserver(() => syncDesktopRoomChatHeight())" in HTML
     assert "height: calc((var(--cell) * 8) + (var(--gap) * 7) + 32px);" not in HTML
+
+
+def test_chat_messages_scroll_inside_the_fixed_desktop_panel():
+    desktop_chat_start = HTML.index(".play-layout .chat-messages {")
+    desktop_chat_end = HTML.index("}", desktop_chat_start)
+    desktop_chat_css = HTML[desktop_chat_start:desktop_chat_end]
+
+    assert "min-height: 0;" in desktop_chat_css
+    assert "overflow-y: auto;" in desktop_chat_css
+
+
+def test_chat_does_not_render_timestamps():
+    assert 'id="chatToastTime"' not in HTML
+    assert 'className = "chat-time"' not in HTML
+    assert "function formatChatTime(" not in HTML
