@@ -153,6 +153,76 @@ def test_receive_ally_second_attack_to_play_fourth_silver_third() -> None:
     assert a_agent.last_score_fallback_detail == "attack_force_enemy_king"
 
 
+def test_receive_ally_angle_to_play_fourth_horse_third_without_extra_pair() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("17336513"),
+            "B": list("74522841"),
+            "C": list("14625211"),
+            "D": list("15411931"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("A", ("attack_after_block", "1", "3")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "3", None)),
+        ("D", ("attack", None, "1")),
+        ("A", ("receive", "1", None)),
+        ("A", ("attack", None, "3")),
+        ("B", ("receive", "8", None)),
+        ("B", ("attack", None, "2")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "5", "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("pass", None, None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    a_agent = agents["A"]
+    tracker = a_agent._track[id(state)]
+    tracker["my_attack_count"] = 2
+    assert tracker["public_seen_counts"]["3"] == 3
+    assert a_agent._ally_force_king_attack_piece_after_receive(
+        state,
+        "A",
+        "receive",
+        "6",
+    ) == "3"
+
+    receive = a_agent.select_action(state, "A", state.legal_actions("A"))
+    assert receive == ("receive", "6", None)
+    assert a_agent.last_score_fallback_detail == "ally_force_king_receive"
+
+    state.apply_receive("A", "6")
+    for agent in agents.values():
+        agent.on_public_action(state, "A", receive)
+    attack = a_agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert attack == ("attack", None, "3")
+    assert a_agent.last_score_fallback_detail == "attack_force_enemy_king"
+
+
 def test_ally_big_pair_receive_waits_without_strong_third_attack_or_royal() -> None:
     state = GoitaState(
         hands={
@@ -491,6 +561,63 @@ def test_no_shi_endgame_uses_royal_instead_of_passing_enemy_first_attack() -> No
     assert state.team_score["AC"] == 40
 
 
+def test_no_shi_endgame_uses_same_gold_and_preserves_gyoku() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("21114319"),
+            "B": list("31246158"),
+            "C": list("57534231"),
+            "D": list("14516217"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("B", ("attack_after_block", "1", "6")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "1", "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "5")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    b_agent = agents["B"]
+    tracker = b_agent._track[id(state)]
+    tracker["my_attack_count"] = 2
+
+    receive = b_agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert sorted(state.hands["B"]) == ["2", "3", "5", "8"]
+    assert receive == ("receive", "5", None)
+    assert b_agent.last_decision_reason == "score_fallback"
+    assert (
+        b_agent.last_score_fallback_detail
+        == "receive_no_shi_same_piece_preserve_royal"
+    )
+    search = tracker.get("last_time_limited_search")
+    assert search is not None
+    assert search["action"] == ("receive", "5", None)
+
+
 def test_passes_ally_first_kyosha_to_preserve_likely_three_kyosha_route() -> None:
     state = GoitaState(
         hands={
@@ -614,8 +741,10 @@ if __name__ == "__main__":
     test_receive_strategy_methods_are_owned_by_mixin()
     test_enemy_second_big_attack_is_passed_with_royal_reserve()
     test_receive_ally_second_attack_to_play_fourth_silver_third()
+    test_receive_ally_angle_to_play_fourth_horse_third_without_extra_pair()
     test_weak_next_player_receives_dealer_silver_and_signals_with_shi()
     test_full_receive_cover_waits_for_enemy_third_attack_and_fifty_points()
     test_no_shi_endgame_uses_royal_instead_of_passing_enemy_first_attack()
+    test_no_shi_endgame_uses_same_gold_and_preserves_gyoku()
     test_passes_ally_first_kyosha_to_preserve_likely_three_kyosha_route()
     print("RECEIVE_STRATEGY_MODULE_TEST_OK")

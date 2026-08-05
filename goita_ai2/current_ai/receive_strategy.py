@@ -327,7 +327,7 @@ class ReceiveStrategyMixin:
         player: str,
         actions: List[Action],
     ) -> Optional[Action]:
-        """Use a royal for the third attack route when passing leaves no shi defence."""
+        """Keep a same-piece receive ahead of an unproven royal endgame commit."""
         tr = self._track.get(id(state))
         if (
             tr is None
@@ -347,6 +347,21 @@ class ReceiveStrategyMixin:
         ]
         if not royal_receives:
             return None
+
+        # A proven finish was already selected by _guaranteed_finish_receive_action.
+        # Otherwise, preserve the royal when the attacked piece itself can receive;
+        # the unprotected detail lets the timed search overturn this if warranted.
+        same_piece_receives = [
+            action
+            for action in actions
+            if action[0] == "receive"
+            and action[1] == state.current_attack
+            and action[1] not in ("8", "9")
+        ]
+        if same_piece_receives:
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail("receive_no_shi_same_piece_preserve_royal")
+            return same_piece_receives[0]
 
         royal_receives.sort(
             key=lambda action: self._score_receive_phase(
@@ -723,7 +738,10 @@ class ReceiveStrategyMixin:
             for p in set(hand_after)
             if p in strong_followups | fourth_middle_followups
             and self._attack_forces_enemy_king_receive(state, player, p, hand_after)
-            and self._ally_receive_keeps_strong_third_attack(hand_after, p)
+            and (
+                p in fourth_middle_followups
+                or self._ally_receive_keeps_strong_third_attack(hand_after, p)
+            )
         ]
         if not candidates:
             return None
