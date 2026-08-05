@@ -219,7 +219,13 @@ class AttackStrategyMixin:
             or tr.get("my_last_receive_piece") != "1"
             or int(tr.get("my_init_count", Counter()).get("1", 0)) < 4
             or hand.count("1") < 3
-            or any(hand.count(piece) >= 2 for piece in ("2", "3", "4", "5", "6", "7"))
+            or (
+                not tr.get("my_shi_approval_pending")
+                and any(
+                    hand.count(piece) >= 2
+                    for piece in ("2", "3", "4", "5", "6", "7")
+                )
+            )
         ):
             return None
 

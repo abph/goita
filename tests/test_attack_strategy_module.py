@@ -172,6 +172,59 @@ def test_four_shi_receive_returns_shi_over_singleton_attacks() -> None:
     assert c_agent.last_score_fallback_detail == "attack_four_shi_receive_return"
 
 
+def test_four_shi_ally_approval_returns_shi_over_middle_pair_plan() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11471313"),
+            "B": list("21165417"),
+            "C": list("11512916"),
+            "D": list("55422338"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    apply_public("C", ("attack_after_block", "1", "1"))
+    apply_public("D", ("pass", None, None))
+
+    a_agent = agents["A"]
+    receive = a_agent.select_action(state, "A", state.legal_actions("A"))
+    assert receive == ("receive", "1", None)
+    assert a_agent.last_decision_reason == "shi_signal"
+
+    apply_public("A", receive)
+    tracker = a_agent._track[id(state)]
+    assert tracker["my_shi_approval_pending"] is True
+    assert tracker["special_attack_plan"] == {
+        "label": "middle_pair_single_big",
+        "sequence": ["3", "3", "7"],
+    }
+
+    attack = a_agent.select_action(state, "A", state.legal_actions("A"))
+    assert attack == ("attack", None, "1")
+    assert a_agent.last_score_fallback_detail == "attack_four_shi_receive_return"
+
+    apply_public("A", attack)
+    assert tracker["my_shi_approval_pending"] is False
+    assert tracker["my_shi_approval_sent"] is True
+
+
 def test_dealer_three_shi_two_single_bigs_and_royal_uses_hisha_then_kaku() -> None:
     state = GoitaState(
         hands={
@@ -499,6 +552,7 @@ if __name__ == "__main__":
     test_four_shi_is_preferred_after_receiving_big_piece()
     test_three_shi_is_preferred_over_singletons_after_receiving_big_piece()
     test_four_shi_receive_returns_shi_over_singleton_attacks()
+    test_four_shi_ally_approval_returns_shi_over_middle_pair_plan()
     test_dealer_three_shi_two_single_bigs_and_royal_uses_hisha_then_kaku()
     test_fourth_kyosha_is_reserved_after_receiving_gold()
     test_remaining_silver_pair_continues_three_silver_attack()
