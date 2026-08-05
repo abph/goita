@@ -618,6 +618,66 @@ def test_no_shi_endgame_uses_same_gold_and_preserves_gyoku() -> None:
     assert search["action"] == ("receive", "5", None)
 
 
+def test_no_shi_endgame_passes_enemy_first_horse_and_preserves_king() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("71121136"),
+            "B": list("25597144"),
+            "C": list("16314213"),
+            "D": list("15158134"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("B", ("attack_after_block", "1", "4")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "7", "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "3")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    b_agent = agents["B"]
+    tracker = b_agent._track[id(state)]
+    tracker["my_attack_count"] = 2
+
+    receive = b_agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert sorted(state.hands["B"]) == ["2", "5", "5", "9"]
+    assert tracker["enemy_attack_counts"]["C"] == 1
+    assert all(
+        len(state.hands[enemy]) > 2
+        for enemy in ("A", "C")
+    )
+    assert receive == ("pass", None, None)
+    assert b_agent.last_decision_reason == "score_fallback"
+    assert (
+        b_agent.last_score_fallback_detail
+        == "pass_no_shi_royal_reserve_enemy_first"
+    )
+    assert tracker.get("last_time_limited_search") is not None
+
+
 def test_passes_ally_first_kyosha_to_preserve_likely_three_kyosha_route() -> None:
     state = GoitaState(
         hands={
@@ -746,5 +806,6 @@ if __name__ == "__main__":
     test_full_receive_cover_waits_for_enemy_third_attack_and_fifty_points()
     test_no_shi_endgame_uses_royal_instead_of_passing_enemy_first_attack()
     test_no_shi_endgame_uses_same_gold_and_preserves_gyoku()
+    test_no_shi_endgame_passes_enemy_first_horse_and_preserves_king()
     test_passes_ally_first_kyosha_to_preserve_likely_three_kyosha_route()
     print("RECEIVE_STRATEGY_MODULE_TEST_OK")

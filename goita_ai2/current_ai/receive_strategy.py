@@ -363,6 +363,27 @@ class ReceiveStrategyMixin:
             self._set_score_fallback_detail("receive_no_shi_same_piece_preserve_royal")
             return same_piece_receives[0]
 
+        attacker_count = int(
+            tr.get("enemy_attack_counts", {}).get(state.attacker, 1)
+        )
+        enemy_has_immediate_finish_threat = any(
+            enemy != player
+            and not self._same_team(enemy, player)
+            and len(state.hands[enemy]) <= 2
+            for enemy in ("A", "B", "C", "D")
+        )
+        if attacker_count == 1 and not enemy_has_immediate_finish_threat:
+            pass_action = next(
+                (action for action in actions if action[0] == "pass"),
+                None,
+            )
+            if pass_action is not None:
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(
+                    "pass_no_shi_royal_reserve_enemy_first"
+                )
+                return pass_action
+
         royal_receives.sort(
             key=lambda action: self._score_receive_phase(
                 state,
