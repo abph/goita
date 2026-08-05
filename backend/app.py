@@ -29,14 +29,18 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
 MAIN_GID = "main"
 MAIN_ROOM_NAMES: Dict[str, str] = {
-    MAIN_GID: "メインルームA",
-    "main-b": "メインルームB",
-    "main-c": "メインルームC",
-    "main-d": "ひとりでAI対戦",
-    "main-e": "メインルームE",
-    "main-f": "メインルームF",
+    MAIN_GID: "みんなでごいたA",
+    "main-b": "みんなでごいたB",
+    "main-c": "みんなでごいたC",
+    "main-d": "みんなでごいたD",
+    "main-e": "AIとごいたA",
+    "main-f": "AIとごいたB",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
+MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
+    "main-e": ("B", "C", "D"),
+    "main-f": ("B", "C", "D"),
+}
 DEBUG_GID = "debug"
 PRIVATE_A_GID = "room-gold-01"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
@@ -65,7 +69,7 @@ def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int)
 
 LOBBY_ROOM_SETTINGS = {
     "main_room_count": _initial_room_count(
-        "LOBBY_MAIN_ROOM_COUNT", 4, 1, len(MAIN_ROOM_NAMES)
+        "LOBBY_MAIN_ROOM_COUNT", 6, 1, len(MAIN_ROOM_NAMES)
     ),
     "private_room_count": _initial_room_count(
         "LOBBY_PRIVATE_ROOM_COUNT", 2, 0, len(PRIVATE_ROOM_DEFINITIONS)
@@ -1600,6 +1604,7 @@ def _ensure_main_game(game_id: str = MAIN_GID, dealer: Optional[str] = None) -> 
         d = dealer if dealer else random.choice(["A", "B", "C", "D"])
         game = _create_game_obj(dealer=d)
         game["owner_name"] = MAIN_ROOM_NAMES[game_id]
+        game["ai_seats"] = list(MAIN_ROOM_DEFAULT_AI_SEATS.get(game_id, ()))
         GAMES[game_id] = game
 
 

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import backend.app as app_module
 
 
-def test_public_rooms_default_to_four_and_six_is_the_limit() -> None:
+def test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms() -> None:
     assert list(app_module.MAIN_ROOM_NAMES) == [
         "main",
         "main-b",
@@ -16,8 +16,21 @@ def test_public_rooms_default_to_four_and_six_is_the_limit() -> None:
         "main-e",
         "main-f",
     ]
-    assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 4
-    assert app_module.MAIN_ROOM_NAMES["main-d"] == "ひとりでAI対戦"
+    assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 6
+    assert list(app_module.MAIN_ROOM_NAMES.values()) == [
+        "みんなでごいたA",
+        "みんなでごいたB",
+        "みんなでごいたC",
+        "みんなでごいたD",
+        "AIとごいたA",
+        "AIとごいたB",
+    ]
+    assert app_module.MAIN_ROOM_DEFAULT_AI_SEATS == {
+        "main-e": ("B", "C", "D"),
+        "main-f": ("B", "C", "D"),
+    }
+    assert app_module.GAMES["main-e"]["ai_seats"] == ["B", "C", "D"]
+    assert app_module.GAMES["main-f"]["ai_seats"] == ["B", "C", "D"]
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
@@ -387,6 +400,7 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
 
 
 if __name__ == "__main__":
+    test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_and_d_exist_but_are_hidden_from_lobby()
     test_every_main_room_disables_beginner_support()

@@ -4027,7 +4027,8 @@ function uiText(value) {
     return window.goitaI18n?.translate?.(source) ?? source;
 }
 const BUILT_IN_ROOM_NAMES = new Set([
-    "メインルームA", "メインルームB", "プライベートA", "プライベートB",
+    "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "みんなでごいたD",
+    "AIとごいたA", "AIとごいたB", "プライベートA", "プライベートB",
     "プライベートC", "プライベートD", "デバッグルーム"
 ]);
 function isBuiltInRoomName(value) {
@@ -4752,7 +4753,7 @@ function isMainRoomId(roomId) {
     return MAIN_ROOM_IDS.has(roomId);
 }
 
-async function joinMainRoom(roomId = MAIN_GID, roomName = "メインルームA") {
+async function joinMainRoom(roomId = MAIN_GID, roomName = "みんなでごいたA") {
     await enterRoom(roomId, roomName);
 }
 
@@ -5003,7 +5004,7 @@ function applyLobbyAdminPayload(data) {
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
     mainInput.min = "1";
     mainInput.max = String(data.main_room_max || 6);
-    mainInput.value = String(data.main_room_count || 4);
+    mainInput.value = String(data.main_room_count || 6);
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 4);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
@@ -8425,7 +8426,7 @@ async function refresh(){
 
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
-      setRoomNameText(currentRoomNameEl, state.owner_name || (isMainRoomId(gid) ? "メインルームA" : ""));
+      setRoomNameText(currentRoomNameEl, state.owner_name || (isMainRoomId(gid) ? "みんなでごいたA" : ""));
   }
 
   // 古い盤面上のスコアボードは不要になったため、非表示で固定
