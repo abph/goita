@@ -545,6 +545,29 @@ class ReceiveStrategyMixin:
         pieces.sort(key=lambda piece: (POINTS.get(piece, 0), piece), reverse=True)
         return pieces
 
+    def _ally_receive_keeps_strong_third_attack(
+        self,
+        hand_after_receive: List[str],
+        first_attack: str,
+    ) -> bool:
+        """Require a royal reserve or a genuinely strong third attack."""
+        if any(piece in hand_after_receive for piece in ("8", "9")):
+            return True
+        if first_attack not in hand_after_receive:
+            return False
+
+        # Three kyosha or three equal middle pieces support all three attacks.
+        if (
+            first_attack in ("2", "3", "4", "5")
+            and hand_after_receive.count(first_attack) >= 3
+        ):
+            return True
+
+        remaining = list(hand_after_receive)
+        remaining.remove(first_attack)
+        # After attack one, attacks two and three still need a strong shape.
+        return bool(self._kakari_saturation_followup_pieces(remaining))
+
     def _strong_ally_receive_followup_piece_after_receive(
         self,
         state,
@@ -570,7 +593,14 @@ class ReceiveStrategyMixin:
         hand_after.remove(block)
 
         pieces = self._strong_ally_receive_followup_pieces(hand_after)
-        return pieces[0] if pieces else None
+        return next(
+            (
+                piece
+                for piece in pieces
+                if self._ally_receive_keeps_strong_third_attack(hand_after, piece)
+            ),
+            None,
+        )
 
     def _ally_strong_followup_receive_bonus(
         self,
@@ -693,6 +723,7 @@ class ReceiveStrategyMixin:
             for p in set(hand_after)
             if p in strong_followups | fourth_middle_followups
             and self._attack_forces_enemy_king_receive(state, player, p, hand_after)
+            and self._ally_receive_keeps_strong_third_attack(hand_after, p)
         ]
         if not candidates:
             return None

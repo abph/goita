@@ -15,6 +15,7 @@ def test_receive_strategy_methods_are_owned_by_mixin() -> None:
     for method_name in (
         "_enemy_first_same_piece_rank_policy_action",
         "_enemy_second_attack_royal_reserve_pass_action",
+        "_ally_receive_keeps_strong_third_attack",
         "_ally_kyosha_continuation_pass_action",
         "_full_receive_cover_royal_wait_pass_action",
         "_guaranteed_finish_receive_action",
@@ -150,6 +151,111 @@ def test_receive_ally_second_attack_to_play_fourth_silver_third() -> None:
     assert attack == ("attack", None, "4")
     assert a_agent.last_decision_reason == "score_fallback"
     assert a_agent.last_score_fallback_detail == "attack_force_enemy_king"
+
+
+def test_ally_big_pair_receive_waits_without_strong_third_attack_or_royal() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("18233151"),
+            "B": list("62411165"),
+            "C": list("13274175"),
+            "D": list("13492415"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    opening = ("attack_after_block", "1", "3")
+    state.apply_attack_after_block("A", "1", "3")
+    for agent in agents.values():
+        agent.on_public_action(state, "A", opening)
+    passed = ("pass", None, None)
+    state.apply_pass("B")
+    for agent in agents.values():
+        agent.on_public_action(state, "B", passed)
+
+    c_agent = agents["C"]
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert chosen == ("pass", None, None)
+    assert c_agent._ally_force_king_receive_bonus(state, "C", "receive", "3") == 0.0
+    assert c_agent._ally_strong_followup_receive_bonus(state, "C", "receive", "3") == 0.0
+
+
+def test_ally_big_pair_receive_is_allowed_with_one_royal() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("18233151"),
+            "B": list("62411165"),
+            "C": list("13279175"),
+            "D": list("13492415"),
+        },
+        dealer="A",
+    )
+    # Exchange C's silver and D's king so the 32-piece deck stays valid.
+    state.hands["D"].remove("9")
+    state.hands["D"].append("4")
+    state.hands["D"].sort()
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    opening = ("attack_after_block", "1", "3")
+    state.apply_attack_after_block("A", "1", "3")
+    for agent in agents.values():
+        agent.on_public_action(state, "A", opening)
+    passed = ("pass", None, None)
+    state.apply_pass("B")
+    for agent in agents.values():
+        agent.on_public_action(state, "B", passed)
+
+    c_agent = agents["C"]
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert chosen == ("receive", "3", None)
+    assert c_agent._ally_force_king_receive_bonus(state, "C", "receive", "3") > 0.0
+
+
+def test_ally_big_pair_receive_is_allowed_when_third_attack_stays_strong() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("18233151"),
+            "B": list("62411165"),
+            "C": list("13272175"),
+            "D": list("13492415"),
+        },
+        dealer="A",
+    )
+    # Exchange D's kyosha for the extra silver removed from C.
+    state.hands["D"].remove("2")
+    state.hands["D"].append("4")
+    state.hands["D"].sort()
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    opening = ("attack_after_block", "1", "3")
+    state.apply_attack_after_block("A", "1", "3")
+    for agent in agents.values():
+        agent.on_public_action(state, "A", opening)
+    passed = ("pass", None, None)
+    state.apply_pass("B")
+    for agent in agents.values():
+        agent.on_public_action(state, "B", passed)
+
+    c_agent = agents["C"]
+    chosen = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert chosen == ("receive", "3", None)
+    assert c_agent._ally_receive_keeps_strong_third_attack(
+        list("1122577"),
+        "7",
+    )
 
 
 def test_weak_next_player_receives_dealer_silver_and_signals_with_shi() -> None:

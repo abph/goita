@@ -91,6 +91,7 @@ class TrackingMixin:
             pending_inferred_endgame_attack=None,
             last_forced_win_score_plan=None,
             active_forced_win_plan=None,
+            last_time_limited_search=None,
             my_last_receive_piece=None,
             enemy_pending_shi_receive_players=set(),
             enemy_team_rejected_shi_attack=False,

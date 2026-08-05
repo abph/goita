@@ -17,6 +17,7 @@ def test_public_rooms_default_to_four_and_six_is_the_limit() -> None:
         "main-f",
     ]
     assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 4
+    assert app_module.MAIN_ROOM_NAMES["main-d"] == "ひとりでAI対戦"
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:

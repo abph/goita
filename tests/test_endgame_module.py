@@ -452,6 +452,103 @@ def test_inferred_endgame_carries_receive_followup_attack() -> None:
     assert tracker["pending_inferred_endgame_attack"] is None
 
 
+def test_inferred_endgame_passes_rook_to_keep_forty_point_finish() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("27151211"),
+            "B": list("45571123"),
+            "C": list("45413691"),
+            "D": list("31148632"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    opening = (
+        ("B", ("attack_after_block", "1", "5")),
+        ("C", ("receive", "5", None)),
+        ("C", ("attack", None, "4")),
+        ("D", ("receive", "4", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "3", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("receive", "6", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "9", None)),
+        ("C", ("attack", None, "4")),
+        ("D", ("receive", "8", None)),
+        ("D", ("attack", None, "2")),
+        ("A", ("receive", "2", None)),
+        ("A", ("attack", None, "2")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("attack_after_block", "1", "7")),
+    )
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    for action_player, action in opening:
+        apply_public(action_player, action)
+
+    b_agent = agents["B"]
+    chosen = b_agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert chosen == ("pass", None, None)
+    assert b_agent.last_decision_reason == "inferred_endgame"
+    assert b_agent.last_score_fallback_detail == "inferred_endgame_self_win_B_40"
+
+    apply_public("B", chosen)
+    apply_public("C", ("pass", None, None))
+    apply_public("D", ("pass", None, None))
+    apply_public("A", ("attack_after_block", "1", "1"))
+
+    receive = b_agent.select_action(state, "B", state.legal_actions("B"))
+    assert receive == ("receive", "1", None)
+    assert b_agent.last_score_fallback_detail == "inferred_endgame_self_win_B_40"
+
+    apply_public("B", receive)
+    first_attack = b_agent.select_action(state, "B", state.legal_actions("B"))
+    assert first_attack == ("attack", None, "2")
+
+    apply_public("B", first_attack)
+    for passer in ("C", "D", "A"):
+        apply_public(passer, ("pass", None, None))
+
+    second_attack = b_agent.select_action(state, "B", state.legal_actions("B"))
+    assert second_attack == ("attack_after_block", "4", "3")
+
+    apply_public("B", second_attack)
+    for passer in ("C", "D", "A"):
+        apply_public(passer, ("pass", None, None))
+
+    finish = b_agent.select_action(state, "B", state.legal_actions("B"))
+    assert finish == ("attack_after_block", "5", "7")
+    apply_public("B", finish)
+
+    assert state.finished is True
+    assert state.winner == "B"
+    assert state.team_score["BD"] == 40
+
+
 def test_high_score_tsume_outranks_kakarigotae() -> None:
     state = GoitaState(
         hands={
@@ -677,6 +774,98 @@ def test_receive_then_safe_kyosha_is_proven_at_thirty() -> None:
 
     assert result.status == ForcedWinStatus.PROVEN
     assert result.minimum_score == 30.0
+
+
+def test_receive_shi_then_fourth_kyosha_forces_fifty_with_short_enemy_hand() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("13512361"),
+            "B": list("37141118"),
+            "C": list("12491524"),
+            "D": list("21435576"),
+        },
+        dealer="A",
+    )
+    state.team_score = {"AC": 0, "BD": 40}
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+
+    actions = (
+        ("A", ("attack_after_block", "1", "3")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "3", None)),
+        ("D", ("attack", None, "5")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "5", None)),
+        ("C", ("attack", None, "2")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("receive", "4", None)),
+        ("D", ("attack", None, "5")),
+        ("A", ("receive", "5", None)),
+        ("A", ("attack", None, "2")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "2", None)),
+        ("D", ("attack", None, "6")),
+        ("A", ("receive", "6", None)),
+        ("A", ("attack", None, "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "1")),
+    )
+
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    c_agent = agents["C"]
+    receive = c_agent.select_action(state, "C", state.legal_actions("C"))
+    receive_result = c_agent._forced_win_result_after_receive_action(
+        state,
+        "C",
+        ("receive", "1", None),
+    )
+
+    assert receive == ("receive", "1", None)
+    assert receive_result.status == ForcedWinStatus.PROVEN
+    assert receive_result.minimum_score == 50.0
+    assert c_agent.last_score_fallback_detail == "receive_tsume_after"
+
+    state.apply_receive("C", "1")
+    for agent in agents.values():
+        agent.on_public_action(state, "C", receive)
+    attack = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert attack == ("attack", None, "2")
+
+    state.apply_attack("C", "2")
+    for agent in agents.values():
+        agent.on_public_action(state, "C", attack)
+    for passer in ("D", "A", "B"):
+        pass_action = ("pass", None, None)
+        state.apply_pass(passer)
+        for agent in agents.values():
+            agent.on_public_action(state, passer, pass_action)
+
+    finish = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert finish == ("attack_after_block", "4", "9")
+    state.apply_attack_after_block("C", finish[1], finish[2])
+    assert state.finished is True
+    assert state.winner == "C"
+    assert state.team_score["AC"] == 50
 
 
 def test_royal_cannot_receive_shi_in_forced_win_search() -> None:
@@ -1002,11 +1191,13 @@ if __name__ == "__main__":
     test_inferred_endgame_prefers_lower_scoring_enemy_finish()
     test_inferred_endgame_prefers_ally_finish_over_enemy_finish()
     test_inferred_endgame_carries_receive_followup_attack()
+    test_inferred_endgame_passes_rook_to_keep_forty_point_finish()
     test_high_score_tsume_outranks_kakarigotae()
     test_second_shi_attack_is_proven_at_thirty_over_safe_kyosha_ten()
     test_high_score_tsume_keeps_kaku_for_forty_point_finish()
     test_early_forced_win_search_reports_unknown_instead_of_guessing()
     test_receive_then_safe_kyosha_is_proven_at_thirty()
+    test_receive_shi_then_fourth_kyosha_forces_fifty_with_short_enemy_hand()
     test_royal_cannot_receive_shi_in_forced_win_search()
     test_safe_third_attack_keeps_silver_for_thirty_point_finish()
     test_global_endgame_planner_keeps_king_for_fifty_point_finish()

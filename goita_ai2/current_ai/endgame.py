@@ -819,18 +819,31 @@ class EndgameMixin:
         if pool is None:
             return self._forced_win_unknown()
 
+        remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
+        if remaining is None:
+            return self._forced_win_counterexample()
+
         enemies = [
             seat
             for seat in ("A", "B", "C", "D")
             if not self._same_team(seat, player)
         ]
         minimum_enemy_hand = min((len(state.hands[seat]) for seat in enemies), default=0)
-        if minimum_enemy_hand <= 2:
+        # A short enemy hand normally makes the public-information search too
+        # uncertain. Keep only the obvious fourth-kyosha bridge: nobody can
+        # receive it, then the final two cards include a royal finish.
+        fourth_kyosha_royal_finish = (
+            attack == "2"
+            and not self._forced_win_external_receivers(pool, attack)
+            and len(remaining) == 2
+            and any(piece in ("8", "9") for piece in remaining)
+        )
+        if (
+            minimum_enemy_hand <= 2
+            and not fourth_kyosha_royal_finish
+        ):
             return self._forced_win_unknown()
 
-        remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
-        if remaining is None:
-            return self._forced_win_counterexample()
         max_hand = int(getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6))
         allow_seven_card_receive_followup = (
             action_type == "attack"
@@ -1271,9 +1284,25 @@ class EndgameMixin:
             or state.turn != player
             or state.attacker is None
             or self._same_team(state.attacker, player)
-            or len(state.hands[player]) > 4
             or len(actions) < 2
         ):
+            return None
+
+        hand_sizes = {
+            seat: len(state.hands[seat])
+            for seat in ("A", "B", "C", "D")
+        }
+        compact_endgame = all(size <= 4 for size in hand_sizes.values())
+        extended_root_endgame = (
+            hand_sizes[player] <= 6
+            and hand_sizes[state.attacker] <= 4
+            and all(
+                hand_sizes[seat] <= 2
+                for seat in ("A", "B", "C", "D")
+                if seat not in (player, state.attacker)
+            )
+        )
+        if not (compact_endgame or extended_root_endgame):
             return None
 
         attacker_model = tr.get("public_hand_models", {}).get(state.attacker, {})
@@ -1281,9 +1310,7 @@ class EndgameMixin:
             return None
 
         inferred = self._inferred_endgame_state(state, player, tr)
-        if inferred is None or any(
-            len(inferred.hands[seat]) > 4 for seat in ("A", "B", "C", "D")
-        ):
+        if inferred is None:
             return None
 
         baseline_scores = {

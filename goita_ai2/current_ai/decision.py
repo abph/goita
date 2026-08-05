@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import List, Optional, Tuple
 
 Action = Tuple[str, Optional[str], Optional[str]]
@@ -12,6 +13,24 @@ Action = Tuple[str, Optional[str], Optional[str]]
 
 class DecisionMixin:
     """Combines strategy scores and selects the final legal action."""
+
+    def _adopt_rule_preview(self, preview) -> None:
+        """Adopt preview mutations without invalidating live tracker references."""
+        current_track = self._track
+        for state_id in list(current_track):
+            if state_id not in preview._track:
+                del current_track[state_id]
+        for state_id, preview_tracker in preview._track.items():
+            if state_id in current_track:
+                current_track[state_id].clear()
+                current_track[state_id].update(preview_tracker)
+            else:
+                current_track[state_id] = preview_tracker
+
+        preview_values = dict(preview.__dict__)
+        preview_values.pop("_track", None)
+        self.__dict__.update(preview_values)
+        self._track = current_track
 
     def _set_decision_reason(self, reason: str) -> None:
         self.last_decision_reason = reason
@@ -272,6 +291,75 @@ class DecisionMixin:
         return "attack_piece_value"
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
+        """Compare the rule-based choice with a public-information search."""
+        if self.me is None:
+            self.me = player
+        elif self.me != player:
+            raise ValueError(f"{self.name}: bound to me={self.me}, cannot play for {player}")
+        self._ensure_trackers(state)
+
+        # Preview on a clone because the established policy records plan state
+        # while choosing. We only adopt those mutations when its move survives.
+        preview = copy.deepcopy(self)
+        baseline_action = preview._select_rule_based_action(state, player, actions)
+        baseline_reason = str(preview.last_decision_reason or "")
+        baseline_detail = str(preview.last_score_fallback_detail or "")
+        protected = (
+            baseline_reason in (
+                "win_now",
+                "tsume",
+                "inferred_endgame",
+                "conditional_tsume",
+                "kakari",
+                "shi_signal",
+                "responded",
+                "forced_king_third",
+                "king_order",
+                "safe_nonking_third",
+            )
+            or baseline_detail in ("receive_win_after", "receive_tsume_after")
+            or baseline_detail.startswith("attack_sequence_")
+            or baseline_detail.startswith("pass_full_receive_cover_")
+            or baseline_detail.startswith("pass_ally_guaranteed_win_")
+            or baseline_detail.startswith("pass_ally_kyosha_continuation")
+            or baseline_detail.startswith("pass_royal_reserve_")
+            or baseline_detail.startswith("receive_no_shi_royal_")
+        )
+
+        search_result = None
+        if not protected:
+            search_result = self._time_limited_search_action(
+                state,
+                player,
+                actions,
+                baseline_action,
+            )
+
+        if search_result is not None:
+            preview_tracker = preview._track.get(id(state))
+            if preview_tracker is not None:
+                preview_tracker["last_time_limited_search"] = search_result.as_dict()
+            tracker = self._track.get(id(state))
+            if tracker is not None:
+                tracker["last_time_limited_search"] = search_result.as_dict()
+
+        if (
+            search_result is not None
+            and search_result.decisive
+            and search_result.action != baseline_action
+        ):
+            self._commit_timed_search_action(state, player, search_result.action)
+            self._set_decision_reason("time_search")
+            self._set_score_fallback_detail(
+                f"depth_{search_result.depth}_samples_{search_result.samples}_"
+                f"agreement_{int(round(search_result.agreement * 100))}"
+            )
+            return search_result.action
+
+        self._adopt_rule_preview(preview)
+        return baseline_action
+
+    def _select_rule_based_action(self, state, player: str, actions: List[Action]) -> Action:
         self._set_decision_reason("")
         self._set_score_fallback_detail("")
 

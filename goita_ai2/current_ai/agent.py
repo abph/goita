@@ -16,6 +16,7 @@ from goita_ai2.current_ai.forced_win_planner import ForcedWinPlannerMixin
 from goita_ai2.current_ai.hand_evaluation import HandEvaluationMixin
 from goita_ai2.current_ai.inference import PublicInferenceMixin
 from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
+from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.current_ai.tracking import TrackingMixin
 
 class RuleBasedAgent(
@@ -24,6 +25,7 @@ class RuleBasedAgent(
     HandEvaluationMixin,
     ForcedPlansMixin,
     ForcedWinPlannerMixin,
+    TimedSearchMixin,
     EndgameMixin,
     AttackPlanningMixin,
     AttackStrategyMixin,
@@ -163,6 +165,18 @@ class RuleBasedAgent(
         self.GENERAL_ATTACK_PLAN_KEEP_LAST_SHI_PENALTY = 35.0
         self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT = 1.35
         self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT = 7.0
+        self.TIME_SEARCH_ENABLED = True
+        self.TIME_SEARCH_MAX_SECONDS = 10.0
+        self.TIME_SEARCH_SAMPLE_COUNT = 8
+        self.TIME_SEARCH_ROOT_BEAM = 10
+        self.TIME_SEARCH_BRANCH_BEAM = 3
+        self.TIME_SEARCH_MAX_DEPTH = 11
+        self.TIME_SEARCH_MAX_NODES = 250_000
+        self.TIME_SEARCH_RULE_PRIOR_WEIGHT = 120.0
+        self.TIME_SEARCH_BASELINE_PRIOR = 180.0
+        self.TIME_SEARCH_STABLE_MARGIN = 450.0
+        self.TIME_SEARCH_OVERRIDE_MARGIN = 300.0
+        self.TIME_SEARCH_OVERRIDE_AGREEMENT = 0.75
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
 

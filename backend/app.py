@@ -32,7 +32,7 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     MAIN_GID: "メインルームA",
     "main-b": "メインルームB",
     "main-c": "メインルームC",
-    "main-d": "メインルームD",
+    "main-d": "ひとりでAI対戦",
     "main-e": "メインルームE",
     "main-f": "メインルームF",
 }
@@ -1132,6 +1132,16 @@ def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
 
 
 GAMES: Dict[str, Dict[str, Any]] = {}
+GAME_TURN_LOCKS: Dict[str, asyncio.Lock] = {}
+
+
+def _game_turn_lock(game_id: str) -> asyncio.Lock:
+    """Serialize human and AI actions within one room."""
+    lock = GAME_TURN_LOCKS.get(game_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        GAME_TURN_LOCKS[game_id] = lock
+    return lock
 
 
 class ActionModel(BaseModel):
@@ -2514,6 +2524,11 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
 
 @app.post("/games/{game_id}/step")
 async def step(game_id: str, req: StepRequest):
+    async with _game_turn_lock(game_id):
+        return await _step_unlocked(game_id, req)
+
+
+async def _step_unlocked(game_id: str, req: StepRequest):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     player = _validate_seat(req.player, name="player")
@@ -2585,6 +2600,11 @@ async def step(game_id: str, req: StepRequest):
 
 @app.post("/games/{game_id}/cpu_step")
 async def cpu_step(game_id: str):
+    async with _game_turn_lock(game_id):
+        return await _cpu_step_unlocked(game_id)
+
+
+async def _cpu_step_unlocked(game_id: str):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     game = GAMES.get(game_id)
@@ -2598,7 +2618,7 @@ async def cpu_step(game_id: str):
     if state.finished or (state.turn not in ai_seats):
         return {"status": "ignored"}
 
-    result = _apply_agent_turn(game, state.turn)
+    result = await asyncio.to_thread(_apply_agent_turn, game, state.turn)
     if result.get("status") != "ok":
         return result
 
@@ -2608,6 +2628,11 @@ async def cpu_step(game_id: str):
 
 @app.post("/games/{game_id}/auto_step")
 async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
+    async with _game_turn_lock(game_id):
+        return await _auto_step_unlocked(game_id, player, client_id)
+
+
+async def _auto_step_unlocked(game_id: str, player: str = "A", client_id: str = ""):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     player = _validate_seat(player, name="player")
@@ -2624,7 +2649,7 @@ async def auto_step(game_id: str, player: str = "A", client_id: str = ""):
     if state.finished or state.turn != player or (player not in ai_seats and not owns_human_seat):
         return {"status": "ignored", "turn": state.turn}
 
-    result = _apply_agent_turn(game, player)
+    result = await asyncio.to_thread(_apply_agent_turn, game, player)
     if result.get("status") == "ok":
         await manager.broadcast_update(game_id)
     return result
