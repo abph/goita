@@ -290,6 +290,16 @@ class TimedSearchMixin:
             score -= 45.0
         if attack == "1" and hand.count("1") < 3:
             score -= 12.0
+        if attack == "1":
+            enemy_shi = sum(
+                state.hands[seat].count("1")
+                for seat in ALL_SEATS
+                if seat != actor and not self._same_team(seat, actor)
+            )
+            if enemy_shi <= 1:
+                score += 85.0
+            elif enemy_shi == 2:
+                score += 50.0
         if block is not None:
             score -= float(POINTS.get(block, 0)) * 0.12
 
@@ -391,6 +401,17 @@ class TimedSearchMixin:
         if state.attacker is not None and state.current_attack is not None:
             pressure = 18.0 + max(0, 4 - len(state.hands[state.attacker])) * 28.0
             value += pressure if self._same_team(state.attacker, root_player) else -pressure
+            if state.current_attack == "1":
+                defending_shi = sum(
+                    state.hands[seat].count("1")
+                    for seat in ALL_SEATS
+                    if not self._same_team(seat, state.attacker)
+                )
+                shi_pressure = 360.0 if defending_shi <= 1 else 210.0 if defending_shi == 2 else 0.0
+                if self._same_team(state.attacker, root_player):
+                    value += shi_pressure
+                else:
+                    value -= shi_pressure
         return value
 
     @staticmethod

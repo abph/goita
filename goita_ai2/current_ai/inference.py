@@ -949,6 +949,49 @@ class PublicInferenceMixin:
                 pressure += 0.2 + min(1.3, remaining_expected)
         return pressure
 
+    def _opponents_piece_count_summary(
+        self,
+        tr: Optional[dict],
+        player: str,
+        piece: Optional[str],
+    ) -> Dict[str, float]:
+        """Combine both opponents' current count estimates for one piece."""
+        summary = {
+            "min": 0.0,
+            "max": 0.0,
+            "expected": 0.0,
+            "map_count": -1.0,
+            "confidence": 0.0,
+        }
+        if tr is None or piece is None:
+            return summary
+
+        enemies = [
+            seat
+            for seat in ("A", "B", "C", "D")
+            if seat != player and not self._same_team(seat, player)
+        ]
+        estimates = tr.get("estimated_current_hands", {})
+        confidences: List[float] = []
+        for enemy in enemies:
+            estimate = estimates.get(enemy, {}).get(piece)
+            if not isinstance(estimate, dict):
+                continue
+            summary["min"] += max(0.0, float(estimate.get("min", 0.0)))
+            summary["max"] += max(0.0, float(estimate.get("max", 0.0)))
+            summary["expected"] += max(0.0, float(estimate.get("expected", 0.0)))
+            confidences.append(max(0.0, min(1.0, float(estimate.get("confidence", 0.0)))))
+
+        joint = tr.get("joint_hand_inference", {})
+        map_current = joint.get("map_current_counts", {}) if joint.get("feasible") else {}
+        if all(enemy in map_current for enemy in enemies):
+            summary["map_count"] = float(
+                sum(int(map_current[enemy].get(piece, 0)) for enemy in enemies)
+            )
+        if confidences:
+            summary["confidence"] = sum(confidences) / len(confidences)
+        return summary
+
     def _opponents_piece_exhausted(self, tr: Optional[dict], player: str, piece: Optional[str]) -> bool:
         if tr is None or piece is None:
             return False

@@ -747,6 +747,22 @@ class DecisionMixin:
             self._set_decision_reason("tsume")
             return chosen
 
+        enemy_team_shi_pressure = self._inferred_enemy_team_shi_attack_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if enemy_team_shi_pressure is not None:
+            chosen, pressure = enemy_team_shi_pressure
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                f"attack_enemy_team_shi_remaining_{int(pressure['level'])}"
+            )
+            return chosen
+
         special_sequence_action = self._special_attack_sequence_action(
             state,
             player,

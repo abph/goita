@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from goita_ai2.constants import POINTS
 
@@ -243,26 +243,42 @@ class AttackStrategyMixin:
             return 0.0
         return self._multi_shi_after_big_receive_first_attack_bonus(state, player)
 
-    def _shi_attack_score_adjustment(self, state, player: str) -> float:
+    def _shi_attack_score_adjustment(
+        self,
+        state,
+        player: str,
+        block: Optional[str] = None,
+    ) -> float:
         tr = self._track.get(id(state))
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
 
+        shi_spend = 1 + (1 if block == "1" else 0)
+        team_pressure = self._inferred_enemy_team_shi_pressure(
+            state,
+            player,
+            shi_spend=shi_spend,
+        )
+        team_pressure_bonus = float(team_pressure.get("bonus", 0.0)) if team_pressure else 0.0
+
         multi_shi_bonus = self._multi_shi_after_big_receive_first_attack_bonus(state, player)
         if multi_shi_bonus > 0:
-            return multi_shi_bonus
+            return max(multi_shi_bonus, team_pressure_bonus)
 
         exhaust_bonus = self._shi_exhaust_attack_bonus(state, player)
         if exhaust_bonus > 0:
-            return exhaust_bonus
+            return max(exhaust_bonus, team_pressure_bonus)
 
         sashikomi_bonus = self._shi_sashikomi_attack_bonus(state, player)
         if sashikomi_bonus > 0:
-            return sashikomi_bonus
+            return max(sashikomi_bonus, team_pressure_bonus)
 
         plan_value = self._weak_shi_attack_plan_value(state, player)
         if plan_value > 0:
-            return plan_value
+            return max(plan_value, team_pressure_bonus)
+
+        if team_pressure_bonus > 0:
+            return team_pressure_bonus
 
         counts = tr["my_init_count"]
         axes = self._initial_hand_axes_for_state(state, player)
@@ -276,6 +292,85 @@ class AttackStrategyMixin:
         if counts.get("1", 0) <= 2:
             penalty += 80.0
         return -penalty
+
+    def _inferred_enemy_team_shi_pressure(
+        self,
+        state,
+        player: str,
+        *,
+        shi_spend: int = 1,
+    ) -> Optional[Dict[str, float]]:
+        """Value a shi attack when the opposing team has only one or two left."""
+        tr = self._track.get(id(state))
+        if tr is None or state.hands[player].count("1") - shi_spend < 1:
+            return None
+
+        initial_shi = int(tr.get("my_init_count", Counter()).get("1", 0))
+        participating = bool(
+            tr.get("shi_attack_mode")
+            or "1" in tr.get("my_past_attacks", set())
+            or tr.get("ally_first_attack") == "1"
+        )
+        if initial_shi < 3 or not participating:
+            return None
+
+        summary = self._opponents_piece_count_summary(tr, player, "1")
+        map_count = float(summary.get("map_count", -1.0))
+        expected = float(summary.get("expected", 99.0))
+        confidence = float(summary.get("confidence", 0.0))
+        if map_count < 0 or confidence < 0.45:
+            return None
+
+        if map_count <= 1.0 and expected <= 1.75:
+            bonus = self.ENEMY_TEAM_ONE_SHI_ATTACK_BONUS
+            level = 1.0
+        elif map_count <= 2.0 and expected <= 2.25:
+            bonus = self.ENEMY_TEAM_TWO_SHI_ATTACK_BONUS
+            level = 2.0
+        else:
+            return None
+
+        return {
+            **summary,
+            "level": level,
+            "bonus": float(bonus),
+        }
+
+    def _inferred_enemy_team_shi_attack_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        has_non_king_attack_option: bool,
+    ) -> Optional[Tuple[Action, Dict[str, float]]]:
+        pressure = self._inferred_enemy_team_shi_pressure(state, player)
+        if pressure is None or state.phase != "attack":
+            return None
+
+        candidates: List[Tuple[float, Action]] = []
+        for action_type, block, attack in actions:
+            if action_type not in ("attack", "attack_after_block") or attack != "1":
+                continue
+            shi_spend = 1 + (1 if block == "1" else 0)
+            if state.hands[player].count("1") - shi_spend < 1:
+                continue
+            score = self._score_attack_phase(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+                has_non_king_attack_option=has_non_king_attack_option,
+            )
+            if action_type == "attack_after_block":
+                score += self._score_receive_phase(state, player, "receive", block)
+            candidates.append((score, (action_type, block, attack)))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1], pressure
 
     def _weak_shi_fallback_high_point_attack_bonus(
         self,
@@ -940,7 +1035,7 @@ class AttackStrategyMixin:
 
         # ★ 修正箇所：初期手札「し」が3枚以上の場合はペナルティを0点とし、空回りを恐れずに攻められるように緩和
         if action_type in ("attack", "attack_after_block") and attack == "1":
-            score += self._shi_attack_score_adjustment(state, player)
+            score += self._shi_attack_score_adjustment(state, player, block)
 
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY

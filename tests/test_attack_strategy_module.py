@@ -19,6 +19,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_fourth_middle_third_attack_bonus",
         "_second_kyosha_single_shi_block_adjustment",
         "_shi_attack_score_adjustment",
+        "_inferred_enemy_team_shi_pressure",
+        "_inferred_enemy_team_shi_attack_action",
         "_fuse_strategy_hidden_block_adjustment",
         "_score_attack_phase",
     ):
@@ -546,6 +548,57 @@ def test_third_kyosha_compares_shi_royal_and_big_royal_waits() -> None:
     ) == ["1", "9"]
 
 
+def test_enemy_team_low_shi_pressure_overrides_middle_pair_sequence() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11473113"),
+            "B": list("12544617"),
+            "C": list("11512916"),
+            "D": list("55422338"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+
+    actions = (
+        ("C", ("attack_after_block", "1", "1")),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "1", None)),
+        ("A", ("attack", None, "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "4")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "4", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    tracker = agents["A"]._track[id(state)]
+    summary = agents["A"]._opponents_piece_count_summary(tracker, "A", "1")
+    assert summary["map_count"] == 2.0
+    assert summary["expected"] < 2.0
+
+    chosen = agents["A"].select_action(state, "A", state.legal_actions("A"))
+
+    assert chosen == ("attack", None, "1")
+    assert agents["A"].last_score_fallback_detail == "attack_enemy_team_shi_remaining_2"
+    search = tracker.get("last_time_limited_search")
+    assert search is not None
+    assert search["action"] == ("attack", None, "1")
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_attack_strategy_mixin()
     test_attack_strategy_methods_are_owned_by_mixin()
@@ -558,4 +611,5 @@ if __name__ == "__main__":
     test_remaining_silver_pair_continues_three_silver_attack()
     test_second_kyosha_keeps_single_shi_and_blocks_low_middle()
     test_third_kyosha_compares_shi_royal_and_big_royal_waits()
+    test_enemy_team_low_shi_pressure_overrides_middle_pair_sequence()
     print("ATTACK_STRATEGY_MODULE_TEST_OK")
