@@ -776,6 +776,92 @@ def test_receive_then_safe_kyosha_is_proven_at_thirty() -> None:
     assert result.minimum_score == 30.0
 
 
+def test_receives_horse_then_runs_two_exhausted_kyosha_for_thirty() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11163312"),
+            "B": list("41467119"),
+            "C": list("21553241"),
+            "D": list("85275314"),
+        },
+        dealer="D",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_SEARCH_ENABLED = False
+        agent._ensure_trackers(state)
+
+    def apply_public(action_player: str, action: Action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    opening = (
+        ("D", ("attack_after_block", "1", "5")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "5", None)),
+        ("C", ("attack", None, "5")),
+        ("D", ("receive", "5", None)),
+        ("D", ("attack", None, "7")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("attack_after_block", "3", "2")),
+        ("A", ("receive", "2", None)),
+        ("A", ("attack", None, "3")),
+        ("B", ("pass", None, None)),
+    )
+    for action_player, action in opening:
+        apply_public(action_player, action)
+
+    for player, attack_count in {"A": 1, "B": 0, "C": 1, "D": 3}.items():
+        agents[player]._track[id(state)]["my_attack_count"] = attack_count
+
+    c_agent = agents["C"]
+    receive = c_agent.select_action(state, "C", state.legal_actions("C"))
+    receive_result = c_agent._forced_win_result_after_receive_action(
+        state,
+        "C",
+        receive,
+    )
+    assert receive == ("receive", "3", None)
+    assert receive_result.status == ForcedWinStatus.PROVEN
+    assert receive_result.minimum_score == 30.0
+    assert c_agent.last_score_fallback_detail == "receive_tsume_after"
+    apply_public("C", receive)
+
+    first_kyosha = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert first_kyosha == ("attack", None, "2")
+    apply_public("C", first_kyosha)
+    for passer in ("D", "A", "B"):
+        apply_public(passer, ("pass", None, None))
+
+    second_kyosha = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert second_kyosha[0] == "attack_after_block"
+    assert second_kyosha[2] == "2"
+    apply_public("C", second_kyosha)
+    for passer in ("D", "A", "B"):
+        apply_public(passer, ("pass", None, None))
+
+    finish = c_agent.select_action(state, "C", state.legal_actions("C"))
+    assert finish[0] == "attack_after_block"
+    assert finish[2] == "4"
+    apply_public("C", finish)
+    assert state.finished is True
+    assert state.winner == "C"
+    assert state.team_score["AC"] == 30
+
+
 def test_receive_shi_then_fourth_kyosha_forces_fifty_with_short_enemy_hand() -> None:
     state = GoitaState(
         hands={
@@ -1197,6 +1283,7 @@ if __name__ == "__main__":
     test_high_score_tsume_keeps_kaku_for_forty_point_finish()
     test_early_forced_win_search_reports_unknown_instead_of_guessing()
     test_receive_then_safe_kyosha_is_proven_at_thirty()
+    test_receives_horse_then_runs_two_exhausted_kyosha_for_thirty()
     test_receive_shi_then_fourth_kyosha_forces_fifty_with_short_enemy_hand()
     test_royal_cannot_receive_shi_in_forced_win_search()
     test_safe_third_attack_keeps_silver_for_thirty_point_finish()
