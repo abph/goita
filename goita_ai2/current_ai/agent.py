@@ -166,8 +166,8 @@ class RuleBasedAgent(
         self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT = 1.35
         self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT = 7.0
         self.TIME_SEARCH_ENABLED = True
-        self.TIME_SEARCH_MAX_SECONDS = 10.0
-        self.TIME_SEARCH_SAMPLE_COUNT = 8
+        self.TIME_SEARCH_MAX_SECONDS = 1.0
+        self.TIME_SEARCH_SAMPLE_COUNT = 80
         self.TIME_SEARCH_ROOT_BEAM = 10
         self.TIME_SEARCH_BRANCH_BEAM = 3
         self.TIME_SEARCH_MAX_DEPTH = 11
@@ -177,6 +177,7 @@ class RuleBasedAgent(
         self.TIME_SEARCH_STABLE_MARGIN = 450.0
         self.TIME_SEARCH_OVERRIDE_MARGIN = 300.0
         self.TIME_SEARCH_OVERRIDE_AGREEMENT = 0.75
+        self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH = 7
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
 

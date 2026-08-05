@@ -563,8 +563,13 @@ class TimedSearchMixin:
         )
 
         maximum_depth = int(self.TIME_SEARCH_MAX_DEPTH)
+        minimum_override_depth = 5
         if len(state.hands[player]) >= 7:
             maximum_depth = min(maximum_depth, 7)
+            minimum_override_depth = min(
+                maximum_depth,
+                int(self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH),
+            )
         for depth in range(1, maximum_depth + 1, 2):
             iteration: Dict[Action, List[float]] = {action: [] for action in root_actions}
             try:
@@ -617,7 +622,7 @@ class TimedSearchMixin:
                 if baseline_action not in narrowed:
                     narrowed[-1] = baseline_action
                 root_actions = narrowed
-            if depth >= 5 and stable_count >= 2:
+            if depth >= minimum_override_depth and stable_count >= 2:
                 ordered = sorted(aggregate.values(), reverse=True)
                 if len(ordered) == 1 or ordered[0] - ordered[1] >= self.TIME_SEARCH_STABLE_MARGIN:
                     break
@@ -673,7 +678,7 @@ class TimedSearchMixin:
             and baseline_minimum < 50000.0
         ) or (
             best_action != baseline_action
-            and completed_depth >= 5
+            and completed_depth >= minimum_override_depth
             and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
             and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
         )

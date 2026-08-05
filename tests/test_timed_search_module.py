@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
@@ -111,9 +113,61 @@ def test_select_action_records_search_without_changing_public_state() -> None:
     assert state.hands == hands_before
 
 
+def test_one_second_search_keeps_ally_gold_pass_after_broader_sampling() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("24115126"),
+            "B": list("41167234"),
+            "C": list("89513451"),
+            "D": list("31135723"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    opening = (
+        ("B", ("attack_after_block", "1", "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "5")),
+        ("D", ("pass", None, None)),
+    )
+    for player, action in opening:
+        apply_public(player, action)
+
+    a_agent = agents["A"]
+    legal = state.legal_actions("A")
+    preview = copy.deepcopy(a_agent)
+    baseline = preview._select_rule_based_action(state, "A", legal)
+    chosen = a_agent.select_action(state, "A", legal)
+    search = a_agent._track[id(state)]["last_time_limited_search"]
+
+    assert baseline == ("pass", None, None)
+    assert chosen == ("pass", None, None)
+    assert search["samples"] == 80
+    assert search["decisive"] is False
+    assert a_agent.last_score_fallback_detail == "pass_base"
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
     test_hidden_hand_sampling_does_not_read_actual_opponent_hands()
     test_time_limited_search_returns_a_completed_legal_result()
     test_select_action_records_search_without_changing_public_state()
+    test_one_second_search_keeps_ally_gold_pass_after_broader_sampling()
     print("TIMED_SEARCH_MODULE_TEST_OK")
