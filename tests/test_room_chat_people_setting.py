@@ -45,6 +45,13 @@ def test_mobile_chat_uses_a_compact_people_column():
     assert "body.mobile-chat-placement-top #chatPanel.chat-people-visible" in HTML
 
 
+def test_chat_people_rows_use_compact_spacing():
+    assert ".room-chat-people .lobby-person-row" in HTML
+    assert "padding: 1px;" in HTML
+    assert "line-height: 1.15;" in HTML
+    assert "padding: 1px 0;" in HTML
+
+
 def test_chat_height_setting_is_available_and_persisted():
     assert 'id="mobileChatHeight"' in HTML
     assert 'id="lobbyMobileChatHeight"' in HTML
