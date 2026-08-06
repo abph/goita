@@ -19,7 +19,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dPanDown"' in html
     assert 'id="board3dPanLeft"' in html
     assert 'id="board3dPanRight"' in html
-    assert 'import("/static/board3d.js?v=20260806j")' in html
+    assert 'import("/static/board3d.js?v=20260806k")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html
@@ -81,6 +81,8 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "shape.lineTo(0, 0.5)" in board_module
     assert "quadraticCurveTo" not in board_module
     assert "textPlane.position.set(0, -0.05, 0.195)" in board_module
+    assert 'context.font = \'900 205px "Yu Kyokasho", "Yu Mincho", serif\'' in board_module
+    assert "context.font = '800 40px Arial, sans-serif'" in board_module
     assert "ResizeObserver" in board_module
     assert 'canvas.addEventListener("wheel"' in board_module
     assert "pointermove" in board_module

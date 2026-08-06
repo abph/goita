@@ -841,12 +841,12 @@ function pieceTextMaterial(label, englishLabel, color, opacity) {
   context.textAlign = "center";
   context.textBaseline = "middle";
   if (englishLabel) {
-    context.font = '900 150px "Yu Kyokasho", "Yu Mincho", serif';
+    context.font = '900 165px "Yu Kyokasho", "Yu Mincho", serif';
     context.fillText(label, 128, 136);
-    context.font = '800 36px Arial, sans-serif';
+    context.font = '800 40px Arial, sans-serif';
     context.fillText(englishLabel, 128, 260);
   } else {
-    context.font = '900 184px "Yu Kyokasho", "Yu Mincho", serif';
+    context.font = '900 205px "Yu Kyokasho", "Yu Mincho", serif';
     context.fillText(label, 128, 170);
   }
 
