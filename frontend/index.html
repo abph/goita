@@ -85,6 +85,38 @@
       display: flex;
       gap: 6px;
     }
+    .board-3d-pan-controls {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: repeat(3, 30px);
+      grid-template-rows: repeat(2, 30px);
+      gap: 4px;
+    }
+    .board-3d-pan {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid rgba(91, 48, 22, 0.72);
+      border-radius: 4px;
+      background: rgba(255, 246, 222, 0.86);
+      color: #542d16;
+      box-shadow: 0 2px 5px rgba(52, 27, 12, 0.22);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    #board3dPanUp { grid-column: 2; grid-row: 1; }
+    #board3dPanLeft { grid-column: 1; grid-row: 2; }
+    #board3dPanDown { grid-column: 2; grid-row: 2; }
+    #board3dPanRight { grid-column: 3; grid-row: 2; }
+    .board-3d-pan:hover { background: rgba(255, 250, 235, 0.98); }
+    .board-3d-pan:focus-visible {
+      outline: 2px solid #b94d24;
+      outline-offset: 2px;
+    }
     .board-3d-zoom {
       width: 34px;
       height: 34px;
@@ -104,7 +136,8 @@
       outline: 2px solid #b94d24;
       outline-offset: 2px;
     }
-    .board-3d.is-unavailable .board-3d-controls { display: none; }
+    .board-3d.is-unavailable .board-3d-controls,
+    .board-3d.is-unavailable .board-3d-pan-controls { display: none; }
     body.board-view-3d #board { display: none; }
     body.board-view-3d #board3d { display: block; }
     .board-pixel {
@@ -2227,7 +2260,7 @@
     }
     .board-view-segmented {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 0;
       overflow: hidden;
       border: 1px solid #a87b4d;
@@ -3340,6 +3373,12 @@
             <div id="board" class="board"></div>
             <div id="board3d" class="board-3d" aria-hidden="true">
               <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
+              <div class="board-3d-pan-controls" aria-label="3D盤面の視点移動">
+                <button id="board3dPanUp" class="board-3d-pan" type="button" aria-label="前へ移動" title="前へ移動">↑</button>
+                <button id="board3dPanLeft" class="board-3d-pan" type="button" aria-label="左へ移動" title="左へ移動">←</button>
+                <button id="board3dPanDown" class="board-3d-pan" type="button" aria-label="後ろへ移動" title="後ろへ移動">↓</button>
+                <button id="board3dPanRight" class="board-3d-pan" type="button" aria-label="右へ移動" title="右へ移動">→</button>
+              </div>
               <div class="board-3d-controls" aria-label="3D盤面の拡大縮小">
                 <button id="board3dZoomOut" class="board-3d-zoom" type="button" aria-label="縮小" title="縮小">−</button>
                 <button id="board3dZoomIn" class="board-3d-zoom" type="button" aria-label="拡大" title="拡大">＋</button>
@@ -3556,6 +3595,7 @@
               <div class="board-view-segmented" role="group" aria-label="盤面表示">
                 <button id="lobbyBoardView2dButton" class="board-view-option active" type="button" onclick="setLobbyBoardViewControl('2d')">2D</button>
                 <button id="lobbyBoardView3dButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('3d')">3D</button>
+                <button id="lobbyBoardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('meeting-room')">集会室</button>
                 <button id="lobbyBoardViewPixelColorButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
                 <button id="lobbyBoardViewPixelMonoButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
               </div>
@@ -3710,6 +3750,7 @@
             <div class="board-view-segmented" role="group" aria-label="盤面表示">
               <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
               <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
+              <button id="boardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setBoardViewControl('meeting-room')">集会室</button>
               <button id="boardViewPixelColorButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
               <button id="boardViewPixelMonoButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
             </div>
@@ -3882,7 +3923,7 @@
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260805a").catch((error) => {
+  import("/static/board3d.js?v=20260806j").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
@@ -3905,6 +3946,7 @@
 const API = "";
 const MAIN_GID = "main";
 const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-d", "main-e", "main-f"]);
+const MEETING_ROOM_GID = "main-d";
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
@@ -4055,7 +4097,7 @@ function uiText(value) {
     return window.goitaI18n?.translate?.(source) ?? source;
 }
 const BUILT_IN_ROOM_NAMES = new Set([
-    "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "みんなでごいたD",
+    "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "埼玉的な集会室",
     "AIとごいたA", "AIとごいたB", "プライベートA", "プライベートB",
     "プライベートC", "プライベートD", "デバッグルーム"
 ]);
@@ -4210,14 +4252,19 @@ let roomChatPeopleFetching = false;
 
 const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
 const PIXEL_BOARD_MODES = new Set(["pixel-color", "pixel-mono"]);
+const THREE_D_BOARD_MODES = new Set(["3d", "meeting-room"]);
 
 function normalizeBoardViewMode(mode) {
     if (mode === "pixel") return "pixel-color";
-    return mode === "3d" || PIXEL_BOARD_MODES.has(mode) ? mode : "2d";
+    return THREE_D_BOARD_MODES.has(mode) || PIXEL_BOARD_MODES.has(mode) ? mode : "2d";
 }
 
 function supportsAlternateBoardViews(roomId) {
-    return roomId === DEBUG_GID || PRIVATE_ROOM_IDS.has(roomId);
+    return roomId === DEBUG_GID || roomId === MEETING_ROOM_GID || PRIVATE_ROOM_IDS.has(roomId);
+}
+
+function effectiveBoardViewMode(roomId = gid) {
+    return roomId === MEETING_ROOM_GID ? "meeting-room" : personalSettings.boardViewMode;
 }
 
 function loadPersonalSettings() {
@@ -4299,21 +4346,25 @@ function setBoardViewControl(mode) {
     document.getElementById("boardViewMode").value = normalized;
     document.getElementById("boardView2dButton").classList.toggle("active", normalized === "2d");
     document.getElementById("boardView3dButton").classList.toggle("active", normalized === "3d");
+    document.getElementById("boardViewMeetingRoomButton").classList.toggle("active", normalized === "meeting-room");
     document.getElementById("boardViewPixelColorButton").classList.toggle("active", normalized === "pixel-color");
     document.getElementById("boardViewPixelMonoButton").classList.toggle("active", normalized === "pixel-mono");
 }
 
 function applyBoardViewMode() {
     const boardViewsEnabled = supportsAlternateBoardViews(gid);
-    const requested3d = boardViewsEnabled && personalSettings.boardViewMode === "3d";
-    const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);
-    const pixelTheme = personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color";
+    const boardViewMode = effectiveBoardViewMode(gid);
+    const requested3d = boardViewsEnabled && THREE_D_BOARD_MODES.has(boardViewMode);
+    const requestedMeetingRoom = requested3d && boardViewMode === "meeting-room";
+    const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(boardViewMode);
+    const pixelTheme = boardViewMode === "pixel-mono" ? "mono" : "color";
     const use3d = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
     const usePixel = requestedPixel && window.goitaBoardPixel?.isAvailable?.() === true;
     const board3d = document.getElementById("board3d");
     const boardPixel = document.getElementById("boardPixel");
 
     document.body.classList.toggle("board-view-3d", use3d);
+    document.body.classList.toggle("board-view-meeting-room", use3d && requestedMeetingRoom);
     document.body.classList.toggle("board-view-pixel", usePixel);
     document.body.classList.toggle("board-view-pixel-mono", usePixel && pixelTheme === "mono");
     if (board3d) {
@@ -4321,6 +4372,7 @@ function applyBoardViewMode() {
         board3d.classList.toggle("is-unavailable", requested3d && window.goitaBoard3D?.isAvailable?.() === false);
     }
     if (boardPixel) boardPixel.setAttribute("aria-hidden", usePixel ? "false" : "true");
+    window.goitaBoard3D?.setEnvironment?.(requestedMeetingRoom ? "meeting-room" : "board");
     window.goitaBoard3D?.setVisible?.(use3d);
     window.goitaBoardPixel?.setTheme?.(pixelTheme);
     window.goitaBoardPixel?.setVisible?.(usePixel);
@@ -4343,6 +4395,7 @@ function setLobbyBoardViewControl(mode) {
     document.getElementById("lobbyBoardViewMode").value = normalized;
     document.getElementById("lobbyBoardView2dButton").classList.toggle("active", normalized === "2d");
     document.getElementById("lobbyBoardView3dButton").classList.toggle("active", normalized === "3d");
+    document.getElementById("lobbyBoardViewMeetingRoomButton").classList.toggle("active", normalized === "meeting-room");
     document.getElementById("lobbyBoardViewPixelColorButton").classList.toggle("active", normalized === "pixel-color");
     document.getElementById("lobbyBoardViewPixelMonoButton").classList.toggle("active", normalized === "pixel-mono");
 }
@@ -4989,6 +5042,7 @@ async function returnToLobby() {
     window.goitaLobbyWhisper?.setRoomVisibility?.(false);
     clearRoomBackground();
     document.body.classList.remove("board-view-3d");
+    document.body.classList.remove("board-view-meeting-room");
     window.goitaBoard3D?.setVisible?.(false);
     renderLobbyChat.initialized = false;
     
@@ -5290,7 +5344,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
-    setBoardViewControl(personalSettings.boardViewMode);
+    setBoardViewControl(effectiveBoardViewMode(settingTargetGid || gid));
     document.getElementById("personalSettingsStatus").textContent = "";
 }
 
@@ -5310,7 +5364,7 @@ function openSettingsModal(targetGid, event) {
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("boardViewSettingRow").style.display =
-        supportsAlternateBoardViews(targetGid) ? "block" : "none";
+        supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
     ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
         const details = document.getElementById(id);
         if (details) details.open = false;
@@ -7609,16 +7663,19 @@ function buildBoard3DSnapshot(state) {
 }
 
 function renderBoard3D(state) {
-  if(!supportsAlternateBoardViews(gid) || personalSettings.boardViewMode !== "3d") return;
+  const boardViewMode = effectiveBoardViewMode(gid);
+  if(!supportsAlternateBoardViews(gid) || !THREE_D_BOARD_MODES.has(boardViewMode)) return;
   if(window.goitaBoard3D?.isAvailable?.() !== true) return;
+  window.goitaBoard3D.setEnvironment(boardViewMode === "meeting-room" ? "meeting-room" : "board");
   window.goitaBoard3D.setVisible(true);
   window.goitaBoard3D.render(buildBoard3DSnapshot(state));
 }
 
 function renderBoardPixel(state) {
-  if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;
+  const boardViewMode = effectiveBoardViewMode(gid);
+  if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(boardViewMode)) return;
   if(window.goitaBoardPixel?.isAvailable?.() !== true) return;
-  window.goitaBoardPixel.setTheme(personalSettings.boardViewMode === "pixel-mono" ? "mono" : "color");
+  window.goitaBoardPixel.setTheme(boardViewMode === "pixel-mono" ? "mono" : "color");
   window.goitaBoardPixel.setVisible(true);
   window.goitaBoardPixel.render(buildBoard3DSnapshot(state));
 }

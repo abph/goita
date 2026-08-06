@@ -15,8 +15,8 @@ def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
-    assert "const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(personalSettings.boardViewMode);" in html
-    assert "if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(personalSettings.boardViewMode)) return;" in html
+    assert "const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(boardViewMode);" in html
+    assert "if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(boardViewMode)) return;" in html
     assert 'boardViewMode: "2d"' in html
 
 

@@ -21,7 +21,7 @@ def test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms() -> None:
         "みんなでごいたA",
         "みんなでごいたB",
         "みんなでごいたC",
-        "みんなでごいたD",
+        "埼玉的な集会室",
         "AIとごいたA",
         "AIとごいたB",
     ]

@@ -4,23 +4,36 @@ const canvas = document.getElementById("board3dCanvas");
 const container = document.getElementById("board3d");
 const zoomInButton = document.getElementById("board3dZoomIn");
 const zoomOutButton = document.getElementById("board3dZoomOut");
+const panUpButton = document.getElementById("board3dPanUp");
+const panDownButton = document.getElementById("board3dPanDown");
+const panLeftButton = document.getElementById("board3dPanLeft");
+const panRightButton = document.getElementById("board3dPanRight");
 
 let renderer = null;
 let scene = null;
 let camera = null;
+let standardFloor = null;
+let meetingRoomGroup = null;
+let playAreaGroup = null;
+let standardBoardFurniture = null;
 let pieceLayer = null;
 let labelLayer = null;
 let passLayer = null;
+let scoreLayer = null;
 let resizeObserver = null;
 let available = null;
 let visible = false;
+let environmentMode = "board";
 let hasRenderedState = false;
+let latestSnapshot = null;
 let previousPieceKeys = new Set();
 let animationFrame = 0;
 let activeAnimations = [];
 let cameraYaw = 0;
 let cameraElevation = 0.72;
 let cameraRadius = 23.2;
+let cameraPanX = 0;
+let cameraPanZ = 0;
 let pointerState = null;
 let pinchDistance = null;
 const activePointers = new Map();
@@ -28,6 +41,35 @@ const activePointers = new Map();
 const DEFAULT_CAMERA_RADIUS = 23.2;
 const MIN_CAMERA_RADIUS = 15.8;
 const MAX_CAMERA_RADIUS = 31.5;
+const MEETING_ZOOM_STOPS = [2.9, 3.5, 4.05, 4.6, 6.4, 8.2, 10, 11.8];
+const CAMERA_PROFILES = {
+  board: {
+    yaw: 0,
+    elevation: 0.72,
+    radius: DEFAULT_CAMERA_RADIUS,
+    minRadius: MIN_CAMERA_RADIUS,
+    maxRadius: MAX_CAMERA_RADIUS,
+    minYaw: -0.52,
+    maxYaw: 0.52,
+    minElevation: 0.55,
+    maxElevation: 0.98,
+    orbitCenter: [0, 0, 0],
+    lookTarget: [0, -2.02, 0],
+  },
+  "meeting-room": {
+    yaw: 0.03,
+    elevation: 0.55,
+    radius: 8.2,
+    minRadius: 2.9,
+    maxRadius: 11.8,
+    minYaw: -0.22,
+    maxYaw: 0.28,
+    minElevation: 0.28,
+    maxElevation: 1.05,
+    orbitCenter: [5.1, -2.18, -4.8],
+    lookTarget: [5.1, -1.1, -4.8],
+  },
+};
 const BOARD_TOP_Y = 0.17;
 const BOARD_BODY_HEIGHT = 3.44;
 const BOARD_BODY_TOP_Y = -0.37;
@@ -37,6 +79,24 @@ const SIDE_SHELF_LENGTH = 5.2;
 const SIDE_SHELF_DEPTH = 2.36;
 const SIDE_SHELF_OFFSET = 5.28;
 const TABLE_FLOOR_Y = BOARD_BODY_BOTTOM_Y - 0.99;
+const MEETING_ROOM_WIDTH = 24;
+const MEETING_ROOM_DEPTH = 60;
+const MEETING_ROOM_BACK_Z = -32;
+const MEETING_ROOM_CENTER_Z = -2;
+const MEETING_ROOM_HEIGHT = 10;
+const MEETING_WINDOW_WIDTH = MEETING_ROOM_WIDTH * 0.94;
+const MEETING_WINDOW_HEIGHT = MEETING_ROOM_HEIGHT * 0.6;
+const MEETING_BLIND_HEIGHT = MEETING_WINDOW_HEIGHT * 0.5;
+const MEETING_BLIND_WIDTH = MEETING_WINDOW_WIDTH / 3 - 0.24;
+const MEETING_BLIND_CENTERS = [-MEETING_WINDOW_WIDTH / 3, 0, MEETING_WINDOW_WIDTH / 3];
+const MEETING_TABLE_COLUMNS = [-5.1, 5.1];
+const MEETING_TABLE_ROWS = [-4.8, -14.6, -24.4];
+const MEETING_BOARD_X = 5.1;
+const MEETING_BOARD_Z = -4.8;
+const MEETING_TABLE_TOP_Y = TABLE_FLOOR_Y + 2.35;
+const MEETING_BOARD_SCALE = 0.3;
+const MEETING_BOARD_CLEARANCE = 0.08;
+const MEETING_WHITEBOARD_X = -MEETING_WINDOW_WIDTH / 3;
 const pieceGeometry = createPieceGeometry();
 const highlightGeometry = new THREE.RingGeometry(0.43, 0.52, 32);
 const pieceMaterials = new Map();
@@ -194,11 +254,227 @@ function createSideShelves(material, supportMaterial) {
   return shelves;
 }
 
+function addRoomBox(group, size, position, material, options = {}) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+  mesh.position.set(...position);
+  mesh.castShadow = options.castShadow === true;
+  mesh.receiveShadow = options.receiveShadow !== false;
+  group.add(mesh);
+  return mesh;
+}
+
+function createMeetingChair(materials, x, z, facing) {
+  const chair = new THREE.Group();
+  const floorY = TABLE_FLOOR_Y;
+  const direction = facing === "back" ? -1 : 1;
+  addRoomBox(chair, [0.92, 0.16, 0.86], [x, floorY + 1.22, z], materials.chair, {
+    castShadow: true,
+  });
+  addRoomBox(
+    chair,
+    [0.92, 1.02, 0.14],
+    [x, floorY + 1.82, z + direction * 0.38],
+    materials.chair,
+    { castShadow: true }
+  );
+  [-0.34, 0.34].forEach((offsetX) => {
+    [-0.27, 0.27].forEach((offsetZ) => {
+      addRoomBox(
+        chair,
+        [0.08, 1.18, 0.08],
+        [x + offsetX, floorY + 0.59, z + offsetZ],
+        materials.metal,
+        { castShadow: true }
+      );
+    });
+  });
+  return chair;
+}
+
+function createMeetingTable(materials, x, z) {
+  const table = new THREE.Group();
+  const floorY = TABLE_FLOOR_Y;
+  addRoomBox(table, [7.2, 0.3, 2.9], [x, floorY + 2.2, z], materials.table, {
+    castShadow: true,
+  });
+  [-3.05, 3.05].forEach((offsetX) => {
+    [-1.05, 1.05].forEach((offsetZ) => {
+      addRoomBox(
+        table,
+        [0.14, 2.05, 0.14],
+        [x + offsetX, floorY + 1.05, z + offsetZ],
+        materials.metal,
+        { castShadow: true }
+      );
+    });
+  });
+
+  [-2.15, 0, 2.15].forEach((seatX) => {
+    table.add(createMeetingChair(materials, x + seatX, z + 2.08, "front"));
+    table.add(createMeetingChair(materials, x + seatX, z - 2.08, "back"));
+  });
+  return table;
+}
+
+function createFreestandingWhiteboard(materials) {
+  const whiteboard = new THREE.Group();
+  const floorY = TABLE_FLOOR_Y;
+  addRoomBox(whiteboard, [5.6, 3.65, 0.2], [MEETING_WHITEBOARD_X, floorY + 4.15, -30.7], materials.frame, {
+    castShadow: true,
+  });
+  addRoomBox(whiteboard, [5.18, 3.22, 0.22], [MEETING_WHITEBOARD_X, floorY + 4.15, -30.55], materials.whiteboard, {
+    castShadow: true,
+  });
+  [MEETING_WHITEBOARD_X - 2, MEETING_WHITEBOARD_X + 2].forEach((x) => {
+    addRoomBox(whiteboard, [0.14, 3.0, 0.14], [x, floorY + 1.52, -30.7], materials.metal, {
+      castShadow: true,
+    });
+    addRoomBox(whiteboard, [1.2, 0.12, 0.65], [x, floorY + 0.08, -30.55], materials.metal, {
+      castShadow: true,
+    });
+  });
+  return whiteboard;
+}
+
+function createMeetingRoom() {
+  const room = new THREE.Group();
+  const floorY = TABLE_FLOOR_Y;
+  const materials = {
+    wall: new THREE.MeshStandardMaterial({ color: 0xf5f5f1, roughness: 0.92 }),
+    ceiling: new THREE.MeshBasicMaterial({ color: 0xfafafa }),
+    floor: new THREE.MeshStandardMaterial({ color: 0x777d80, roughness: 0.96 }),
+    table: new THREE.MeshStandardMaterial({ color: 0xcfd3d2, roughness: 0.82 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0x777b7d, roughness: 0.45, metalness: 0.5 }),
+    chair: new THREE.MeshStandardMaterial({ color: 0xb99858, roughness: 0.76 }),
+    window: new THREE.MeshStandardMaterial({
+      color: 0xa9c9d9,
+      roughness: 0.3,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.84,
+    }),
+    frame: new THREE.MeshStandardMaterial({ color: 0xd4d7d8, roughness: 0.6 }),
+    blind: new THREE.MeshStandardMaterial({ color: 0xd9d7ce, roughness: 0.82 }),
+    blindSlat: new THREE.MeshStandardMaterial({ color: 0xc4c1b7, roughness: 0.78 }),
+    whiteboard: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }),
+    light: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xffffff,
+      emissiveIntensity: 2.6,
+      roughness: 0.35,
+    }),
+    lightHousing: new THREE.MeshStandardMaterial({ color: 0xc8ccce, roughness: 0.62 }),
+  };
+
+  const wallCenterY = floorY + MEETING_ROOM_HEIGHT / 2;
+  const ceilingY = floorY + MEETING_ROOM_HEIGHT;
+  addRoomBox(
+    room,
+    [MEETING_ROOM_WIDTH, 0.34, MEETING_ROOM_DEPTH],
+    [0, floorY - 0.17, MEETING_ROOM_CENTER_Z],
+    materials.floor
+  );
+  addRoomBox(
+    room,
+    [MEETING_ROOM_WIDTH, MEETING_ROOM_HEIGHT, 0.34],
+    [0, wallCenterY, MEETING_ROOM_BACK_Z],
+    materials.wall
+  );
+  [-MEETING_ROOM_WIDTH / 2, MEETING_ROOM_WIDTH / 2].forEach((x) => {
+    addRoomBox(
+      room,
+      [0.34, MEETING_ROOM_HEIGHT, MEETING_ROOM_DEPTH],
+      [x, wallCenterY, MEETING_ROOM_CENTER_Z],
+      materials.wall
+    );
+  });
+  addRoomBox(
+    room,
+    [MEETING_ROOM_WIDTH, 0.28, MEETING_ROOM_DEPTH],
+    [0, ceilingY, MEETING_ROOM_CENTER_Z],
+    materials.ceiling
+  );
+
+  const windowY = floorY + MEETING_ROOM_HEIGHT - MEETING_WINDOW_HEIGHT / 2;
+  const blindY = windowY + MEETING_WINDOW_HEIGHT / 2 - MEETING_BLIND_HEIGHT / 2;
+  addRoomBox(
+    room,
+    [MEETING_WINDOW_WIDTH, MEETING_WINDOW_HEIGHT, 0.12],
+    [0, windowY, MEETING_ROOM_BACK_Z + 0.2],
+    materials.window
+  );
+  addRoomBox(
+    room,
+    [MEETING_WINDOW_WIDTH + 0.3, 0.18, 0.22],
+    [0, windowY + MEETING_WINDOW_HEIGHT / 2, MEETING_ROOM_BACK_Z + 0.36],
+    materials.frame
+  );
+  addRoomBox(
+    room,
+    [MEETING_WINDOW_WIDTH + 0.3, 0.18, 0.22],
+    [0, windowY - MEETING_WINDOW_HEIGHT / 2, MEETING_ROOM_BACK_Z + 0.36],
+    materials.frame
+  );
+  [
+    -MEETING_WINDOW_WIDTH / 2,
+    -MEETING_WINDOW_WIDTH / 6,
+    MEETING_WINDOW_WIDTH / 6,
+    MEETING_WINDOW_WIDTH / 2,
+  ].forEach((x) => {
+    addRoomBox(
+      room,
+      [0.18, MEETING_WINDOW_HEIGHT + 0.36, 0.22],
+      [x, windowY, MEETING_ROOM_BACK_Z + 0.36],
+      materials.frame
+    );
+  });
+
+  MEETING_BLIND_CENTERS.forEach((x) => {
+    addRoomBox(
+      room,
+      [MEETING_BLIND_WIDTH, MEETING_BLIND_HEIGHT, 0.13],
+      [x, blindY, MEETING_ROOM_BACK_Z + 0.5],
+      materials.blind
+    );
+    for (let index = 0; index < 9; index += 1) {
+      addRoomBox(
+        room,
+        [MEETING_BLIND_WIDTH - 0.26, 0.08, 0.18],
+        [
+          x,
+          blindY - MEETING_BLIND_HEIGHT / 2 + 0.22 + index * ((MEETING_BLIND_HEIGHT - 0.44) / 8),
+          MEETING_ROOM_BACK_Z + 0.61,
+        ],
+        materials.blindSlat
+      );
+    }
+  });
+  room.add(createFreestandingWhiteboard(materials));
+
+  MEETING_TABLE_COLUMNS.forEach((x) => {
+    MEETING_TABLE_ROWS.forEach((z) => room.add(createMeetingTable(materials, x, z)));
+  });
+
+  [-7, 0, 7].forEach((x) => {
+    addRoomBox(room, [0.92, 0.2, 45], [x, ceilingY - 0.28, -7], materials.lightHousing);
+    addRoomBox(room, [0.56, 0.12, 44.5], [x, ceilingY - 0.42, -7], materials.light);
+  });
+  [-2, -14, -26].forEach((z) => {
+    const light = new THREE.PointLight(0xf7fbff, 23, 20, 1.8);
+    light.position.set(0, ceilingY - 1.0, z);
+    room.add(light);
+  });
+  room.add(new THREE.AmbientLight(0xffffff, 1.25));
+
+  room.visible = false;
+  return room;
+}
+
 function createScene() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xd9c39c);
 
-  camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+  camera = new THREE.PerspectiveCamera(environmentMode === "meeting-room" ? 58 : 34, 1, 0.1, 100);
   updateCamera();
 
   const ambient = new THREE.HemisphereLight(0xfff4dc, 0x65462d, 2.1);
@@ -239,6 +515,10 @@ function createScene() {
     metalness: 0,
   });
 
+  playAreaGroup = new THREE.Group();
+  standardBoardFurniture = new THREE.Group();
+  scene.add(playAreaGroup, standardBoardFurniture);
+
   const boardTop = new THREE.Mesh(
     new THREE.BoxGeometry(9.05, 0.54, 9.05),
     boardTopMaterial
@@ -246,7 +526,7 @@ function createScene() {
   boardTop.position.y = BOARD_TOP_Y - 0.27;
   boardTop.castShadow = true;
   boardTop.receiveShadow = true;
-  scene.add(boardTop);
+  playAreaGroup.add(boardTop);
 
   const boardBody = new THREE.Mesh(
     new THREE.BoxGeometry(8.56, BOARD_BODY_HEIGHT, 8.56),
@@ -255,7 +535,7 @@ function createScene() {
   boardBody.position.y = BOARD_BODY_TOP_Y - BOARD_BODY_HEIGHT / 2;
   boardBody.castShadow = true;
   boardBody.receiveShadow = true;
-  scene.add(boardBody);
+  standardBoardFurniture.add(boardBody);
 
   const lowerTrim = new THREE.Mesh(
     new THREE.BoxGeometry(8.76, 0.18, 8.76),
@@ -264,17 +544,17 @@ function createScene() {
   lowerTrim.position.y = BOARD_BODY_BOTTOM_Y + 0.01;
   lowerTrim.castShadow = true;
   lowerTrim.receiveShadow = true;
-  scene.add(lowerTrim);
+  standardBoardFurniture.add(lowerTrim);
 
-  scene.add(createSideShelves(shelfMaterial, legMaterial));
+  standardBoardFurniture.add(createSideShelves(shelfMaterial, legMaterial));
 
   [-4.02, 4.02].forEach((x) => {
     [-4.02, 4.02].forEach((z) => {
-      scene.add(createBoardLeg(legMaterial, x, z));
+      standardBoardFurniture.add(createBoardLeg(legMaterial, x, z));
     });
   });
 
-  const floor = new THREE.Mesh(
+  standardFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(24, 24),
     new THREE.MeshStandardMaterial({
       color: 0xdac9a8,
@@ -282,10 +562,13 @@ function createScene() {
       metalness: 0,
     })
   );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = TABLE_FLOOR_Y;
-  floor.receiveShadow = true;
-  scene.add(floor);
+  standardFloor.rotation.x = -Math.PI / 2;
+  standardFloor.position.y = TABLE_FLOOR_Y;
+  standardFloor.receiveShadow = true;
+  scene.add(standardFloor);
+
+  meetingRoomGroup = createMeetingRoom();
+  scene.add(meetingRoomGroup);
 
   const frameMaterial = new THREE.MeshStandardMaterial({
     color: 0x74421f,
@@ -300,7 +583,7 @@ function createScene() {
     const frame = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), frameMaterial);
     frame.position.set(x, y, z);
     frame.castShadow = true;
-    scene.add(frame);
+    playAreaGroup.add(frame);
   });
 
   const centerMat = new THREE.MeshStandardMaterial({
@@ -312,12 +595,14 @@ function createScene() {
   const center = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.025, 3.5), centerMat);
   center.position.y = 0.19;
   center.receiveShadow = true;
-  scene.add(center);
+  playAreaGroup.add(center);
 
   pieceLayer = new THREE.Group();
   labelLayer = new THREE.Group();
   passLayer = new THREE.Group();
-  scene.add(pieceLayer, labelLayer, passLayer);
+  scoreLayer = new THREE.Group();
+  playAreaGroup.add(pieceLayer, labelLayer, passLayer);
+  scene.add(scoreLayer);
 }
 
 function isSmallScreen() {
@@ -369,18 +654,87 @@ function resizeAndRender() {
 
 function updateCamera() {
   if (!camera) return;
+  const profile = CAMERA_PROFILES[environmentMode] || CAMERA_PROFILES.board;
+  const [orbitX, orbitY, orbitZ] = profile.orbitCenter;
+  const [lookX, lookY, lookZ] = profile.lookTarget;
   const horizontal = Math.cos(cameraElevation) * cameraRadius;
   camera.position.set(
-    Math.sin(cameraYaw) * horizontal,
-    Math.sin(cameraElevation) * cameraRadius,
-    Math.cos(cameraYaw) * horizontal
+    orbitX + cameraPanX + Math.sin(cameraYaw) * horizontal,
+    orbitY + Math.sin(cameraElevation) * cameraRadius,
+    orbitZ + cameraPanZ + Math.cos(cameraYaw) * horizontal
   );
-  camera.lookAt(0, -2.02, 0);
+  camera.lookAt(lookX + cameraPanX, lookY, lookZ + cameraPanZ);
 }
 
 function setCameraRadius(nextRadius) {
-  cameraRadius = THREE.MathUtils.clamp(nextRadius, MIN_CAMERA_RADIUS, MAX_CAMERA_RADIUS);
+  const profile = CAMERA_PROFILES[environmentMode] || CAMERA_PROFILES.board;
+  cameraRadius = THREE.MathUtils.clamp(nextRadius, profile.minRadius, profile.maxRadius);
   updateCamera();
+  renderFrame();
+}
+
+function stepCameraZoom(direction) {
+  if (environmentMode !== "meeting-room") {
+    setCameraRadius(cameraRadius + direction * 1.8);
+    return;
+  }
+  const epsilon = 0.03;
+  const nextRadius = direction < 0
+    ? MEETING_ZOOM_STOPS.filter((radius) => radius < cameraRadius - epsilon).at(-1)
+    : MEETING_ZOOM_STOPS.find((radius) => radius > cameraRadius + epsilon);
+  setCameraRadius(nextRadius ?? (direction < 0 ? MEETING_ZOOM_STOPS[0] : MEETING_ZOOM_STOPS.at(-1)));
+}
+
+function panCamera(screenX, forward) {
+  const step = environmentMode === "meeting-room" ? 0.65 : 0.8;
+  const limit = environmentMode === "meeting-room" ? 4.5 : 3;
+  const deltaX = screenX * Math.cos(cameraYaw) - forward * Math.sin(cameraYaw);
+  const deltaZ = -screenX * Math.sin(cameraYaw) - forward * Math.cos(cameraYaw);
+  cameraPanX = THREE.MathUtils.clamp(cameraPanX + deltaX * step, -limit, limit);
+  cameraPanZ = THREE.MathUtils.clamp(cameraPanZ + deltaZ * step, -limit, limit);
+  updateCamera();
+  renderFrame();
+}
+
+function resetCameraForEnvironment() {
+  const profile = CAMERA_PROFILES[environmentMode] || CAMERA_PROFILES.board;
+  cameraYaw = profile.yaw;
+  cameraElevation = profile.elevation;
+  cameraRadius = profile.radius;
+  cameraPanX = 0;
+  cameraPanZ = 0;
+  updateCamera();
+}
+
+function setEnvironment(mode) {
+  const nextMode = mode === "meeting-room" ? "meeting-room" : "board";
+  const changed = environmentMode !== nextMode;
+  environmentMode = nextMode;
+  if (scene) scene.background = new THREE.Color(nextMode === "meeting-room" ? 0xdde2e5 : 0xd9c39c);
+  if (camera) {
+    camera.fov = nextMode === "meeting-room" ? 58 : 34;
+    camera.updateProjectionMatrix();
+  }
+  if (standardFloor) standardFloor.visible = nextMode === "board";
+  if (meetingRoomGroup) meetingRoomGroup.visible = nextMode === "meeting-room";
+  if (standardBoardFurniture) standardBoardFurniture.visible = nextMode === "board";
+  if (playAreaGroup) {
+    if (nextMode === "meeting-room") {
+      playAreaGroup.position.set(
+        MEETING_BOARD_X,
+        MEETING_TABLE_TOP_Y + MEETING_BOARD_CLEARANCE - BOARD_TOP_Y * MEETING_BOARD_SCALE,
+        MEETING_BOARD_Z
+      );
+      playAreaGroup.scale.setScalar(MEETING_BOARD_SCALE);
+    } else {
+      playAreaGroup.position.set(0, 0, 0);
+      playAreaGroup.scale.setScalar(1);
+    }
+  }
+  if (changed) {
+    resetCameraForEnvironment();
+    if (latestSnapshot) rebuildLabels(latestSnapshot);
+  }
   renderFrame();
 }
 
@@ -421,8 +775,13 @@ function attachInteraction() {
     const dy = event.clientY - pointerState.y;
     pointerState.x = event.clientX;
     pointerState.y = event.clientY;
-    cameraYaw = THREE.MathUtils.clamp(cameraYaw - dx * 0.004, -0.52, 0.52);
-    cameraElevation = THREE.MathUtils.clamp(cameraElevation + dy * 0.003, 0.55, 0.98);
+    const profile = CAMERA_PROFILES[environmentMode] || CAMERA_PROFILES.board;
+    cameraYaw = THREE.MathUtils.clamp(cameraYaw - dx * 0.004, profile.minYaw, profile.maxYaw);
+    cameraElevation = THREE.MathUtils.clamp(
+      cameraElevation + dy * 0.003,
+      profile.minElevation,
+      profile.maxElevation
+    );
     updateCamera();
     renderFrame();
   });
@@ -439,14 +798,15 @@ function attachInteraction() {
   canvas.addEventListener("pointerup", releasePointer);
   canvas.addEventListener("pointercancel", releasePointer);
   canvas.addEventListener("dblclick", () => {
-    cameraYaw = 0;
-    cameraElevation = 0.72;
-    cameraRadius = DEFAULT_CAMERA_RADIUS;
-    updateCamera();
+    resetCameraForEnvironment();
     renderFrame();
   });
-  zoomInButton?.addEventListener("click", () => setCameraRadius(cameraRadius - 1.8));
-  zoomOutButton?.addEventListener("click", () => setCameraRadius(cameraRadius + 1.8));
+  zoomInButton?.addEventListener("click", () => stepCameraZoom(-1));
+  zoomOutButton?.addEventListener("click", () => stepCameraZoom(1));
+  panUpButton?.addEventListener("click", () => panCamera(0, 1));
+  panDownButton?.addEventListener("click", () => panCamera(0, -1));
+  panLeftButton?.addEventListener("click", () => panCamera(-1, 0));
+  panRightButton?.addEventListener("click", () => panCamera(1, 0));
 }
 
 function pieceBaseMaterial(kind) {
@@ -685,13 +1045,24 @@ function createFloatingScore(snapshot) {
     side: THREE.DoubleSide,
   });
   const score = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 2.95), material);
-  score.position.set(0, -0.6, -10.8);
+  if (environmentMode === "meeting-room") {
+    score.rotation.x = -Math.PI / 2;
+    score.position.set(
+      MEETING_BOARD_X,
+      MEETING_TABLE_TOP_Y + MEETING_BOARD_CLEARANCE + 0.03,
+      MEETING_BOARD_Z
+    );
+    score.scale.setScalar(MEETING_BOARD_SCALE);
+  } else {
+    score.position.set(0, -0.6, -10.8);
+  }
   score.renderOrder = 12;
   return score;
 }
 
 function rebuildLabels(snapshot) {
   clearLayer(labelLayer, true);
+  clearLayer(scoreLayer, true);
   labelDisposables.length = 0;
 
   const namePositions = {
@@ -718,7 +1089,7 @@ function rebuildLabels(snapshot) {
   });
 
   if (snapshot.isStarted || snapshot.finished) {
-    labelLayer.add(createFloatingScore(snapshot));
+    scoreLayer.add(createFloatingScore(snapshot));
   }
 }
 
@@ -744,6 +1115,7 @@ function renderFrame() {
 
 function render(snapshot) {
   if (!ensureRenderer() || !snapshot) return false;
+  latestSnapshot = snapshot;
   resizeAndRender();
   clearLayer(pieceLayer, false);
   activeAnimations = [];
@@ -784,6 +1156,7 @@ function setVisible(nextVisible) {
 window.goitaBoard3D = {
   isAvailable: ensureRenderer,
   render,
+  setEnvironment,
   setVisible,
   showPass,
   getCanvas: () => canvas,

@@ -32,7 +32,7 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     MAIN_GID: "みんなでごいたA",
     "main-b": "みんなでごいたB",
     "main-c": "みんなでごいたC",
-    "main-d": "みんなでごいたD",
+    "main-d": "埼玉的な集会室",
     "main-e": "AIとごいたA",
     "main-f": "AIとごいたB",
 }
