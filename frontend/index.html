@@ -1655,6 +1655,38 @@
         display: none !important;
       }
     }
+    @media (min-width: 702px) and (max-width: 1099px) {
+      #chatPanel.chat-people-visible,
+      #lobbyChatPanel.chat-people-visible {
+        width: var(--chat-panel-width);
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+      }
+      .play-layout .chat-panel.chat-people-visible {
+        flex-basis: var(--chat-panel-width);
+      }
+      #chatPanel.chat-people-visible .room-chat-people,
+      #lobbyChatPanel.chat-people-visible .room-chat-people {
+        display: flex;
+        flex-direction: column;
+        grid-column: 1;
+        grid-row: 1;
+        border-right: 0;
+        border-bottom: 2px solid #d1ab75;
+      }
+      #chatPanel.chat-people-visible .chat-messages,
+      #lobbyChatPanel.chat-people-visible .chat-messages {
+        grid-column: 1;
+        grid-row: 2;
+        min-height: 0;
+      }
+      #chatPanel.chat-people-visible .chat-form,
+      #lobbyChatPanel.chat-people-visible .chat-form {
+        grid-column: 1;
+        grid-row: 3;
+      }
+    }
     @media (min-width: 1100px) {
       #gameView.chat-people-visible {
         width: calc((var(--cell) * 8) + (var(--gap) * 7) + 48px + var(--chat-panel-width) + var(--chat-people-width));
@@ -3482,9 +3514,6 @@
           </summary>
           <div class="settings-disclosure-content">
             <div class="settings-row">
-              <label><input type="checkbox" id="lobbyCheckShowPlayersInChat" style="width:auto;"> チャットの中にプレイヤー表示を追加</label>
-            </div>
-            <div class="settings-row">
               <label for="lobbyMobileChatPlacement">配置</label>
               <select id="lobbyMobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
                 <option value="right">右側</option>
@@ -3638,9 +3667,6 @@
           <span class="when-open">▼ チャットの設定を閉じる</span>
         </summary>
         <div class="settings-disclosure-content">
-          <div class="settings-row">
-            <label><input type="checkbox" id="checkShowPlayersInChat" style="width:auto;"> チャットの中にプレイヤー表示を追加</label>
-          </div>
           <div class="settings-row">
             <label for="mobileChatPlacement">配置</label>
             <select id="mobileChatPlacement" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
@@ -4206,7 +4232,6 @@ function loadPersonalSettings() {
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
-            showPlayersInChat: saved.showPlayersInChat !== false,
             boardViewMode: normalizeBoardViewMode(saved.boardViewMode),
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
@@ -4227,7 +4252,6 @@ function loadPersonalSettings() {
             pieceSound: "notanomori",
             enableCVoice: false,
             enableBeginnerSupport: false,
-            showPlayersInChat: true,
             boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
@@ -4334,7 +4358,6 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyPieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
-    document.getElementById("lobbyCheckShowPlayersInChat").checked = personalSettings.showPlayersInChat === true;
     setLobbyBoardViewControl(personalSettings.boardViewMode);
     document.getElementById("lobbyPersonalSettingsStatus").textContent = "";
 }
@@ -4356,7 +4379,6 @@ function saveLobbyPersonalSettings() {
         pieceSound: document.getElementById("lobbyPieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
-        showPlayersInChat: document.getElementById("lobbyCheckShowPlayersInChat").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
     };
     applyPersonalSettingsAppearance();
@@ -5266,7 +5288,6 @@ function syncPersonalSettingsControls() {
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
-    document.getElementById("checkShowPlayersInChat").checked = personalSettings.showPlayersInChat === true;
     setBoardViewControl(personalSettings.boardViewMode);
     document.getElementById("personalSettingsStatus").textContent = "";
 }
@@ -5356,7 +5377,6 @@ async function savePersonalSettings() {
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
-        showPlayersInChat: document.getElementById("checkShowPlayersInChat").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
     };
     latestBeginnerRecommendation = null;
@@ -6532,19 +6552,16 @@ function renderRoomChatPeople(sitePeople){
 }
 
 function applyRoomChatPeopleSetting(){
-  const enabled = personalSettings.showPlayersInChat === true;
-  document.getElementById("chatPanel")?.classList.toggle("chat-people-visible", enabled);
-  document.getElementById("lobbyChatPanel")?.classList.toggle("chat-people-visible", enabled);
-  document.getElementById("gameView")?.classList.toggle("chat-people-visible", enabled);
-  if(enabled){
-    renderRoomChatPeople(roomSitePeople.length ? roomSitePeople : lobbySitePeople);
-    refreshRoomChatPeople();
-  }
+  document.getElementById("chatPanel")?.classList.add("chat-people-visible");
+  document.getElementById("lobbyChatPanel")?.classList.add("chat-people-visible");
+  document.getElementById("gameView")?.classList.add("chat-people-visible");
+  renderRoomChatPeople(roomSitePeople.length ? roomSitePeople : lobbySitePeople);
+  refreshRoomChatPeople();
 }
 
 async function refreshRoomChatPeople(){
   const inRoom = document.getElementById("gameView")?.style.display !== "none";
-  if(!inRoom || personalSettings.showPlayersInChat !== true || roomChatPeopleFetching || document.hidden) return;
+  if(!inRoom || roomChatPeopleFetching || document.hidden) return;
   roomChatPeopleFetching = true;
   try{
     const query = new URLSearchParams({viewer_game_id: gid, client_id: clientId});

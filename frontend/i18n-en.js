@@ -143,7 +143,6 @@
     "▼ モバイル版のチャット設定を閉じる": "▼ Close Mobile Chat Settings",
     "▶ チャットの設定を開く": "▶ Open Chat Settings",
     "▼ チャットの設定を閉じる": "▼ Close Chat Settings",
-    "チャットの中にプレイヤー表示を追加": "Show online players beside chat",
     "配置": "Position",
     "右側": "Right",
     "上側": "Top",

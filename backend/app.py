@@ -132,12 +132,14 @@ AI_HELP_SYSTEM_PROMPT = """
 - 自分の手番では手駒を選んで受け・攻めを行う。「パス」は受けずに次へ回す。
 - 「Auto」をオンにすると、自分の席をAIが操作する。席の所有権を失うとAutoは停止する。
 - ゲーム開始前にも手駒欄は表示される。開始や配牌・親設定はホスト側の操作に従う。
+- ホストは、ゲームの開始や配牌、親の設定などの進行管理を行う権限を持つ。「ルームを作成したプレイヤー」とは説明しない。
 - 個人設定では名前、演出、Cの声、効果音、モバイル版チャットの位置・透明度・幅を変更できる。
 - プライベートルームでは、個人設定の「初心者サポートを有効にする」をオンにすると、おすすめの駒と簡単な理由が表示される。
 - ルーム管理は管理用パスワードが必要で、ルーム名、入室用合言葉、AI種類、合法手、ログ表示を設定できる。
 - 「みんな手札公開」では盤面上に各プレイヤーの手駒が表示される。
 - 「棋譜を保存する」は名前入り、「匿名で棋譜を保存する」はプレイヤー名を伏せて保存する。
 - チャットは観戦者も利用できる。「AIに聞く」は入力した質問をこの案内AIへ送る。
+- チャットの「@」は特定プレイヤー宛てではなく、送信範囲を指定する機能。「@」ボタンから「この場所」または「全員」を選ぶ。プレイヤー名を入力する機能とは説明しない。
 - デバッグルームでは、着席者だけがボイスチャットへ参加できる。参加直後はミュートで、音声は録音・保存されない。
 
 制約:
@@ -745,6 +747,55 @@ def _beginner_support_move_answer(
     )
 
 
+def _site_feature_answer(
+    question: str,
+    language: str = "ja",
+) -> Optional[str]:
+    """Answer site-specific terms without allowing a model to infer generic behavior."""
+    compact = "".join((question or "").lower().split())
+    normalized_language = _normalize_ui_language(language)
+    asks_host = (
+        "ホスト" in compact
+        or "房主" in compact
+        or "主持人" in compact
+        or "host" in compact
+    )
+    asks_mention_scope = (
+        "@" in compact
+        or "＠" in compact
+        or "メンション" in compact
+        or "mention" in compact
+        or "提及" in compact
+    )
+
+    if asks_host:
+        if normalized_language == "zh":
+            return "房主拥有开始游戏、设置手牌和庄家等管理对局进程的权限。"
+        if normalized_language == "en":
+            return (
+                "The host can manage game progress, including starting the game "
+                "and setting the hands and dealer."
+            )
+        return "ホストはゲームの開始や配牌、親の設定などの進行管理を行う権限を持っています。"
+
+    if asks_mention_scope:
+        if normalized_language == "zh":
+            return (
+                "聊天栏中的“@”用于指定消息的发送范围。"
+                "请按“@”按钮，然后选择“此处”或“所有人”。"
+            )
+        if normalized_language == "en":
+            return (
+                'The "@" button selects the audience for a chat message. '
+                'Press it and choose "Here" or "Everyone".'
+            )
+        return (
+            "「@」は、チャット欄で特定の範囲を指定してメッセージを送るためのメンション機能です。"
+            "「@」ボタンを押して、「この場所」「全員」と範囲を指定できます。"
+        )
+    return None
+
+
 def _gemini_api_key() -> str:
     return (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
 
@@ -819,6 +870,8 @@ async def _resolve_chat_ai_answer(
     local_answer_override: Optional[str] = None,
 ) -> str:
     local_answer = local_answer_override
+    if local_answer is None:
+        local_answer = _site_feature_answer(question, language)
     if local_answer is None:
         local_answer = _beginner_support_move_answer(question, language)
     if local_answer is None and not _gemini_api_key():

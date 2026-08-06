@@ -22,6 +22,21 @@ async def _run() -> None:
         assert "操作回答の末尾" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "初心者サポートを有効にする" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "分類名、見出しとして回答に表示しない" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "ルームを作成したプレイヤー" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "特定プレイヤー宛てではなく" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert app_module._site_feature_answer("ホストとは？") == (
+            "ホストはゲームの開始や配牌、親の設定などの進行管理を行う権限を持っています。"
+        )
+        assert app_module._site_feature_answer("@について教えて") == (
+            "「@」は、チャット欄で特定の範囲を指定してメッセージを送るためのメンション機能です。"
+            "「@」ボタンを押して、「この場所」「全員」と範囲を指定できます。"
+        )
+        assert "host can manage game progress" in app_module._site_feature_answer(
+            "What is the host?", "en"
+        ).lower()
+        assert 'choose "Here" or "Everyone"' in app_module._site_feature_answer(
+            "How does @ work?", "en"
+        )
         basic_usage_answer = app_module._lobby_basic_usage_answer("使い方が分からない")
         assert basic_usage_answer is not None
         assert basic_usage_answer.startswith("まず、遊びたい部屋を選んで入ってください。")
