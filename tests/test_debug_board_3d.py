@@ -19,7 +19,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dPanDown"' in html
     assert 'id="board3dPanLeft"' in html
     assert 'id="board3dPanRight"' in html
-    assert 'import("/static/board3d.js?v=20260806k")' in html
+    assert 'import("/static/board3d.js?v=20260806m")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html
@@ -57,6 +57,12 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert 'import * as THREE from "./three.module.min.js"' in board_module
     assert "new THREE.WebGLRenderer" in board_module
     assert "function createMeetingRoom" in board_module
+    assert "function addMeetingRoomSilhouette(room)" in board_module
+    assert '"/static/meeting-room-silhouette.png?v=20260806a"' in board_module
+    assert "silhouette.position.set(10.15, TABLE_FLOOR_Y + 2.515, -8.2)" in board_module
+    silhouette_asset = ROOT / "frontend" / "meeting-room-silhouette.png"
+    assert silhouette_asset.exists()
+    assert silhouette_asset.stat().st_size > 100_000
     assert 'function setEnvironment(mode)' in board_module
     assert 'setEnvironment,' in board_module
     assert "new THREE.ExtrudeGeometry" in board_module

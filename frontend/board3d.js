@@ -316,6 +316,34 @@ function createMeetingTable(materials, x, z) {
   return table;
 }
 
+function addMeetingRoomSilhouette(room) {
+  const loader = new THREE.TextureLoader();
+  loader.load(
+    "/static/meeting-room-silhouette.png?v=20260806a",
+    (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.94,
+        alphaTest: 0.025,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const silhouette = new THREE.Mesh(new THREE.PlaneGeometry(3.35, 5.03), material);
+      silhouette.position.set(10.15, TABLE_FLOOR_Y + 2.515, -8.2);
+      silhouette.rotation.y = -0.08;
+      silhouette.renderOrder = 3;
+      room.add(silhouette);
+      renderFrame();
+    },
+    undefined,
+    (error) => console.warn("Meeting-room silhouette could not be loaded.", error)
+  );
+}
+
 function createFreestandingWhiteboard(materials) {
   const whiteboard = new THREE.Group();
   const floorY = TABLE_FLOOR_Y;
@@ -454,6 +482,7 @@ function createMeetingRoom() {
   MEETING_TABLE_COLUMNS.forEach((x) => {
     MEETING_TABLE_ROWS.forEach((z) => room.add(createMeetingTable(materials, x, z)));
   });
+  addMeetingRoomSilhouette(room);
 
   [-7, 0, 7].forEach((x) => {
     addRoomBox(room, [0.92, 0.2, 45], [x, ceilingY - 0.28, -7], materials.lightHousing);
