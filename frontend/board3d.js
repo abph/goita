@@ -1106,7 +1106,10 @@ function rebuildLabels(snapshot) {
     const rawName = String(snapshot.names?.[seat] || "").slice(0, 9);
     const thinking = snapshot.aiThinkingSeat === seat ? "  ●" : "";
     const speaking = snapshot.voiceSpeakingSeats?.includes(seat) ? "  🎙" : "";
-    const label = `${seat}${rawName ? `: ${rawName}` : ""}${thinking}${speaking}`;
+    const countdown = snapshot.turn === seat && snapshot.turnTimeLabel
+      ? `  ${snapshot.turnTimeLabel}`
+      : "";
+    const label = `${seat}${rawName ? `: ${rawName}` : ""}${thinking}${speaking}${countdown}`;
     const isTurn = snapshot.turn === seat && snapshot.isStarted && !snapshot.finished;
     const sprite = createTextSprite(label, {
       color: isTurn ? "#b00000" : "#302014",

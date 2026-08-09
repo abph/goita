@@ -482,6 +482,21 @@
       height: 13px;
       flex-basis: 13px;
     }
+    .turn-countdown {
+      flex: 0 0 auto;
+      min-width: 34px;
+      padding: 2px 4px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-size: 0.72em;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .turn-countdown.warning {
+      color: #b00000;
+      background: #fff4f4;
+      font-weight: 900;
+    }
     .name-side-cell {
       border: 0;
     }
@@ -3883,6 +3898,26 @@
     <section id="matchSettingsPanel" class="settings-panel" role="tabpanel">
       <p class="match-settings-note">親と手札の変更は、ゲーム開始前なら現在の配牌へすぐ反映されます。対局中の変更は次の新規ゲームから適用されます。</p>
 
+      <details id="turnTimeLimitDetails" class="settings-disclosure" open>
+        <summary>
+          <span class="when-closed">▶ 持ち時間設定を開く</span>
+          <span class="when-open">▼ 持ち時間設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label for="turnTimeLimitSelect">1手の制限時間</label>
+            <select id="turnTimeLimitSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;" onchange="saveTurnTimeLimitSetting()">
+              <option value="0" selected>なし</option>
+              <option value="30">30秒</option>
+              <option value="60">60秒</option>
+              <option value="120">120秒</option>
+            </select>
+          </div>
+          <div class="small">時間切れでは、パスできる場合は自動でパスし、それ以外はAIがその1手だけ代行します。</div>
+          <div id="turnTimeLimitStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+      </details>
+
       <details id="dealerDetails" class="settings-disclosure" open style="display:none;">
         <summary>
           <span class="when-closed">▶ 親設定を開く</span>
@@ -3997,17 +4032,17 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260809d"></script>
-<script src="/static/i18n.js?v=20260809d"></script>
+<script src="/static/i18n-en.js?v=20260809e"></script>
+<script src="/static/i18n.js?v=20260809e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260806m").catch((error) => {
+  import("/static/board3d.js?v=20260806n").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260805a").catch((error) => {
+  import("/static/boardPixel.js?v=20260805b").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -4556,6 +4591,8 @@ let suppressLogAudioUntil = Date.now() + 1200;
 const MAX_LOG_AUDIO_CATCHUP = 8;
 let logAnimationGeneration = 0;
 let cpuTimer = null; 
+let turnCountdownTimer = null;
+let turnTimeLimitSaving = false;
 let latestState = null;
 let latestLegal = [];
 let latestBeginnerRecommendation = null;
@@ -5058,6 +5095,7 @@ async function enterRoom(targetGid, roomName) {
     }
     isProcessingCpu = false;
     setAiThinking(false);
+    stopTurnCountdown();
     await voiceChatController?.leave?.();
 
     if(!isSpectator()){
@@ -5098,6 +5136,7 @@ async function returnToLobby() {
     }
     isProcessingCpu = false;
     setAiThinking(false);
+    stopTurnCountdown();
     await voiceChatController?.leave?.();
 
     if(!isSpectator()){
@@ -5438,13 +5477,73 @@ function syncPersonalSettingsControls() {
     document.getElementById("personalSettingsStatus").textContent = "";
 }
 
+function syncTurnTimeLimitControls() {
+    const select = document.getElementById("turnTimeLimitSelect");
+    if (!select || turnTimeLimitSaving) return;
+    const configured = Number(
+        latestState?.next_turn_time_limit_seconds
+        ?? latestState?.turn_time_limit_seconds
+        ?? 0
+    );
+    select.value = [0, 30, 60, 120].includes(configured) ? String(configured) : "0";
+    select.disabled = !isCurrentClientHost();
+}
+
+async function saveTurnTimeLimitSetting() {
+    if (!isCurrentClientHost() || turnTimeLimitSaving) return;
+    const select = document.getElementById("turnTimeLimitSelect");
+    const status = document.getElementById("turnTimeLimitStatus");
+    if (!select || !status) return;
+
+    const seconds = Number(select.value);
+    turnTimeLimitSaving = true;
+    select.disabled = true;
+    status.textContent = uiText("保存しています...");
+    try {
+        const res = await fetch(`${API}/games/${gid}/turn_time_limit`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                requester: mySeat,
+                client_id: clientId,
+                seconds,
+            }),
+        });
+        if (!res.ok) throw new Error("Failed to save the turn time limit.");
+        const saved = await res.json();
+        if (latestState) {
+            latestState.turn_time_limit_seconds = Number(saved.turn_time_limit_seconds || 0);
+            latestState.next_turn_time_limit_seconds = Number(saved.next_turn_time_limit_seconds || 0);
+        }
+        status.textContent = uiText(saved.applies_next_round
+            ? "保存しました。次の一局から反映されます。"
+            : "保存しました。"
+        );
+    } catch (error) {
+        console.error("Turn time limit save error:", error);
+        status.textContent = uiText("保存できませんでした。");
+        const configured = Number(
+            latestState?.next_turn_time_limit_seconds
+            ?? latestState?.turn_time_limit_seconds
+            ?? 0
+        );
+        select.value = [0, 30, 60, 120].includes(configured) ? String(configured) : "0";
+    } finally {
+        turnTimeLimitSaving = false;
+        select.disabled = false;
+    }
+}
+
 function openSettingsModal(targetGid, event) {
     if (event) {
         event.stopPropagation();
     }
     settingTargetGid = targetGid;
     currentAdminPass = "";
+    const turnTimeLimitStatus = document.getElementById("turnTimeLimitStatus");
+    if(turnTimeLimitStatus) turnTimeLimitStatus.textContent = "";
     syncPersonalSettingsControls();
+    syncTurnTimeLimitControls();
     document.getElementById("setAdminPassword").value = "";
     document.getElementById("adminAuthStatus").textContent = "";
     document.getElementById("adminAuthArea").style.display = "block";
@@ -5816,6 +5915,8 @@ function updateRoomUI() {
     const gameContentLayout = document.querySelector(".game-content-layout");
     const showLog = isHost && latestState?.show_log === true;
     const showActions = !isMain && isHost && latestState?.show_legal_actions === true;
+
+    syncTurnTimeLimitControls();
     
     if (btnNewGame) btnNewGame.style.display = (isHost && latestState?.finished) ? "" : "none";
     if (forceResetSettingsRow) forceResetSettingsRow.style.display = (isHost && latestState && !latestState.finished) ? "block" : "none";
@@ -7476,6 +7577,41 @@ function turnWaitHint(state){
   return `いまは${seatTurnLabel(state, state?.turn)}の手番です。（あなたは:${mySeat}）`;
 }
 
+function turnTimeRemainingSeconds(state = latestState) {
+  const deadline = Number(state?.turn_deadline_at_ms);
+  if(
+    !state?.is_started
+    || state?.finished
+    || !Number.isFinite(deadline)
+    || deadline <= 0
+  ) return null;
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}
+
+function turnCountdownText(seconds) {
+  if(!Number.isFinite(seconds)) return "";
+  return currentUiLanguage() === "en" ? `${seconds}s` : `${seconds}秒`;
+}
+
+function stopTurnCountdown() {
+  if(turnCountdownTimer){
+    clearInterval(turnCountdownTimer);
+    turnCountdownTimer = null;
+  }
+}
+
+function syncTurnCountdown(state = latestState) {
+  stopTurnCountdown();
+  if(turnTimeRemainingSeconds(state) === null) return;
+  turnCountdownTimer = window.setInterval(() => {
+    if(turnTimeRemainingSeconds(latestState) === null){
+      stopTurnCountdown();
+      return;
+    }
+    renderBoard(latestState);
+  }, 1000);
+}
+
 function _extractDealerFromLog(logArr){
   if(!Array.isArray(logArr) || logArr.length===0) return "";
   const s = String(logArr[0] ?? "");
@@ -7788,6 +7924,7 @@ function buildBoard3DSnapshot(state) {
     names: state.player_names || {A:"", B:"", C:"", D:""},
     physToSeat,
     turn: state.turn,
+    turnTimeLabel: turnCountdownText(turnTimeRemainingSeconds(state)),
     aiThinkingSeat,
     voiceSpeakingSeats: Array.isArray(voiceChatState.speakingSeats)
       ? voiceChatState.speakingSeats
@@ -8263,6 +8400,18 @@ function renderBoard(state){
             spinner.alt = "";
             inner.appendChild(spinner);
             inner.setAttribute("aria-label", `${nameText.textContent} AIが思考中`);
+          }
+
+          if (state.turn === seat) {
+            const remainingSeconds = turnTimeRemainingSeconds(state);
+            if (remainingSeconds !== null) {
+              const countdown = document.createElement("span");
+              countdown.className = "turn-countdown";
+              if (remainingSeconds <= 10) countdown.classList.add("warning");
+              countdown.textContent = turnCountdownText(remainingSeconds);
+              countdown.setAttribute("aria-label", `${uiText("残り時間")} ${countdown.textContent}`);
+              inner.appendChild(countdown);
+            }
           }
           
           div.appendChild(inner);
@@ -8855,6 +9004,7 @@ async function refresh(){
   }
 
   renderBoard(state);
+  syncTurnCountdown(state);
   renderHands(state);
   renderHandRevealControls(state);
   renderPresetControls(state);

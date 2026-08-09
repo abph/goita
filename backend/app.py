@@ -81,6 +81,7 @@ AI_CHAT_MAX_LEN = 600
 AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
+TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "current"
@@ -1209,6 +1210,7 @@ def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
 
 GAMES: Dict[str, Dict[str, Any]] = {}
 GAME_TURN_LOCKS: Dict[str, asyncio.Lock] = {}
+TURN_TIMEOUT_TASKS: Dict[str, asyncio.Task] = {}
 
 
 def _game_turn_lock(game_id: str) -> asyncio.Lock:
@@ -1218,6 +1220,109 @@ def _game_turn_lock(game_id: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         GAME_TURN_LOCKS[game_id] = lock
     return lock
+
+
+def _normalize_turn_time_limit(value: Any) -> int:
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        seconds = 0
+    return seconds if seconds in TURN_TIME_LIMIT_OPTIONS else 0
+
+
+def _cancel_turn_timeout_task(game_id: str) -> None:
+    task = TURN_TIMEOUT_TASKS.pop(game_id, None)
+    current_task = asyncio.current_task()
+    if task is not None and task is not current_task and not task.done():
+        task.cancel()
+
+
+def _reset_turn_deadline(game: Dict[str, Any]) -> Tuple[int, Optional[float], Optional[str]]:
+    token = int(game.get("turn_timer_token", 0)) + 1
+    game["turn_timer_token"] = token
+    game["turn_started_at"] = None
+    game["turn_deadline_at"] = None
+
+    state = game.get("state")
+    limit_seconds = _normalize_turn_time_limit(game.get("turn_time_limit_seconds", 0))
+    if (
+        not game.get("is_started")
+        or state is None
+        or bool(getattr(state, "finished", False))
+        or limit_seconds <= 0
+        or getattr(state, "turn", None) in _ai_seat_set(game)
+    ):
+        return token, None, None
+
+    now = time.time()
+    deadline = now + limit_seconds
+    turn = str(state.turn)
+    game["turn_started_at"] = now
+    game["turn_deadline_at"] = deadline
+    return token, deadline, turn
+
+
+def _arm_turn_timeout(game_id: str) -> None:
+    _cancel_turn_timeout_task(game_id)
+    game = GAMES.get(game_id)
+    if not game:
+        return
+    token, deadline, turn = _reset_turn_deadline(game)
+    if deadline is None or turn is None:
+        return
+    TURN_TIMEOUT_TASKS[game_id] = asyncio.create_task(
+        _turn_timeout_worker(game_id, token, deadline, turn)
+    )
+
+
+async def _turn_timeout_worker(
+    game_id: str,
+    token: int,
+    deadline: float,
+    turn: str,
+) -> None:
+    try:
+        await asyncio.sleep(max(0.0, deadline - time.time()))
+        async with _game_turn_lock(game_id):
+            game = GAMES.get(game_id)
+            if not game:
+                return
+            state = game.get("state")
+            if (
+                int(game.get("turn_timer_token", 0)) != token
+                or game.get("turn_deadline_at") != deadline
+                or state is None
+                or not game.get("is_started")
+                or bool(getattr(state, "finished", False))
+                or getattr(state, "turn", None) != turn
+                or turn in _ai_seat_set(game)
+            ):
+                return
+
+            legal_actions = state.legal_actions(turn)
+            if not legal_actions:
+                game["turn_started_at"] = None
+                game["turn_deadline_at"] = None
+                return
+            pass_action = next(
+                (action for action in legal_actions if action[0] == "pass"),
+                None,
+            )
+            result = await asyncio.to_thread(
+                _apply_agent_turn,
+                game,
+                turn,
+                forced_action=pass_action,
+                log_suffix=" [TIMEOUT]",
+            )
+            if result.get("status") == "ok":
+                _arm_turn_timeout(game_id)
+                await manager.broadcast_update(game_id)
+    except asyncio.CancelledError:
+        return
+    finally:
+        if TURN_TIMEOUT_TASKS.get(game_id) is asyncio.current_task():
+            TURN_TIMEOUT_TASKS.pop(game_id, None)
 
 
 class ActionModel(BaseModel):
@@ -1256,6 +1361,12 @@ class ResetConfigBody(BaseModel):
     client_id: str = ""
     keep_score: bool = Field(default=False)
     auto_start: bool = Field(default=False)
+
+
+class TurnTimeLimitUpdateRequest(BaseModel):
+    requester: str = Field(default="W")
+    client_id: str = ""
+    seconds: int = 0
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -1601,6 +1712,25 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "turn_time_limit_seconds": _normalize_turn_time_limit(
+            game_obj.get("turn_time_limit_seconds", 0)
+        ),
+        "next_turn_time_limit_seconds": _normalize_turn_time_limit(
+            game_obj.get(
+                "next_turn_time_limit_seconds",
+                game_obj.get("turn_time_limit_seconds", 0),
+            )
+        ),
+        "turn_started_at_ms": (
+            int(float(game_obj["turn_started_at"]) * 1000)
+            if game_obj.get("turn_started_at") is not None
+            else None
+        ),
+        "turn_deadline_at_ms": (
+            int(float(game_obj["turn_deadline_at"]) * 1000)
+            if game_obj.get("turn_deadline_at") is not None
+            else None
+        ),
         "ai_profile": _normalize_ai_profile(game_obj.get("ai_profile")),
         "ai_profile_label": _ai_profile_label(game_obj.get("ai_profile")),
         "show_legal_actions": bool(game_obj.get("show_legal_actions", False)),
@@ -1652,6 +1782,11 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "match_winner": None,
         "current_round_finished": False,
         "last_round_score": 0,
+        "turn_time_limit_seconds": 0,
+        "next_turn_time_limit_seconds": 0,
+        "turn_started_at": None,
+        "turn_deadline_at": None,
+        "turn_timer_token": 0,
     }
 
 
@@ -1809,7 +1944,13 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 game["log"].append(msg)
 
 
-def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
+def _apply_agent_turn(
+    game: Dict[str, Any],
+    player: str,
+    *,
+    forced_action: Optional[Tuple[str, Optional[str], Optional[str]]] = None,
+    log_suffix: str = "",
+) -> Dict[str, Any]:
     state: GoitaState = game["state"]
     agents: Dict[str, RuleBasedAgent] = game["agents"]
     log: List[str] = game.setdefault("log", [])
@@ -1825,7 +1966,10 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
         return {"status": "no_legal_actions"}
 
     agent = agents[player]
-    agent_action = agent.select_action(state, player, acts)
+    if forced_action is not None and forced_action in acts:
+        agent_action = forced_action
+    else:
+        agent_action = agent.select_action(state, player, acts)
 
     effects = _check_effects(state, player, agent_action, board, game.get("dealer", "A"))
 
@@ -1839,7 +1983,9 @@ def _apply_agent_turn(game: Dict[str, Any], player: str) -> Dict[str, Any]:
     log_str = _format_action(player, agent_action) + (" (hidden)" if hidden_receive else "")
     for ef in effects:
         log_str += f" [EFFECT:{ef}]"
-    log_str += _format_ai_decision(agent)
+    if forced_action is None:
+        log_str += _format_ai_decision(agent)
+    log_str += str(log_suffix or "")
     log.append(log_str)
 
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
@@ -2115,9 +2261,43 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     game["is_started"] = True
     dealer = game.get("dealer", "A")
     game["log"].append(f"Game start. dealer={dealer}")
-    
+    _arm_turn_timeout(game_id)
+
     await manager.broadcast_update(game_id)
     return {"ok": True}
+
+
+@app.post("/games/{game_id}/turn_time_limit")
+async def update_turn_time_limit(game_id: str, req: TurnTimeLimitUpdateRequest):
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if req.requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can change the time limit.")
+    _require_human_seat_owner(game, "A", req.client_id)
+
+    seconds = int(req.seconds)
+    if seconds not in TURN_TIME_LIMIT_OPTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported turn time limit.")
+
+    state: GoitaState = game["state"]
+    applies_next_round = bool(game.get("is_started")) and not state.finished
+    game["next_turn_time_limit_seconds"] = seconds
+    if not applies_next_round:
+        game["turn_time_limit_seconds"] = seconds
+        _arm_turn_timeout(game_id)
+
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "turn_time_limit_seconds": _normalize_turn_time_limit(
+            game.get("turn_time_limit_seconds", 0)
+        ),
+        "next_turn_time_limit_seconds": seconds,
+        "applies_next_round": applies_next_round,
+    }
 
 
 @app.post("/games/{game_id}/reveal_hand")
@@ -2204,6 +2384,12 @@ async def reset_game(
     room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
+    turn_time_limit_seconds = _normalize_turn_time_limit(
+        old_game.get(
+            "next_turn_time_limit_seconds",
+            old_game.get("turn_time_limit_seconds", 0),
+        )
+    )
     
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
     new_game["password"] = password
@@ -2222,12 +2408,15 @@ async def reset_game(
     new_game["room_background_image"] = room_background_image
     new_game["hidden_from_lobby"] = hidden_from_lobby
     new_game["is_debug_room"] = is_debug_room
+    new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
+    new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
     
     if keep_score:
         _preserve_match_progress(new_game, old_game)
     
     GAMES[game_id] = new_game
-    
+    _arm_turn_timeout(game_id)
+
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer}
@@ -2259,6 +2448,12 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
+    turn_time_limit_seconds = _normalize_turn_time_limit(
+        old_game.get(
+            "next_turn_time_limit_seconds",
+            old_game.get("turn_time_limit_seconds", 0),
+        )
+    )
 
     if preset:
         try:
@@ -2288,6 +2483,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
+        new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
@@ -2311,12 +2508,15 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
+        new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
             
         GAMES[game_id] = new_game
 
+    _arm_turn_timeout(game_id)
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
@@ -2360,6 +2560,10 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if seat in revealed_hand_seats:
         revealed_hand_seats.remove(seat)
         _store_revealed_hand_seats(game, revealed_hand_seats)
+
+    state = game.get("state")
+    if game.get("is_started") and getattr(state, "turn", None) in {seat, *released_seats}:
+        _arm_turn_timeout(game_id)
         
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -2425,6 +2629,10 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
             _clear_player_name(game, seat)
 
     _store_ai_seats(game, ai_seats)
+
+    state = game.get("state")
+    if game.get("is_started") and getattr(state, "turn", None) == seat:
+        _arm_turn_timeout(game_id)
 
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -2713,6 +2921,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     _notify_public(game.get("beginner_support_agents", {}), state, player, action)
 
     _handle_round_finish(game, state, action, effects)
+    _arm_turn_timeout(game_id)
 
     await manager.broadcast_update(game_id)
     return {
@@ -2751,6 +2960,7 @@ async def _cpu_step_unlocked(game_id: str):
     if result.get("status") != "ok":
         return result
 
+    _arm_turn_timeout(game_id)
     await manager.broadcast_update(game_id)
     return result
 
@@ -2780,6 +2990,7 @@ async def _auto_step_unlocked(game_id: str, player: str = "A", client_id: str = 
 
     result = await asyncio.to_thread(_apply_agent_turn, game, player)
     if result.get("status") == "ok":
+        _arm_turn_timeout(game_id)
         await manager.broadcast_update(game_id)
     return result
 

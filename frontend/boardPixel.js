@@ -212,7 +212,10 @@ function drawSeatLabel(snapshot, phys, x, y, align = "center") {
   const name = trimName(snapshot.names?.[seat]);
   const thinking = snapshot.aiThinkingSeat === seat ? " ■" : "";
   const speaking = snapshot.voiceSpeakingSeats?.includes(seat) ? " MIC" : "";
-  const label = `${seat}${name ? `:${name}` : ""}${thinking}${speaking}`;
+  const countdown = snapshot.turn === seat && snapshot.turnTimeLabel
+    ? ` ${snapshot.turnTimeLabel}`
+    : "";
+  const label = `${seat}${name ? `:${name}` : ""}${thinking}${speaking}${countdown}`;
   const isTurn = snapshot.isStarted && !snapshot.finished && snapshot.turn === seat;
   drawPixelText(label, x, y, {
     size: name ? 11 : 13,
