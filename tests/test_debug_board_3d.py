@@ -19,7 +19,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dPanDown"' in html
     assert 'id="board3dPanLeft"' in html
     assert 'id="board3dPanRight"' in html
-    assert 'import("/static/board3d.js?v=20260806n")' in html
+    assert 'import("/static/board3d.js?v=20260809c")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html
@@ -103,6 +103,17 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "const MEETING_BLIND_HEIGHT = MEETING_WINDOW_HEIGHT * 0.5" in board_module
     assert "MEETING_TABLE_COLUMNS.forEach((x) =>" in board_module
     assert "MEETING_TABLE_ROWS.forEach((z)" in board_module
+    assert "const MEETING_PUBLIC_TABLE_LAYOUT" in board_module
+    assert 'const MEETING_BOARD_Z = -14.6' in board_module
+    assert '{ roomId: "main", x: -5.1, z: -24.4 }' in board_module
+    assert '{ roomId: "main-b", x: 5.1, z: -24.4 }' in board_module
+    assert '{ roomId: "main-c", x: -5.1, z: -14.6 }' in board_module
+    assert '{ roomId: "main-e", x: -5.1, z: -4.8 }' in board_module
+    assert '{ roomId: "main-f", x: 5.1, z: -4.8 }' in board_module
+    assert "function createMeetingPublicTable" in board_module
+    assert "function setPublicTables(snapshots = [])" in board_module
+    assert 'window.dispatchEvent(new CustomEvent("goita-public-table-open"' in board_module
+    assert "setPublicTables," in board_module
     assert "MEETING_BLIND_CENTERS.forEach((x)" in board_module
     assert "[-7, 0, 7].forEach((x)" in board_module
     assert "function createFreestandingWhiteboard" in board_module
@@ -120,6 +131,9 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "const MEETING_ZOOM_STOPS = [2.9, 3.5, 4.05, 4.6, 6.4, 8.2, 10, 11.8]" in board_module
     assert "function stepCameraZoom(direction)" in board_module
     assert "function panCamera(screenX, forward)" in board_module
+    assert "cameraPanX += deltaX * step" in board_module
+    assert "cameraPanZ += deltaZ * step" in board_module
+    assert 'const limit = environmentMode === "meeting-room"' not in board_module
     assert "lookX + cameraPanX" in board_module
     assert 'zoomInButton?.addEventListener("click"' in board_module
     assert 'zoomOutButton?.addEventListener("click"' in board_module

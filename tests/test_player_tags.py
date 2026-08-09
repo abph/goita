@@ -35,6 +35,21 @@ def test_player_tag_controls_and_transport_are_present() -> None:
     assert 'buildPlayerTagBadge(person?.tag, "lobby-player-tag")' in html
 
 
+def test_player_tags_are_not_shown_in_seat_controls_or_lobby_room_cards() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
+    room_cards = html.split("async function fetchRoomList()", 1)[1].split(
+        "function togglePassInput", 1
+    )[0]
+    seat_buttons = html.split("function updateSeatButtons(state)", 1)[1].split(
+        "async function selectSpectator", 1
+    )[0]
+
+    assert "seat_tags" not in backend
+    assert "playerTagLabel" not in room_cards
+    assert "playerTagLabel" not in seat_buttons
+
+
 def test_player_tag_labels_are_translated() -> None:
     chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
     english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")

@@ -14,6 +14,7 @@ let scene = null;
 let camera = null;
 let standardFloor = null;
 let meetingRoomGroup = null;
+let meetingPublicTablesGroup = null;
 let playAreaGroup = null;
 let standardBoardFurniture = null;
 let pieceLayer = null;
@@ -36,7 +37,11 @@ let cameraPanX = 0;
 let cameraPanZ = 0;
 let pointerState = null;
 let pinchDistance = null;
+let pointerTravel = 0;
+let suppressNextClick = false;
 const activePointers = new Map();
+const meetingPublicTables = new Map();
+const meetingPublicTableTargets = [];
 
 const DEFAULT_CAMERA_RADIUS = 23.2;
 const MIN_CAMERA_RADIUS = 15.8;
@@ -66,8 +71,8 @@ const CAMERA_PROFILES = {
     maxYaw: 0.28,
     minElevation: 0.28,
     maxElevation: 1.05,
-    orbitCenter: [5.1, -2.18, -4.8],
-    lookTarget: [5.1, -1.1, -4.8],
+    orbitCenter: [5.1, -2.18, -14.6],
+    lookTarget: [5.1, -1.1, -14.6],
   },
 };
 const BOARD_TOP_Y = 0.17;
@@ -92,9 +97,17 @@ const MEETING_BLIND_CENTERS = [-MEETING_WINDOW_WIDTH / 3, 0, MEETING_WINDOW_WIDT
 const MEETING_TABLE_COLUMNS = [-5.1, 5.1];
 const MEETING_TABLE_ROWS = [-4.8, -14.6, -24.4];
 const MEETING_BOARD_X = 5.1;
-const MEETING_BOARD_Z = -4.8;
+const MEETING_BOARD_Z = -14.6;
+const MEETING_PUBLIC_TABLE_LAYOUT = [
+  { roomId: "main", x: -5.1, z: -24.4 },
+  { roomId: "main-b", x: 5.1, z: -24.4 },
+  { roomId: "main-c", x: -5.1, z: -14.6 },
+  { roomId: "main-e", x: -5.1, z: -4.8 },
+  { roomId: "main-f", x: 5.1, z: -4.8 },
+];
 const MEETING_TABLE_TOP_Y = TABLE_FLOOR_Y + 2.35;
 const MEETING_BOARD_SCALE = 0.3;
+const MEETING_PUBLIC_BOARD_SCALE = 0.27;
 const MEETING_BOARD_CLEARANCE = 0.08;
 const MEETING_WHITEBOARD_X = -MEETING_WINDOW_WIDTH / 3;
 const pieceGeometry = createPieceGeometry();
@@ -316,6 +329,135 @@ function createMeetingTable(materials, x, z) {
   return table;
 }
 
+function createMeetingPublicTable(materials, layout) {
+  const root = new THREE.Group();
+  root.position.set(
+    layout.x,
+    MEETING_TABLE_TOP_Y + 0.08,
+    layout.z
+  );
+  root.scale.setScalar(MEETING_PUBLIC_BOARD_SCALE);
+  root.visible = false;
+
+  const board = addRoomBox(
+    root,
+    [9.05, 0.28, 9.05],
+    [0, 0, 0],
+    materials.publicBoard,
+    { castShadow: true }
+  );
+  board.userData.publicRoomId = layout.roomId;
+  meetingPublicTableTargets.push(board);
+
+  const center = addRoomBox(
+    root,
+    [3.5, 0.04, 3.5],
+    [0, 0.17, 0],
+    materials.publicBoardCenter,
+    { receiveShadow: true }
+  );
+  center.userData.publicRoomId = layout.roomId;
+  meetingPublicTableTargets.push(center);
+
+  const pieces = new THREE.Group();
+  const labels = new THREE.Group();
+  const passes = new THREE.Group();
+  root.add(pieces, labels, passes);
+  meetingPublicTables.set(layout.roomId, {
+    root,
+    pieces,
+    labels,
+    passes,
+    passToken: "",
+  });
+  return root;
+}
+
+function publicTableStatus(snapshot) {
+  if (!snapshot.isStarted) return tr("待機中");
+  if (snapshot.finished) return tr("終局");
+  return tr("対局中");
+}
+
+function addMeetingPublicTablePass(entry, snapshot) {
+  const action = snapshot.lastPublicAction;
+  if (!action || action.type !== "pass") return;
+  const age = Date.now() - Number(action.atMs || 0);
+  if (age < 0 || age >= 2200) return;
+  const position = PASS_WORLD_POSITIONS[action.player];
+  if (!position) return;
+
+  const marker = createTextSprite(tr("パス"), {
+    width: 320,
+    height: 144,
+    background: "rgba(255, 250, 236, 0.96)",
+    borderColor: "#9b2226",
+    borderWidth: 9,
+    color: "#9b2226",
+    fontSize: 68,
+    trackLabel: false,
+    depthTest: true,
+  });
+  marker.position.set(position[0], 0.75, position[2]);
+  marker.scale.set(1.45, 0.64, 1);
+  entry.passes.add(marker);
+
+  const token = `${action.player}-${action.atMs}`;
+  entry.passToken = token;
+  window.setTimeout(() => {
+    if (entry.passToken !== token) return;
+    clearLayer(entry.passes, true);
+    entry.passToken = "";
+    renderFrame();
+  }, Math.max(60, 2200 - age));
+}
+
+function setPublicTables(snapshots = []) {
+  if (!ensureRenderer()) return false;
+  const snapshotByRoom = new Map(
+    snapshots.map((snapshot) => [snapshot.roomId, snapshot])
+  );
+
+  meetingPublicTables.forEach((entry, roomId) => {
+    const snapshot = snapshotByRoom.get(roomId);
+    entry.root.visible = !!snapshot;
+    clearLayer(entry.pieces, false);
+    clearLayer(entry.labels, true);
+    clearLayer(entry.passes, true);
+    entry.passToken = "";
+    if (!snapshot) return;
+
+    snapshot.pieces.forEach((piece) => {
+      entry.pieces.add(createPieceObject(piece));
+    });
+
+    const scoreText = snapshot.isStarted || snapshot.finished
+      ? `\nAC ${snapshot.scores.AC} / BD ${snapshot.scores.BD}`
+      : "";
+    const label = createTextSprite(
+      `${tr(snapshot.roomName)}\n${publicTableStatus(snapshot)}${scoreText}`,
+      {
+        width: 720,
+        height: 260,
+        background: "rgba(255, 255, 255, 0.94)",
+        borderColor: "#5f5548",
+        borderWidth: 7,
+        color: "#241d17",
+        fontSize: 46,
+        lineHeight: 68,
+        trackLabel: false,
+        depthTest: true,
+      }
+    );
+    label.position.set(0, 2.2, -5.6);
+    label.scale.set(6.8, 2.45, 1);
+    entry.labels.add(label);
+    addMeetingPublicTablePass(entry, snapshot);
+  });
+  renderFrame();
+  return true;
+}
+
 function addMeetingRoomSilhouette(room) {
   const loader = new THREE.TextureLoader();
   loader.load(
@@ -385,6 +527,14 @@ function createMeetingRoom() {
     blind: new THREE.MeshStandardMaterial({ color: 0xd9d7ce, roughness: 0.82 }),
     blindSlat: new THREE.MeshStandardMaterial({ color: 0xc4c1b7, roughness: 0.78 }),
     whiteboard: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }),
+    publicBoard: new THREE.MeshStandardMaterial({
+      color: 0xb57b43,
+      roughness: 0.78,
+    }),
+    publicBoardCenter: new THREE.MeshStandardMaterial({
+      color: 0xe8d4a8,
+      roughness: 0.86,
+    }),
     light: new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xffffff,
@@ -482,6 +632,11 @@ function createMeetingRoom() {
   MEETING_TABLE_COLUMNS.forEach((x) => {
     MEETING_TABLE_ROWS.forEach((z) => room.add(createMeetingTable(materials, x, z)));
   });
+  meetingPublicTablesGroup = new THREE.Group();
+  MEETING_PUBLIC_TABLE_LAYOUT.forEach((layout) => {
+    meetingPublicTablesGroup.add(createMeetingPublicTable(materials, layout));
+  });
+  room.add(meetingPublicTablesGroup);
   addMeetingRoomSilhouette(room);
 
   [-7, 0, 7].forEach((x) => {
@@ -716,11 +871,15 @@ function stepCameraZoom(direction) {
 
 function panCamera(screenX, forward) {
   const step = environmentMode === "meeting-room" ? 0.65 : 0.8;
-  const limit = environmentMode === "meeting-room" ? 4.5 : 3;
   const deltaX = screenX * Math.cos(cameraYaw) - forward * Math.sin(cameraYaw);
   const deltaZ = -screenX * Math.sin(cameraYaw) - forward * Math.cos(cameraYaw);
-  cameraPanX = THREE.MathUtils.clamp(cameraPanX + deltaX * step, -limit, limit);
-  cameraPanZ = THREE.MathUtils.clamp(cameraPanZ + deltaZ * step, -limit, limit);
+  if (environmentMode === "meeting-room") {
+    cameraPanX += deltaX * step;
+    cameraPanZ += deltaZ * step;
+  } else {
+    cameraPanX = THREE.MathUtils.clamp(cameraPanX + deltaX * step, -3, 3);
+    cameraPanZ = THREE.MathUtils.clamp(cameraPanZ + deltaZ * step, -3, 3);
+  }
   updateCamera();
   renderFrame();
 }
@@ -773,6 +932,21 @@ function getPinchDistance() {
   return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
 }
 
+function publicRoomIdAtPointer(event) {
+  if (environmentMode !== "meeting-room" || !camera || !renderer) return "";
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return "";
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(meetingPublicTableTargets, false)[0];
+  const roomId = String(hit?.object?.userData?.publicRoomId || "");
+  return meetingPublicTables.get(roomId)?.root.visible ? roomId : "";
+}
+
 function attachInteraction() {
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
@@ -780,6 +954,7 @@ function attachInteraction() {
   }, { passive: false });
 
   canvas.addEventListener("pointerdown", (event) => {
+    if (activePointers.size === 0) pointerTravel = 0;
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     pointerState = { id: event.pointerId, x: event.clientX, y: event.clientY };
     if (activePointers.size >= 2) {
@@ -802,6 +977,7 @@ function attachInteraction() {
     if (!pointerState || event.pointerId !== pointerState.id) return;
     const dx = event.clientX - pointerState.x;
     const dy = event.clientY - pointerState.y;
+    pointerTravel += Math.hypot(dx, dy);
     pointerState.x = event.clientX;
     pointerState.y = event.clientY;
     const profile = CAMERA_PROFILES[environmentMode] || CAMERA_PROFILES.board;
@@ -815,6 +991,7 @@ function attachInteraction() {
     renderFrame();
   });
   const releasePointer = (event) => {
+    if (activePointers.size === 1 && pointerTravel > 7) suppressNextClick = true;
     activePointers.delete(event.pointerId);
     if (activePointers.size === 1) {
       const [id, point] = activePointers.entries().next().value;
@@ -826,6 +1003,17 @@ function attachInteraction() {
   };
   canvas.addEventListener("pointerup", releasePointer);
   canvas.addEventListener("pointercancel", releasePointer);
+  canvas.addEventListener("click", (event) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    const roomId = publicRoomIdAtPointer(event);
+    if (!roomId) return;
+    window.dispatchEvent(new CustomEvent("goita-public-table-open", {
+      detail: { roomId },
+    }));
+  });
   canvas.addEventListener("dblclick", () => {
     resetCameraForEnvironment();
     renderFrame();
@@ -998,7 +1186,7 @@ function createTextSprite(text, options = {}) {
   const material = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    depthTest: false,
+    depthTest: options.depthTest === true,
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = 20;
@@ -1189,6 +1377,7 @@ window.goitaBoard3D = {
   isAvailable: ensureRenderer,
   render,
   setEnvironment,
+  setPublicTables,
   setVisible,
   showPass,
   getCanvas: () => canvas,

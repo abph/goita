@@ -4094,7 +4094,7 @@
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260806n").catch((error) => {
+  import("/static/board3d.js?v=20260809c").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
@@ -4684,6 +4684,10 @@ let cpuTimer = null;
 let turnCountdownTimer = null;
 let turnTimeLimitSaving = false;
 let latestState = null;
+let meetingPublicTableRefreshInFlight = false;
+let meetingPublicTableLastRefreshAt = 0;
+let meetingPublicTableSnapshots = [];
+let meetingPublicTableRoomNames = new Map();
 let latestLegal = [];
 let latestBeginnerRecommendation = null;
 let beginnerRecommendationKey = "";
@@ -4975,6 +4979,8 @@ function connectWS(targetGid) {
                 } else {
                     refresh(); 
                 }
+            } else if (data.type === "public_table_update" && currentWsGid === MEETING_ROOM_GID) {
+                refreshMeetingPublicTables(true);
             }
         } catch (e) {
             console.error("WebSocket Message Error:", e);
@@ -5463,7 +5469,7 @@ async function fetchRoomList() {
             card.className = "room-card";
             
             const s = room.seats;
-            const makeBadge = (seatName, playerName, playerTag = "") => {
+            const makeBadge = (seatName, playerName) => {
                 const isAi = (playerName === "AI");
                 const isEmpty = (playerName === "Empty");
                 const fullDisplayName = isEmpty ? "空席" : String(playerName ?? "");
@@ -5478,11 +5484,6 @@ async function fetchRoomList() {
                 } else {
                     text = `${seatName}: ${displayName}`;
                     fullText = `${seatName}: ${fullDisplayName}`;
-                }
-                const tagLabel = !isAi && !isEmpty ? playerTagLabel(playerTag) : "";
-                if(tagLabel){
-                    text += ` [${tagLabel}]`;
-                    fullText += ` [${tagLabel}]`;
                 }
                 const badgeClass = isAi ? "ai" : (isEmpty ? "empty" : "human");
                 const ignoreAttribute = !isAi && !isEmpty ? " data-i18n-ignore" : "";
@@ -5508,14 +5509,14 @@ async function fetchRoomList() {
             } else {
                 card.innerHTML = `
                     ${settingsIcon}
-                    <div class="seat-top">${makeBadge('C', s['C'], room.seat_tags?.['C'])}</div>
-                    <div class="seat-left">${makeBadge('D', s['D'], room.seat_tags?.['D'])}</div>
+                    <div class="seat-top">${makeBadge('C', s['C'])}</div>
+                    <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
                         <div class="title"${roomNameIgnore}>${room.owner_name}</div>
                         <div class="count">(${room.player_count}/4人)</div>
                     </div>
-                    <div class="seat-right">${makeBadge('B', s['B'], room.seat_tags?.['B'])}</div>
-                    <div class="seat-bottom">${makeBadge('A', s['A'], room.seat_tags?.['A'])}</div>
+                    <div class="seat-right">${makeBadge('B', s['B'])}</div>
+                    <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
                 `;
             }
             
@@ -5850,7 +5851,6 @@ function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
     const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
     const aiSeats = Array.isArray(state?.ai_seats) ? state.ai_seats : [];
-    const playerTags = state?.player_tags || {};
     const spectatorBtn = document.getElementById('btnSpectator');
     const spectatorCount = Math.max(0, Number(state?.spectator_count) || 0);
 
@@ -5869,9 +5869,6 @@ function updateSeatButtons(state) {
         const isAi = aiSeats.includes(s);
         const occupiedByOther = isHuman && mySeat !== s;
         const speakingSuffix = voiceChatIsSpeaking(s) ? " 🎙" : "";
-        const tagSuffix = isHuman && playerTagLabel(playerTags[s])
-            ? ` [${playerTagLabel(playerTags[s])}]`
-            : "";
 
         btn.classList.toggle('active', mySeat === s);
         btn.classList.toggle('ai-mode', isAi);
@@ -5879,11 +5876,11 @@ function updateSeatButtons(state) {
         btn.disabled = occupiedByOther;
 
         if (mySeat === s) {
-            btn.textContent = `${displayName} (自分)${tagSuffix}${speakingSuffix}`;
+            btn.textContent = `${displayName} (自分)${speakingSuffix}`;
         } else if (isAi) {
             btn.textContent = `${displayName} [AI]`;
         } else if (isHuman) {
-            btn.textContent = `${displayName} [人]${tagSuffix}${speakingSuffix}`;
+            btn.textContent = `${displayName} [人]${speakingSuffix}`;
         } else {
             btn.textContent = displayName;
         }
@@ -8082,6 +8079,96 @@ function buildBoard3DSnapshot(state) {
   };
 }
 
+function buildMeetingPublicTableSnapshot(table) {
+  const physToSeat = {A:"A", B:"B", C:"C", D:"D"};
+  const slotMap = buildSlotMap(physToSeat);
+  const pieces = [];
+  let currentAttackIndex = -1;
+  const currentAttacker = table.attacker;
+
+  if(currentAttacker && table.board_public?.[currentAttacker]?.attack){
+    table.board_public[currentAttacker].attack.forEach((piece, index) => {
+      if(piece !== null) currentAttackIndex = index;
+    });
+  }
+
+  for(const [coordKey, slot] of slotMap.entries()){
+    const [col, row] = coordKey.split(",").map(Number);
+    const kindKey = slot.kind === "R" ? "receive" : "attack";
+    const piece = table.board_public?.[slot.p]?.[kindKey]?.[slot.idx];
+    if(piece == null) continue;
+    const hidden = kindKey === "receive" && (
+      piece === "■" || !!table.board_public?.[slot.p]?.receive_hidden?.[slot.idx]
+    );
+    pieces.push({
+      key: `${table.game_id}-${slot.p}-${kindKey}-${slot.idx}-${piece}`,
+      col,
+      row,
+      seat: slot.p,
+      phys: slot.phys,
+      kind: kindKey,
+      piece: String(piece),
+      label: hidden ? "" : pieceToLabel(piece),
+      englishLabel: hidden || currentUiLanguage() !== "en" ? "" : pieceEnglishName(piece),
+      hidden,
+      ownHidden: false,
+      pending: false,
+      revealedHand: false,
+      revealedHidden: false,
+      ai: Array.isArray(table.ai_seats) && table.ai_seats.includes(slot.p),
+      current: slot.p === currentAttacker && slot.idx === currentAttackIndex && !table.finished,
+    });
+  }
+
+  return {
+    roomId: table.game_id,
+    roomName: table.room_name || table.game_id,
+    pieces,
+    names: table.player_names || {A:"", B:"", C:"", D:""},
+    physToSeat,
+    turn: table.turn,
+    isStarted: !!table.is_started,
+    finished: !!table.finished,
+    round: table.round_count || 1,
+    scores: {
+      AC: table.total_team_score?.AC || 0,
+      BD: table.total_team_score?.BD || 0,
+    },
+    lastPublicAction: table.last_public_action ? {
+      player: table.last_public_action.player,
+      type: table.last_public_action.type,
+      atMs: table.last_public_action.at_ms,
+    } : null,
+  };
+}
+
+async function refreshMeetingPublicTables(force = false) {
+  if(gid !== MEETING_ROOM_GID) return;
+  const now = Date.now();
+  if(!force && now - meetingPublicTableLastRefreshAt < 800) {
+    window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
+    return;
+  }
+  if(meetingPublicTableRefreshInFlight) return;
+  meetingPublicTableRefreshInFlight = true;
+  try{
+    const query = new URLSearchParams({exclude: MEETING_ROOM_GID});
+    const response = await fetch(`${API}/games/public-tables?${query.toString()}`);
+    if(!response.ok) return;
+    const data = await response.json();
+    meetingPublicTableSnapshots = (data.tables || []).map(buildMeetingPublicTableSnapshot);
+    meetingPublicTableRoomNames = new Map(
+      meetingPublicTableSnapshots.map((table) => [table.roomId, table.roomName])
+    );
+    meetingPublicTableLastRefreshAt = Date.now();
+    window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
+  }catch(error){
+    console.warn("Public meeting-room tables could not be refreshed.", error);
+  }finally{
+    meetingPublicTableRefreshInFlight = false;
+  }
+}
+
 function renderBoard3D(state) {
   const boardViewMode = effectiveBoardViewMode(gid);
   if(!supportsAlternateBoardViews(gid) || !THREE_D_BOARD_MODES.has(boardViewMode)) return;
@@ -8089,6 +8176,7 @@ function renderBoard3D(state) {
   window.goitaBoard3D.setEnvironment(boardViewMode === "meeting-room" ? "meeting-room" : "board");
   window.goitaBoard3D.setVisible(true);
   window.goitaBoard3D.render(buildBoard3DSnapshot(state));
+  if(boardViewMode === "meeting-room") refreshMeetingPublicTables();
 }
 
 function renderBoardPixel(state) {
@@ -9305,6 +9393,17 @@ async function refresh(){
 
 window.addEventListener("goita-board3d-ready", () => {
   applyBoardViewMode();
+  if(gid === MEETING_ROOM_GID) {
+    window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
+    refreshMeetingPublicTables(true);
+  }
+});
+
+window.addEventListener("goita-public-table-open", async (event) => {
+  const roomId = String(event.detail?.roomId || "");
+  if(gid !== MEETING_ROOM_GID || !MAIN_ROOM_IDS.has(roomId) || roomId === gid) return;
+  const roomName = meetingPublicTableRoomNames.get(roomId) || roomId;
+  await enterRoom(roomId, roomName);
 });
 
 window.addEventListener("goita-board-pixel-ready", () => {
@@ -9324,6 +9423,7 @@ window.addEventListener("goita-language-change", () => {
   updateLobbyChatComposerUi();
   updateChatComposerUi();
   updateVoiceChatUi();
+  window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
   updateSeatButtons(latestState || {});
   if(latestState) {
     renderHandRevealControls(latestState);

@@ -37,6 +37,7 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     "main-f": "AIとごいたB",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
+MEETING_ROOM_GID = "main-d"
 MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
     "main-e": ("B", "C", "D"),
     "main-f": ("B", "C", "D"),
@@ -232,13 +233,20 @@ class ConnectionManager:
         task = asyncio.create_task(_release_disconnected_client_after_grace(game_id, client_id))
         self.disconnect_tasks[(game_id, client_id)] = task
 
+    async def _broadcast_payload(self, channel: str, payload: Dict[str, Any]) -> None:
+        for connection in list(self.active_connections.get(channel, [])):
+            try:
+                await connection.send_json(payload)
+            except Exception:
+                pass
+
     async def broadcast_update(self, game_id: str):
-        if game_id in self.active_connections:
-            for connection in self.active_connections[game_id]:
-                try:
-                    await connection.send_json({"type": "update"})
-                except:
-                    pass
+        await self._broadcast_payload(game_id, {"type": "update"})
+        if game_id in MAIN_GIDS and game_id != MEETING_ROOM_GID:
+            await self._broadcast_payload(
+                MEETING_ROOM_GID,
+                {"type": "public_table_update", "game_id": game_id},
+            )
 
 manager = ConnectionManager()
 
@@ -1705,6 +1713,19 @@ def _update_board_snapshot(
         _push_first_empty(board[player]["attack"], a)
 
 
+def _record_public_action(
+    game: Dict[str, Any],
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+) -> None:
+    action_type, _, _ = action
+    game["last_public_action"] = {
+        "player": player,
+        "type": action_type,
+        "at_ms": int(time.time() * 1000),
+    }
+
+
 def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_type: str, before_len: int) -> bool:
     if action_type not in ("receive", "attack_after_block"):
         return False
@@ -1851,6 +1872,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "ai_profile": ai_profile,
         "log": [],
         "board": _new_board_snapshot(),
+        "last_public_action": None,
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
@@ -2073,6 +2095,7 @@ def _apply_agent_turn(
     if _visible_receive_for_score_effect(agent_action, effects):
         hidden_receive = False
     _update_board_snapshot(board, player, agent_action, hidden_receive=hidden_receive)
+    _record_public_action(game, player, agent_action)
 
     log_str = _format_action(player, agent_action) + (" (hidden)" if hidden_receive else "")
     for ef in effects:
@@ -2190,21 +2213,16 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         )
         spectator_count = manager.spectator_count(gid, data)
         pn = data.get("player_names", {})
-        pt = data.get("player_tags", {})
         seats_info = {}
-        seat_tags = {}
         for s in ALL_SEATS:
             is_human = s in human_set
             name = pn.get(s, "").strip()
             if is_human:
                 seats_info[s] = "＊＊＊＊" if hide_private_names else name or "人間"
-                seat_tags[s] = "" if hide_private_names else _sanitize_player_tag(pt.get(s, ""))
             elif s in ai_set:
                 seats_info[s] = "AI"
-                seat_tags[s] = ""
             else:
                 seats_info[s] = "Empty"
-                seat_tags[s] = ""
 
         owner_name = MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
         return {
@@ -2220,7 +2238,6 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             "spectator_count": spectator_count,
             "people_count": len(human_set) + spectator_count,
             "seats": seats_info,
-            "seat_tags": seat_tags,
         }
 
     rooms = [
@@ -2251,6 +2268,59 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         "room_totals": room_totals,
         "site_people": build_site_people(),
         "public_chat_messages": _chat_messages_for_lobby(),
+    }
+
+
+def _meeting_room_public_table_snapshot(game_id: str, game: Dict[str, Any]) -> Dict[str, Any]:
+    state: GoitaState = game["state"]
+    raw_board = game.get("board", _new_board_snapshot())
+    safe_board: Dict[str, Dict[str, Any]] = {}
+
+    for seat in ALL_SEATS:
+        seat_board = raw_board.get(seat, {})
+        receives = list(seat_board.get("receive", [None] * 4))[:4]
+        attacks = list(seat_board.get("attack", [None] * 4))[:4]
+        hidden_flags = list(seat_board.get("receive_hidden", [False] * 4))[:4]
+        receives.extend([None] * (4 - len(receives)))
+        attacks.extend([None] * (4 - len(attacks)))
+        hidden_flags.extend([False] * (4 - len(hidden_flags)))
+        safe_board[seat] = {
+            "receive": [
+                "■" if value is not None and hidden_flags[index] else value
+                for index, value in enumerate(receives)
+            ],
+            "attack": attacks,
+            "receive_hidden": [bool(value) for value in hidden_flags],
+        }
+
+    is_started = bool(game.get("is_started", False))
+    return {
+        "game_id": game_id,
+        "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
+        "is_started": is_started,
+        "finished": bool(state.finished) if is_started else False,
+        "turn": state.turn if is_started else None,
+        "attacker": state.attacker if is_started else "",
+        "dealer": game.get("dealer", "A"),
+        "board_public": safe_board,
+        "player_names": dict(game.get("player_names", {})),
+        "ai_seats": sorted(_ai_seat_set(game)),
+        "total_team_score": dict(game.get("total_team_score", {"AC": 0, "BD": 0})),
+        "round_count": int(game.get("round_count", 1)),
+        "last_public_action": copy.deepcopy(game.get("last_public_action")),
+    }
+
+
+@app.get("/games/public-tables")
+def list_public_tables(exclude: str = MEETING_ROOM_GID):
+    setup_main_rooms()
+    return {
+        "tables": [
+            _meeting_room_public_table_snapshot(game_id, GAMES[game_id])
+            for game_id in MAIN_ROOM_NAMES
+            if game_id != exclude
+            and not GAMES[game_id].get("hidden_from_lobby", False)
+        ]
     }
 
 
@@ -3031,6 +3101,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     if _visible_receive_for_score_effect(action, effects):
         hidden_receive = False
     _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
+    _record_public_action(game, player, action)
     
     log_str = _format_action(player, action) + (" (hidden)" if hidden_receive else "")
     for ef in effects:
