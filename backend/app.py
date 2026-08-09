@@ -987,6 +987,25 @@ def _store_ai_seats(game: Dict[str, Any], seats: Set[str]) -> None:
     game["ai_seats"] = sorted(s for s in seats if s in ALL_SEATS)
 
 
+def _revealed_hand_seat_set(game: Dict[str, Any]) -> Set[str]:
+    return _seat_set(game.get("revealed_hand_seats", []))
+
+
+def _store_revealed_hand_seats(game: Dict[str, Any], seats: Set[str]) -> None:
+    game["revealed_hand_seats"] = sorted(s for s in seats if s in ALL_SEATS)
+
+
+def _effective_revealed_hand_seats(
+    game_id: str,
+    game: Dict[str, Any],
+    state: GoitaState,
+) -> Set[str]:
+    revealed = _revealed_hand_seat_set(game)
+    if game_id in MAIN_GIDS and game.get("is_started") and state.finished:
+        revealed.update(_ai_seat_set(game))
+    return revealed
+
+
 app = FastAPI(title="Goita FastAPI (Render-ready)")
 
 app.add_middleware(
@@ -1236,6 +1255,7 @@ class ResetConfigBody(BaseModel):
     requester: str = Field(default="W") 
     client_id: str = ""
     keep_score: bool = Field(default=False)
+    auto_start: bool = Field(default=False)
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -1507,13 +1527,14 @@ def _state_public_view(
     
     log = game_obj.get("log", [])
     board_public = game_obj.get("board", _new_board_snapshot())
-    reveal_hands = game_obj.get("reveal_hands", False)
     human_seats = game_obj.get("human_seats", {})
     owned_human_seats = _client_owned_human_seats(game_obj, client_id)
     ai_seats = _ai_seat_set(game_obj)
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
+    revealed_hand_seats = _effective_revealed_hand_seats(game_id, game_obj, state)
+    reveal_hands = len(revealed_hand_seats) == len(ALL_SEATS)
     chat_messages = _chat_messages_for_game(game_id, game_obj)
 
     hands_view: Dict[str, Any] = {}
@@ -1536,7 +1557,7 @@ def _state_public_view(
         winner = None
     else:
         for p in ALL_SEATS:
-            if reveal_hands or p in owned_human_seats:
+            if p in revealed_hand_seats or p in owned_human_seats:
                 hands_view[p] = list(state.hands[p])
                 init_hands_view[p] = list((game_obj.get("init_hands") or {}).get(p, []))
                 face_down_pieces_view[p] = list(state.face_down_hidden[p])
@@ -1545,10 +1566,7 @@ def _state_public_view(
                 init_hands_view[p] = {"count": 8}
                 face_down_pieces_view[p] = {"count": len(state.face_down_hidden[p])}
 
-        if reveal_hands:
-            board_view = copy.deepcopy(board_public)
-        else:
-            board_view = board_public
+        board_view = board_public
             
         turn = state.turn
         phase = state.phase
@@ -1576,6 +1594,7 @@ def _state_public_view(
         "winner": winner,
         "player_names": player_names,
         "reveal_hands": reveal_hands,
+        "revealed_hand_seats": sorted(revealed_hand_seats),
         "owner_name": owner_name,
         "total_team_score": game_obj.get("total_team_score", {"AC": 0, "BD": 0}),
         "round_count": game_obj.get("round_count", 1),
@@ -1620,6 +1639,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "admin_password": None,
         "owner_name": "",
         "reveal_hands": False,
+        "revealed_hand_seats": [],
         "show_legal_actions": False,
         "show_log": False,
         "room_background_image": "",
@@ -1644,6 +1664,12 @@ def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
     old_state = old_game.get("state")
     should_advance_round = bool(old_game.get("is_started")) or bool(getattr(old_state, "finished", False))
     new_game["round_count"] = old_round + (1 if should_advance_round else 0)
+
+
+def _set_reset_start_state(game: Dict[str, Any], auto_start: bool) -> None:
+    game["is_started"] = bool(auto_start)
+    if auto_start:
+        game["log"].append(f"Game start. dealer={game.get('dealer', 'A')}")
 
 
 def _is_main_game_id(game_id: str) -> bool:
@@ -2094,20 +2120,57 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     return {"ok": True}
 
 
-@app.post("/games/{game_id}/toggle_reveal_hands")
-async def toggle_reveal_hands(game_id: str, requester: str = "W", client_id: str = ""):
-    if requester != "A":
-        raise HTTPException(status_code=403, detail="Only player in seat A can toggle hands.")
+@app.post("/games/{game_id}/reveal_hand")
+async def reveal_hand(
+    game_id: str,
+    requester: str = "W",
+    target: str = "",
+    client_id: str = "",
+):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    _require_human_seat_owner(game, "A", client_id)
-    
-    game["reveal_hands"] = not game.get("reveal_hands", False)
+
+    requester = _validate_seat(requester, name="requester")
+    target = _validate_seat(target or requester, name="target")
+    if not game.get("is_started"):
+        raise HTTPException(status_code=409, detail="The game has not started.")
+
+    state: GoitaState = game["state"]
+    if _is_main_game_id(game_id) and not state.finished:
+        raise HTTPException(
+            status_code=409,
+            detail="Hands can be revealed in public rooms only after the round ends.",
+        )
+
+    human_seats = _human_seat_set(game)
+    ai_seats = _ai_seat_set(game)
+    if target in human_seats:
+        if target != requester:
+            raise HTTPException(status_code=403, detail="Players can reveal only their own hand.")
+        _require_human_seat_owner(game, target, client_id)
+    elif target in ai_seats:
+        if requester != "A":
+            raise HTTPException(status_code=403, detail="Only the host can reveal an AI hand.")
+        _require_human_seat_owner(game, "A", client_id)
+    else:
+        raise HTTPException(status_code=409, detail=f"Seat {target} has no player to reveal.")
+
+    revealed = _revealed_hand_seat_set(game)
+    revealed.add(target)
+    _store_revealed_hand_seats(game, revealed)
     await manager.broadcast_update(game_id)
-    return {"ok": True, "reveal_hands": game["reveal_hands"]}
+    return {"ok": True, "revealed_hand_seats": sorted(revealed)}
+
+
+@app.post("/games/{game_id}/toggle_reveal_hands")
+async def toggle_reveal_hands(game_id: str, requester: str = "W", client_id: str = ""):
+    raise HTTPException(
+        status_code=410,
+        detail="Reveal hands one seat at a time with /reveal_hand.",
+    )
 
 
 @app.post("/games/{game_id}/reset")
@@ -2117,6 +2180,7 @@ async def reset_game(
     requester: str = "W",
     client_id: str = "",
     keep_score: bool = False,
+    auto_start: bool = False,
 ):
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can reset the game.")
@@ -2150,7 +2214,8 @@ async def reset_game(
     new_game["player_names"] = player_names
     new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
-    new_game["is_started"] = False
+    new_game["revealed_hand_seats"] = []
+    _set_reset_start_state(new_game, auto_start)
     new_game["ai_profile"] = ai_profile
     new_game["show_legal_actions"] = show_legal_actions
     new_game["show_log"] = show_log
@@ -2215,7 +2280,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["player_names"] = player_names
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
-        new_game["is_started"] = False
+        new_game["revealed_hand_seats"] = []
+        _set_reset_start_state(new_game, body.auto_start)
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
@@ -2237,7 +2303,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["player_names"] = player_names
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
-        new_game["is_started"] = False
+        new_game["revealed_hand_seats"] = []
+        _set_reset_start_state(new_game, body.auto_start)
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
         new_game["show_log"] = show_log
@@ -2289,6 +2356,10 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if seat in ai_seats:
         ai_seats.remove(seat)
         _store_ai_seats(game, ai_seats)
+    revealed_hand_seats = _revealed_hand_seat_set(game)
+    if seat in revealed_hand_seats:
+        revealed_hand_seats.remove(seat)
+        _store_revealed_hand_seats(game, revealed_hand_seats)
         
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -2723,15 +2794,11 @@ def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     
-    game_copy = copy.copy(game)
-    if reveal_hands and _client_owns_human_seat(game, "A", client_id):
-        game_copy["reveal_hands"] = True
-        
     return _state_public_view(
         game["state"],
         game_id=game_id,
         viewer=viewer,
-        game_obj=game_copy,
+        game_obj=game,
         client_id=client_id,
     )
 

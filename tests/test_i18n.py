@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://i22.fanbox.cc/plans"' in html
-    assert '<script src="/static/i18n-en.js?v=20260731a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260731a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260809d"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260809d"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
@@ -88,8 +88,21 @@ def test_language_packs_cover_site_presence_ui() -> None:
         assert source in english
 
 
+def test_hand_reveal_confirmation_is_translated() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    assert 'id="handRevealConfirmModal"' in html
+    assert 'id="handRevealConfirmAccept"' in html
+    for source in ["手札を公開しますか？", "公開する", "キャンセル"]:
+        assert source in chinese
+        assert source in english
+
+
 if __name__ == "__main__":
     test_language_switcher_and_translation_runtime_are_loaded()
     test_dynamic_ui_and_ai_help_follow_selected_language()
     test_language_packs_cover_site_presence_ui()
+    test_hand_reveal_confirmation_is_translated()
     print("I18N_TEST_OK")

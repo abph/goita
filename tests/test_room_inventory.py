@@ -95,28 +95,178 @@ def test_every_main_room_disables_beginner_support() -> None:
             raise AssertionError(f"{game_id} must reject beginner support")
 
 
-def test_main_room_host_can_toggle_all_hands() -> None:
+def test_public_room_reveal_requires_round_end_and_player_consent() -> None:
     game_id = next(iter(app_module.MAIN_ROOM_NAMES))
-    client_id = "main-reveal-test-client"
-    game = app_module.GAMES[game_id]
-    old_human_seats = game.get("human_seats")
-    old_reveal_hands = game.get("reveal_hands", False)
+    old_game = app_module.GAMES[game_id]
+    game = app_module._create_game_obj(dealer="A")
+    game["is_started"] = True
+    game["human_seats"] = {"A": "client-a", "B": "client-b"}
+    game["ai_seats"] = ["C", "D"]
+    app_module.GAMES[game_id] = game
 
     try:
-        game["human_seats"] = {"A": client_id}
-        game["reveal_hands"] = False
+        try:
+            asyncio.run(
+                app_module.reveal_hand(
+                    game_id,
+                    requester="B",
+                    target="B",
+                    client_id="client-b",
+                )
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+        else:
+            raise AssertionError("A public-room hand must stay hidden before the round ends")
+
+        game["state"].finished = True
         result = asyncio.run(
-            app_module.toggle_reveal_hands(
+            app_module.reveal_hand(
                 game_id,
-                requester="A",
-                client_id=client_id,
+                requester="B",
+                target="B",
+                client_id="client-b",
             )
         )
-        assert result == {"ok": True, "reveal_hands": True}
-        assert game["reveal_hands"] is True
+        assert result == {"ok": True, "revealed_hand_seats": ["B"]}
+
+        try:
+            asyncio.run(
+                app_module.reveal_hand(
+                    game_id,
+                    requester="A",
+                    target="B",
+                    client_id="client-a",
+                )
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 403
+        else:
+            raise AssertionError("The host must not reveal another human player's hand")
+
+        spectator_state = app_module.get_state(game_id, viewer="W")
+        assert isinstance(spectator_state["hands"]["B"], list)
+        assert isinstance(spectator_state["hands"]["C"], list)
+        assert isinstance(spectator_state["hands"]["D"], list)
+        assert spectator_state["hands"]["A"] == {"count": 8}
+        assert spectator_state["revealed_hand_seats"] == ["B", "C", "D"]
     finally:
-        game["human_seats"] = old_human_seats
-        game["reveal_hands"] = old_reveal_hands
+        app_module.GAMES[game_id] = old_game
+
+
+def test_private_room_reveals_human_self_and_host_controlled_ai_only() -> None:
+    game_id = "test-private-seat-reveal"
+    game = app_module._create_game_obj(dealer="A")
+    game["is_started"] = True
+    game["human_seats"] = {"A": "client-a", "B": "client-b"}
+    game["ai_seats"] = ["C", "D"]
+    app_module.GAMES[game_id] = game
+
+    try:
+        own_result = asyncio.run(
+            app_module.reveal_hand(
+                game_id,
+                requester="B",
+                target="B",
+                client_id="client-b",
+            )
+        )
+        assert own_result["revealed_hand_seats"] == ["B"]
+
+        ai_result = asyncio.run(
+            app_module.reveal_hand(
+                game_id,
+                requester="A",
+                target="C",
+                client_id="client-a",
+            )
+        )
+        assert ai_result["revealed_hand_seats"] == ["B", "C"]
+
+        try:
+            asyncio.run(
+                app_module.reveal_hand(
+                    game_id,
+                    requester="A",
+                    target="B",
+                    client_id="client-a",
+                )
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 403
+        else:
+            raise AssertionError("The private-room host must not reveal another human hand")
+
+        spectator_state = app_module.get_state(game_id, viewer="W")
+        assert spectator_state["revealed_hand_seats"] == ["B", "C"]
+        assert isinstance(spectator_state["hands"]["B"], list)
+        assert isinstance(spectator_state["hands"]["C"], list)
+        assert spectator_state["hands"]["A"] == {"count": 8}
+        assert spectator_state["hands"]["D"] == {"count": 8}
+
+        host_state = app_module.get_state(
+            game_id,
+            viewer="A",
+            client_id="client-a",
+            reveal_hands=1,
+        )
+        assert isinstance(host_state["hands"]["A"], list)
+        assert host_state["hands"]["D"] == {"count": 8}
+    finally:
+        app_module.GAMES.pop(game_id, None)
+
+
+def test_next_round_reset_can_start_immediately_with_score_preserved() -> None:
+    game_id = "test-auto-start-next-round"
+    game = app_module._create_game_obj(dealer="A")
+    game["is_started"] = True
+    game["state"].finished = True
+    game["human_seats"] = {"A": "client-a"}
+    game["total_team_score"] = {"AC": 40, "BD": 30}
+    game["round_count"] = 3
+    game["revealed_hand_seats"] = ["A", "C"]
+    app_module.GAMES[game_id] = game
+
+    try:
+        asyncio.run(
+            app_module.reset_game(
+                game_id,
+                dealer="C",
+                requester="A",
+                client_id="client-a",
+                keep_score=True,
+                auto_start=True,
+            )
+        )
+        next_game = app_module.GAMES[game_id]
+        assert next_game["is_started"] is True
+        assert next_game["dealer"] == "C"
+        assert next_game["round_count"] == 4
+        assert next_game["total_team_score"] == {"AC": 40, "BD": 30}
+        assert next_game["revealed_hand_seats"] == []
+        assert next_game["log"] == ["Game start. dealer=C"]
+
+        next_game["state"].finished = True
+        asyncio.run(
+            app_module.reset_game_config(
+                game_id,
+                app_module.ResetConfigBody(
+                    dealer="D",
+                    requester="A",
+                    client_id="client-a",
+                    keep_score=True,
+                    auto_start=True,
+                ),
+            )
+        )
+        configured_game = app_module.GAMES[game_id]
+        assert configured_game["is_started"] is True
+        assert configured_game["dealer"] == "D"
+        assert configured_game["round_count"] == 5
+        assert configured_game["total_team_score"] == {"AC": 40, "BD": 30}
+        assert configured_game["log"] == ["Game start. dealer=D"]
+    finally:
+        app_module.GAMES.pop(game_id, None)
 
 
 def test_frontend_recognizes_all_main_room_ids() -> None:
@@ -139,6 +289,9 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert 'id="lobbyMainRoomCount"' in html
     assert 'id="lobbyPrivateRoomCount"' in html
     assert "function updateLobbyAdminPeopleCounts(roomTotals = null)" in html
+    assert 'id="handRevealConfirmModal"' in html
+    assert "if(!await confirmHandReveal(target)) return;" in html
+    assert "if(!window.confirm(message)) return;" not in html
     assert "data.room_totals" in html
     assert "function openLobbySettings()" in html
     assert "async function unlockLobbyAdminSettings()" in html
@@ -146,7 +299,13 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert "`${API}/lobby/admin/verify`" in html
     assert "`${API}/lobby/admin/settings`" in html
     assert 'safeCount === 1 ? "person" : "people"' in html
-    assert 'toggleBtn.style.display = isHost ? "" : "none"' in html
+    assert 'id="handRevealPanel"' in html
+    assert "function renderHandRevealControls(state)" in html
+    assert "/reveal_hand?${qs.toString()}" in html
+    assert "toggle_reveal_hands" not in html
+    assert "auto_start: autoStart" in html
+    assert "auto_start: String(!!autoStart)" in html
+    assert 'nextRoundButton.textContent = uiText("配牌中...")' in html
 
 
 def test_lobby_admin_can_change_visible_room_counts() -> None:

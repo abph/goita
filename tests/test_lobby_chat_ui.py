@@ -42,7 +42,7 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "let lobbyChatNotices = [];" in html
     assert "lobbyChatNotices = [notice];" in html
     assert "renderLobbyChat(lobbyChatMessages);" in html
-    assert "lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices]" in html
+    assert "lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices.filter(shouldDisplayChatNotice)]" in html
     assert "await fetchRoomList();\n  showLobbyWelcomeToast();" in html
     assert "`${API}/lobby/chat`" in html
     assert "`${API}/lobby/chat/ask_ai`" in html

@@ -539,6 +539,34 @@
       gap: 10px;
       margin-top: 16px;
     }
+    .hand-reveal-panel {
+      display: none;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 8px 2px 0;
+      border-top: 1px solid rgba(139, 90, 43, 0.35);
+    }
+    .hand-reveal-panel button {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid #8b5a2b;
+      border-radius: 5px;
+      background: #fffdf5;
+      color: #5f3b1d;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .hand-reveal-panel button:disabled {
+      cursor: default;
+      opacity: 0.58;
+    }
+    .hand-reveal-note {
+      flex-basis: 100%;
+      font-size: 12px;
+      color: #6b4c32;
+    }
     .play-main-column {
       min-width: 0;
     }
@@ -2101,6 +2129,33 @@
       width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
     .modal-content h3 { margin-top: 0; color: #8b5a2b; border-bottom: 2px solid #8b5a2b; padding-bottom: 8px; font-size: 20px;}
+    .hand-reveal-confirm-content {
+      width: min(88vw, 360px);
+      max-width: 360px;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .hand-reveal-confirm-content h3 { margin-bottom: 12px; }
+    .hand-reveal-confirm-message {
+      margin: 0;
+      color: #3f352b;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.7;
+    }
+    .hand-reveal-confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .hand-reveal-confirm-actions button {
+      min-width: 104px;
+      padding: 10px 14px;
+      font-weight: 900;
+    }
+    .hand-reveal-confirm-cancel { background: #e0d8c8; color: #333; }
+    .hand-reveal-confirm-accept { background: #8b5a2b; color: #fff; }
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
@@ -2288,10 +2343,6 @@
       line-height: 1.55;
     }
     #matchSettingsPanel .settings-disclosure:last-child { margin-bottom: 0; }
-    .seat-ai-note {
-      flex-basis: 100%;
-      margin-top: 4px;
-    }
     .seat-mode-status {
       color: #555;
       font-weight: 700;
@@ -3353,7 +3404,6 @@
         <button id="btnSeatC" onclick="openSeatMenu('C')" class="seat-btn">C</button>
         <button id="btnSeatD" onclick="openSeatMenu('D')" class="seat-btn">D</button>
       </span>
-      <div class="small seat-ai-note">AIに打たせる席は、A/B/C/DからAIモードを選んでください。</div>
     </div>
     <div id="voiceChatBar" class="voice-chat-bar">
       <span class="voice-chat-title">ボイスチャット</span>
@@ -3432,7 +3482,6 @@
           <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
 
           <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
-          <button onclick="toggleAllHands()" id="toggleHandsBtn" style="display:none;">みんな手札公開</button>
         </div>
 
         <div class="bottom-grid" id="hostToolsGrid" style="display:none;">
@@ -3445,6 +3494,7 @@
           </div>
         </div>
       </div>
+      <div id="handRevealPanel" class="hand-reveal-panel" aria-live="polite"></div>
     </div>
     <div class="card" id="logCard" style="display:none;">
       <details>
@@ -3467,6 +3517,19 @@
     <span id="chatToastSender"></span>
   </div>
   <div id="chatToastText" class="chat-toast-text"></div>
+</div>
+
+<div id="handRevealConfirmModal" class="modal-overlay" tabindex="-1"
+     onclick="if(event.target === event.currentTarget) closeHandRevealConfirmModal(false)"
+     onkeydown="if(event.key === 'Escape') closeHandRevealConfirmModal(false)">
+  <div class="modal-content hand-reveal-confirm-content" role="dialog" aria-modal="true" aria-labelledby="handRevealConfirmTitle" aria-describedby="handRevealConfirmMessage">
+    <h3 id="handRevealConfirmTitle">手札を公開しますか？</h3>
+    <p id="handRevealConfirmMessage" class="hand-reveal-confirm-message"></p>
+    <div class="hand-reveal-confirm-actions">
+      <button type="button" class="hand-reveal-confirm-cancel" onclick="closeHandRevealConfirmModal(false)">キャンセル</button>
+      <button id="handRevealConfirmAccept" type="button" class="hand-reveal-confirm-accept" onclick="closeHandRevealConfirmModal(true)">公開する</button>
+    </div>
+  </div>
 </div>
 
 <div id="dailyMoveModal" class="modal-overlay" data-i18n-ignore>
@@ -3580,6 +3643,14 @@
             <div class="settings-row">
               <label for="lobbyMobileChatTransparency">透明度（<span id="lobbyMobileChatTransparencyValue">0%</span>）</label>
               <input type="range" id="lobbyMobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateLobbyMobileChatTransparencyDisplay(this.value)">
+            </div>
+            <div class="settings-row">
+              <label for="lobbyChatNoticeVisibility">チャット内の連絡表示</label>
+              <select id="lobbyChatNoticeVisibility" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+                <option value="important" selected>重要な連絡のみ（おすすめ）</option>
+                <option value="all">すべて表示</option>
+                <option value="none">表示しない</option>
+              </select>
             </div>
           </div>
         </details>
@@ -3735,6 +3806,14 @@
           <div class="settings-row">
             <label for="mobileChatTransparency">透明度（<span id="mobileChatTransparencyValue">0%</span>）</label>
             <input type="range" id="mobileChatTransparency" min="0" max="90" step="1" value="0" style="width:100%;" oninput="updateMobileChatTransparencyDisplay(this.value)">
+          </div>
+          <div class="settings-row">
+            <label for="chatNoticeVisibility">チャット内の連絡表示</label>
+            <select id="chatNoticeVisibility" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+              <option value="important" selected>重要な連絡のみ（おすすめ）</option>
+              <option value="all">すべて表示</option>
+              <option value="none">表示しない</option>
+            </select>
           </div>
         </div>
       </details>
@@ -3918,8 +3997,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260731a"></script>
-<script src="/static/i18n.js?v=20260731a"></script>
+<script src="/static/i18n-en.js?v=20260809d"></script>
+<script src="/static/i18n.js?v=20260809d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4259,6 +4338,10 @@ function normalizeBoardViewMode(mode) {
     return THREE_D_BOARD_MODES.has(mode) || PIXEL_BOARD_MODES.has(mode) ? mode : "2d";
 }
 
+function normalizeChatNoticeVisibility(value) {
+    return ["important", "all", "none"].includes(value) ? value : "important";
+}
+
 function supportsAlternateBoardViews(roomId) {
     return roomId === DEBUG_GID || roomId === MEETING_ROOM_GID || PRIVATE_ROOM_IDS.has(roomId);
 }
@@ -4292,6 +4375,7 @@ function loadPersonalSettings() {
             mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
                 ? Math.max(0, Math.min(90, savedMobileChatTransparency))
                 : defaultMobileChatTransparency,
+            chatNoticeVisibility: normalizeChatNoticeVisibility(saved.chatNoticeVisibility),
         };
     } catch (e) {
         return {
@@ -4306,6 +4390,7 @@ function loadPersonalSettings() {
             mobileChatWidth: "normal",
             mobileChatHeight: "normal",
             mobileChatTransparency: 0,
+            chatNoticeVisibility: "important",
         };
     }
 }
@@ -4408,6 +4493,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyMobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("lobbyMobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateLobbyMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
+    document.getElementById("lobbyChatNoticeVisibility").value = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
     document.getElementById("lobbyCheckEnableEffects").checked = personalSettings.enableEffects !== false;
     document.getElementById("lobbyCheckEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("lobbyPieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
@@ -4429,6 +4515,7 @@ function saveLobbyPersonalSettings() {
             ? document.getElementById("lobbyMobileChatHeight").value
             : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("lobbyMobileChatTransparency").value) || 0)),
+        chatNoticeVisibility: normalizeChatNoticeVisibility(document.getElementById("lobbyChatNoticeVisibility").value),
         enableEffects: document.getElementById("lobbyCheckEnableEffects").checked,
         enableSoundEffects: document.getElementById("lobbyCheckEnableSoundEffects").checked,
         pieceSound: document.getElementById("lobbyPieceSoundChoice").value === "standard" ? "standard" : "notanomori",
@@ -4446,6 +4533,7 @@ function saveLobbyPersonalSettings() {
     } catch (_error) {
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存できませんでした。";
     }
+    refreshChatNoticeVisibility();
 }
 
 applyPersonalSettingsAppearance();
@@ -4511,6 +4599,7 @@ let setupApplyTimer = null;
 let kifuArchiveCache = null;
 let kifuPresetLoading = false;
 let startRequestInFlight = false;
+let nextRoundRequestInFlight = false;
 let autoPlayEnabled = false;
 let keepScoreForPendingSetup = false;
 let audioUnlocked = false;
@@ -5339,6 +5428,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("mobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
+    document.getElementById("chatNoticeVisibility").value = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
     document.getElementById("checkEnableEffects").checked = personalSettings.enableEffects !== false;
     document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
@@ -5428,6 +5518,7 @@ async function savePersonalSettings() {
             ? document.getElementById("mobileChatHeight").value
             : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
+        chatNoticeVisibility: normalizeChatNoticeVisibility(document.getElementById("chatNoticeVisibility").value),
         enableEffects: document.getElementById("checkEnableEffects").checked,
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
@@ -5451,6 +5542,7 @@ async function savePersonalSettings() {
     } catch (e) {
         document.getElementById("personalSettingsStatus").textContent = "保存できませんでした。";
     }
+    refreshChatNoticeVisibility();
 }
 
 async function unlockRoomManagement() {
@@ -5710,7 +5802,6 @@ function updateRoomUI() {
     const isMain = isMainRoomId(gid);
     const isHost = isCurrentClientHost();
 
-    const toggleBtn = document.getElementById("toggleHandsBtn");
     const dealerDetails = document.getElementById("dealerDetails");
     const presetDetails = document.getElementById("presetHandsDetails");
     const actionsDetails = document.getElementById("actionsDetails"); 
@@ -5729,7 +5820,6 @@ function updateRoomUI() {
     if (btnNewGame) btnNewGame.style.display = (isHost && latestState?.finished) ? "" : "none";
     if (forceResetSettingsRow) forceResetSettingsRow.style.display = (isHost && latestState && !latestState.finished) ? "block" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
-    if (toggleBtn) toggleBtn.style.display = isHost ? "" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
     if (actionsDetails) actionsDetails.style.display = showActions ? "block" : "none";
@@ -6261,7 +6351,6 @@ function renderPresetCopyButtons(state){
   const canCopy = (
     state &&
     state.is_started &&
-    state.reveal_hands &&
     mySeat === "A" &&
     !isMainRoomId(gid)
   );
@@ -6269,6 +6358,7 @@ function renderPresetCopyButtons(state){
   if(!canCopy) return;
 
   ["A","B","C","D"].forEach(seat => {
+    if(seat !== "A" && !isSeatHandRevealed(state, seat)) return;
     const presetHand = fixedHandBase(state, seat);
     if(presetHand.length <= 0) return;
 
@@ -6287,7 +6377,6 @@ function renderPresetControls(state){
   area.innerHTML = "";
 
   const canShow = mySeat === "A" && !isMainRoomId(gid);
-  const canCopy = !!(state && state.is_started && state.reveal_hands && canShow);
   area.style.display = canShow ? "flex" : "none";
   if(!canShow) return;
 
@@ -6301,6 +6390,12 @@ function renderPresetControls(state){
     group.appendChild(label);
 
     const presetHand = fixedHandBase(state, seat);
+    const canCopy = !!(
+      state &&
+      state.is_started &&
+      canShow &&
+      (seat === "A" || isSeatHandRevealed(state, seat))
+    );
 
     const copyBtn = document.createElement("button");
     copyBtn.type = "button";
@@ -6395,21 +6490,37 @@ function presetValidateAndClamp(changed){
   presetSave();
 }
 
-async function resetWithPreset(dealer, keepScore){
+async function resetWithPreset(dealer, keepScore, autoStart = false){
   const usePreset = presetIsEnabled() && presetHasAny();
+  let response;
   
   if(usePreset){
     const preset = presetGet();
-    await fetch(`${API}/games/${gid}/reset_config`, {
+    response = await fetch(`${API}/games/${gid}/reset_config`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ dealer, preset_counts: preset, requester: mySeat, client_id: clientId, keep_score: keepScore })
+      body: JSON.stringify({
+        dealer,
+        preset_counts: preset,
+        requester: mySeat,
+        client_id: clientId,
+        keep_score: keepScore,
+        auto_start: autoStart,
+      })
     });
   }else{
-    await fetch(`${API}/games/${gid}/reset?dealer=${encodeURIComponent(dealer)}&requester=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}&keep_score=${keepScore}`, {
+    const query = new URLSearchParams({
+      dealer,
+      requester: mySeat,
+      client_id: clientId,
+      keep_score: String(!!keepScore),
+      auto_start: String(!!autoStart),
+    });
+    response = await fetch(`${API}/games/${gid}/reset?${query.toString()}`, {
       method:"POST",
     });
   }
+  if(!response?.ok) throw new Error("Failed to reset the game.");
 }
 
 function stateHasTotalScore(state){
@@ -6460,6 +6571,29 @@ function scheduleApplyCurrentSetup(){
   }, 250);
 }
 
+function hintNoticeImportance(text){
+  const normalized = String(text ?? "").trim();
+  const importantPatterns = [
+    /失敗/, /通信/, /接続でき/, /切断/, /別の端末/, /すでに別/, /席を失/,
+    /この局は終了/, /勝者:/, /ペアの勝利/, /対局をリセット/
+  ];
+  return importantPatterns.some((pattern) => pattern.test(normalized)) ? "important" : "normal";
+}
+
+function shouldDisplayChatNotice(item){
+  if(item?.local_notice !== true) return true;
+  const visibility = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
+  if(visibility === "all") return true;
+  if(visibility === "none") return false;
+  return item?.notice_importance === "important";
+}
+
+function refreshChatNoticeVisibility(){
+  if(latestState) renderChat(latestState);
+  const lobbyServerMessages = lobbyChatMessages.filter((item) => item?.local_notice !== true);
+  renderLobbyChat(lobbyServerMessages);
+}
+
 function recordHintNotice(msg){
   const text = String(msg ?? "").trim();
   const gameView = document.getElementById("gameView");
@@ -6474,7 +6608,8 @@ function recordHintNotice(msg){
     sender: "連絡",
     message: text,
     ts: Date.now(),
-    local_notice: true
+    local_notice: true,
+    notice_importance: hintNoticeImportance(text),
   };
   localChatNotices.push(notice);
   if(localChatNotices.length > 40){
@@ -6721,6 +6856,7 @@ function showLobbyWelcomeToast(){
     ts: Date.now(),
     local_notice: true,
     lobby_notice: true,
+    notice_importance: "normal",
   };
   lobbyChatNotices = [notice];
   lobbyChatLastToastTs = Math.max(lobbyChatLastToastTs, notice.ts);
@@ -6781,7 +6917,7 @@ function setChatMessageText(element, message, translateMessage = false){
 function mergedChatMessages(serverMessages){
   return [
     ...serverMessages,
-    ...localChatNotices
+    ...localChatNotices.filter(shouldDisplayChatNotice)
   ].sort((a, b) => chatItemTimeValue(a) - chatItemTimeValue(b));
 }
 
@@ -6833,7 +6969,7 @@ function renderLobbyChat(serverMessages){
   const sharedMessages = Array.isArray(serverMessages)
     ? serverMessages.filter((item) => item?.lobby_notice !== true)
     : [];
-  lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices]
+  lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices.filter(shouldDisplayChatNotice)]
     .sort((left, right) => chatItemTimeValue(left) - chatItemTimeValue(right));
   btn.hidden = !inLobby;
   panel.hidden = !inLobby || !lobbyChatOpen;
@@ -7548,12 +7684,16 @@ function removeFirstPiece(list, piece){
   if(idx >= 0) list.splice(idx, 1);
 }
 
+function isSeatHandRevealed(state, seat){
+  return Array.isArray(state?.revealed_hand_seats) && state.revealed_hand_seats.includes(seat);
+}
+
 function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
   const out = new Map();
-  if(!state?.reveal_hands) return out;
 
   for(const phys of ["A","B","C","D"]){
     const seat = physToSeat[phys];
+    if(!isSeatHandRevealed(state, seat)) continue;
     const hand = state.hands?.[seat];
     if(!Array.isArray(hand)) continue;
 
@@ -7612,7 +7752,7 @@ function buildBoard3DSnapshot(state) {
       slot.idx === pendingReceive.idx
     );
     const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-    const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+    const isRevealedHidden = isSeatHandRevealed(state, slot.p) && !isPendingReceive && isHiddenReceive;
     const isOwnHidden = (
       !isPendingReceive &&
       isHiddenReceive &&
@@ -7719,12 +7859,102 @@ async function downloadKifu(anonymous = false){
   URL.revokeObjectURL(url);
 }
 
-async function toggleAllHands(){
+let handRevealConfirmResolver = null;
+
+function closeHandRevealConfirmModal(confirmed = false){
+  const modal = document.getElementById("handRevealConfirmModal");
+  if(modal) modal.style.display = "none";
+  const resolve = handRevealConfirmResolver;
+  handRevealConfirmResolver = null;
+  if(resolve) resolve(Boolean(confirmed));
+}
+
+function confirmHandReveal(target){
+  const modal = document.getElementById("handRevealConfirmModal");
+  const messageEl = document.getElementById("handRevealConfirmMessage");
+  const acceptButton = document.getElementById("handRevealConfirmAccept");
+  if(!modal || !messageEl || !acceptButton) return Promise.resolve(false);
+
+  if(handRevealConfirmResolver){
+    const resolvePrevious = handRevealConfirmResolver;
+    handRevealConfirmResolver = null;
+    resolvePrevious(false);
+  }
+
+  const isOwnHand = target === mySeat;
+  messageEl.textContent = uiText(isOwnHand
+    ? "自分の手札を全員に公開します。公開後はこの局では取り消せません。"
+    : "AIの手札を全員に公開します。公開後はこの局では取り消せません。"
+  );
+
+  return new Promise(resolve => {
+    handRevealConfirmResolver = resolve;
+    modal.style.display = "flex";
+    window.requestAnimationFrame(() => acceptButton.focus());
+  });
+}
+
+async function revealSeatHand(target){
+  if(!await confirmHandReveal(target)) return;
+
   try{
-    await fetch(`${API}/games/${gid}/toggle_reveal_hands?requester=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`, {
-      method: "POST"
+    const qs = new URLSearchParams({
+      requester: mySeat,
+      target,
+      client_id: clientId,
     });
-  }catch(e){}
+    const res = await fetch(`${API}/games/${gid}/reveal_hand?${qs.toString()}`, {method: "POST"});
+    if(!res.ok){
+      alert(uiText("手札を公開できませんでした。"));
+      return;
+    }
+    await refresh();
+  }catch(e){
+    alert(uiText("手札を公開できませんでした。"));
+  }
+}
+
+function renderHandRevealControls(state){
+  const panel = document.getElementById("handRevealPanel");
+  if(!panel) return;
+  panel.innerHTML = "";
+  panel.style.display = "none";
+
+  const ownedSeats = Array.isArray(state?.owned_human_seats) ? state.owned_human_seats : [];
+  if(!state?.is_started || isSpectator() || !ownedSeats.includes(mySeat)) return;
+
+  const isMain = isMainRoomId(gid);
+  const canRevealNow = !isMain || state.finished;
+  const ownRevealed = isSeatHandRevealed(state, mySeat);
+  const ownButton = document.createElement("button");
+  ownButton.type = "button";
+  ownButton.textContent = uiText(ownRevealed ? "自分の手札は公開済み" : "自分の手札を公開");
+  ownButton.disabled = ownRevealed || !canRevealNow;
+  if(!ownButton.disabled) ownButton.onclick = () => revealSeatHand(mySeat);
+  panel.appendChild(ownButton);
+
+  if(!isMain && isCurrentClientHost()){
+    const aiSeats = Array.isArray(state.ai_seats) ? state.ai_seats : [];
+    aiSeats.forEach(seat => {
+      const revealed = isSeatHandRevealed(state, seat);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${seat}（AI） ${uiText(revealed ? "手札公開済み" : "手札を公開")}`;
+      button.disabled = revealed;
+      if(!revealed) button.onclick = () => revealSeatHand(seat);
+      panel.appendChild(button);
+    });
+  }
+
+  const note = document.createElement("div");
+  note.className = "hand-reveal-note";
+  note.textContent = uiText(
+    isMain && !state.finished
+      ? "公開部屋では、終局後に手札を公開できます。"
+      : "公開後は、この局では取り消せません。"
+  );
+  panel.appendChild(note);
+  panel.style.display = "flex";
 }
 
 async function submitAction(actionObj, usedSlots = []){
@@ -8055,7 +8285,7 @@ function renderBoard(state){
           slot.idx === pendingReceive.idx
         );
         const isHiddenReceive = kindKey === "receive" && !!state.board_public?.[slot.p]?.receive_hidden?.[slot.idx];
-        const isRevealedHidden = state.reveal_hands && !isPendingReceive && isHiddenReceive;
+        const isRevealedHidden = isSeatHandRevealed(state, slot.p) && !isPendingReceive && isHiddenReceive;
         const isOwnHidden = (
           !isPendingReceive &&
           isHiddenReceive &&
@@ -8351,6 +8581,16 @@ function showSpecialAnimation(text, typeClass, options = {}) {
 }
 
 async function startNewGame(keepScore = false){
+  const autoStartNextRound = !!keepScore;
+  if(autoStartNextRound && nextRoundRequestInFlight) return;
+  const nextRoundButton = document.getElementById("btnNewGame");
+  if(autoStartNextRound){
+    nextRoundRequestInFlight = true;
+    if(nextRoundButton){
+      nextRoundButton.disabled = true;
+      nextRoundButton.textContent = uiText("配牌中...");
+    }
+  }
   if(keepScore){
       playNextRoundSound();
   }
@@ -8378,19 +8618,35 @@ async function startNewGame(keepScore = false){
       dealer = _chooseRandomDealer();
   }
 
-  await resetWithPreset(dealer, keepScore);
-  forceDisablePreset();
+  try{
+    await resetWithPreset(dealer, keepScore, autoStartNextRound);
+    forceDisablePreset();
 
-  for(const s of ["A","B","C","D"]){
-    const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
-    if(nm){ await setName(s, nm); }
+    for(const s of ["A","B","C","D"]){
+      const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
+      if(nm){ await setName(s, nm); }
+    }
+
+    if(seatToKeep && seatToKeep !== WATCH){
+      await claimSeat(seatToKeep);
+    }
+
+    pending=null;
+    resetLogAudioSync(0);
+    if(autoStartNextRound){
+      isGameStarted = true;
+      keepScoreForPendingSetup = false;
+      await refresh();
+    }
+  }catch(error){
+    console.error("Next game error:", error);
+    await refresh();
+  }finally{
+    if(autoStartNextRound){
+      nextRoundRequestInFlight = false;
+      if(nextRoundButton) nextRoundButton.disabled = false;
+    }
   }
-
-  if(seatToKeep && seatToKeep !== WATCH){
-    await claimSeat(seatToKeep);
-  }
-
-  pending=null; resetLogAudioSync(0);
 }
 
 async function confirmForceReset(){
@@ -8495,11 +8751,6 @@ async function refresh(){
       window.setTimeout(() => refresh(), 0);
   }
   
-  const toggleBtn = document.getElementById("toggleHandsBtn");
-  if (toggleBtn) {
-      toggleBtn.textContent = state.reveal_hands ? "手札表示を戻す" : "みんな手札公開";
-  }
-
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
       setRoomNameText(currentRoomNameEl, state.owner_name || (isMainRoomId(gid) ? "みんなでごいたA" : ""));
@@ -8542,7 +8793,10 @@ async function refresh(){
   const isHost = isCurrentClientHost();
   if (btnNewGame) {
       btnNewGame.style.display = (isHost && state.finished) ? "" : "none";
-      if (state.match_finished) {
+      btnNewGame.disabled = nextRoundRequestInFlight;
+      if (nextRoundRequestInFlight) {
+          btnNewGame.textContent = uiText("配牌中...");
+      } else if (state.match_finished) {
           btnNewGame.textContent = "新規ゲーム (スコアリセット)";
           btnNewGame.onclick = () => startNewGame(false);
       } else if (state.finished) {
@@ -8602,6 +8856,7 @@ async function refresh(){
 
   renderBoard(state);
   renderHands(state);
+  renderHandRevealControls(state);
   renderPresetControls(state);
   await renderActions();
   renderChat(state);
@@ -8775,6 +9030,7 @@ window.addEventListener("goita-language-change", () => {
   updateVoiceChatUi();
   updateSeatButtons(latestState || {});
   if(latestState) {
+    renderHandRevealControls(latestState);
     if(linkedKifuPreset && !latestState.is_started) {
       setHint(linkedKifuRoomHint(latestState));
     }
