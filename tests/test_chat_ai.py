@@ -26,6 +26,7 @@ async def _run() -> None:
         assert "分類名、見出しとして回答に表示しない" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "ルームを作成したプレイヤー" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "特定プレイヤー宛てではなく" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "お問い合わせ先は1222（@wanksk）" in app_module.AI_HELP_SYSTEM_PROMPT
         assert app_module._site_feature_answer("ホストとは？") == (
             "ホストはゲームの開始や配牌、親の設定などの進行管理を行う権限を持っています。"
         )
@@ -46,6 +47,17 @@ async def _run() -> None:
         assert "历史与传承" in app_module._site_feature_answer("能登和宇出津", "zh")
         assert "history and preservation" in app_module._site_feature_answer(
             "What is the connection between Noto, Ushitsu, and Goita?", "en"
+        )
+        contact_answer = app_module._site_feature_answer("お問い合わせ先を教えて")
+        assert contact_answer == (
+            "お問い合わせは、1222（@wanksk）までお願いします。\n"
+            "https://x.com/wanksk"
+        )
+        assert "1222（@wanksk）" in app_module._site_feature_answer(
+            "怎样联系网站管理员？", "zh"
+        )
+        assert "contact 1222 (@wanksk)" in app_module._site_feature_answer(
+            "How can I contact you?", "en"
         )
         basic_usage_answer = app_module._lobby_basic_usage_answer("使い方が分からない")
         assert basic_usage_answer is not None

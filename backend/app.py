@@ -130,6 +130,7 @@ AI_HELP_SYSTEM_PROMPT = """
   https://vrcgoita.com/goita/
 
 ページの操作情報:
+- お問い合わせ先は1222（@wanksk）。トップページ下部の「お問い合わせ」から確認できる。URLは https://x.com/wanksk
 - A/B/C/Dを選ぶと「席に着く」または「AIモード」を選べる。自分の席では「席を離れる」も選べる。
 - 空席は自動でAIにならない。AIに打たせる席は、その席を選んで「AIモード」にする。
 - 自分の手番では手駒を選んで受け・攻めを行う。「パス」は受けずに次へ回す。
@@ -779,6 +780,36 @@ def _site_feature_answer(
             "ushitsu",
         )
     )
+    asks_contact = any(
+        term in compact
+        for term in (
+            "お問い合わせ",
+            "問い合わせ",
+            "問合せ",
+            "連絡先",
+            "連絡方法",
+            "联系",
+            "聯絡",
+            "contact",
+            "getintouch",
+        )
+    )
+
+    if asks_contact:
+        if normalized_language == "zh":
+            return (
+                "如需联系，请联系1222（@wanksk）。\n"
+                "https://x.com/wanksk"
+            )
+        if normalized_language == "en":
+            return (
+                "For inquiries, contact 1222 (@wanksk).\n"
+                "https://x.com/wanksk"
+            )
+        return (
+            "お問い合わせは、1222（@wanksk）までお願いします。\n"
+            "https://x.com/wanksk"
+        )
 
     if asks_noto_or_ushitsu:
         if normalized_language == "zh":
