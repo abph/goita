@@ -126,6 +126,8 @@ AI_HELP_SYSTEM_PROMPT = """
   https://vrcgoita.com/goita/rule/
 - 質問の主目的がごいたの戦略、戦術、読み合い、手駒の強さ、攻め方、受け方、パスの判断の場合だけ、詳しい説明の代わりに次のページを案内してください。
   https://vrcgoita.com/goita/strategy/
+- 能登、能登町、宇出津、Noto、Ushitsuについて聞かれた場合は、能登・宇出津とごいたの関わりを知るページとして次のページを案内してください。ごいたの歴史と保存活動、ルール、戦略性、遊べる場所、商品・関連グッズを紹介していると簡潔に伝えてください。
+  https://vrcgoita.com/goita/
 
 ページの操作情報:
 - A/B/C/Dを選ぶと「席に着く」または「AIモード」を選べる。自分の席では「席を離れる」も選べる。
@@ -768,6 +770,34 @@ def _site_feature_answer(
         or "mention" in compact
         or "提及" in compact
     )
+    asks_noto_or_ushitsu = any(
+        term in compact
+        for term in (
+            "能登",
+            "宇出津",
+            "noto",
+            "ushitsu",
+        )
+    )
+
+    if asks_noto_or_ushitsu:
+        if normalized_language == "zh":
+            return (
+                "关于能登、宇出津与Goita的关系，请参阅“什么是Goita”页面。"
+                "页面介绍Goita的历史与传承、规则、策略、游玩方式及相关商品。\n"
+                "https://vrcgoita.com/goita/"
+            )
+        if normalized_language == "en":
+            return (
+                "For Noto, Ushitsu, and their connection to Goita, see the About Goita page. "
+                "It covers Goita's history and preservation, rules, strategy, places to play, "
+                "and related products.\nhttps://vrcgoita.com/goita/"
+            )
+        return (
+            "能登・宇出津とごいたの関わりについては、「ごいたとは」のページをご覧ください。"
+            "ごいたの歴史や保存活動、ルール、戦略性、遊べる場所、商品・関連グッズを紹介しています。\n"
+            "https://vrcgoita.com/goita/"
+        )
 
     if asks_host:
         if normalized_language == "zh":

@@ -19,6 +19,8 @@ async def _run() -> None:
         app_module.AI_HELP_LAST_REQUEST.clear()
         assert "https://vrcgoita.com/goita/rule/" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "https://vrcgoita.com/goita/strategy/" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "https://vrcgoita.com/goita/" in app_module.AI_HELP_SYSTEM_PROMPT
+        assert "能登、能登町、宇出津、Noto、Ushitsu" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "操作回答の末尾" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "初心者サポートを有効にする" in app_module.AI_HELP_SYSTEM_PROMPT
         assert "分類名、見出しとして回答に表示しない" in app_module.AI_HELP_SYSTEM_PROMPT
@@ -36,6 +38,14 @@ async def _run() -> None:
         ).lower()
         assert 'choose "Here" or "Everyone"' in app_module._site_feature_answer(
             "How does @ work?", "en"
+        )
+        noto_answer = app_module._site_feature_answer("能登や宇出津とごいたの関係を教えて")
+        assert noto_answer is not None
+        assert "歴史や保存活動" in noto_answer
+        assert noto_answer.endswith("https://vrcgoita.com/goita/")
+        assert "历史与传承" in app_module._site_feature_answer("能登和宇出津", "zh")
+        assert "history and preservation" in app_module._site_feature_answer(
+            "What is the connection between Noto, Ushitsu, and Goita?", "en"
         )
         basic_usage_answer = app_module._lobby_basic_usage_answer("使い方が分からない")
         assert basic_usage_answer is not None

@@ -5331,6 +5331,22 @@ async function saveLobbyAdminSettings() {
     }
 }
 
+function truncateLobbyPlayerName(playerName, maxCharacters = 5) {
+    const characters = Array.from(String(playerName ?? ""));
+    if (characters.length <= maxCharacters) return characters.join("");
+    return `${characters.slice(0, maxCharacters).join("")}…`;
+}
+
+function escapeLobbyHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    })[character]);
+}
+
 async function fetchRoomList() {
     try {
         const res = await fetch(`${API}/games/list`);
@@ -5359,16 +5375,22 @@ async function fetchRoomList() {
             const makeBadge = (seatName, playerName) => {
                 const isAi = (playerName === "AI");
                 const isEmpty = (playerName === "Empty");
-                const displayName = isEmpty ? "空席" : playerName;
+                const fullDisplayName = isEmpty ? "空席" : String(playerName ?? "");
+                const displayName = (!isAi && !isEmpty)
+                    ? truncateLobbyPlayerName(fullDisplayName)
+                    : fullDisplayName;
                 let text = "";
+                let fullText = "";
                 if (seatName === 'A') {
                     text = `👑A: ${displayName}`;
+                    fullText = `👑A: ${fullDisplayName}`;
                 } else {
                     text = `${seatName}: ${displayName}`;
+                    fullText = `${seatName}: ${fullDisplayName}`;
                 }
                 const badgeClass = isAi ? "ai" : (isEmpty ? "empty" : "human");
                 const ignoreAttribute = !isAi && !isEmpty ? " data-i18n-ignore" : "";
-                return `<div class="seat-badge ${badgeClass}" title="${text}"${ignoreAttribute}>${text}</div>`;
+                return `<div class="seat-badge ${badgeClass}" title="${escapeLobbyHtml(fullText)}" aria-label="${escapeLobbyHtml(fullText)}"${ignoreAttribute}>${escapeLobbyHtml(text)}</div>`;
             };
 
             const isMainRoom = room.is_main_room === true || isMainRoomId(room.game_id);
