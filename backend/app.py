@@ -166,6 +166,7 @@ class ConnectionManager:
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self.client_connections: Dict[Tuple[str, str], Set[WebSocket]] = {}
         self.client_names: Dict[Tuple[str, str], str] = {}
+        self.client_tags: Dict[Tuple[str, str], str] = {}
         self.disconnect_tasks: Dict[Tuple[str, str], Any] = {}
 
     async def connect(
@@ -174,6 +175,7 @@ class ConnectionManager:
         game_id: str,
         client_id: str = "",
         name: str = "",
+        tag: str = "",
     ):
         await websocket.accept()
         if game_id not in self.active_connections:
@@ -183,6 +185,7 @@ class ConnectionManager:
             key = (game_id, client_id)
             self.client_connections.setdefault(key, set()).add(websocket)
             self.client_names[key] = _sanitize_player_name(name)
+            self.client_tags[key] = _sanitize_player_tag(tag)
             self.cancel_disconnect_release(game_id, client_id)
 
     def disconnect(self, websocket: WebSocket, game_id: str, client_id: str = "") -> bool:
@@ -198,6 +201,7 @@ class ConnectionManager:
             if not connections:
                 self.client_connections.pop(key, None)
                 self.client_names.pop(key, None)
+                self.client_tags.pop(key, None)
                 return True
         return False
 
@@ -550,6 +554,21 @@ def _sanitize_player_name(s: str) -> str:
     if len(s) > 9:
         s = s[:9]
     return s
+
+
+PLAYER_TAG_VALUES = frozenset({
+    "beginner",
+    "human_match",
+    "ai_practice",
+    "spectator",
+    "teacher",
+    "tournament",
+})
+
+
+def _sanitize_player_tag(tag: str) -> str:
+    normalized = (tag or "").strip().lower()
+    return normalized if normalized in PLAYER_TAG_VALUES else ""
 
 
 def _sanitize_chat_message(s: str) -> str:
@@ -983,6 +1002,12 @@ def _chat_sender_label(game_obj: Dict[str, Any], seat: str, spectator_name: str 
     return f"観戦: {name}" if name else "観戦"
 
 
+def _chat_sender_tag(game_obj: Dict[str, Any], seat: str, spectator_tag: str = "") -> str:
+    if seat in ALL_SEATS:
+        return _sanitize_player_tag((game_obj.get("player_tags") or {}).get(seat, ""))
+    return _sanitize_player_tag(spectator_tag)
+
+
 def _normalize_ai_profile(profile: Optional[str]) -> str:
     profile = (profile or DEFAULT_AI_PROFILE).strip()
     return profile if profile in AI_PROFILES else DEFAULT_AI_PROFILE
@@ -1030,6 +1055,8 @@ def _client_owned_human_seats(game: Dict[str, Any], client_id: str) -> Set[str]:
 def _clear_player_name(game: Dict[str, Any], seat: str) -> None:
     player_names: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
     player_names[seat] = ""
+    player_tags: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
+    player_tags[seat] = ""
 
 
 def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> bool:
@@ -1097,8 +1124,9 @@ async def websocket_endpoint(
     game_id: str,
     client_id: str = "",
     name: str = "",
+    tag: str = "",
 ):
-    await manager.connect(websocket, game_id, client_id, name)
+    await manager.connect(websocket, game_id, client_id, name, tag)
     await manager.broadcast_update(game_id)
     if game_id != "lobby":
         await manager.broadcast_update("lobby")
@@ -1404,11 +1432,13 @@ class NameRequest(BaseModel):
     seat: str
     client_id: str = ""
     name: str = ""
+    tag: str = ""
 
 class ChatRequest(BaseModel):
     seat: str = "W"
     client_id: str = ""
     name: str = ""
+    tag: str = ""
     message: str
 
 
@@ -1703,6 +1733,7 @@ def _state_public_view(
     owned_human_seats = _client_owned_human_seats(game_obj, client_id)
     ai_seats = _ai_seat_set(game_obj)
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
+    player_tags = game_obj.get("player_tags", {p: "" for p in ALL_SEATS})
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
     revealed_hand_seats = _effective_revealed_hand_seats(game_id, game_obj, state)
@@ -1765,6 +1796,7 @@ def _state_public_view(
         "finished": finished,
         "winner": winner,
         "player_names": player_names,
+        "player_tags": player_tags,
         "reveal_hands": reveal_hands,
         "revealed_hand_seats": sorted(revealed_hand_seats),
         "owner_name": owner_name,
@@ -1825,6 +1857,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "human_seats": {}, 
         "ai_seats": [],
         "player_names": {p: "" for p in ALL_SEATS},
+        "player_tags": {p: "" for p in ALL_SEATS},
         "chat_messages": [],
         "password": None,
         "admin_password": None,
@@ -2078,10 +2111,12 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 continue
 
             connection_name = manager.client_names.get((connected_game_id, client_id), "")
+            connection_tag = manager.client_tags.get((connected_game_id, client_id), "")
             if connected_game_id == "lobby":
                 person = {
                     "name": connection_name or "ゲスト",
                     "name_is_default": not bool(connection_name),
+                    "tag": _sanitize_player_tag(connection_tag),
                     "location": "トップページ",
                     "role": "lobby",
                     "seat": "",
@@ -2099,9 +2134,15 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                         "",
                     )
                 player_names = game.get("player_names", {})
+                player_tags = game.get("player_tags", {})
                 seat_name = (
                     _sanitize_player_name(player_names.get(seat, ""))
                     if seat and isinstance(player_names, dict)
+                    else ""
+                )
+                seat_tag = (
+                    _sanitize_player_tag(player_tags.get(seat, ""))
+                    if seat and isinstance(player_tags, dict)
                     else ""
                 )
                 is_main_room = _is_main_game_id(connected_game_id)
@@ -2125,6 +2166,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                         else resolved_name or (f"プレイヤー{seat}" if seat else "観戦者")
                     ),
                     "name_is_default": False if private_name_is_hidden else not bool(resolved_name),
+                    "tag": "" if private_name_is_hidden else seat_tag or _sanitize_player_tag(connection_tag),
                     "location": location,
                     "role": "player" if seat else "spectator",
                     "seat": seat,
@@ -2148,16 +2190,21 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         )
         spectator_count = manager.spectator_count(gid, data)
         pn = data.get("player_names", {})
+        pt = data.get("player_tags", {})
         seats_info = {}
+        seat_tags = {}
         for s in ALL_SEATS:
             is_human = s in human_set
             name = pn.get(s, "").strip()
             if is_human:
                 seats_info[s] = "＊＊＊＊" if hide_private_names else name or "人間"
+                seat_tags[s] = "" if hide_private_names else _sanitize_player_tag(pt.get(s, ""))
             elif s in ai_set:
                 seats_info[s] = "AI"
+                seat_tags[s] = ""
             else:
                 seats_info[s] = "Empty"
+                seat_tags[s] = ""
 
         owner_name = MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
         return {
@@ -2172,7 +2219,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             "human_count": len(human_set),
             "spectator_count": spectator_count,
             "people_count": len(human_set) + spectator_count,
-            "seats": seats_info
+            "seats": seats_info,
+            "seat_tags": seat_tags,
         }
 
     rooms = [
@@ -2438,6 +2486,7 @@ async def reset_game(
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
+    player_tags = old_game.get("player_tags", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
@@ -2459,6 +2508,7 @@ async def reset_game(
     new_game["human_seats"] = human_seats
     new_game["ai_seats"] = ai_seats
     new_game["player_names"] = player_names
+    new_game["player_tags"] = player_tags
     new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
     new_game["revealed_hand_seats"] = []
@@ -2502,6 +2552,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
+    player_tags = old_game.get("player_tags", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
@@ -2534,6 +2585,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
+        new_game["player_tags"] = player_tags
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
@@ -2559,6 +2611,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
+        new_game["player_tags"] = player_tags
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
@@ -2715,12 +2768,15 @@ async def set_player_name(game_id: str, req: NameRequest):
     seat = _validate_seat(req.seat, name="seat")
     _require_human_seat_owner(game, seat, req.client_id)
     name = _sanitize_player_name(req.name)
+    tag = _sanitize_player_tag(req.tag)
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
+    pt: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
     pn[seat] = name
+    pt[seat] = tag
 
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
-    return {"ok": True, "game_id": game_id, "player_names": pn}
+    return {"ok": True, "game_id": game_id, "player_names": pn, "player_tags": pt}
 
 
 @app.post("/games/{game_id}/chat")
@@ -2746,6 +2802,7 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     chat_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
+        "tag": _chat_sender_tag(game, seat, req.tag),
         "message": message,
         "ts": _next_chat_timestamp(),
     }
@@ -2789,6 +2846,7 @@ async def post_lobby_chat_message(req: ChatRequest):
     chat_item = {
         "seat": "W",
         "sender": name or "ゲスト",
+        "tag": _sanitize_player_tag(req.tag),
         "message": message,
         "ts": _next_chat_timestamp(),
         "origin": "lobby",
@@ -2836,6 +2894,7 @@ async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
         {
             "seat": "W",
             "sender": name or "ゲスト",
+            "tag": _sanitize_player_tag(req.tag),
             "message": question,
             "ts": ts,
             "origin": "lobby",
@@ -2891,6 +2950,7 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     question_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
+        "tag": _chat_sender_tag(game, seat, req.tag),
         "message": question,
         "ts": ts,
     }

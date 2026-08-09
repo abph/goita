@@ -34,12 +34,13 @@ async def _run() -> None:
         app_module.manager.broadcast_update = record_broadcast
 
         lobby_result = await app_module.post_lobby_chat_message(
-            app_module.ChatRequest(name="Lobby", message="hello from lobby")
+            app_module.ChatRequest(name="Lobby", tag="beginner", message="hello from lobby")
         )
         lobby_item = lobby_result["chat_messages"][-1]
         assert lobby_item["origin"] == "lobby"
         assert lobby_item["sender"] == "Lobby"
         assert lobby_item["message"] == "hello from lobby"
+        assert lobby_item["tag"] == "beginner"
         assert set(broadcasts) == {"lobby", *app_module.MAIN_ROOM_NAMES.keys()}
         assert app_module.list_rooms()["public_chat_messages"][-1] == lobby_item
         assert lobby_item in app_module._chat_messages_for_game(
@@ -49,12 +50,17 @@ async def _run() -> None:
         broadcasts.clear()
         room_result = await app_module.post_chat_message(
             main_id,
-            app_module.ChatRequest(name="Room User", message="hello from room"),
+            app_module.ChatRequest(
+                name="Room User",
+                tag="human_match",
+                message="hello from room",
+            ),
         )
         room_item = room_result["chat_messages"][-1]
         assert room_item["origin"] == "public_room"
         assert room_item["room_name"] == app_module.MAIN_ROOM_NAMES[main_id]
         assert room_item["message"] == "hello from room"
+        assert room_item["tag"] == "human_match"
         assert broadcasts == [main_id]
         assert all(
             item.get("message") != "hello from room"

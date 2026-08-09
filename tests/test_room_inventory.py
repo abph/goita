@@ -463,6 +463,7 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
         assert {
             "name": "鈴木",
             "name_is_default": False,
+            "tag": "",
             "location": "トップページ",
             "role": "lobby",
             "seat": "",
@@ -470,6 +471,7 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
         assert {
             "name": "山田",
             "name_is_default": False,
+            "tag": "",
             "location": app_module.MAIN_ROOM_NAMES[game_id],
             "role": "player",
             "seat": "B",
@@ -513,6 +515,7 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
         assert {
             "name": "＊＊＊＊",
             "name_is_default": False,
+            "tag": "",
             "location": app_module.PRIVATE_ROOM_NAMES[game_id],
             "role": "player",
             "seat": "C",
@@ -531,6 +534,7 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
         assert {
             "name": "秘密の名前",
             "name_is_default": False,
+            "tag": "",
             "location": app_module.PRIVATE_ROOM_NAMES[game_id],
             "role": "player",
             "seat": "C",

@@ -1440,6 +1440,33 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .player-tag-badge {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      min-height: 16px;
+      padding: 1px 5px;
+      border: 1px solid rgba(92, 67, 38, 0.28);
+      border-radius: 3px;
+      background: #f4efe5;
+      color: #604a32;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .player-tag-badge[data-player-tag="beginner"] { background: #edf6ff; color: #205681; }
+    .player-tag-badge[data-player-tag="human_match"] { background: #edf8ef; color: #245e35; }
+    .player-tag-badge[data-player-tag="ai_practice"] { background: #f3effb; color: #57427d; }
+    .player-tag-badge[data-player-tag="teacher"] { background: #fff3d9; color: #76510d; }
+    .player-tag-badge[data-player-tag="tournament"] { background: #fbecec; color: #7c2d2d; }
+    .chat-player-tag { transform: translateY(-1px); }
+    .board-player-tag {
+      margin-left: 4px;
+      padding: 0 3px;
+      min-height: 13px;
+      font-size: 7px;
+    }
     .chat-text {
       white-space: pre-wrap;
       word-break: break-word;
@@ -2093,6 +2120,12 @@
       border-bottom: 1px solid rgba(139, 90, 43, 0.16);
     }
     .lobby-person-row:last-child { border-bottom: 0; }
+    .lobby-person-identity {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 5px;
+    }
     .lobby-person-name {
       min-width: 0;
       color: #3d2b1d;
@@ -3626,6 +3659,18 @@
           <label for="lobbyPersonalPlayerName">名前（最大9文字）</label>
           <input type="text" id="lobbyPersonalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
         </div>
+        <div class="settings-row">
+          <label for="lobbyPersonalPlayerTag">プレイヤータグ</label>
+          <select id="lobbyPersonalPlayerTag" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+            <option value="">タグなし</option>
+            <option value="beginner">初心者</option>
+            <option value="human_match">対人希望</option>
+            <option value="ai_practice">AI練習中</option>
+            <option value="spectator">観戦中心</option>
+            <option value="teacher">教えられます</option>
+            <option value="tournament">大会練習中</option>
+          </select>
+        </div>
         <details id="lobbyMobileChatSettingsDetails" class="settings-disclosure">
           <summary>
             <span class="when-closed">▶ チャットの設定を開く</span>
@@ -3788,6 +3833,18 @@
       <div class="settings-row">
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+      </div>
+      <div class="settings-row">
+        <label for="personalPlayerTag">プレイヤータグ</label>
+        <select id="personalPlayerTag" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
+          <option value="">タグなし</option>
+          <option value="beginner">初心者</option>
+          <option value="human_match">対人希望</option>
+          <option value="ai_practice">AI練習中</option>
+          <option value="spectator">観戦中心</option>
+          <option value="teacher">教えられます</option>
+          <option value="tournament">大会練習中</option>
+        </select>
       </div>
       <details id="mobileChatSettingsDetails" class="settings-disclosure">
         <summary>
@@ -4367,6 +4424,34 @@ let roomChatPeopleFetching = false;
 const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
 const PIXEL_BOARD_MODES = new Set(["pixel-color", "pixel-mono"]);
 const THREE_D_BOARD_MODES = new Set(["3d", "meeting-room"]);
+const PLAYER_TAG_LABELS = Object.freeze({
+    beginner: "初心者",
+    human_match: "対人希望",
+    ai_practice: "AI練習中",
+    spectator: "観戦中心",
+    teacher: "教えられます",
+    tournament: "大会練習中",
+});
+
+function normalizePlayerTag(tag) {
+    const normalized = String(tag || "").trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PLAYER_TAG_LABELS, normalized) ? normalized : "";
+}
+
+function playerTagLabel(tag) {
+    const normalized = normalizePlayerTag(tag);
+    return normalized ? uiText(PLAYER_TAG_LABELS[normalized]) : "";
+}
+
+function buildPlayerTagBadge(tag, extraClass = "") {
+    const normalized = normalizePlayerTag(tag);
+    if (!normalized) return null;
+    const badge = document.createElement("span");
+    badge.className = `player-tag-badge${extraClass ? ` ${extraClass}` : ""}`;
+    badge.dataset.playerTag = normalized;
+    badge.textContent = playerTagLabel(normalized);
+    return badge;
+}
 
 function normalizeBoardViewMode(mode) {
     if (mode === "pixel") return "pixel-color";
@@ -4392,6 +4477,7 @@ function loadPersonalSettings() {
         const savedMobileChatTransparency = Number(saved.mobileChatTransparency);
         return {
             playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
+            playerTag: normalizePlayerTag(saved.playerTag),
             enableEffects: saved.enableEffects !== false,
             enableSoundEffects: saved.enableSoundEffects !== false,
             pieceSound: ["notanomori", "standard"].includes(saved.pieceSound)
@@ -4415,6 +4501,7 @@ function loadPersonalSettings() {
     } catch (e) {
         return {
             playerName: "",
+            playerTag: "",
             enableEffects: true,
             enableSoundEffects: true,
             pieceSound: "notanomori",
@@ -4522,6 +4609,7 @@ function setLobbyBoardViewControl(mode) {
 
 function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyPersonalPlayerName").value = personalSettings.playerName || "";
+    document.getElementById("lobbyPersonalPlayerTag").value = normalizePlayerTag(personalSettings.playerTag);
     document.getElementById("lobbyMobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("lobbyMobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
@@ -4540,8 +4628,10 @@ function syncLobbyPersonalSettingsControls() {
 
 function saveLobbyPersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
+    const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
     personalSettings = {
         playerName: sanitizeName(document.getElementById("lobbyPersonalPlayerName").value),
+        playerTag: normalizePlayerTag(document.getElementById("lobbyPersonalPlayerTag").value),
         mobileChatPlacement: document.getElementById("lobbyMobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("lobbyMobileChatWidth").value)
             ? document.getElementById("lobbyMobileChatWidth").value
@@ -4561,7 +4651,7 @@ function saveLobbyPersonalSettings() {
     applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
-        if(previousPlayerName !== personalSettings.playerName && currentWsGid){
+        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag) && currentWsGid){
             connectWS(currentWsGid);
         }
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存しました。";
@@ -4865,6 +4955,7 @@ function connectWS(targetGid) {
     const host = window.location.host || "localhost:8000"; 
     const wsParams = new URLSearchParams({client_id: clientId});
     if(personalSettings.playerName) wsParams.set("name", personalSettings.playerName);
+    if(personalSettings.playerTag) wsParams.set("tag", personalSettings.playerTag);
     const wsUrl = `${protocol}//${host}/ws/${targetGid}?${wsParams.toString()}`;
     
     socket = new WebSocket(wsUrl);
@@ -5372,7 +5463,7 @@ async function fetchRoomList() {
             card.className = "room-card";
             
             const s = room.seats;
-            const makeBadge = (seatName, playerName) => {
+            const makeBadge = (seatName, playerName, playerTag = "") => {
                 const isAi = (playerName === "AI");
                 const isEmpty = (playerName === "Empty");
                 const fullDisplayName = isEmpty ? "空席" : String(playerName ?? "");
@@ -5388,6 +5479,11 @@ async function fetchRoomList() {
                     text = `${seatName}: ${displayName}`;
                     fullText = `${seatName}: ${fullDisplayName}`;
                 }
+                const tagLabel = !isAi && !isEmpty ? playerTagLabel(playerTag) : "";
+                if(tagLabel){
+                    text += ` [${tagLabel}]`;
+                    fullText += ` [${tagLabel}]`;
+                }
                 const badgeClass = isAi ? "ai" : (isEmpty ? "empty" : "human");
                 const ignoreAttribute = !isAi && !isEmpty ? " data-i18n-ignore" : "";
                 return `<div class="seat-badge ${badgeClass}" title="${escapeLobbyHtml(fullText)}" aria-label="${escapeLobbyHtml(fullText)}"${ignoreAttribute}>${escapeLobbyHtml(text)}</div>`;
@@ -5396,7 +5492,7 @@ async function fetchRoomList() {
             const isMainRoom = room.is_main_room === true || isMainRoomId(room.game_id);
             const requiresPassword = room.requires_password === true || room.is_private === true;
             const settingsIcon = (!isMainRoom)
-                ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event)" title="ルーム設定">⚙️</div>` 
+                ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event, 'management')" title="ルーム設定">⚙️</div>`
                 : "";
             const roomNameIgnore = isBuiltInRoomName(room.owner_name) ? "" : " data-i18n-ignore";
 
@@ -5412,14 +5508,14 @@ async function fetchRoomList() {
             } else {
                 card.innerHTML = `
                     ${settingsIcon}
-                    <div class="seat-top">${makeBadge('C', s['C'])}</div>
-                    <div class="seat-left">${makeBadge('D', s['D'])}</div>
+                    <div class="seat-top">${makeBadge('C', s['C'], room.seat_tags?.['C'])}</div>
+                    <div class="seat-left">${makeBadge('D', s['D'], room.seat_tags?.['D'])}</div>
                     <div class="center-info">
                         <div class="title"${roomNameIgnore}>${room.owner_name}</div>
                         <div class="count">(${room.player_count}/4人)</div>
                     </div>
-                    <div class="seat-right">${makeBadge('B', s['B'])}</div>
-                    <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
+                    <div class="seat-right">${makeBadge('B', s['B'], room.seat_tags?.['B'])}</div>
+                    <div class="seat-bottom">${makeBadge('A', s['A'], room.seat_tags?.['A'])}</div>
                 `;
             }
             
@@ -5483,6 +5579,7 @@ function showSettingsTab(tabName) {
 function syncPersonalSettingsControls() {
     const currentSeatName = isSpectator() ? "" : sanitizeName(latestState?.player_names?.[mySeat] || "");
     document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
+    document.getElementById("personalPlayerTag").value = normalizePlayerTag(personalSettings.playerTag);
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
@@ -5556,7 +5653,7 @@ async function saveTurnTimeLimitSetting() {
     }
 }
 
-function openSettingsModal(targetGid, event) {
+function openSettingsModal(targetGid, event, initialTab = "personal") {
     if (event) {
         event.stopPropagation();
     }
@@ -5580,7 +5677,7 @@ function openSettingsModal(targetGid, event) {
         const details = document.getElementById(id);
         if (details) details.open = false;
     });
-    showSettingsTab("personal");
+    showSettingsTab(initialTab === "management" ? "management" : "personal");
     document.getElementById("settingsModal").style.display = "flex";
 }
 
@@ -5629,8 +5726,10 @@ function setupLobbyPieceBackground() {
 
 async function savePersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
+    const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
+        playerTag: normalizePlayerTag(document.getElementById("personalPlayerTag").value),
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("mobileChatWidth").value)
             ? document.getElementById("mobileChatWidth").value
@@ -5656,7 +5755,7 @@ async function savePersonalSettings() {
             await setName(mySeat, personalSettings.playerName);
             await refresh();
         }
-        if(previousPlayerName !== personalSettings.playerName && currentWsGid){
+        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag) && currentWsGid){
             connectWS(currentWsGid);
         }
         document.getElementById("personalSettingsStatus").textContent = "保存しました。";
@@ -5751,6 +5850,7 @@ function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
     const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
     const aiSeats = Array.isArray(state?.ai_seats) ? state.ai_seats : [];
+    const playerTags = state?.player_tags || {};
     const spectatorBtn = document.getElementById('btnSpectator');
     const spectatorCount = Math.max(0, Number(state?.spectator_count) || 0);
 
@@ -5769,6 +5869,9 @@ function updateSeatButtons(state) {
         const isAi = aiSeats.includes(s);
         const occupiedByOther = isHuman && mySeat !== s;
         const speakingSuffix = voiceChatIsSpeaking(s) ? " 🎙" : "";
+        const tagSuffix = isHuman && playerTagLabel(playerTags[s])
+            ? ` [${playerTagLabel(playerTags[s])}]`
+            : "";
 
         btn.classList.toggle('active', mySeat === s);
         btn.classList.toggle('ai-mode', isAi);
@@ -5776,11 +5879,11 @@ function updateSeatButtons(state) {
         btn.disabled = occupiedByOther;
 
         if (mySeat === s) {
-            btn.textContent = `${displayName} (自分)${speakingSuffix}`;
+            btn.textContent = `${displayName} (自分)${tagSuffix}${speakingSuffix}`;
         } else if (isAi) {
             btn.textContent = `${displayName} [AI]`;
         } else if (isHuman) {
-            btn.textContent = `${displayName} [人]${speakingSuffix}`;
+            btn.textContent = `${displayName} [人]${tagSuffix}${speakingSuffix}`;
         } else {
             btn.textContent = displayName;
         }
@@ -6837,6 +6940,9 @@ function buildSitePeopleFragment(sitePeople){
       const row = document.createElement("div");
       row.className = "lobby-person-row";
 
+      const identity = document.createElement("span");
+      identity.className = "lobby-person-identity";
+
       const name = document.createElement("span");
       name.className = "lobby-person-name";
       const rawName = String(person?.name || "ゲスト");
@@ -6846,11 +6952,14 @@ function buildSitePeopleFragment(sitePeople){
         name.setAttribute("data-i18n-ignore", "");
         name.textContent = rawName;
       }
+      identity.appendChild(name);
+      const tagBadge = buildPlayerTagBadge(person?.tag, "lobby-player-tag");
+      if(tagBadge) identity.appendChild(tagBadge);
 
       const location = document.createElement("span");
       location.className = "lobby-person-location";
       location.textContent = formatLobbyPersonLocation(person);
-      row.append(name, location);
+      row.append(identity, location);
       fragment.appendChild(row);
     });
   }
@@ -6938,6 +7047,12 @@ function localizedChatSender(item){
   return sender;
 }
 
+function localizedChatSenderWithTag(item){
+  const sender = localizedChatSender(item);
+  const tag = playerTagLabel(item?.tag);
+  return tag ? `${sender} [${tag}]` : sender;
+}
+
 function showChatToast(item){
   const toast = document.getElementById("chatToast");
   const sender = document.getElementById("chatToastSender");
@@ -6950,7 +7065,7 @@ function showChatToast(item){
   }
 
   sender.setAttribute("data-i18n-ignore", "");
-  sender.textContent = localizedChatSender(item);
+  sender.textContent = localizedChatSenderWithTag(item);
   const shouldTranslateMessage = shouldTranslateChatItem(item);
   text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage);
   text.textContent = shouldTranslateMessage
@@ -7069,6 +7184,8 @@ function renderChatItems(box, messages, isMine = null){
     const meta = document.createElement("div");
     meta.className = "chat-meta";
     meta.appendChild(sender);
+    const tagBadge = buildPlayerTagBadge(item?.tag, "chat-player-tag");
+    if(tagBadge) meta.appendChild(tagBadge);
 
     const text = document.createElement("div");
     text.className = "chat-text";
@@ -7365,6 +7482,7 @@ async function sendChatMessage(event){
         seat: isSpectator() ? WATCH : mySeat,
         client_id: clientId,
         name: personalSettings.playerName || "",
+        tag: normalizePlayerTag(personalSettings.playerTag),
         message
       })
     });
@@ -7468,6 +7586,7 @@ async function sendLobbyChatMessage(event){
         seat: WATCH,
         client_id: clientId,
         name: personalSettings.playerName || "",
+        tag: normalizePlayerTag(personalSettings.playerTag),
         message,
       }),
     });
@@ -7514,6 +7633,7 @@ async function askLobbyChatAi(){
         seat: WATCH,
         client_id: clientId,
         name: personalSettings.playerName || "",
+        tag: normalizePlayerTag(personalSettings.playerTag),
         message,
         language: window.goitaI18n?.getLanguage?.() || "ja",
       }),
@@ -7562,6 +7682,7 @@ async function askChatAi(){
         seat: isSpectator() ? WATCH : mySeat,
         client_id: clientId,
         name: personalSettings.playerName || "",
+        tag: normalizePlayerTag(personalSettings.playerTag),
         message,
         language: window.goitaI18n?.getLanguage?.() || "ja"
       })
@@ -8001,7 +8122,7 @@ async function setName(seat, name){
     await fetch(`${API}/games/${gid}/set_name`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ seat, client_id: clientId, name })
+      body: JSON.stringify({ seat, client_id: clientId, name, tag: normalizePlayerTag(personalSettings.playerTag) })
     });
   }catch(e){}
 }
@@ -8359,6 +8480,7 @@ function renderBoard(state){
   const seatToPhys = getSeatToPhys();
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
+  const playerTags = state.player_tags || {A:"",B:"",C:"",D:""};
   const pendingReceive = pendingBlockPreview(state);
   const revealedBoardHands = buildRevealedBoardHandMap(state, physToSeat, pendingReceive);
 
@@ -8414,6 +8536,8 @@ function renderBoard(state){
           }
           nameText.textContent = `${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
           inner.appendChild(nameText);
+          const tagBadge = buildPlayerTagBadge(playerTags[seat], "board-player-tag");
+          if(tagBadge) inner.appendChild(tagBadge);
 
           if (aiThinkingSeat === seat) {
             const spinner = document.createElement("img");
