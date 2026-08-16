@@ -300,23 +300,47 @@ class ReceiveStrategyMixin:
         if state.phase != "receive":
             return None
 
-        finish_after_receive_actions: List[Tuple[float, str, Action]] = []
+        finish_after_receive_actions: List[
+            Tuple[float, float, float, str, Action]
+        ] = []
         for act in actions:
             if act[0] != "receive":
                 continue
             result = self._forced_win_result_after_receive_action(state, player, act)
             if result.status != ForcedWinStatus.PROVEN or result.minimum_score is None:
                 continue
+            minimum_score = float(result.minimum_score)
+            expected_score = (
+                minimum_score
+                if result.expected_score is None
+                else float(result.expected_score)
+            )
+            maximum_score = (
+                expected_score
+                if result.maximum_score is None
+                else float(result.maximum_score)
+            )
             detail = "receive_win_after"
             if self._win_after_receive_bonus(state, player, act) <= 0:
                 detail = "receive_tsume_after"
-            finish_after_receive_actions.append((result.minimum_score, detail, act))
+            finish_after_receive_actions.append((
+                minimum_score,
+                expected_score,
+                maximum_score,
+                detail,
+                act,
+            ))
 
         if not finish_after_receive_actions:
             return None
 
-        finish_after_receive_actions.sort(key=lambda x: x[0], reverse=True)
-        _score, detail, chosen = finish_after_receive_actions[0]
+        finish_after_receive_actions.sort(
+            key=lambda item: (item[0], item[1], item[2]),
+            reverse=True,
+        )
+        _minimum, _expected, _maximum, detail, chosen = (
+            finish_after_receive_actions[0]
+        )
         self._set_decision_reason("score_fallback")
         self._set_score_fallback_detail(detail)
         return chosen

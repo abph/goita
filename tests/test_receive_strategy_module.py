@@ -531,10 +531,7 @@ def test_no_shi_endgame_uses_royal_instead_of_passing_enemy_first_attack() -> No
     assert sorted(state.hands["A"]) == ["2", "5", "6", "8"]
     assert receive == ("receive", "8", None)
     assert a_agent.last_decision_reason == "score_fallback"
-    assert (
-        a_agent.last_score_fallback_detail
-        == "receive_no_shi_royal_endgame_commit"
-    )
+    assert a_agent.last_score_fallback_detail == "receive_tsume_after"
 
     state.apply_receive("A", "8")
     for agent in agents.values():

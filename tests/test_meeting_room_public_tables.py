@@ -46,9 +46,8 @@ def test_public_table_list_excludes_meeting_room_and_hidden_rooms() -> None:
         tables = app_module.list_public_tables()["tables"]
         table_ids = [table["game_id"] for table in tables]
 
-        assert table_ids == ["main", "main-b", "main-c"]
+        assert table_ids == ["main", "main-b", "main-c", "main-e"]
         assert app_module.MEETING_ROOM_GID not in table_ids
-        assert "main-e" not in table_ids
         assert "main-f" not in table_ids
     finally:
         app_module.LOBBY_ROOM_SETTINGS.update(old_settings)

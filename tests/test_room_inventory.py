@@ -7,22 +7,28 @@ from fastapi import HTTPException
 import backend.app as app_module
 
 
-def test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms() -> None:
+def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
     assert list(app_module.MAIN_ROOM_NAMES) == [
         "main",
         "main-b",
         "main-c",
-        "main-d",
         "main-e",
+        "main-d",
         "main-f",
     ]
-    assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 6
+    assert app_module.LOBBY_ROOM_SETTINGS["main_room_count"] == 4
+    assert app_module.LOBBY_MAIN_ROOM_IDS == (
+        "main",
+        "main-b",
+        "main-c",
+        "main-e",
+    )
     assert list(app_module.MAIN_ROOM_NAMES.values()) == [
         "みんなでごいたA",
         "みんなでごいたB",
         "みんなでごいたC",
-        "埼玉的な集会室",
         "AIとごいたA",
+        "埼玉的な集会室",
         "AIとごいたB",
     ]
     assert app_module.MAIN_ROOM_DEFAULT_AI_SEATS == {
@@ -31,6 +37,33 @@ def test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms() -> None:
     }
     assert app_module.GAMES["main-e"]["ai_seats"] == ["B", "C", "D"]
     assert app_module.GAMES["main-f"]["ai_seats"] == ["B", "C", "D"]
+    assert app_module.GAMES["main-d"]["hidden_from_lobby"] is True
+    assert app_module.GAMES["main-f"]["hidden_from_lobby"] is True
+    visible_main_ids = [
+        room["game_id"]
+        for room in app_module.list_rooms()["rooms"]
+        if room["is_main_room"]
+    ]
+    assert visible_main_ids == ["main", "main-b", "main-c", "main-e"]
+
+
+def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
+    room_definition = app_module.PRIVATE_ROOM_DEFINITIONS[2]
+
+    assert app_module.LOBBY_ROOM_SETTINGS["private_room_count"] == 3
+    assert room_definition == {
+        "gid": "room-bronze-03",
+        "pass": "saitama1011",
+        "admin": "1011made",
+        "owner": "金沢大会チーム埼玉",
+    }
+
+    room = app_module.GAMES[room_definition["gid"]]
+    assert room["password"] == "saitama1011"
+    assert room["admin_password"] == "1011made"
+    assert room["owner_name"] == "金沢大会チーム埼玉"
+    assert room["hidden_from_lobby"] is False
+    assert app_module.GAMES["room-copper-04"]["hidden_from_lobby"] is True
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
@@ -312,7 +345,7 @@ def test_lobby_admin_can_change_visible_room_counts() -> None:
     old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
     try:
         payload = app_module.verify_lobby_admin(app_module.LOBBY_ADMIN_PASSWORD)
-        assert payload["main_room_max"] == len(app_module.MAIN_ROOM_NAMES)
+        assert payload["main_room_max"] == len(app_module.LOBBY_MAIN_ROOM_IDS)
         assert payload["private_room_max"] == len(
             app_module.PRIVATE_ROOM_DEFINITIONS
         )

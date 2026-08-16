@@ -670,6 +670,35 @@ class DecisionMixin:
 
         guaranteed_finish_receive = self._guaranteed_finish_receive_action(state, player, actions)
         if guaranteed_finish_receive is not None:
+            # A compact exact endgame may expose a safe wait whose team score is
+            # higher than the direct self-finish. Compare that route before
+            # committing to the guaranteed receive; otherwise keep the proven
+            # self-finish as the fallback.
+            guaranteed_result = self._forced_win_result_after_receive_action(
+                state,
+                player,
+                guaranteed_finish_receive,
+            )
+            higher_score_endgame = self._inferred_endgame_team_result_action(
+                state,
+                player,
+                actions,
+            )
+            guaranteed_score = float(guaranteed_result.minimum_score or 0.0)
+            if higher_score_endgame is not None:
+                chosen, winner, score = higher_score_endgame
+                if (
+                    self._same_team(winner, player)
+                    and float(score) > guaranteed_score
+                ):
+                    self._set_decision_reason("inferred_endgame")
+                    winner_role = "self" if winner == player else "ally"
+                    self._set_score_fallback_detail(
+                        f"inferred_endgame_{winner_role}_win_{winner}_{score}"
+                    )
+                    return chosen
+            if tr is not None:
+                tr["pending_inferred_endgame_attack"] = None
             return guaranteed_finish_receive
 
         no_shi_royal_commit = self._no_shi_royal_endgame_commit_action(

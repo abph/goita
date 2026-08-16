@@ -523,7 +523,7 @@ def test_inferred_endgame_passes_rook_to_keep_forty_point_finish() -> None:
 
     receive = b_agent.select_action(state, "B", state.legal_actions("B"))
     assert receive == ("receive", "1", None)
-    assert b_agent.last_score_fallback_detail == "inferred_endgame_self_win_B_40"
+    assert b_agent.last_score_fallback_detail == "receive_tsume_after"
 
     apply_public("B", receive)
     first_attack = b_agent.select_action(state, "B", state.legal_actions("B"))

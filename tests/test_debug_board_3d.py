@@ -34,14 +34,15 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert "const boardViewsEnabled = supportsAlternateBoardViews(gid);" in html
     assert 'id="boardViewMeetingRoomButton"' in html
     assert 'id="lobbyBoardViewMeetingRoomButton"' in html
+    assert html.count(">埼玉的な集会室</button>") == 2
     assert "const THREE_D_BOARD_MODES = new Set([\"3d\", \"meeting-room\"]);" in html
     assert "const boardViewMode = effectiveBoardViewMode(gid);" in html
     assert 'boardViewsEnabled && THREE_D_BOARD_MODES.has(boardViewMode)' in html
     assert 'if(!supportsAlternateBoardViews(gid) || !THREE_D_BOARD_MODES.has(boardViewMode)) return;' in html
     assert 'boardViewMode: normalizeBoardViewMode(saved.boardViewMode)' in html
     assert 'boardViewMode: "2d"' in html
-    assert '"集会室": "活动室"' in chinese
-    assert '"集会室": "Meeting Room"' in english
+    assert '"埼玉的な集会室": "埼玉风格活动室"' in chinese
+    assert '"埼玉的な集会室": "Saitama-style Meeting Room"' in english
 
 
 def test_3d_board_uses_local_threejs_and_public_board_state() -> None:

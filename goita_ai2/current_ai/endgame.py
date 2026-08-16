@@ -830,22 +830,28 @@ class EndgameMixin:
         ]
         minimum_enemy_hand = min((len(state.hands[seat]) for seat in enemies), default=0)
         # A short enemy hand normally makes the public-information search too
-        # uncertain. Keep two narrow kyosha exceptions because royals cannot
-        # receive kyosha: a consecutive two-kyosha route, and the established
-        # fourth-kyosha bridge into a royal finish.
+        # uncertain. An attack that no outside piece can receive is different:
+        # it cannot hand the initiative to that short enemy, so the guaranteed
+        # route remains safe to evaluate. Keep the two named kyosha shapes as
+        # readable special cases as well.
+        publicly_unreceivable_attack = not self._forced_win_external_receivers(
+            pool,
+            attack,
+        )
         consecutive_unreceivable_kyosha = (
             attack == "2"
-            and not self._forced_win_external_receivers(pool, attack)
+            and publicly_unreceivable_attack
             and state.hands[player].count("2") >= 2
         )
         fourth_kyosha_royal_finish = (
             attack == "2"
-            and not self._forced_win_external_receivers(pool, attack)
+            and publicly_unreceivable_attack
             and len(remaining) == 2
             and any(piece in ("8", "9") for piece in remaining)
         )
         if (
             minimum_enemy_hand <= 2
+            and not publicly_unreceivable_attack
             and not consecutive_unreceivable_kyosha
             and not fourth_kyosha_royal_finish
         ):

@@ -43,12 +43,13 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     MAIN_GID: "みんなでごいたA",
     "main-b": "みんなでごいたB",
     "main-c": "みんなでごいたC",
-    "main-d": "埼玉的な集会室",
     "main-e": "AIとごいたA",
+    "main-d": "埼玉的な集会室",
     "main-f": "AIとごいたB",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 MEETING_ROOM_GID = "main-d"
+LOBBY_MAIN_ROOM_IDS = (MAIN_GID, "main-b", "main-c", "main-e")
 MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
     "main-e": ("B", "C", "D"),
     "main-f": ("B", "C", "D"),
@@ -63,7 +64,12 @@ LOBBY_ADMIN_PASSWORD = (
 PRIVATE_ROOM_DEFINITIONS = (
     {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
     {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
-    {"gid": "room-bronze-03", "pass": None, "admin": "admin-c", "owner": "プライベートC"},
+    {
+        "gid": "room-bronze-03",
+        "pass": "saitama1011",
+        "admin": "1011made",
+        "owner": "金沢大会チーム埼玉",
+    },
     {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
 )
 PRIVATE_ROOM_NAMES = {
@@ -81,10 +87,10 @@ def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int)
 
 LOBBY_ROOM_SETTINGS = {
     "main_room_count": _initial_room_count(
-        "LOBBY_MAIN_ROOM_COUNT", 6, 1, len(MAIN_ROOM_NAMES)
+        "LOBBY_MAIN_ROOM_COUNT", 4, 1, len(LOBBY_MAIN_ROOM_IDS)
     ),
     "private_room_count": _initial_room_count(
-        "LOBBY_PRIVATE_ROOM_COUNT", 2, 0, len(PRIVATE_ROOM_DEFINITIONS)
+        "LOBBY_PRIVATE_ROOM_COUNT", 3, 0, len(PRIVATE_ROOM_DEFINITIONS)
     ),
 }
 NAME_MAX_LEN = 9
@@ -1492,7 +1498,7 @@ class SettingsUpdateRequest(BaseModel):
 
 class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
-    main_room_count: int = Field(ge=1, le=len(MAIN_ROOM_NAMES))
+    main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
 
 
@@ -2018,9 +2024,10 @@ def _ensure_main_game(game_id: str = MAIN_GID, dealer: Optional[str] = None) -> 
 
 def setup_main_rooms() -> None:
     visible_count = LOBBY_ROOM_SETTINGS["main_room_count"]
-    for index, game_id in enumerate(MAIN_ROOM_NAMES):
+    visible_room_ids = set(LOBBY_MAIN_ROOM_IDS[:visible_count])
+    for game_id in MAIN_ROOM_NAMES:
         _ensure_main_game(game_id)
-        GAMES[game_id]["hidden_from_lobby"] = index >= visible_count
+        GAMES[game_id]["hidden_from_lobby"] = game_id not in visible_room_ids
 
 def setup_supporter_rooms():
     visible_count = LOBBY_ROOM_SETTINGS["private_room_count"]
@@ -2412,7 +2419,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ok": True,
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
-        "main_room_max": len(MAIN_ROOM_NAMES),
+        "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
         "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
         "room_totals": room_data["room_totals"],
         "ai_search_telemetry": ai_search_telemetry_snapshot(),
