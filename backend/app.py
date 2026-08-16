@@ -22,8 +22,19 @@ from goita_ai2.state import GoitaState
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperRuleBasedAgent
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
+from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
+from goita_ai2.current_ai.telemetry import (
+    ai_search_telemetry_snapshot,
+    checkpoint_ai_search_telemetry,
+)
+from goita_ai2.current_ai.background_search import (
+    background_search_runtime_snapshot,
+    checkpoint_background_search_value_model,
+)
+from goita_ai2.current_ai.search_budget import time_search_budget_snapshot
+from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapshot
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 
@@ -88,6 +99,7 @@ VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "current"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
+    "intermediate_middle": {"label": "中級者（中）", "class": IntermediateMiddleRuleBasedAgent},
     "intermediate_lower": {"label": "中級者（下）", "class": IntermediateLowerRuleBasedAgent},
     "beginner_upper": {"label": "初級者（上）", "class": BeginnerUpperRuleBasedAgent},
 }
@@ -1538,6 +1550,49 @@ def _apply_action(state: GoitaState, player: str, action: Tuple[str, Optional[st
         raise ValueError(f"未知の action_type: {action_type}")
 
 
+def _schedule_ai_background_search(
+    game: Dict[str, Any],
+    action: Tuple[str, Optional[str], Optional[str]],
+) -> None:
+    """Keep matching AI pre-read branches and replace only stale projections."""
+    state = game.get("state")
+    if state is None or state.finished or not game.get("is_started"):
+        return
+    agents = game.get("agents", {})
+    ai_seats = _ai_seat_set(game)
+    if state.turn in ai_seats:
+        for seat in ai_seats:
+            agent = agents.get(seat) if isinstance(agents, dict) else None
+            retain = getattr(agent, "retain_background_search_for_action", None)
+            cancel = getattr(agent, "cancel_background_search", None)
+            if seat == state.turn and callable(retain) and retain(action):
+                continue
+            if callable(cancel):
+                cancel()
+        return
+
+    turn_index = ALL_SEATS.index(state.turn)
+    ordered_seats = sorted(
+        ai_seats,
+        key=lambda seat: (ALL_SEATS.index(seat) - turn_index) % len(ALL_SEATS),
+    )
+    target_seats = set(ordered_seats[:1])
+    for seat in ai_seats:
+        agent = agents.get(seat) if isinstance(agents, dict) else None
+        prefetch = getattr(agent, "prefetch_next_turn", None)
+        retain = getattr(agent, "retain_background_search_for_action", None)
+        cancel = getattr(agent, "cancel_background_search", None)
+        if seat not in target_seats:
+            if callable(cancel):
+                cancel()
+            continue
+        if callable(retain) and retain(action):
+            continue
+        scheduled = bool(callable(prefetch) and prefetch(state))
+        if not scheduled and callable(cancel):
+            cancel()
+
+
 def _format_action(player: str, action: Tuple[str, Optional[str], Optional[str]]) -> str:
     t, b, a = action
     if t == "pass":
@@ -1563,6 +1618,29 @@ def _format_ai_decision(agent: Any, max_detail_len: int = 140) -> str:
     if reason:
         return f" [AI:{reason}]"
     return f" [AI:{detail}]"
+
+
+def _format_ai_performance(agent: Any) -> str:
+    metrics = getattr(agent, "last_performance_metrics", None)
+    if not isinstance(metrics, dict) or not metrics:
+        return ""
+    fields = (
+        ("total", "total_ms"),
+        ("rule", "rule_based_ms"),
+        ("infer", "inference_ms"),
+        ("cache", "cache_ms"),
+        ("sample", "sample_generation_ms"),
+        ("search", "search_ms"),
+        ("other", "other_ms"),
+    )
+    values = []
+    for label, key in fields:
+        try:
+            value = max(0.0, float(metrics.get(key, 0.0)))
+        except (TypeError, ValueError):
+            value = 0.0
+        values.append(f"{label}={value:.1f}")
+    return f" [PERF(ms):{','.join(values)}]"
 
 
 def _actions_to_json(actions: List[Tuple[str, Optional[str], Optional[str]]]) -> List[Dict[str, Any]]:
@@ -2058,6 +2136,8 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             else:
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
+            checkpoint_ai_search_telemetry("round_finish")
+            checkpoint_background_search_value_model("round_finish")
 
 
 def _apply_agent_turn(
@@ -2102,12 +2182,14 @@ def _apply_agent_turn(
         log_str += f" [EFFECT:{ef}]"
     if forced_action is None:
         log_str += _format_ai_decision(agent)
+        log_str += _format_ai_performance(agent)
     log_str += str(log_suffix or "")
     log.append(log_str)
 
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
     _notify_public(agents, state, player, agent_action)
     _notify_public(game.get("beginner_support_agents", {}), state, player, agent_action)
+    _schedule_ai_background_search(game, agent_action)
 
     _handle_round_finish(game, state, agent_action, effects)
     return {"status": "ok", "player": player}
@@ -2333,6 +2415,10 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "main_room_max": len(MAIN_ROOM_NAMES),
         "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
         "room_totals": room_data["room_totals"],
+        "ai_search_telemetry": ai_search_telemetry_snapshot(),
+        "ai_background_search": background_search_runtime_snapshot(),
+        "ai_search_budget": time_search_budget_snapshot(),
+        "ai_prediction_cache": prediction_sample_cache_snapshot(),
     }
 
 
@@ -3111,6 +3197,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
     _notify_public(agents, state, player, action)
     _notify_public(game.get("beginner_support_agents", {}), state, player, action)
+    _schedule_ai_background_search(game, action)
 
     _handle_round_finish(game, state, action, effects)
     _arm_turn_timeout(game_id)

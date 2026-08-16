@@ -96,6 +96,13 @@ class TrackingMixin:
             enemy_pending_shi_receive_players=set(),
             enemy_team_rejected_shi_attack=False,
             active_attack_context=None,
+            active_branched_attack_plan=None,
+            branched_attack_plan_history=[],
+            last_branched_attack_metrics={},
+            probabilistic_hand_inference_active=False,
+            probabilistic_hand_inference_samples=0,
+            probabilistic_hand_inference=None,
+            probabilistic_hand_inference_error=None,
             public_hand_models={
                 p: dict(
                     strength=0.0,
@@ -315,7 +322,7 @@ class TrackingMixin:
                     tr["ally_pending_response_piece"] = None
 
                 if action_type == "attack_after_block":
-                    if block == "1" and tr.get("my_open_shi_attack_pending"):
+                    if visible_block == "1" and tr.get("my_open_shi_attack_pending"):
                         if attack == "1":
                             tr["ally_shi_signal"] = "returned_shi"
                             tr["ally_shi_sashikomi_candidate"] = False
@@ -337,7 +344,11 @@ class TrackingMixin:
                         if past_attack != attack and past_attack not in tr["ally_responded_to_my_attacks"]:
                             tr["ally_ignored_my_attacks"].add(past_attack)
             else:
-                if action_type in ("receive", "attack_after_block") and block == "1" and tr.get("my_open_shi_attack_pending"):
+                if (
+                    action_type in ("receive", "attack_after_block")
+                    and visible_block == "1"
+                    and tr.get("my_open_shi_attack_pending")
+                ):
                     tr["my_open_shi_attack_pending"] = False
 
                 pending_shi_receivers = tr.setdefault("enemy_pending_shi_receive_players", set())
@@ -374,3 +385,27 @@ class TrackingMixin:
                 tr,
                 reason=f"{player}:{evidence_label}",
             )
+
+        advance_predictions = getattr(
+            self,
+            "_advance_prediction_cache_for_public_action",
+            None,
+        )
+        if callable(advance_predictions):
+            advance_predictions(state, player, action, tr)
+
+        advance_attack_plan = getattr(
+            self,
+            "_advance_branched_attack_plan_for_public_action",
+            None,
+        )
+        if callable(advance_attack_plan):
+            advance_attack_plan(state, player, action, tr)
+
+        refresh_probabilistic = getattr(
+            self,
+            "_refresh_probabilistic_hand_inference_after_public_action",
+            None,
+        )
+        if callable(refresh_probabilistic):
+            refresh_probabilistic(state, player, action, tr)

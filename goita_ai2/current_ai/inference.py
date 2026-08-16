@@ -638,10 +638,25 @@ class PublicInferenceMixin:
         *,
         reason: str,
     ) -> None:
+        with self._measure_performance("inference"):
+            self._refresh_public_piece_inference_impl(
+                state,
+                tr,
+                reason=reason,
+            )
+
+    def _refresh_public_piece_inference_impl(
+        self,
+        state,
+        tr: dict,
+        *,
+        reason: str,
+    ) -> None:
         if self.me is None:
             return
 
         players = [p for p in ("A", "B", "C", "D") if p != self.me]
+        previous_estimates = tr.get("estimated_current_hands", {})
         hidden_counts = tr.get("hidden_block_counts", {})
         current_estimates: Dict[str, Dict[str, Dict[str, object]]] = {
             p: {} for p in players
@@ -750,6 +765,14 @@ class PublicInferenceMixin:
             unknown_pool,
             reason=reason,
         )
+        player_revisions = tr.setdefault("piece_inference_player_revisions", {})
+        changed_players = []
+        for p in players:
+            if previous_estimates.get(p) == current_estimates.get(p):
+                continue
+            player_revisions[p] = int(player_revisions.get(p, 0)) + 1
+            changed_players.append(p)
+        tr["piece_inference_changed_players"] = tuple(changed_players)
         tr["piece_inference_revision"] = int(tr.get("piece_inference_revision", 0)) + 1
         tr["last_piece_inference_reason"] = reason
 

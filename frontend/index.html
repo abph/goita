@@ -1367,22 +1367,29 @@
     }
     .chat-header {
       position: absolute;
-      top: 4px;
-      right: 7px;
-      z-index: 2;
+      top: 0;
+      right: 0;
+      z-index: 4;
       padding: 0;
       background: transparent;
     }
     .chat-close {
-      width: auto;
-      height: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
       border: 0;
       background: transparent;
       color: #8b5a2b;
       font-size: 24px;
       line-height: 1;
-      padding: 0 2px;
+      padding: 0;
       cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     .chat-messages {
       flex: 1;
@@ -1995,9 +2002,13 @@
         font-size: 10px;
       }
       .chat-header {
-        top: 3px;
-        right: 7px;
+        top: 0;
+        right: 0;
         background: transparent;
+      }
+      .chat-close {
+        width: 44px;
+        height: 44px;
       }
       .chat-messages {
         padding: 6px 6px 6px 7px;
@@ -3404,7 +3415,7 @@
       <div id="lobbyChatPeopleList" class="room-chat-people-list"></div>
     </aside>
     <div class="chat-header">
-      <button class="chat-close" type="button" onclick="toggleLobbyChatPanel(false)" aria-label="閉じる">×</button>
+      <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'lobby')" onclick="closeChatPanel('lobby')" aria-label="閉じる">×</button>
     </div>
     <div id="lobbyChatMessages" class="chat-messages"></div>
     <form class="chat-form" onsubmit="submitLobbyChatInput(event)">
@@ -3498,7 +3509,7 @@
             <div id="roomChatPeopleList" class="room-chat-people-list"></div>
           </aside>
           <div class="chat-header">
-            <button class="chat-close" type="button" onclick="toggleChatPanel(false)" aria-label="閉じる">×</button>
+            <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'room')" onclick="closeChatPanel('room')" aria-label="閉じる">×</button>
           </div>
           <div id="chatMessages" class="chat-messages"></div>
           <form class="chat-form" onsubmit="submitChatInput(event)">
@@ -4065,6 +4076,7 @@
           <label for="setAiProfile">AIの選択</label>
           <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
             <option value="current">強化中AI</option>
+            <option value="intermediate_middle">中級者（中）</option>
             <option value="intermediate_lower">中級者（下）</option>
             <option value="beginner_upper">初級者（上）</option>
           </select>
@@ -5544,6 +5556,7 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel) return;
     const fallback = {
         current: "強化中AI",
+        intermediate_middle: "中級者（中）",
         intermediate_lower: "中級者（下）",
         beginner_upper: "初級者（上）"
     };
@@ -5552,7 +5565,7 @@ function populateAiProfileSelect(profiles, selected) {
     Object.entries(src).forEach(([value, label]) => {
         const opt = document.createElement("option");
         opt.value = value;
-        opt.textContent = label;
+        opt.textContent = uiText(label);
         sel.appendChild(opt);
     });
     sel.value = selected || "current";
@@ -6876,6 +6889,24 @@ function updateMobileChatPageScrollLock(){
   document.body.classList.remove("mobile-chat-scroll-locked");
   document.body.style.removeProperty("top");
   window.scrollTo(0, mobileChatLockedScrollY);
+}
+
+function closeChatPanel(kind){
+  const isLobby = kind === "lobby";
+  const panel = document.getElementById(isLobby ? "lobbyChatPanel" : "chatPanel");
+  const activeElement = document.activeElement;
+  if(panel && activeElement instanceof HTMLElement && panel.contains(activeElement)){
+    activeElement.blur();
+  }
+  if(isLobby) toggleLobbyChatPanel(false);
+  else toggleChatPanel(false);
+}
+
+function closeChatPanelOnPointerDown(event, kind){
+  if(isDesktopChatDocked() || event.pointerType === "mouse") return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeChatPanel(kind);
 }
 
 function toggleLobbyChatPanel(open){

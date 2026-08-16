@@ -29,6 +29,31 @@ class DecisionMixin:
 
         preview_values = dict(preview.__dict__)
         preview_values.pop("_track", None)
+        for performance_key in (
+            "performance_totals",
+            "last_performance_metrics",
+            "_active_performance_metrics",
+            "_active_precomputed_inference_seconds",
+            "_pending_inference_seconds",
+            "_time_search_cache",
+            "_time_search_effective_budget",
+            "last_time_search_budget",
+            "_background_search_controller",
+            "_time_search_cancel_event",
+            "last_time_search_cache_hit",
+            "last_time_search_cache_key",
+            "last_time_search_cache_source",
+            "last_time_search_cached_compute_ms",
+            "last_time_search_cache_branch_kind",
+            "last_time_search_cache_branch_context",
+            "last_prediction_cache_hit",
+            "last_prediction_cache_key",
+            "last_prediction_cache_samples",
+            "_prediction_rollforward_states",
+            "_prediction_rollforward_key",
+            "_prediction_cache_rollforward_enabled",
+        ):
+            preview_values.pop(performance_key, None)
         self.__dict__.update(preview_values)
         self._track = current_track
 
@@ -292,6 +317,29 @@ class DecisionMixin:
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         """Compare the rule-based choice with a public-information search."""
+        started = self._begin_performance_decision()
+        try:
+            return self._select_action_with_measurement(state, player, actions)
+        finally:
+            self._finish_performance_decision(started)
+
+    def _select_action_with_measurement(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Action:
+        self.last_time_search_cache_hit = False
+        self.last_time_search_cache_key = None
+        self.last_time_search_cache_source = None
+        self.last_time_search_cached_compute_ms = 0.0
+        self.last_time_search_cache_branch_kind = None
+        self.last_time_search_cache_branch_context = None
+        self.last_prediction_cache_hit = False
+        self.last_prediction_cache_key = None
+        self.last_prediction_cache_samples = 0
+        self.last_information_set_search = None
+        self.last_branched_attack_metrics = {}
         if self.me is None:
             self.me = player
         elif self.me != player:
@@ -300,8 +348,12 @@ class DecisionMixin:
 
         # Preview on a clone because the established policy records plan state
         # while choosing. We only adopt those mutations when its move survives.
-        preview = copy.deepcopy(self)
-        baseline_action = preview._select_rule_based_action(state, player, actions)
+        with self._measure_performance("rule_based"):
+            prediction_states = getattr(self, "_prediction_rollforward_states", [])
+            preview = copy.deepcopy(self, {id(prediction_states): []})
+            preview._prediction_cache_rollforward_enabled = False
+            preview._prediction_rollforward_key = None
+            baseline_action = preview._select_rule_based_action(state, player, actions)
         baseline_reason = str(preview.last_decision_reason or "")
         baseline_detail = str(preview.last_score_fallback_detail or "")
         protected = (
@@ -328,20 +380,43 @@ class DecisionMixin:
 
         search_result = None
         if not protected:
-            search_result = self._time_limited_search_action(
-                state,
-                player,
-                actions,
-                baseline_action,
-            )
+            budget_plan = self._prepare_time_search_budget(state, player, actions)
+            try:
+                search_result = self._time_limited_search_action(
+                    state,
+                    player,
+                    actions,
+                    baseline_action,
+                    cancel_event=getattr(self, "_time_search_cancel_event", None),
+                )
+            finally:
+                self._finish_time_search_budget(budget_plan, search_result)
 
         if search_result is not None:
+            search_snapshot = search_result.as_dict()
+            search_snapshot["cache_hit"] = bool(self.last_time_search_cache_hit)
+            search_snapshot["cache_key"] = self.last_time_search_cache_key
+            search_snapshot["cache_source"] = self.last_time_search_cache_source
+            search_snapshot["cache_branch_kind"] = (
+                self.last_time_search_cache_branch_kind
+            )
+            search_snapshot["cache_branch_context"] = (
+                self.last_time_search_cache_branch_context
+            )
+            search_snapshot["budget"] = dict(self.last_time_search_budget or {})
+            search_snapshot["prediction_cache_hit"] = bool(
+                self.last_prediction_cache_hit
+            )
+            search_snapshot["prediction_cache_key"] = self.last_prediction_cache_key
+            search_snapshot["prediction_cache_samples"] = int(
+                self.last_prediction_cache_samples
+            )
             preview_tracker = preview._track.get(id(state))
             if preview_tracker is not None:
-                preview_tracker["last_time_limited_search"] = search_result.as_dict()
+                preview_tracker["last_time_limited_search"] = dict(search_snapshot)
             tracker = self._track.get(id(state))
             if tracker is not None:
-                tracker["last_time_limited_search"] = search_result.as_dict()
+                tracker["last_time_limited_search"] = dict(search_snapshot)
 
         if (
             search_result is not None
@@ -351,6 +426,7 @@ class DecisionMixin:
             self._commit_timed_search_action(state, player, search_result.action)
             self._set_decision_reason("time_search")
             self._set_score_fallback_detail(
+                f"{'cache_' if self.last_time_search_cache_hit else ''}"
                 f"depth_{search_result.depth}_samples_{search_result.samples}_"
                 f"agreement_{int(round(search_result.agreement * 100))}"
             )
@@ -762,6 +838,61 @@ class DecisionMixin:
                 f"attack_enemy_team_shi_remaining_{int(pressure['level'])}"
             )
             return chosen
+
+        branched_choice = self._production_branched_attack_action(
+            state,
+            player,
+            actions,
+        )
+        if branched_choice is not None:
+            source = branched_choice.active.plan.source
+            action_type, block, attack = branched_choice.action
+            conditional_finish_score = self._conditional_shi_royal_finish_score(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            )
+            classified_detail = self._classify_score_fallback(
+                state,
+                player,
+                branched_choice.action,
+                has_non_king_attack_option=has_non_king_attack_option,
+            )
+            if conditional_finish_score is not None:
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(
+                    f"attack_conditional_shi_royal_finish_"
+                    f"{int(conditional_finish_score)}"
+                )
+            elif source.startswith("representative:"):
+                template_id = source.split(":", 1)[1]
+                self._set_decision_reason("score_fallback")
+                if (
+                    template_id.startswith("fourth_middle_finisher_")
+                    and classified_detail not in (
+                        "attack_piece_value",
+                        "block_piece_penalty",
+                    )
+                ):
+                    self._set_score_fallback_detail(classified_detail)
+                else:
+                    self._set_score_fallback_detail(f"attack_sequence_{template_id}")
+            elif classified_detail not in ("attack_piece_value", "block_piece_penalty"):
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(classified_detail)
+            else:
+                evaluation = branched_choice.active.plan.evaluation
+                self._set_decision_reason("branched_plan")
+                self._set_score_fallback_detail(
+                    f"attack_branched_plan_"
+                    f"{'continue' if branched_choice.continued else 'new'}_"
+                    f"min_{int(evaluation.minimum_score)}_"
+                    f"risk_{int(round(evaluation.failure_risk * 100))}"
+                )
+            self._commit_branched_attack_choice(state, branched_choice)
+            return branched_choice.action
 
         special_sequence_action = self._special_attack_sequence_action(
             state,

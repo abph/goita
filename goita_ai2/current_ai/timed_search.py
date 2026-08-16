@@ -14,6 +14,11 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, POINTS
+from goita_ai2.current_ai.information_set_search import (
+    InformationSetSearchCancelled,
+    InformationSetSearchDeadline,
+)
+from goita_ai2.current_ai.prediction_cache import PredictionSample
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
@@ -21,6 +26,10 @@ Action = Tuple[str, Optional[str], Optional[str]]
 
 class _SearchDeadline(Exception):
     """Stops an unfinished iteration without discarding earlier results."""
+
+
+class _SearchCancelled(Exception):
+    """Stops speculative work after its projected public branch changed."""
 
 
 @dataclass(frozen=True)
@@ -36,9 +45,13 @@ class TimedSearchResult:
     margin: float
     agreement: float
     decisive: bool
+    information_set: bool = False
+    candidate_count: int = 0
+    information_confidence: float = 0.0
+    policy_decisions: int = 0
 
     def as_dict(self) -> Dict[str, object]:
-        return {
+        result = {
             "action": self.action,
             "depth": self.depth,
             "samples": self.samples,
@@ -49,6 +62,14 @@ class TimedSearchResult:
             "agreement": round(self.agreement, 3),
             "decisive": self.decisive,
         }
+        if self.information_set:
+            result.update({
+                "information_set": True,
+                "candidate_count": self.candidate_count,
+                "information_confidence": round(self.information_confidence, 3),
+                "policy_decisions": self.policy_decisions,
+            })
+        return result
 
 
 class TimedSearchMixin:
@@ -92,6 +113,263 @@ class TimedSearchMixin:
         )
         digest = hashlib.sha256(repr(public_key).encode("ascii")).digest()
         return int.from_bytes(digest[:8], "big")
+
+    def _timed_search_prediction_cache_key(
+        self,
+        state,
+        player: str,
+        tr: dict,
+    ) -> str:
+        estimates = tr.get("estimated_current_hands", {})
+        estimate_key = []
+        for seat in ALL_SEATS:
+            if seat == player:
+                continue
+            for piece in (str(index) for index in range(1, 10)):
+                item = estimates.get(seat, {}).get(piece, {})
+                estimate_key.append(
+                    (
+                        seat,
+                        piece,
+                        int(item.get("min", 0)),
+                        int(item.get("max", PIECE_TOTALS[piece])),
+                        round(float(item.get("expected", 0.0)), 6),
+                    )
+                )
+        public_key = (
+            "prediction-v1",
+            player,
+            tuple(sorted(state.hands[player])),
+            tuple(sorted(state.face_down_hidden[player])),
+            tuple((seat, len(state.hands[seat])) for seat in ALL_SEATS),
+            tuple(
+                (seat, int(tr.get("hidden_block_counts", {}).get(seat, 0)))
+                for seat in ALL_SEATS
+            ),
+            tuple(
+                (piece, int(tr.get("unknown_piece_pool", {}).get(piece, 0)))
+                for piece in (str(index) for index in range(1, 10))
+            ),
+            tuple(
+                (
+                    seat,
+                    self._observed_piece_count_for_player(tr, seat, "8"),
+                    self._observed_piece_count_for_player(tr, seat, "9"),
+                )
+                for seat in ALL_SEATS
+                if seat != player
+            ),
+            state.dealer,
+            state.turn,
+            state.phase,
+            state.current_attack,
+            state.attacker,
+            state.last_block_player,
+            state.last_block if state.last_block_player == player else None,
+            int(state.king_block_used),
+            tuple(estimate_key),
+        )
+        return hashlib.sha256(repr(public_key).encode("ascii")).hexdigest()
+
+    @staticmethod
+    def _timed_search_prediction_snapshot(
+        sampled,
+        player: str,
+    ) -> PredictionSample:
+        opponents = [seat for seat in ALL_SEATS if seat != player]
+        return PredictionSample(
+            opponent_hands=tuple(
+                (seat, tuple(sorted(sampled.hands[seat])))
+                for seat in opponents
+            ),
+            opponent_hidden=tuple(
+                (seat, tuple(sorted(sampled.face_down_hidden[seat])))
+                for seat in opponents
+            ),
+            opponent_had_both_kings=tuple(
+                (seat, bool(sampled.had_both_kings.get(seat, False)))
+                for seat in opponents
+            ),
+            last_block=sampled.last_block,
+        )
+
+    @staticmethod
+    def _timed_search_materialize_prediction(
+        state,
+        player: str,
+        prediction: PredictionSample,
+    ):
+        sampled = copy.copy(state)
+        sampled.hands = {
+            seat: list(state.hands[seat])
+            for seat in ALL_SEATS
+        }
+        sampled.face_down_hidden = {
+            seat: list(state.face_down_hidden[seat])
+            for seat in ALL_SEATS
+        }
+        sampled.had_both_kings = dict(state.had_both_kings)
+        sampled.team_score = dict(state.team_score)
+        for seat, hand in prediction.opponent_hands:
+            sampled.hands[seat] = list(hand)
+        for seat, hidden in prediction.opponent_hidden:
+            sampled.face_down_hidden[seat] = list(hidden)
+        for seat, had_both in prediction.opponent_had_both_kings:
+            sampled.had_both_kings[seat] = bool(had_both)
+        sampled.hands[player] = list(state.hands[player])
+        sampled.face_down_hidden[player] = list(state.face_down_hidden[player])
+        sampled.last_block = prediction.last_block
+        return sampled
+
+    @staticmethod
+    def _timed_search_prediction_state_key(sampled, player: str) -> tuple:
+        return tuple(
+            (
+                seat,
+                tuple(sorted(sampled.hands[seat])),
+                tuple(sorted(sampled.face_down_hidden[seat])),
+            )
+            for seat in ALL_SEATS
+            if seat != player
+        )
+
+    def _timed_search_remember_prediction_states(
+        self,
+        cache_key: Optional[str],
+        states: Sequence[object],
+    ) -> None:
+        if not getattr(self, "_prediction_cache_rollforward_enabled", True):
+            return
+        self._prediction_rollforward_key = cache_key
+        self._prediction_rollforward_states = list(states)
+
+    def _timed_search_prediction_matches_public(
+        self,
+        sampled,
+        public_state,
+        player: str,
+        tr: dict,
+    ) -> bool:
+        if (
+            sampled.phase != public_state.phase
+            or sampled.turn != public_state.turn
+            or sampled.current_attack != public_state.current_attack
+            or sampled.attacker != public_state.attacker
+            or bool(sampled.finished) != bool(public_state.finished)
+            or sampled.winner != public_state.winner
+            or int(sampled.king_block_used) != int(public_state.king_block_used)
+        ):
+            return False
+        hidden_counts = tr.get("hidden_block_counts", {})
+        estimates = tr.get("estimated_current_hands", {})
+        for seat in ALL_SEATS:
+            if len(sampled.hands[seat]) != len(public_state.hands[seat]):
+                return False
+            expected_hidden = (
+                len(public_state.face_down_hidden[seat])
+                if seat == player
+                else int(hidden_counts.get(seat, 0))
+            )
+            if len(sampled.face_down_hidden[seat]) != expected_hidden:
+                return False
+            if seat == player:
+                if sorted(sampled.hands[seat]) != sorted(public_state.hands[seat]):
+                    return False
+                continue
+            hand_count = Counter(sampled.hands[seat])
+            for piece in (str(index) for index in range(1, 10)):
+                item = estimates.get(seat, {}).get(piece, {})
+                minimum = int(item.get("min", 0))
+                maximum = int(item.get("max", PIECE_TOTALS[piece]))
+                if not minimum <= int(hand_count.get(piece, 0)) <= maximum:
+                    return False
+        return True
+
+    def _advance_prediction_cache_for_public_action(
+        self,
+        state,
+        actor: str,
+        action: Action,
+        tr: dict,
+    ) -> None:
+        """Roll inferred deals forward using only the publicly visible action."""
+        if (
+            not getattr(self, "TIME_SEARCH_PREDICTION_CACHE_ENABLED", True)
+            or not getattr(self, "_prediction_cache_rollforward_enabled", True)
+        ):
+            return
+        roots = list(getattr(self, "_prediction_rollforward_states", ()))
+        if not roots or self.me is None:
+            return
+
+        action_type, block, attack = action
+        advanced = []
+        seen = set()
+        for sampled in roots:
+            legal = sampled.legal_actions(actor)
+            if action_type == "attack_after_block" and actor != self.me:
+                candidates = [
+                    candidate
+                    for candidate in legal
+                    if candidate[0] == "attack_after_block"
+                    and candidate[2] == attack
+                ]
+            else:
+                candidates = [candidate for candidate in legal if candidate == action]
+            if not candidates:
+                continue
+            chosen = max(
+                candidates,
+                key=lambda candidate: (
+                    self._timed_search_action_priority(sampled, actor, candidate),
+                    candidate,
+                ),
+            )
+            try:
+                chosen_type, chosen_block, chosen_attack = chosen
+                if chosen_type == "pass":
+                    sampled.apply_pass(actor)
+                elif chosen_type == "receive":
+                    sampled.apply_receive(actor, chosen_block)
+                elif chosen_type == "attack":
+                    sampled.apply_attack(actor, chosen_attack)
+                else:
+                    sampled.apply_attack_after_block(
+                        actor,
+                        chosen_block,
+                        chosen_attack,
+                    )
+                next_sampled = sampled
+            except (ValueError, KeyError):
+                continue
+            if not self._timed_search_prediction_matches_public(
+                next_sampled,
+                state,
+                self.me,
+                tr,
+            ):
+                continue
+            sample_key = self._timed_search_prediction_state_key(
+                next_sampled,
+                self.me,
+            )
+            if sample_key in seen:
+                continue
+            seen.add(sample_key)
+            advanced.append(next_sampled)
+
+        if not advanced:
+            self._prediction_rollforward_key = None
+            self._prediction_rollforward_states = []
+            return
+        next_key = self._timed_search_prediction_cache_key(state, self.me, tr)
+        if state.turn == self.me and not state.finished:
+            snapshots = tuple(
+                self._timed_search_prediction_snapshot(sampled, self.me)
+                for sampled in advanced
+            )
+            self._prediction_cache_store_rollforward(next_key, snapshots)
+        self._timed_search_remember_prediction_states(next_key, advanced)
 
     @staticmethod
     def _timed_search_weighted_piece(
@@ -227,14 +505,17 @@ class TimedSearchMixin:
             return sampled
         return None
 
-    def _timed_search_sample_states(
+    def _timed_search_generate_sample_states(
         self,
         state,
         player: str,
         tr: dict,
         count: int,
+        *,
+        seed_salt: int = 0,
     ) -> List[object]:
-        rng = random.Random(self._timed_search_public_seed(state, player, tr))
+        seed = self._timed_search_public_seed(state, player, tr)
+        rng = random.Random(seed ^ (int(seed_salt) * 0x9E3779B97F4A7C15))
         samples = []
         seen = set()
         attempts = max(count * 5, 12)
@@ -254,6 +535,141 @@ class TimedSearchMixin:
             if len(samples) >= count:
                 break
         return samples
+
+    def _timed_search_sample_states(
+        self,
+        state,
+        player: str,
+        tr: dict,
+        count: int,
+    ) -> List[object]:
+        requested = max(1, int(count))
+        self.last_prediction_cache_hit = False
+        self.last_prediction_cache_samples = 0
+        if not getattr(self, "TIME_SEARCH_PREDICTION_CACHE_ENABLED", True):
+            self.last_prediction_cache_key = None
+            generated = self._timed_search_generate_sample_states(
+                state,
+                player,
+                tr,
+                requested,
+            )
+            self._timed_search_remember_prediction_states(None, generated)
+            return generated
+
+        cache_key = self._timed_search_prediction_cache_key(state, player, tr)
+        self.last_prediction_cache_key = cache_key
+        cached = self._prediction_cache_get(cache_key, requested)
+        if cached is not None:
+            self.last_prediction_cache_hit = True
+            self.last_prediction_cache_samples = len(cached)
+            materialized = [
+                self._timed_search_materialize_prediction(state, player, prediction)
+                for prediction in cached
+            ]
+            self._timed_search_remember_prediction_states(cache_key, materialized)
+            return materialized
+
+        partial_cached = self._prediction_cache_get_available(cache_key, requested)
+
+        owner, event = self._prediction_cache_claim(cache_key)
+        if not owner:
+            wait_seconds = min(
+                float(getattr(self, "TIME_SEARCH_PREDICTION_CACHE_WAIT_SECONDS", 0.12)),
+                float(
+                    self._effective_time_search_setting(
+                        "effective_seconds",
+                        self.TIME_SEARCH_MAX_SECONDS,
+                    )
+                ),
+            )
+            cached = self._prediction_cache_wait(
+                cache_key,
+                event,
+                requested,
+                wait_seconds,
+                cancel_event=getattr(self, "_time_search_cancel_event", None),
+            )
+            if cached is not None:
+                self.last_prediction_cache_hit = True
+                self.last_prediction_cache_samples = len(cached)
+                materialized = [
+                    self._timed_search_materialize_prediction(
+                        state,
+                        player,
+                        prediction,
+                    )
+                    for prediction in cached
+                ]
+                self._timed_search_remember_prediction_states(
+                    cache_key,
+                    materialized,
+                )
+                return materialized
+            waited_partial = self._prediction_cache_get_available(
+                cache_key,
+                requested,
+            )
+            if waited_partial is not None:
+                partial_cached = waited_partial
+            owner, event = self._prediction_cache_claim(cache_key)
+
+        try:
+            combined = []
+            seen = set()
+            for prediction in partial_cached or ():
+                sampled = self._timed_search_materialize_prediction(
+                    state,
+                    player,
+                    prediction,
+                )
+                sample_key = self._timed_search_prediction_state_key(sampled, player)
+                if sample_key in seen:
+                    continue
+                seen.add(sample_key)
+                combined.append(sampled)
+            reused_count = len(combined)
+            salt = 0 if not combined else len(combined) + 1
+            generation_round = 0
+            while len(combined) < requested and generation_round < 4:
+                needed = requested - len(combined)
+                generated = self._timed_search_generate_sample_states(
+                    state,
+                    player,
+                    tr,
+                    max(needed, min(requested, needed * 2)),
+                    seed_salt=salt + generation_round,
+                )
+                for sampled in generated:
+                    sample_key = self._timed_search_prediction_state_key(
+                        sampled,
+                        player,
+                    )
+                    if sample_key in seen:
+                        continue
+                    seen.add(sample_key)
+                    combined.append(sampled)
+                    if len(combined) >= requested:
+                        break
+                generation_round += 1
+        except Exception:
+            if owner:
+                self._prediction_cache_finish(cache_key, tuple())
+            raise
+        if owner:
+            snapshots = tuple(
+                self._timed_search_prediction_snapshot(sampled, player)
+                for sampled in combined
+            )
+            self._prediction_cache_finish(
+                cache_key,
+                snapshots,
+                generated_count=max(0, len(combined) - reused_count),
+            )
+        self.last_prediction_cache_hit = bool(partial_cached)
+        self.last_prediction_cache_samples = len(partial_cached or ())
+        self._timed_search_remember_prediction_states(cache_key, combined)
+        return combined
 
     def _timed_search_apply(self, state, player: str, action: Action):
         next_state = copy.deepcopy(state)
@@ -440,8 +856,12 @@ class TimedSearchMixin:
         deadline: float,
         stats: Dict[str, int],
         memo: Dict[tuple, float],
+        cancel_event=None,
     ) -> float:
-        if time.perf_counter() >= deadline or stats["nodes"] >= self.TIME_SEARCH_MAX_NODES:
+        if cancel_event is not None and cancel_event.is_set():
+            raise _SearchCancelled()
+        maximum_nodes = int(stats.get("max_nodes", self.TIME_SEARCH_MAX_NODES))
+        if time.perf_counter() >= deadline or stats["nodes"] >= maximum_nodes:
             raise _SearchDeadline()
         stats["nodes"] += 1
         if state.finished or depth <= 0:
@@ -470,8 +890,9 @@ class TimedSearchMixin:
                     deadline,
                     stats,
                     memo,
+                    cancel_event,
                 )
-            except _SearchDeadline:
+            except (_SearchDeadline, _SearchCancelled):
                 raise
             except Exception:
                 complete = False
@@ -535,6 +956,7 @@ class TimedSearchMixin:
         player: str,
         actions: List[Action],
         baseline_action: Action,
+        cancel_event=None,
     ) -> Optional[TimedSearchResult]:
         tr = self._track.get(id(state))
         if (
@@ -545,24 +967,187 @@ class TimedSearchMixin:
         ):
             return None
 
-        samples = self._timed_search_sample_states(
-            state,
-            player,
-            tr,
-            self.TIME_SEARCH_SAMPLE_COUNT,
-        )
-        if not samples:
-            return None
+        self.last_time_search_cache_hit = False
+        self.last_time_search_cache_source = None
+        self.last_time_search_cached_compute_ms = 0.0
+        self.last_time_search_cache_branch_kind = None
+        self.last_time_search_cache_branch_context = None
+        cache_key = None
+        cache_owner = False
+        if self.TIME_SEARCH_CACHE_ENABLED:
+            with self._measure_performance("cache"):
+                cache_key = self._timed_search_cache_key(
+                    state,
+                    player,
+                    tr,
+                    actions,
+                    baseline_action,
+                )
+                self.last_time_search_cache_key = cache_key.digest
+                cached = self._get_cached_timed_search(cache_key)
+            if cached is not None:
+                self.last_time_search_cache_hit = True
+                return cached
 
+            with self._measure_performance("cache"):
+                cache_owner, inflight_event = self._claim_timed_search_compute(cache_key)
+            if not cache_owner:
+                with self._measure_performance("cache"):
+                    completed, cached = self._wait_for_timed_search_compute(
+                        cache_key,
+                        inflight_event,
+                        float(
+                            self._effective_time_search_setting(
+                                "effective_seconds",
+                                self.TIME_SEARCH_MAX_SECONDS,
+                            )
+                        ),
+                        cancel_event=cancel_event,
+                    )
+                if cached is not None:
+                    self.last_time_search_cache_hit = True
+                    return cached
+                if not completed or (cancel_event is not None and cancel_event.is_set()):
+                    return None
+                with self._measure_performance("cache"):
+                    cache_owner, _inflight_event = self._claim_timed_search_compute(cache_key)
+                if not cache_owner:
+                    return None
+
+        result = None
+        foreground_registered = False
+        try:
+            if cancel_event is None:
+                from goita_ai2.current_ai.background_search import (
+                    background_search_foreground_started,
+                )
+
+                background_search_foreground_started()
+                foreground_registered = True
+            with self._measure_performance("sample_generation"):
+                samples = self._timed_search_sample_states(
+                    state,
+                    player,
+                    tr,
+                    int(
+                        self._effective_time_search_setting(
+                            "effective_samples",
+                            self.TIME_SEARCH_SAMPLE_COUNT,
+                        )
+                    ),
+                )
+            if not samples or (cancel_event is not None and cancel_event.is_set()):
+                return None
+
+            with self._measure_performance("search"):
+                result = self._time_limited_search_from_samples(
+                    state,
+                    player,
+                    actions,
+                    baseline_action,
+                    samples,
+                    cancel_event=cancel_event,
+                )
+            return result
+        finally:
+            try:
+                if cache_key is not None and cache_owner:
+                    with self._measure_performance("cache"):
+                        active_metrics = self._active_performance_metrics or {}
+                        compute_seconds = float(
+                            active_metrics.get("sample_generation", 0.0)
+                        ) + float(active_metrics.get("search", 0.0))
+                        self._finish_timed_search_compute(
+                            cache_key,
+                            result,
+                            source="background" if cancel_event is not None else "foreground",
+                            compute_seconds=compute_seconds,
+                            branch_kind=(
+                                getattr(self, "_time_search_background_branch_kind", None)
+                                if cancel_event is not None
+                                else None
+                            ),
+                            branch_context=(
+                                getattr(
+                                    self,
+                                    "_time_search_background_branch_context",
+                                    None,
+                                )
+                                if cancel_event is not None
+                                else None
+                            ),
+                        )
+            finally:
+                if foreground_registered:
+                    from goita_ai2.current_ai.background_search import (
+                        background_search_foreground_finished,
+                    )
+
+                    background_search_foreground_finished()
+
+    def _time_limited_search_from_samples(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        baseline_action: Action,
+        samples: Sequence[object],
+        cancel_event=None,
+    ) -> Optional[TimedSearchResult]:
         start = time.perf_counter()
-        deadline = start + min(10.0, max(0.01, float(self.TIME_SEARCH_MAX_SECONDS)))
+        effective_seconds = float(
+            self._effective_time_search_setting(
+                "effective_seconds",
+                self.TIME_SEARCH_MAX_SECONDS,
+            )
+        )
+        deadline = start + min(10.0, max(0.01, effective_seconds))
         baseline_scores = {
             "AC": int(state.team_score.get("AC", 0)),
             "BD": int(state.team_score.get("BD", 0)),
         }
-        stats = {"nodes": 0}
+        stats = {
+            "nodes": 0,
+            "max_nodes": int(
+                self._effective_time_search_setting(
+                    "effective_nodes",
+                    self.TIME_SEARCH_MAX_NODES,
+                )
+            ),
+        }
+        information_set = None
+        information_worlds = tuple()
+        information_tracker = self._track.get(id(state))
+        if (
+            getattr(self, "TIME_SEARCH_INFORMATION_SET_ENABLED", True)
+            and information_tracker is not None
+        ):
+            try:
+                information_set, information_worlds = self._information_set_search_worlds(
+                    state,
+                    player,
+                    information_tracker,
+                    samples,
+                )
+            except (TypeError, ValueError):
+                information_set = None
+                information_worlds = tuple()
+        information_enabled = bool(information_set is not None and information_worlds)
+        if information_enabled:
+            self.last_information_set_search = {
+                "key": information_set.key.digest,
+                "candidates": len(information_worlds),
+                "observations": information_set.total_observations,
+                "rejected_observations": information_set.rejected_observations,
+                "confidence": information_set.confidence,
+                "normalized_entropy": information_set.normalized_entropy,
+            }
+
         root_actions = list(actions)
         completed_values: Optional[Dict[Action, List[float]]] = None
+        completed_world_values: Optional[Dict[Action, Dict[int, float]]] = None
+        completed_robust_values: Optional[Dict[Action, float]] = None
+        completed_policy_decisions: Optional[Dict[Action, int]] = None
         completed_depth = 0
         stable_best: Optional[Action] = None
         stable_count = 0
@@ -583,7 +1168,12 @@ class TimedSearchMixin:
             + self.TIME_SEARCH_BASELINE_PRIOR
         )
 
-        maximum_depth = int(self.TIME_SEARCH_MAX_DEPTH)
+        maximum_depth = int(
+            self._effective_time_search_setting(
+                "effective_depth",
+                self.TIME_SEARCH_MAX_DEPTH,
+            )
+        )
         minimum_override_depth = 5
         if len(state.hands[player]) >= 7:
             maximum_depth = min(maximum_depth, 7)
@@ -593,33 +1183,81 @@ class TimedSearchMixin:
             )
         for depth in range(1, maximum_depth + 1, 2):
             iteration: Dict[Action, List[float]] = {action: [] for action in root_actions}
+            iteration_world_values: Dict[Action, Dict[int, float]] = {}
+            iteration_robust_values: Dict[Action, float] = {}
+            iteration_policy_decisions: Dict[Action, int] = {}
             try:
-                for sampled in samples:
-                    memo: Dict[tuple, float] = {}
+                if information_enabled:
                     for action in root_actions:
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise InformationSetSearchCancelled()
                         if time.perf_counter() >= deadline:
-                            raise _SearchDeadline()
-                        next_state = self._timed_search_apply(sampled, player, action)
-                        value = self._timed_search_minimax(
-                            next_state,
+                            raise InformationSetSearchDeadline()
+                        outcome = self._information_set_search_root_action(
+                            state,
+                            information_worlds,
                             player,
+                            action,
+                            information_set,
                             baseline_scores,
-                            depth - 1,
-                            -float("inf"),
-                            float("inf"),
+                            depth,
                             deadline,
                             stats,
-                            memo,
+                            information_tracker,
+                            cancel_event,
                         )
-                        iteration[action].append(value)
-            except _SearchDeadline:
+                        world_values = outcome.values_dict()
+                        iteration_world_values[action] = world_values
+                        iteration[action] = [
+                            world_values[world.index]
+                            for world in information_worlds
+                            if world.index in world_values
+                        ]
+                        iteration_robust_values[action] = outcome.value
+                        iteration_policy_decisions[action] = outcome.policy_decisions
+                else:
+                    for sampled in samples:
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise _SearchCancelled()
+                        memo: Dict[tuple, float] = {}
+                        for action in root_actions:
+                            if cancel_event is not None and cancel_event.is_set():
+                                raise _SearchCancelled()
+                            if time.perf_counter() >= deadline:
+                                raise _SearchDeadline()
+                            next_state = self._timed_search_apply(sampled, player, action)
+                            value = self._timed_search_minimax(
+                                next_state,
+                                player,
+                                baseline_scores,
+                                depth - 1,
+                                -float("inf"),
+                                float("inf"),
+                                deadline,
+                                stats,
+                                memo,
+                                cancel_event,
+                            )
+                            iteration[action].append(value)
+            except (_SearchCancelled, InformationSetSearchCancelled):
+                return None
+            except (_SearchDeadline, InformationSetSearchDeadline):
                 break
 
             completed_values = iteration
+            completed_world_values = iteration_world_values if information_enabled else None
+            completed_robust_values = iteration_robust_values if information_enabled else None
+            completed_policy_decisions = (
+                iteration_policy_decisions if information_enabled else None
+            )
             completed_depth = depth
             aggregate = {
                 action: (
-                    sum(values) / len(values)
+                    (
+                        iteration_robust_values[action]
+                        if information_enabled
+                        else sum(values) / len(values)
+                    )
                     + rule_rank_bonus.get(action, 0.0)
                 )
                 for action, values in iteration.items()
@@ -655,15 +1293,21 @@ class TimedSearchMixin:
         for action, values in completed_values.items():
             if not values:
                 continue
-            ordered_values = sorted(values)
-            lower_index = max(0, (len(ordered_values) - 1) // 4)
-            lower_quartile = ordered_values[lower_index]
-            mean_value = sum(values) / len(values)
-            aggregate[action] = (
-                mean_value * 0.78
-                + lower_quartile * 0.22
-                + rule_rank_bonus.get(action, 0.0)
-            )
+            if information_enabled and completed_robust_values is not None:
+                aggregate[action] = (
+                    completed_robust_values[action]
+                    + rule_rank_bonus.get(action, 0.0)
+                )
+            else:
+                ordered_values = sorted(values)
+                lower_index = max(0, (len(ordered_values) - 1) // 4)
+                lower_quartile = ordered_values[lower_index]
+                mean_value = sum(values) / len(values)
+                aggregate[action] = (
+                    mean_value * 0.78
+                    + lower_quartile * 0.22
+                    + rule_rank_bonus.get(action, 0.0)
+                )
         if not aggregate:
             return None
         ordered_actions = sorted(aggregate, key=aggregate.get, reverse=True)
@@ -672,24 +1316,46 @@ class TimedSearchMixin:
         second_value = aggregate[ordered_actions[1]] if len(ordered_actions) > 1 else best_value
         margin = best_value - second_value
 
-        agreements = 0
-        sample_total = len(next(iter(completed_values.values())))
-        for sample_index in range(sample_total):
-            available = [
-                action
-                for action in completed_values
-                if len(completed_values[action]) > sample_index
-            ]
-            if not available:
-                continue
-            sample_best = max(
-                available,
-                key=lambda action: completed_values[action][sample_index]
-                + rule_rank_bonus.get(action, 0.0),
-            )
-            if sample_best == best_action:
-                agreements += 1
-        agreement = agreements / max(1, sample_total)
+        if information_enabled and completed_world_values is not None:
+            agreement_mass = 0.0
+            available_mass = 0.0
+            for world in information_worlds:
+                available = [
+                    action
+                    for action, values in completed_world_values.items()
+                    if world.index in values
+                ]
+                if not available:
+                    continue
+                sample_best = max(
+                    available,
+                    key=lambda action: completed_world_values[action][world.index]
+                    + rule_rank_bonus.get(action, 0.0),
+                )
+                available_mass += world.probability
+                if sample_best == best_action:
+                    agreement_mass += world.probability
+            agreement = agreement_mass / max(available_mass, 1e-12)
+            sample_total = int(information_set.total_observations)
+        else:
+            agreements = 0
+            sample_total = len(next(iter(completed_values.values())))
+            for sample_index in range(sample_total):
+                available = [
+                    action
+                    for action in completed_values
+                    if len(completed_values[action]) > sample_index
+                ]
+                if not available:
+                    continue
+                sample_best = max(
+                    available,
+                    key=lambda action: completed_values[action][sample_index]
+                    + rule_rank_bonus.get(action, 0.0),
+                )
+                if sample_best == best_action:
+                    agreements += 1
+            agreement = agreements / max(1, sample_total)
         best_minimum = min(completed_values[best_action])
         baseline_values = completed_values.get(baseline_action, [])
         baseline_minimum = min(baseline_values) if baseline_values else -float("inf")
@@ -713,6 +1379,16 @@ class TimedSearchMixin:
             margin=margin,
             agreement=agreement,
             decisive=decisive,
+            information_set=information_enabled,
+            candidate_count=len(information_worlds) if information_enabled else 0,
+            information_confidence=(
+                float(information_set.confidence) if information_enabled else 0.0
+            ),
+            policy_decisions=(
+                int((completed_policy_decisions or {}).get(best_action, 0))
+                if information_enabled
+                else 0
+            ),
         )
 
     def _commit_timed_search_action(self, state, player: str, action: Action) -> None:

@@ -9,22 +9,56 @@ from typing import Dict, List, Optional
 
 from goita_ai2.current_ai.attack_planning import AttackPlanningMixin
 from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
+from goita_ai2.current_ai.attack_plan_templates import AttackPlanTemplateMixin
+from goita_ai2.current_ai.background_search import BackgroundSearchMixin
+from goita_ai2.current_ai.branched_attack_generator import BranchedAttackGeneratorMixin
+from goita_ai2.current_ai.branched_attack_inference import BranchedAttackInferenceMixin
+from goita_ai2.current_ai.branched_attack_evaluator import BranchedAttackEvaluatorMixin
+from goita_ai2.current_ai.branched_attack_lifecycle import BranchedAttackLifecycleMixin
+from goita_ai2.current_ai.branched_attack_runtime import BranchedAttackRuntimeMixin
 from goita_ai2.current_ai.decision import DecisionMixin
 from goita_ai2.current_ai.endgame import EndgameMixin
 from goita_ai2.current_ai.forced_plans import ForcedPlansMixin
 from goita_ai2.current_ai.forced_win_planner import ForcedWinPlannerMixin
 from goita_ai2.current_ai.hand_evaluation import HandEvaluationMixin
+from goita_ai2.current_ai.information_set import InformationSetMixin
+from goita_ai2.current_ai.information_set_action_model import InformationSetActionModelMixin
+from goita_ai2.current_ai.information_set_policy import InformationSetPolicyMixin
+from goita_ai2.current_ai.information_set_search import InformationSetSearchMixin
 from goita_ai2.current_ai.inference import PublicInferenceMixin
+from goita_ai2.current_ai.performance import PerformanceMetricsMixin
+from goita_ai2.current_ai.prediction_cache import PredictionCacheMixin
+from goita_ai2.current_ai.probabilistic_hand_inference import (
+    ProbabilisticHandInferenceMixin,
+)
 from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
+from goita_ai2.current_ai.search_cache import SearchCacheMixin
+from goita_ai2.current_ai.search_budget import SearchBudgetMixin
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.current_ai.tracking import TrackingMixin
 
 class RuleBasedAgent(
     DecisionMixin,
+    PerformanceMetricsMixin,
     TrackingMixin,
     HandEvaluationMixin,
     ForcedPlansMixin,
     ForcedWinPlannerMixin,
+    BranchedAttackGeneratorMixin,
+    BranchedAttackInferenceMixin,
+    BranchedAttackEvaluatorMixin,
+    BranchedAttackLifecycleMixin,
+    AttackPlanTemplateMixin,
+    BranchedAttackRuntimeMixin,
+    ProbabilisticHandInferenceMixin,
+    InformationSetMixin,
+    InformationSetActionModelMixin,
+    InformationSetPolicyMixin,
+    InformationSetSearchMixin,
+    SearchCacheMixin,
+    PredictionCacheMixin,
+    SearchBudgetMixin,
+    BackgroundSearchMixin,
     TimedSearchMixin,
     EndgameMixin,
     AttackPlanningMixin,
@@ -39,6 +73,8 @@ class RuleBasedAgent(
         self._track: Dict[int, dict] = {}
         self._my_initial_hands_by_state_id: Dict[int, List[str]] = {}
         self._relative_hand_rank_table: Optional[Dict[str, Dict[str, str]]] = None
+        self._initialize_performance_metrics()
+        self._initialize_branched_attack_lifecycle()
 
         self.WIN_NOW_BONUS = 10_000.0
         self.WIN_AFTER_RECEIVE_BONUS = 9_000.0
@@ -167,6 +203,32 @@ class RuleBasedAgent(
         self.GENERAL_ATTACK_PLAN_KEEP_LAST_SHI_PENALTY = 35.0
         self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT = 1.35
         self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT = 7.0
+        self.BRANCHED_ATTACK_ENABLED = True
+        self.BRANCHED_ATTACK_MAX_SECONDS = 0.08
+        self.BRANCHED_ATTACK_MAX_TEMPLATE_PLANS = 6
+        self.BRANCHED_ATTACK_MAX_GENERIC_ROOTS = 6
+        self.BRANCHED_ATTACK_MAX_TOTAL_PLANS = 10
+        self.BRANCHED_ATTACK_MAX_EVALUATED_PLANS = 8
+        self.BRANCHED_ATTACK_GENERIC_MAX_FAILURE_RISK = 0.35
+        self.BRANCHED_ATTACK_GENERIC_MIN_RECEIVE_WIDTH = 2.0
+        self.BRANCHED_ATTACK_CACHE_ENABLED = True
+        self.BRANCHED_ATTACK_CACHE_MAX_ENTRIES = 128
+        self.BRANCHED_ATTACK_CACHE_TTL_SECONDS = 600.0
+        self.BRANCHED_ATTACK_INFERENCE_CACHE_MAX_ENTRIES = 512
+        self._initialize_branched_attack_inference()
+        self._initialize_branched_attack_runtime()
+        self.PROBABILISTIC_HAND_INITIAL_SAMPLE_COUNT = 256
+        self.PROBABILISTIC_HAND_INITIAL_MAX_SAMPLES = 2048
+        self.PROBABILISTIC_HAND_TOP_CANDIDATES = 12
+        self.PROBABILISTIC_HAND_MAX_RETAINED_CANDIDATES = 128
+        self.PROBABILISTIC_HAND_MIN_RETAINED_CANDIDATES = 12
+        self.PROBABILISTIC_HAND_MIN_CANDIDATE_PROBABILITY = 0.0005
+        self.PROBABILISTIC_HAND_CACHE_MAX_ENTRIES = 128
+        self.PROBABILISTIC_HAND_REFRESH_MAX_SECONDS = 0.03
+        self.PROBABILISTIC_HAND_AUTO_REFRESH = True
+        self.BRANCHED_ATTACK_PROBABILISTIC_SAMPLE_COUNT = 32
+        self.BRANCHED_ATTACK_PROBABILISTIC_MAX_SECONDS = 0.025
+        self._initialize_probabilistic_hand_inference()
         self.TIME_SEARCH_ENABLED = True
         self.TIME_SEARCH_MAX_SECONDS = 1.0
         self.TIME_SEARCH_SAMPLE_COUNT = 80
@@ -174,14 +236,50 @@ class RuleBasedAgent(
         self.TIME_SEARCH_BRANCH_BEAM = 3
         self.TIME_SEARCH_MAX_DEPTH = 11
         self.TIME_SEARCH_MAX_NODES = 250_000
+        self.TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED = True
+        self.TIME_SEARCH_ADAPTIVE_BUDGET_WARMUP = 4
+        self.TIME_SEARCH_ADAPTIVE_MIN_SECONDS = 0.15
+        self.TIME_SEARCH_ADAPTIVE_MIN_SAMPLES = 8
+        self.TIME_SEARCH_ADAPTIVE_EWMA_ALPHA = 0.25
         self.TIME_SEARCH_RULE_PRIOR_WEIGHT = 120.0
         self.TIME_SEARCH_BASELINE_PRIOR = 180.0
         self.TIME_SEARCH_STABLE_MARGIN = 450.0
         self.TIME_SEARCH_OVERRIDE_MARGIN = 300.0
         self.TIME_SEARCH_OVERRIDE_AGREEMENT = 0.75
         self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH = 7
+        self.TIME_SEARCH_INFORMATION_SET_ENABLED = True
+        self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_WEIGHT = 0.18
+        self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_CAP = 200.0
+        self.TIME_SEARCH_CACHE_ENABLED = True
+        self.TIME_SEARCH_CACHE_MAX_ENTRIES = 128
+        self.TIME_SEARCH_CACHE_TTL_SECONDS = 600.0
+        self.TIME_SEARCH_PREDICTION_CACHE_ENABLED = True
+        self.TIME_SEARCH_PREDICTION_CACHE_WAIT_SECONDS = 0.12
+        self._initialize_search_cache()
+        self._initialize_prediction_cache()
+        self._initialize_time_search_budget()
+        self.TIME_SEARCH_BACKGROUND_ENABLED = True
+        self.TIME_SEARCH_BACKGROUND_MAX_PASSES = 3
+        # One highest-probability path retained the same hit rate in the
+        # baseline while substantially reducing speculative CPU usage.
+        self.TIME_SEARCH_BACKGROUND_MAX_BRANCHES = 1
+        self.TIME_SEARCH_BACKGROUND_MAX_ACTIONS = 4
+        self.TIME_SEARCH_BACKGROUND_BRANCH_WIDTH = 2
+        self.TIME_SEARCH_BACKGROUND_INFERENCE_SAMPLES = 1
+        # Measured pre-reading retained every cache hit with pass/attack only,
+        # while receive and hidden-block forecasts added speculative CPU cost.
+        self.TIME_SEARCH_BACKGROUND_ALLOWED_SAMPLED_ACTIONS = ("pass", "attack")
+        # After an initial observation window, low-value speculative kinds are
+        # sampled periodically instead of consuming search time every turn.
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_ENABLED = True
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_MIN_SCHEDULED = 16
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_CONTEXT_MIN_SCHEDULED = 8
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_MIN_HIT_RATE = 0.06
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_PROBE_INTERVAL = 8
+        self._initialize_background_search()
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
+        self.last_information_set_search = None
 
     def bind_player(self, player: str) -> None:
         if self.me is None:

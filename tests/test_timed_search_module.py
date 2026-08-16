@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 
+from goita_ai2.current_ai.prediction_cache import clear_prediction_sample_cache
+from goita_ai2.current_ai.search_budget import reset_time_search_budget_model
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
@@ -114,6 +116,8 @@ def test_select_action_records_search_without_changing_public_state() -> None:
 
 
 def test_one_second_search_keeps_ally_gold_pass_after_broader_sampling() -> None:
+    clear_prediction_sample_cache()
+    reset_time_search_budget_model()
     state = GoitaState(
         hands={
             "A": list("24115126"),
