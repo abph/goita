@@ -2218,8 +2218,19 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
     def build_site_people() -> List[Dict[str, Any]]:
         candidates: Dict[str, Tuple[int, Dict[str, Any]]] = {}
+        hidden_debug_clients = {
+            connected_client_id
+            for (connected_game_id, connected_client_id), connections
+            in manager.client_connections.items()
+            if connected_client_id
+            and connections
+            and (
+                connected_game_id == DEBUG_GID
+                or GAMES.get(connected_game_id, {}).get("is_debug_room", False)
+            )
+        }
         for (connected_game_id, client_id), connections in manager.client_connections.items():
-            if not client_id or not connections:
+            if not client_id or not connections or client_id in hidden_debug_clients:
                 continue
 
             connection_name = manager.client_names.get((connected_game_id, client_id), "")

@@ -526,6 +526,56 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
                 app_module.manager.client_names[key] = old_value
 
 
+def test_debug_room_presence_is_completely_hidden() -> None:
+    app_module.setup_debug_room()
+    game = app_module.GAMES[app_module.DEBUG_GID]
+    player_id = "debug-player"
+    spectator_id = "debug-spectator"
+    connection_keys = [
+        ("lobby", player_id),
+        (app_module.DEBUG_GID, player_id),
+        (app_module.DEBUG_GID, spectator_id),
+    ]
+    old_human_seats = game.get("human_seats")
+    old_player_names = game.get("player_names")
+    old_connections = {
+        key: app_module.manager.client_connections.get(key)
+        for key in connection_keys
+    }
+    old_names = {
+        key: app_module.manager.client_names.get(key)
+        for key in connection_keys
+    }
+
+    try:
+        game["human_seats"] = {"A": player_id}
+        game["player_names"] = {"A": "デバッグ参加者", "B": "", "C": "", "D": ""}
+        for key in connection_keys:
+            app_module.manager.client_connections[key] = {object()}
+        app_module.manager.client_names[("lobby", player_id)] = "デバッグ参加者"
+        app_module.manager.client_names[(app_module.DEBUG_GID, player_id)] = "デバッグ参加者"
+        app_module.manager.client_names[(app_module.DEBUG_GID, spectator_id)] = "デバッグ観戦者"
+
+        people = app_module.list_rooms()["site_people"]
+
+        assert "デバッグ参加者" not in str(people)
+        assert "デバッグ観戦者" not in str(people)
+        assert "デバッグルーム" not in str(people)
+    finally:
+        game["human_seats"] = old_human_seats
+        game["player_names"] = old_player_names
+        for key, old_value in old_connections.items():
+            if old_value is None:
+                app_module.manager.client_connections.pop(key, None)
+            else:
+                app_module.manager.client_connections[key] = old_value
+        for key, old_value in old_names.items():
+            if old_value is None:
+                app_module.manager.client_names.pop(key, None)
+            else:
+                app_module.manager.client_names[key] = old_value
+
+
 def test_private_room_presence_masks_names_outside_the_same_room() -> None:
     app_module.setup_supporter_rooms()
     game_id = app_module.PRIVATE_A_GID

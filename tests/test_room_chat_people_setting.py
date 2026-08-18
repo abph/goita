@@ -27,15 +27,17 @@ def test_room_and_lobby_chat_have_people_sidebars_and_refresh_them():
     assert 'class="room-chat-people-title"' not in HTML
     assert "function refreshRoomChatPeople()" in HTML
     assert "window.setInterval(refreshRoomChatPeople, 10000)" in HTML
-    assert ".chat-panel.chat-people-visible .room-chat-people" in HTML
+    assert "#chatPanel.chat-people-visible .room-chat-people" in HTML
     assert 'document.getElementById("lobbyChatPanel")?.classList.add("chat-people-visible")' in HTML
     assert '["roomChatPeopleList", "lobbyChatPeopleList"]' in HTML
 
 
-def test_mid_width_desktop_chat_stacks_people_above_messages():
-    assert "@media (min-width: 702px) and (max-width: 1099px)" in HTML
+def test_every_desktop_chat_stacks_people_above_messages():
+    assert "@media (min-width: 702px) and (max-width: 1099px)" not in HTML
     assert "grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;" in HTML
     assert "border-bottom: 2px solid #d1ab75;" in HTML
+    assert "flex-basis: calc(var(--chat-panel-width) + var(--chat-people-width));" not in HTML
+    assert "grid-template-columns: var(--chat-people-width) minmax(0, 1fr);" not in HTML
 
 
 def test_mobile_chat_uses_a_compact_people_column():

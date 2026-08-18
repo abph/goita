@@ -44,6 +44,36 @@ def test_chat_messages_scroll_inside_the_fixed_desktop_panel():
     assert "overflow-y: auto;" in desktop_chat_css
 
 
+def test_desktop_log_matches_the_full_control_column_height():
+    assert "--desktop-log-panel-width: 280px;" in HTML
+    assert "--chat-panel-width: 220px;" in HTML
+    assert "var(--chat-panel-width) + var(--desktop-log-panel-width)" in HTML
+    assert "grid-template-columns: minmax(0, 1fr) var(--desktop-log-panel-width);" in HTML
+    assert "width: var(--desktop-log-panel-width);" in HTML
+    assert "height: var(--desktop-room-log-height, auto);" in HTML
+    assert "max-height: var(--desktop-room-log-height, none);" in HTML
+    assert "function syncDesktopRoomLogHeight()" in HTML
+    assert 'document.querySelector(".game-content-main")' in HTML
+    assert 'card.style.setProperty("--desktop-room-log-height", `${height}px`);' in HTML
+    assert "desktopRoomLogHeightObserver = new ResizeObserver(() => syncDesktopRoomLogHeight())" in HTML
+    assert "setupDesktopRoomLogHeightSync();" in HTML
+
+    log_layout_start = HTML.index(".game-content-layout.log-visible {")
+    log_layout_end = HTML.index("}", log_layout_start)
+    log_layout_css = HTML[log_layout_start:log_layout_end]
+    log_card_start = HTML.index(".game-content-layout.log-visible #logCard {")
+    log_card_end = HTML.index("}", log_card_start)
+    log_card_css = HTML[log_card_start:log_card_end]
+
+    assert "align-items: start;" in log_layout_css
+    assert "overflow: hidden;" in log_card_css
+    assert "position: absolute;" in HTML
+    assert "inset: 31px 0 0;" in HTML
+    assert "overflow-y: scroll;" in HTML
+    assert "scrollbar-gutter: stable;" in HTML
+    assert "scrollbar-color: #9b744d #eee4d2;" in HTML
+
+
 def test_chat_does_not_render_timestamps():
     assert 'id="chatToastTime"' not in HTML
     assert 'className = "chat-time"' not in HTML
