@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260809e"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260809e"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260820a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260820a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
@@ -100,9 +100,24 @@ def test_hand_reveal_confirmation_is_translated() -> None:
         assert source in english
 
 
+def test_lobby_certification_and_hand_limit_are_translated() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    assert "日本ごいた協会に認定されました。" in html
+    assert "「5し」以上の配牌はまだ実装していません" in html
+    assert "※「5し」" not in html
+    assert '"日本ごいた協会に認定されました。": "已获得日本Goita协会认证。"' in chinese
+    assert '"日本ごいた協会に認定されました。": "Recognized by the JAPAN GOITA ASSOCIATION."' in english
+    assert '"「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。"' in chinese
+    assert '"「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。"' in english
+
+
 if __name__ == "__main__":
     test_language_switcher_and_translation_runtime_are_loaded()
     test_dynamic_ui_and_ai_help_follow_selected_language()
     test_language_packs_cover_site_presence_ui()
     test_hand_reveal_confirmation_is_translated()
+    test_lobby_certification_and_hand_limit_are_translated()
     print("I18N_TEST_OK")
