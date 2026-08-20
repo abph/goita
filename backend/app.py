@@ -63,7 +63,7 @@ LOBBY_ADMIN_PASSWORD = (
 ).strip()
 PRIVATE_ROOM_DEFINITIONS = (
     {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
-    {"gid": "room-silver-02", "pass": "goita-ai", "admin": "admin-b", "owner": "プライベートB"},
+    {"gid": "room-silver-02", "pass": "1222", "admin": "admin-b", "owner": "プライベートB"},
     {
         "gid": "room-bronze-03",
         "pass": "saitama1011",

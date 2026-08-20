@@ -7,6 +7,15 @@ from fastapi import HTTPException
 import backend.app as app_module
 
 
+def test_private_b_uses_updated_entry_password() -> None:
+    private_b = next(
+        room for room in app_module.PRIVATE_ROOM_DEFINITIONS
+        if room["gid"] == "room-silver-02"
+    )
+    assert private_b["pass"] == "1222"
+    assert app_module.GAMES["room-silver-02"]["password"] == "1222"
+
+
 def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
     assert list(app_module.MAIN_ROOM_NAMES) == [
         "main",
@@ -646,6 +655,7 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
 
 
 if __name__ == "__main__":
+    test_private_b_uses_updated_entry_password()
     test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_and_d_exist_but_are_hidden_from_lobby()
