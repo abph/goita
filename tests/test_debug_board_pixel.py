@@ -64,8 +64,8 @@ def test_pixel_board_uses_low_resolution_canvas_and_public_snapshot() -> None:
     assert "animation: pixelMonoSpecial 1.5s steps(1, end) forwards" in html
     assert "background: rgba(255, 255, 255, var(--mobile-chat-opacity, 1))" in html
     assert "border-radius: 0" in html
-    assert 'document.body.classList.contains("board-view-pixel")' in html
-    assert 'document.getElementById("boardPixel"), overlay: true' in html
+    assert 'document.querySelector(".board-wrap"), overlay: true' in html
+    assert "wrapper.dataset.passSeat = String(phys);" in html
     assert "body.board-view-pixel .pass-anim-overlay .pass-anim-text" in html
     assert "body.board-view-pixel-mono .pass-anim-overlay .pass-anim-text" in html
 
