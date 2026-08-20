@@ -6,13 +6,13 @@
 (() => {
   const exact = Object.freeze({
     "そろうごいた": "Solo Goita",
-    "そろうごいた（β）": "Solo Goita (Beta)",
     "© そろうごいた": "© Solo Goita",
     "オンライン対局室へようこそ。": "Welcome to the online game rooms.",
     "不足人数に応じて、": "When there are not enough players,",
     "ルームで選択したAI": "the AI selected for the room",
     "が参戦します。1人からでも対局可能です。": "will join the game. You can play with as few as one human player.",
-    "※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。": "Hands with five or more し are not yet supported (every hand will contain four or fewer).",
+    "日本ごいた協会に認定されました。": "Recognized by the JAPAN GOITA ASSOCIATION.",
+    "「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。": "Hands with five or more し are not yet supported (every hand will contain four or fewer).",
     "🌐 公開部屋": "🌐 Public Rooms",
     "誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。": "Anyone may join or watch these rooms. Feel free to start a game.",
     "1222のつぶやき": "A note from 1222",
@@ -233,6 +233,7 @@
     "空欄にすると誰でも入れる公開部屋になります": "Leave blank to make this a public room",
     "AIの選択": "AI Selection",
     "強化中AI": "AI in Development",
+    "中級者（中）": "Intermediate (Middle)",
     "中級者（下）": "Intermediate (Lower)",
     "初級者（上）": "Beginner (Upper)",
     "（デバッグ用）合法手を表示する": "Show Legal Moves (Debug)",
