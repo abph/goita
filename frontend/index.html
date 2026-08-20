@@ -11,6 +11,7 @@
       --gap: 6px;
       --cell: clamp(30px, calc((100vw - 60px - (7 * var(--gap)))/8), 65px);
       --chat-panel-width: min(240px, calc(100vw - 28px));
+      --desktop-log-panel-width: 280px;
       --chat-panel-height: min(430px, calc(100vh - 90px));
       --chat-people-width: 168px;
       --mobile-chat-height: 340px;
@@ -1739,35 +1740,11 @@
         overflow-y: auto;
         padding: 9px;
       }
-      #lobbyChatPanel.chat-people-visible {
-        width: min(
-          calc(var(--chat-panel-width) + var(--chat-people-width)),
-          calc(100vw - 28px)
-        );
-        display: grid !important;
-        grid-template-columns: var(--chat-people-width) minmax(0, 1fr);
-        grid-template-rows: minmax(0, 1fr) auto;
-      }
-      #lobbyChatPanel.chat-people-visible .room-chat-people {
-        display: flex;
-        flex-direction: column;
-        grid-column: 1;
-        grid-row: 1 / 3;
-      }
-      #lobbyChatPanel.chat-people-visible .chat-messages {
-        grid-column: 2;
-        grid-row: 1;
-        min-height: 0;
-      }
-      #lobbyChatPanel.chat-people-visible .chat-form {
-        grid-column: 2;
-        grid-row: 2;
-      }
       .chat-toggle {
         display: none !important;
       }
     }
-    @media (min-width: 702px) and (max-width: 1099px) {
+    @media (min-width: 702px) {
       #chatPanel.chat-people-visible,
       #lobbyChatPanel.chat-people-visible {
         width: var(--chat-panel-width);
@@ -1799,62 +1776,58 @@
         grid-row: 3;
       }
     }
-    @media (min-width: 1100px) {
-      #gameView.chat-people-visible {
-        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 48px + var(--chat-panel-width) + var(--chat-people-width));
-      }
-      .play-layout .chat-panel.chat-people-visible {
-        flex-basis: calc(var(--chat-panel-width) + var(--chat-people-width));
-        width: calc(var(--chat-panel-width) + var(--chat-people-width));
-        display: grid !important;
-        grid-template-columns: var(--chat-people-width) minmax(0, 1fr);
-        grid-template-rows: minmax(0, 1fr) auto;
-      }
-      .chat-panel.chat-people-visible .room-chat-people {
-        display: flex;
-        flex-direction: column;
-        grid-column: 1;
-        grid-row: 1 / 3;
-      }
-      .chat-panel.chat-people-visible .chat-messages {
-        grid-column: 2;
-        grid-row: 1;
-        min-height: 0;
-      }
-      .chat-panel.chat-people-visible .chat-form {
-        grid-column: 2;
-        grid-row: 2;
-      }
-    }
     @media (min-width: 1150px) {
       #gameView.desktop-log-visible {
-        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 64px + (var(--chat-panel-width) * 2));
+        --chat-panel-width: 220px;
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 64px + var(--chat-panel-width) + var(--desktop-log-panel-width));
       }
       #gameView.desktop-log-visible.chat-people-visible {
-        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 64px + (var(--chat-panel-width) * 2) + var(--chat-people-width));
+        width: calc((var(--cell) * 8) + (var(--gap) * 7) + 64px + var(--chat-panel-width) + var(--desktop-log-panel-width));
       }
       .game-content-layout.log-visible {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) var(--chat-panel-width);
-        align-items: stretch;
+        grid-template-columns: minmax(0, 1fr) var(--desktop-log-panel-width);
+        align-items: start;
         gap: 16px;
       }
       .game-content-layout.log-visible #logCard {
-        width: var(--chat-panel-width);
-        height: 100%;
+        width: var(--desktop-log-panel-width);
+        height: var(--desktop-room-log-height, auto);
+        max-height: var(--desktop-room-log-height, none);
         min-height: 0;
         margin-top: 0;
+        overflow: hidden;
       }
       .game-content-layout.log-visible #logCard > details {
-        display: flex;
-        flex-direction: column;
+        display: block;
+        position: relative;
         height: 100%;
         min-height: 0;
+        overflow: hidden;
       }
       .game-content-layout.log-visible #logCard > details > pre {
-        flex: 1;
+        position: absolute;
+        inset: 31px 0 0;
+        height: auto;
         min-height: 0;
         max-height: none;
+        margin-top: 0 !important;
+        overflow-y: scroll;
+        scrollbar-gutter: stable;
+        scrollbar-color: #9b744d #eee4d2;
+        scrollbar-width: auto;
+      }
+      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar {
+        width: 10px;
+      }
+      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar-track {
+        background: #eee4d2;
+        border-radius: 5px;
+      }
+      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar-thumb {
+        background: #9b744d;
+        border: 2px solid #eee4d2;
+        border-radius: 5px;
       }
     }
     @media (max-width: 701px) {
@@ -3345,13 +3318,14 @@
     <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
   </div>
   <div style="text-align: center; padding: 40px 0;">
-     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた（β）</h1>
+     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた</h1>
      <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ。</p>
      
      <div style="font-size: 14px; color: #555; text-align: left; display: inline-block; background: #fffdf5; padding: 15px 20px; border-radius: 8px; border: 1px dashed #8b5a2b; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
           <li>不足人数に応じて、<b>ルームで選択したAI</b>が参戦します。1人からでも対局可能です。</li>
-          <li>※「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
+          <li>日本ごいた協会に認定されました。</li>
+          <li>「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
         </ul>
      </div>
   </div>
@@ -3737,7 +3711,7 @@
               <div class="board-view-segmented" role="group" aria-label="盤面表示">
                 <button id="lobbyBoardView2dButton" class="board-view-option active" type="button" onclick="setLobbyBoardViewControl('2d')">2D</button>
                 <button id="lobbyBoardView3dButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('3d')">3D</button>
-                <button id="lobbyBoardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('meeting-room')">集会室</button>
+                <button id="lobbyBoardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('meeting-room')">埼玉的な集会室</button>
                 <button id="lobbyBoardViewPixelColorButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
                 <button id="lobbyBoardViewPixelMonoButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
               </div>
@@ -3912,7 +3886,7 @@
             <div class="board-view-segmented" role="group" aria-label="盤面表示">
               <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
               <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
-              <button id="boardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setBoardViewControl('meeting-room')">集会室</button>
+              <button id="boardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setBoardViewControl('meeting-room')">埼玉的な集会室</button>
               <button id="boardViewPixelColorButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
               <button id="boardViewPixelMonoButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
             </div>
@@ -4190,6 +4164,111 @@ let linkedKifuPreset = readLinkedKifuPresetFromUrl();
 function currentUiLanguage() {
     const language = window.goitaI18n?.getLanguage?.() || "ja";
     return ["ja", "zh", "en"].includes(language) ? language : "ja";
+}
+
+const GAME_LOG_PIECE_LABELS = Object.freeze({
+    "1": "し", "2": "香", "3": "馬", "4": "銀", "5": "金",
+    "6": "角", "7": "飛", "8": "玉", "9": "王",
+});
+
+const GAME_LOG_EFFECT_LABELS = Object.freeze({
+    ja: {
+        reach: "リーチ",
+        kakarigotae: "かかりごたえ",
+        damadama: "だまだま",
+        uchidome: "打ち止め",
+        baizuke: "倍付け",
+        damadama_agari: "だまだま上がり",
+        ou_agari: "王上がり",
+    },
+    zh: {
+        reach: "听牌",
+        kakarigotae: "搭档呼应",
+        damadama: "双王",
+        uchidome: "打止",
+        baizuke: "双倍",
+        damadama_agari: "双王获胜",
+        ou_agari: "王将获胜",
+    },
+});
+
+function localizeGameLogSuffix(suffix, language) {
+    if(language === "en") return suffix;
+    const hiddenLabel = language === "zh" ? "（暗置牌不公开）" : "（伏せ駒は非公開）";
+    const effectPrefix = language === "zh" ? "效果" : "演出";
+    const effectLabels = GAME_LOG_EFFECT_LABELS[language] || GAME_LOG_EFFECT_LABELS.ja;
+    return String(suffix || "")
+        .replace(" (hidden)", ` ${hiddenLabel}`)
+        .replace(/\[EFFECT:([a-z_]+)\]/g, (source, effect) => {
+            const label = effectLabels[effect];
+            return label ? `[${effectPrefix}:${label}]` : source;
+        });
+}
+
+function localizeGameLogLine(entry, language = currentUiLanguage()) {
+    const source = String(entry ?? "");
+    if(language === "en") return source;
+
+    let match = source.match(/^Game start\. dealer=([ABCD])(.*)$/);
+    if(match) {
+        return language === "zh"
+            ? `对局开始。庄家=${match[1]}${localizeGameLogSuffix(match[2], language)}`
+            : `対局開始。親=${match[1]}${localizeGameLogSuffix(match[2], language)}`;
+    }
+
+    match = source.match(/^Round finished\. winner=([ABCD]), gained=(\d+), total_score=\{'AC':\s*(\d+),\s*'BD':\s*(\d+)\}(.*)$/);
+    if(match) {
+        return language === "zh"
+            ? `本局结束。胜者=${match[1]}，获得=${match[2]}分，总分 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language)}`
+            : `局終了。勝者=${match[1]}、獲得=${match[2]}点、合計 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language)}`;
+    }
+
+    match = source.match(/^Match finished! winner=(AC|BD), final_score=\{'AC':\s*(\d+),\s*'BD':\s*(\d+)\}(.*)$/);
+    if(match) {
+        return language === "zh"
+            ? `比赛结束！胜方=${match[1]}，最终得分 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language)}`
+            : `対戦終了！勝利ペア=${match[1]}、最終得点 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language)}`;
+    }
+
+    match = source.match(/^([ABCD]): block ([1-9]) -> attack ([1-9])(.*)$/);
+    if(match) {
+        const block = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
+        const attack = GAME_LOG_PIECE_LABELS[match[3]] || match[3];
+        return language === "zh"
+            ? `${match[1]}: 暗置${block} → 以${attack}进攻${localizeGameLogSuffix(match[4], language)}`
+            : `${match[1]}: ${block}を伏せる → ${attack}で攻める${localizeGameLogSuffix(match[4], language)}`;
+    }
+
+    match = source.match(/^([ABCD]): receive ([1-9])(.*)$/);
+    if(match) {
+        const piece = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
+        return language === "zh"
+            ? `${match[1]}: 以${piece}防守${localizeGameLogSuffix(match[3], language)}`
+            : `${match[1]}: ${piece}で受ける${localizeGameLogSuffix(match[3], language)}`;
+    }
+
+    match = source.match(/^([ABCD]): attack ([1-9])(.*)$/);
+    if(match) {
+        const piece = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
+        return language === "zh"
+            ? `${match[1]}: 以${piece}进攻${localizeGameLogSuffix(match[3], language)}`
+            : `${match[1]}: ${piece}で攻める${localizeGameLogSuffix(match[3], language)}`;
+    }
+
+    match = source.match(/^([ABCD]): pass(.*)$/);
+    if(match) {
+        return `${match[1]}: ${language === "zh" ? "跳过" : "パス"}${localizeGameLogSuffix(match[2], language)}`;
+    }
+
+    return localizeGameLogSuffix(source, language);
+}
+
+function renderGameLog(entries) {
+    const logElement = document.getElementById("log");
+    if(!logElement) return;
+    const lines = isCurrentClientHost() && Array.isArray(entries) ? entries : [];
+    const language = currentUiLanguage();
+    logElement.textContent = lines.map((entry) => localizeGameLogLine(entry, language)).join("\n");
 }
 
 function linkedKifuSeatText(preset, language) {
@@ -4725,6 +4804,7 @@ let chatComposeMode = "chat";
 let chatMentionScope = "";
 let chatToastTimer = null;
 let desktopRoomChatHeightObserver = null;
+let desktopRoomLogHeightObserver = null;
 let localChatNotices = [];
 let lastHintNoticeKey = "";
 let socket = null;
@@ -5319,7 +5399,7 @@ function applyLobbyAdminPayload(data) {
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
     mainInput.min = "1";
     mainInput.max = String(data.main_room_max || 6);
-    mainInput.value = String(data.main_room_count || 6);
+    mainInput.value = String(data.main_room_count || 4);
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 4);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
@@ -6066,6 +6146,7 @@ function updateRoomUI() {
     if (logDetails && showLog && window.matchMedia("(min-width: 1150px)").matches) {
         logDetails.open = true;
     }
+    syncDesktopRoomLogHeight();
     
     if (settingsBtn) settingsBtn.style.display = "inline-flex";
 }
@@ -7355,6 +7436,34 @@ function setupDesktopRoomChatHeightSync(){
     desktopRoomChatHeightObserver.observe(mainColumn);
   }
   syncDesktopRoomChatHeight();
+}
+
+function syncDesktopRoomLogHeight(){
+  const card = document.getElementById("logCard");
+  const layout = document.querySelector(".game-content-layout");
+  const main = document.querySelector(".game-content-main");
+  if(!card || !layout || !main) return;
+  const docked = window.matchMedia("(min-width: 1150px)").matches
+    && layout.classList.contains("log-visible")
+    && card.style.display !== "none";
+  if(!docked){
+    card.style.removeProperty("--desktop-room-log-height");
+    return;
+  }
+  const height = Math.ceil(main.getBoundingClientRect().height);
+  if(height > 0){
+    card.style.setProperty("--desktop-room-log-height", `${height}px`);
+  }
+}
+
+function setupDesktopRoomLogHeightSync(){
+  const main = document.querySelector(".game-content-main");
+  if(!main) return;
+  if(typeof ResizeObserver === "function"){
+    desktopRoomLogHeightObserver = new ResizeObserver(() => syncDesktopRoomLogHeight());
+    desktopRoomLogHeightObserver.observe(main);
+  }
+  syncDesktopRoomLogHeight();
 }
 
 function chatScopeLabel(scope){
@@ -8927,10 +9036,7 @@ async function renderActions(){
 }
 
 function activePassAnimationTarget() {
-  if(document.body.classList.contains("board-view-pixel")){
-    return {element: document.getElementById("boardPixel"), overlay: true};
-  }
-  return {element: document.getElementById("board"), overlay: false};
+  return {element: document.querySelector(".board-wrap"), overlay: true};
 }
 
 function showPassAnimation(phys) {
@@ -8944,6 +9050,7 @@ function showPassAnimation(phys) {
   
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
+  wrapper.dataset.passSeat = String(phys);
   const isMobilePass = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
   if(isMobilePass) wrapper.classList.add("pass-anim-mobile");
   
@@ -8966,6 +9073,7 @@ function showPassAnimation(phys) {
   
   inner.appendChild(textDiv);
   wrapper.appendChild(inner);
+  board.querySelector(`.pass-anim-wrapper[data-pass-seat="${String(phys)}"]`)?.remove();
   board.appendChild(wrapper);
   
   setTimeout(() => {
@@ -9176,7 +9284,7 @@ async function refresh(){
       oldScoreBoard.style.display = "none";
   }
 
-  document.getElementById("log").textContent = isCurrentClientHost() ? (state.log||[]).join("\n") : "";
+  renderGameLog(state.log || []);
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
@@ -9280,15 +9388,18 @@ async function refresh(){
   if (logDelta > 0) {
     logAnimationGeneration += 1;
   }
-  const shouldPlayLogAudio = (
+  const shouldProcessLogFeedback = (
     logAudioPrimed &&
-    audioUnlocked &&
-    Date.now() >= suppressLogAudioUntil &&
     logDelta > 0 &&
     logDelta <= MAX_LOG_AUDIO_CATCHUP
   );
+  const shouldPlayLogAudio = (
+    shouldProcessLogFeedback &&
+    audioUnlocked &&
+    Date.now() >= suppressLogAudioUntil
+  );
 
-  if (shouldPlayLogAudio) {
+  if (shouldProcessLogFeedback) {
     const seatToPhys = getSeatToPhys();
     let animDelay = 0; 
     const animationGeneration = logAnimationGeneration;
@@ -9325,54 +9436,56 @@ async function refresh(){
         const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
         scheduleLogAnimation(() => {
-          playPassSound();
-          if(cVoiceKind) setTimeout(() => playCVoice(cVoiceKind), 120);
+          if(shouldPlayLogAudio) {
+            playPassSound();
+            if(cVoiceKind) setTimeout(() => playCVoice(cVoiceKind), 120);
+          }
           showPassAnimation(physSeat);
         }, animDelay);
         animDelay += 800; 
       }
 
-      if (cVoiceKind && !isPass) {
+      if (shouldPlayLogAudio && cVoiceKind && !isPass) {
         scheduleLogAnimation(() => playCVoice(cVoiceKind), animDelay + 100);
       }
 
-      if (cAttackVoiceKind) {
+      if (shouldPlayLogAudio && cAttackVoiceKind) {
         scheduleLogAnimation(() => playCVoice(cAttackVoiceKind), animDelay + 100);
       }
 
-      if (isPieceAction && !hasVisibleEffect && !nextEntryIsRoundFinished) {
+      if (shouldPlayLogAudio && isPieceAction && !hasVisibleEffect && !nextEntryIsRoundFinished) {
         scheduleLogAnimation(playPieceSound, animDelay);
         animDelay += 160;
       }
       
       if (personalEffectsEnabled && seatMatch && shouldShowSpecialEffects) {
           if (hasKakarigotae) {
-              scheduleLogAnimation(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("かかりごたえ！", "kakarigotae", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasDamadama) {
-              scheduleLogAnimation(() => showSpecialAnimation("だまだま！", "damadama", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("だまだま！", "damadama", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           if (hasReach) {
-              scheduleLogAnimation(() => showSpecialAnimation("リーチ！", "reach", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("リーチ！", "reach", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1200;
           }
           
           if (hasBaizuke) {
-              scheduleLogAnimation(() => showSpecialAnimation("倍付け！", "baizuke", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("倍付け！", "baizuke", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
           if (hasDamadamaAgari) {
-              scheduleLogAnimation(() => showSpecialAnimation("だまだまあがり！", "damadama_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("だまだまあがり！", "damadama_agari", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1500;
           }
           if (hasOuAgari) {
-              scheduleLogAnimation(() => showSpecialAnimation("王あがり！", "ou_agari", { sound: !nextEntryIsRoundFinished }), animDelay);
+              scheduleLogAnimation(() => showSpecialAnimation("王あがり！", "ou_agari", { sound: shouldPlayLogAudio && !nextEntryIsRoundFinished }), animDelay);
               animDelay += 1400;
           }
       }
-      if (isRoundFinished) {
+      if (shouldPlayLogAudio && isRoundFinished) {
           scheduleLogAnimation(playWinSound, animDelay);
           if(cWinVoice) scheduleLogAnimation(() => playCVoice("win"), animDelay + 180);
           animDelay += 500;
@@ -9457,6 +9570,7 @@ window.addEventListener("goita-language-change", () => {
   window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
   updateSeatButtons(latestState || {});
   if(latestState) {
+    renderGameLog(latestState.log || []);
     renderHandRevealControls(latestState);
     if(linkedKifuPreset && !latestState.is_started) {
       setHint(linkedKifuRoomHint(latestState));
@@ -9473,12 +9587,14 @@ window.addEventListener("beforeunload", () => {
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();
   setupDesktopRoomChatHeightSync();
+  setupDesktopRoomLogHeightSync();
   renderLinkedKifuNotice();
   initializeVoiceChat();
   window.setInterval(refreshRoomChatPeople, 10000);
   window.addEventListener("resize", () => {
     updateMobileChatPageScrollLock();
     if(latestState) renderChat(latestState);
+    syncDesktopRoomLogHeight();
   });
   setupPresetSeatResetButtons();
   presetLoad();
