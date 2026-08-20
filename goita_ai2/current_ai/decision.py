@@ -317,11 +317,92 @@ class DecisionMixin:
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         """Compare the rule-based choice with a public-information search."""
+        self.last_attack_candidate_scores = []
+        self.last_attack_candidate_snapshot = {}
         started = self._begin_performance_decision()
         try:
-            return self._select_action_with_measurement(state, player, actions)
+            chosen = self._select_action_with_measurement(state, player, actions)
+            self._finalize_attack_candidate_snapshot(actions, chosen)
+            return chosen
         finally:
             self._finish_performance_decision(started)
+
+    def _finalize_attack_candidate_snapshot(
+        self,
+        actions: List[Action],
+        chosen: Action,
+    ) -> None:
+        """Keep a compact, decision-time comparison for later explanations."""
+        if chosen[0] not in ("attack", "attack_after_block") or chosen[2] is None:
+            return
+
+        score_by_action = {}
+        for item in self.last_attack_candidate_scores:
+            action = tuple(item.get("action", ()))
+            score = item.get("score")
+            if len(action) == 3 and isinstance(score, (int, float)):
+                score_by_action[action] = float(score)
+
+        by_piece = {}
+        piece_order = []
+        for action in actions:
+            action_type, block, attack = action
+            if action_type not in ("attack", "attack_after_block") or attack is None:
+                continue
+            score = score_by_action.get(tuple(action))
+            candidate = {
+                "attack": str(attack),
+                "score": round(score, 1) if score is not None else None,
+            }
+            if attack not in by_piece:
+                by_piece[attack] = candidate
+                piece_order.append(attack)
+            elif score is not None:
+                previous_score = by_piece[attack].get("score")
+                if previous_score is None or score > float(previous_score):
+                    by_piece[attack] = candidate
+
+        chosen_score = score_by_action.get(tuple(chosen))
+        alternatives = [
+            dict(by_piece[piece])
+            for piece in piece_order
+            if piece != chosen[2]
+        ]
+        if any(item.get("score") is not None for item in alternatives):
+            alternatives.sort(
+                key=lambda item: (
+                    item.get("score") is not None,
+                    float(item["score"])
+                    if item.get("score") is not None
+                    else -1e18,
+                ),
+                reverse=True,
+            )
+
+        compact_alternatives = []
+        for item in alternatives[:3]:
+            alternative_score = item.get("score")
+            score_gap = None
+            if chosen_score is not None and alternative_score is not None:
+                score_gap = round(float(chosen_score) - float(alternative_score), 1)
+            compact_alternatives.append({
+                "attack": item["attack"],
+                "score": alternative_score,
+                "score_gap": score_gap,
+            })
+
+        if not compact_alternatives:
+            return
+        self.last_attack_candidate_snapshot = {
+            "version": 1,
+            "chosen": {
+                "attack": str(chosen[2]),
+                "score": round(chosen_score, 1) if chosen_score is not None else None,
+            },
+            "alternatives": compact_alternatives,
+            "decision_reason": str(self.last_decision_reason or ""),
+            "decision_detail": str(self.last_score_fallback_detail or ""),
+        }
 
     def _select_action_with_measurement(
         self,
@@ -423,6 +504,9 @@ class DecisionMixin:
             and search_result.decisive
             and search_result.action != baseline_action
         ):
+            self.last_attack_candidate_scores = copy.deepcopy(
+                getattr(preview, "last_attack_candidate_scores", [])
+            )
             self._commit_timed_search_action(state, player, search_result.action)
             self._set_decision_reason("time_search")
             self._set_score_fallback_detail(
@@ -438,6 +522,7 @@ class DecisionMixin:
     def _select_rule_based_action(self, state, player: str, actions: List[Action]) -> Action:
         self._set_decision_reason("")
         self._set_score_fallback_detail("")
+        self.last_attack_candidate_scores = []
 
         if self.me is None:
             self.me = player
@@ -1145,6 +1230,7 @@ class DecisionMixin:
 
         best_action = actions[0]
         best_score = -1e18
+        scored_actions = []
 
         for (t, block, attack) in actions:
             if t == "attack_after_block":
@@ -1155,9 +1241,16 @@ class DecisionMixin:
             else:
                 score = self._score_receive_phase(state, player, t, block)
 
+            scored_actions.append({
+                "action": (t, block, attack),
+                "score": float(score),
+            })
+
             if score > best_score:
                 best_score = score
                 best_action = (t, block, attack)
+
+        self.last_attack_candidate_scores = scored_actions
 
         score_fallback_detail = self._classify_score_fallback(
             state,

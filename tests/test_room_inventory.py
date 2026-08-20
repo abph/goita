@@ -196,7 +196,7 @@ def test_public_room_reveal_requires_round_end_and_player_consent() -> None:
         app_module.GAMES[game_id] = old_game
 
 
-def test_private_room_reveals_human_self_and_host_controlled_ai_only() -> None:
+def test_private_room_allows_ai_reveal_by_any_seated_player_after_round_end() -> None:
     game_id = "test-private-seat-reveal"
     game = app_module._create_game_obj(dealer="A")
     game["is_started"] = True
@@ -229,6 +229,31 @@ def test_private_room_reveals_human_self_and_host_controlled_ai_only() -> None:
             asyncio.run(
                 app_module.reveal_hand(
                     game_id,
+                    requester="B",
+                    target="D",
+                    client_id="client-b",
+                )
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 403
+        else:
+            raise AssertionError("A non-host must not reveal an AI hand before the round ends")
+
+        game["state"].finished = True
+        finished_ai_result = asyncio.run(
+            app_module.reveal_hand(
+                game_id,
+                requester="B",
+                target="D",
+                client_id="client-b",
+            )
+        )
+        assert finished_ai_result["revealed_hand_seats"] == ["B", "C", "D"]
+
+        try:
+            asyncio.run(
+                app_module.reveal_hand(
+                    game_id,
                     requester="A",
                     target="B",
                     client_id="client-a",
@@ -240,11 +265,11 @@ def test_private_room_reveals_human_self_and_host_controlled_ai_only() -> None:
             raise AssertionError("The private-room host must not reveal another human hand")
 
         spectator_state = app_module.get_state(game_id, viewer="W")
-        assert spectator_state["revealed_hand_seats"] == ["B", "C"]
+        assert spectator_state["revealed_hand_seats"] == ["B", "C", "D"]
         assert isinstance(spectator_state["hands"]["B"], list)
         assert isinstance(spectator_state["hands"]["C"], list)
         assert spectator_state["hands"]["A"] == {"count": 8}
-        assert spectator_state["hands"]["D"] == {"count": 8}
+        assert isinstance(spectator_state["hands"]["D"], list)
 
         host_state = app_module.get_state(
             game_id,
@@ -253,7 +278,7 @@ def test_private_room_reveals_human_self_and_host_controlled_ai_only() -> None:
             reveal_hands=1,
         )
         assert isinstance(host_state["hands"]["A"], list)
-        assert host_state["hands"]["D"] == {"count": 8}
+        assert isinstance(host_state["hands"]["D"], list)
     finally:
         app_module.GAMES.pop(game_id, None)
 
@@ -343,6 +368,10 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert 'safeCount === 1 ? "person" : "people"' in html
     assert 'id="handRevealPanel"' in html
     assert "function renderHandRevealControls(state)" in html
+    assert 'id="lobbyCheckAutoRevealOwnAndAiHands"' in html
+    assert 'id="checkAutoRevealOwnAndAiHands"' in html
+    assert "function maybeAutoRevealOwnAndAiHands(state)" in html
+    assert "personalSettings.autoRevealOwnAndAiHands !== true" in html
     assert "/reveal_hand?${qs.toString()}" in html
     assert "toggle_reveal_hands" not in html
     assert "auto_start: autoStart" in html

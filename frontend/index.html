@@ -246,6 +246,14 @@
     .slot.ai .val, .hand.ai .val { 
       color: #b00000; 
     }
+    .slot.ai-thought-clickable {
+      cursor: pointer;
+    }
+    .slot.ai-thought-clickable:hover,
+    .slot.ai-thought-clickable:focus-visible {
+      outline: 3px solid rgba(28, 91, 139, 0.72);
+      outline-offset: 2px;
+    }
     .slot.revealed-hand {
       background: linear-gradient(135deg, #e4e4e4, #bcbcbc);
       border: 1px solid rgba(90, 90, 90, 0.45);
@@ -3720,8 +3728,14 @@
               <label><input type="checkbox" id="lobbyCheckEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
             </div>
             <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckShowAiThinkingBreakdown" style="width:auto;"> AIの思考時間の内訳を表示する</label>
+            </div>
+            <div class="settings-row">
               <label><input type="checkbox" id="lobbyCheckEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
               <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+            </div>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckAutoRevealOwnAndAiHands" style="width:auto;"> 終局後に自分とAIの手札を自動で公開する</label>
             </div>
           </div>
         </details>
@@ -3894,9 +3908,15 @@
           <div class="settings-row">
             <label><input type="checkbox" id="checkEnableEffects" style="width:auto;"> 必殺技（かかりごたえ等）の演出を有効にする</label>
           </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkShowAiThinkingBreakdown" style="width:auto;"> AIの思考時間の内訳を表示する</label>
+          </div>
           <div id="beginnerSupportSettingRow" class="settings-row">
             <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
             <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+          </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkAutoRevealOwnAndAiHands" style="width:auto;"> 終局後に自分とAIの手札を自動で公開する</label>
           </div>
         </div>
       </details>
@@ -4075,17 +4095,17 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260820b"></script>
-<script src="/static/i18n.js?v=20260820b"></script>
+<script src="/static/i18n-en.js?v=20260821b"></script>
+<script src="/static/i18n.js?v=20260821b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260809c").catch((error) => {
+  import("/static/board3d.js?v=20260821a").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260805b").catch((error) => {
+  import("/static/boardPixel.js?v=20260821a").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -4192,6 +4212,244 @@ const GAME_LOG_EFFECT_LABELS = Object.freeze({
     },
 });
 
+const GAME_LOG_AI_REASON_LABELS = Object.freeze({
+    ja: {
+        score_fallback: "局面全体の評価",
+        shi_signal: "し攻めに賛同する意思表示",
+        kakari: "味方の攻めに合わせる判断",
+        win_now: "この手で上がれる",
+        tsume: "上がり筋を優先",
+        conditional_tsume: "条件付きの上がり筋を優先",
+        inferred_endgame: "手駒推定に基づく終盤判断",
+        responded: "味方の反応に合わせる判断",
+        branched_plan: "分岐付き攻め計画",
+        time_search: "時間制限付き探索",
+        forced_king_third: "相手に王・玉を使わせる3枚目の攻め",
+        king_order: "王・玉を使う順番の調整",
+        safe_nonking_third: "王・玉を温存する安全な3枚目の攻め",
+    },
+    zh: {
+        score_fallback: "综合局面评估",
+        shi_signal: "表示赞同以“し”进攻",
+        kakari: "配合搭档的进攻",
+        win_now: "此手可以获胜",
+        tsume: "优先获胜路线",
+        conditional_tsume: "优先有条件的获胜路线",
+        inferred_endgame: "根据手牌推测作出的残局判断",
+        responded: "根据搭档的反应行动",
+        branched_plan: "分支进攻计划",
+        time_search: "限时搜索",
+        forced_king_third: "第三次进攻迫使对手使用王或玉",
+        king_order: "调整王与玉的使用顺序",
+        safe_nonking_third: "保留王或玉的安全第三次进攻",
+    },
+});
+
+const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
+    ja: {
+        pass_base: "基本方針としてパス",
+        pass_piece_count_inference: "相手の手駒枚数の推定からパス",
+        enemy_first_pass: "敵の1枚目の攻めをパス",
+        enemy_later_pass: "敵の2枚目以降の攻めをパス",
+        enemy_later_receive: "敵の2枚目以降の攻めを受ける",
+        enemy_later_receive_king: "敵の2枚目以降の攻めを王・玉で受ける",
+        receive_win_after: "受けた後にそのまま上がれる",
+        receive_tsume_after: "受けた後に上がり筋がある",
+        receive_piece_count_risk: "残り枚数の推定から受ける",
+        ally_attack_receive: "味方の攻めを受ける",
+        ally_attack_receive_saturation: "味方の攻めを受けても強い攻めが続く",
+        ally_force_king_receive: "味方の攻めを受け、相手に王・玉を使わせる",
+        ally_strong_followup_receive: "味方の強い攻めを引き継ぐ",
+        early_big_piece_same_receive: "序盤の大駒を同じ大駒で受ける",
+        king_gyoku_keep_receive_width: "受けの広さを残すため王・玉を温存",
+        attack_win_now_score: "この攻めで上がれる",
+        attack_tsume_score: "上がりにつながる攻め",
+        attack_agari_score: "最後の駒を出して上がる",
+        attack_force_enemy_king: "相手に王・玉を使わせる攻め",
+        attack_continuous_score: "同じ駒で攻めを継続",
+        attack_absolute_safe: "同じ駒では誰にも受けられない攻め",
+        attack_tatewari: "縦割りを狙う攻め",
+        attack_occupancy: "残り枚数が少なく、相手が受けにくい駒を選択",
+        attack_avoid_enemy_piece_count: "相手が持つ可能性の低い駒を選択",
+        attack_public_safe: "公開情報から安全と判断した攻め",
+        attack_piece_value: "駒の得点価値を優先",
+        attack_high_point_after_weak_shi: "弱いし攻めを避け、得点の高い駒を選択",
+        attack_four_shi_receive_return: "4しを示すため、しで攻め返す",
+        attack_three_shi_after_big_receive: "3しを生かして、しで攻める",
+        attack_four_shi_over_single_middle: "1枚だけの中駒より4しを優先",
+        attack_fourth_middle_third: "4枚目の中駒を3枚目の攻めに使う",
+        attack_kakari_score: "味方が以前に出した駒に合わせる",
+        pass_preserve_win_attack: "上がりに必要な攻め駒を温存するためパス",
+        inferred_endgame_followup_attack: "推定した終盤の上がり筋を継続",
+        ally_shi_approval_already_sent_pass: "し攻めへの賛同は伝達済みのためパス",
+    },
+    zh: {
+        pass_base: "按基本方针跳过",
+        pass_piece_count_inference: "根据对手剩余手牌数量跳过",
+        enemy_first_pass: "跳过对手第一次进攻",
+        enemy_later_pass: "跳过对手第二次以后的进攻",
+        enemy_later_receive: "接下对手第二次以后的进攻",
+        enemy_later_receive_king: "用王或玉接下对手第二次以后的进攻",
+        receive_win_after: "接牌后可以直接获胜",
+        receive_tsume_after: "接牌后存在获胜路线",
+        attack_continuous_score: "继续使用相同棋子进攻",
+        attack_occupancy: "选择对手较难接住的棋子",
+        attack_avoid_enemy_piece_count: "选择对手持有概率较低的棋子",
+        attack_kakari_score: "配合搭档之前打出的棋子",
+        pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
+    },
+});
+
+function localizeGameLogAiDetail(detail, language) {
+    const labels = GAME_LOG_AI_DETAIL_LABELS[language] || GAME_LOG_AI_DETAIL_LABELS.ja;
+    if(labels[detail]) return labels[detail];
+    let match = String(detail || "").match(/^high_score_(\d+)$/);
+    if(match) return language === "zh" ? `争取${match[1]}分的获胜` : `${match[1]}点の上がりを狙う`;
+    match = String(detail || "").match(/^attack_conditional_shi_royal_finish_(\d+)$/);
+    if(match) return language === "zh"
+        ? `以“し”和王玉组合争取${match[1]}分`
+        : `しと王・玉を使って${match[1]}点の上がりを狙う`;
+    if(String(detail || "").startsWith("attack_sequence_")) {
+        return language === "zh" ? "按照手牌结构选择进攻顺序" : "手駒構成に合う攻め順を選択";
+    }
+    if(/^enemy_first_(pass|receive)_hand_strength_/.test(String(detail || ""))) {
+        const receives = String(detail).includes("_receive_");
+        if(language === "zh") return receives ? "根据手牌强度接下对手第一次进攻" : "根据手牌强度跳过对手第一次进攻";
+        return receives ? "手駒の強さを見て敵の1枚目を受ける" : "手駒の強さを見て敵の1枚目をパス";
+    }
+    if(String(detail || "").startsWith("inferred_endgame_self_win_")) {
+        return language === "zh" ? "根据手牌推测选择自己的获胜路线" : "手駒推定から自分の上がり筋を選択";
+    }
+    if(String(detail || "").startsWith("inferred_endgame_ally_win_")) {
+        return language === "zh" ? "根据手牌推测帮助搭档获胜" : "手駒推定から味方の上がりを優先";
+    }
+    if(String(detail || "").startsWith("inferred_endgame_min_loss_")) {
+        return language === "zh" ? "选择让对手得分最低的路线" : "相手の得点を最小にする手を選択";
+    }
+    return "";
+}
+
+function localizeGameLogAiDecision(payload, language) {
+    const [reason, ...detailParts] = String(payload || "").split("/");
+    const detail = detailParts.join("/");
+    const reasons = GAME_LOG_AI_REASON_LABELS[language] || GAME_LOG_AI_REASON_LABELS.ja;
+    const reasonLabel = reasons[reason] || (language === "zh" ? "AI局面判断" : "AIによる局面判断");
+    const detailLabel = localizeGameLogAiDetail(detail, language);
+    const label = detailLabel
+        ? (reason === "score_fallback" ? detailLabel : `${reasonLabel}／${detailLabel}`)
+        : reasonLabel;
+    return language === "zh" ? `【AI判断：${label}】` : `【AI判断：${label}】`;
+}
+
+function formatGameLogSeconds(milliseconds, language) {
+    const value = Number(milliseconds);
+    if(!Number.isFinite(value)) return "-";
+    const seconds = Math.max(0, value) / 1000;
+    const rounded = seconds.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    return language === "en" ? `${rounded || "0"} sec` : `${rounded || "0"}秒`;
+}
+
+function localizeGameLogPerformance(payload, language) {
+    const metrics = {};
+    String(payload || "").split(",").forEach((part) => {
+        const separator = part.indexOf("=");
+        if(separator > 0) metrics[part.slice(0, separator)] = part.slice(separator + 1);
+    });
+    const labels = language === "zh"
+        ? {rule: "基本判断", infer: "手牌推测", cache: "预读缓存", sample: "候选生成", search: "搜索", other: "其他"}
+        : language === "en"
+            ? {rule: "rules ", infer: "hand inference ", cache: "lookahead cache ", sample: "candidate generation ", search: "search ", other: "other "}
+            : {rule: "基本判断", infer: "手駒推定", cache: "先読みキャッシュ", sample: "候補生成", search: "探索", other: "その他"};
+    const details = ["rule", "infer", "cache", "sample", "search", "other"]
+        .filter((key) => metrics[key] !== undefined)
+        .map((key) => `${labels[key]}${formatGameLogSeconds(metrics[key], language)}`)
+        .join(language === "en" ? ", " : "、");
+    const total = metrics.total !== undefined ? formatGameLogSeconds(metrics.total, language) : "-";
+    if(personalSettings.showAiThinkingBreakdown !== true) {
+        if(language === "en") return `[Thinking time: ${total}]`;
+        return language === "zh"
+            ? `【思考时间：${total}】`
+            : `【思考時間：${total}】`;
+    }
+    if(language === "en") return `[Thinking time: total ${total}${details ? ` (${details})` : ""}]`;
+    return language === "zh"
+        ? `【思考时间：合计${total}${details ? `（${details}）` : ""}】`
+        : `【思考時間：合計${total}${details ? `（${details}）` : ""}】`;
+}
+
+function gameLogCandidatePieceLabel(piece, language) {
+    const labels = {
+        "1": ["し", "し", "Pawn"],
+        "2": ["香", "香", "Lance"],
+        "3": ["馬", "馬", "Knight"],
+        "4": ["銀", "银", "Silver"],
+        "5": ["金", "金", "Gold"],
+        "6": ["角", "角", "Bishop"],
+        "7": ["飛", "飞", "Rook"],
+        "8": ["玉", "玉", "King"],
+        "9": ["王", "王", "King"],
+    };
+    const item = labels[String(piece || "")];
+    if(!item) return String(piece || "?");
+    return language === "en" ? item[2] : language === "zh" ? item[1] : item[0];
+}
+
+function formatGameLogCandidateGap(value) {
+    const number = Number(value);
+    if(!Number.isFinite(number)) return "";
+    return Math.abs(number).toFixed(1).replace(/\.0$/, "");
+}
+
+function localizeGameLogAttackCandidates(payload, language) {
+    let snapshot;
+    try {
+        snapshot = JSON.parse(decodeURIComponent(String(payload || "")));
+    } catch (_error) {
+        return "";
+    }
+    const chosen = gameLogCandidatePieceLabel(snapshot?.chosen?.attack, language);
+    const alternatives = Array.isArray(snapshot?.alternatives) ? snapshot.alternatives : [];
+    if(!chosen || alternatives.length === 0) return "";
+
+    const withScores = alternatives.some((item) => (
+        item?.score_gap !== null
+        && item?.score_gap !== undefined
+        && Number.isFinite(Number(item.score_gap))
+    ));
+    if(!withScores) {
+        const otherPieces = alternatives
+            .map((item) => gameLogCandidatePieceLabel(item?.attack, language))
+            .join(language === "en" ? ", " : "・");
+        if(language === "en") return `[Attack candidates: chose ${chosen}; others: ${otherPieces}]`;
+        if(language === "zh") return `【进攻候选：采用${chosen}／其他：${otherPieces}】`;
+        return `【攻め候補：${chosen}を採用／ほか：${otherPieces}】`;
+    }
+
+    const descriptions = alternatives.map((item) => {
+        const piece = gameLogCandidatePieceLabel(item?.attack, language);
+        if(item?.score_gap === null || item?.score_gap === undefined) return piece;
+        const gap = Number(item?.score_gap);
+        if(!Number.isFinite(gap)) return piece;
+        const amount = formatGameLogCandidateGap(gap);
+        if(language === "en") {
+            if(gap > 0) return `${piece} (${amount} evaluation points lower)`;
+            if(gap < 0) return `${piece} (${amount} higher in normal evaluation; priority plan prevailed)`;
+            return `${piece} (same evaluation)`;
+        }
+        if(language === "zh") {
+            if(gap > 0) return `${piece}（评估值低${amount}）`;
+            if(gap < 0) return `${piece}（常规评估高${amount}，但优先计划胜出）`;
+            return `${piece}（同等评估）`;
+        }
+        if(gap > 0) return `${piece}（評価値が${amount}低い）`;
+        if(gap < 0) return `${piece}（通常評価は${amount}高いが、優先戦略により不採用）`;
+        return `${piece}（同評価）`;
+    });
+    if(language === "en") return `[Attack candidates: chose ${chosen}; ${descriptions.join(", ")}]`;
+    if(language === "zh") return `【进攻候选：采用${chosen}／${descriptions.join("／")}】`;
+    return `【攻め候補：${chosen}を採用／${descriptions.join("／")}】`;
+}
+
 function localizeGameLogSuffix(suffix, language) {
     if(language === "en") return suffix;
     const hiddenLabel = language === "zh" ? "（暗置牌不公开）" : "（伏せ駒は非公開）";
@@ -4202,12 +4460,25 @@ function localizeGameLogSuffix(suffix, language) {
         .replace(/\[EFFECT:([a-z_]+)\]/g, (source, effect) => {
             const label = effectLabels[effect];
             return label ? `[${effectPrefix}:${label}]` : source;
-        });
+        })
+        .replace(/\[AI:([^\]]+)\]/g, (_source, payload) => localizeGameLogAiDecision(payload, language))
+        .replace(/\[AI-CANDIDATES:([^\]]+)\]/g, (source, payload) => localizeGameLogAttackCandidates(payload, language) || source)
+        .replace(/\[PERF\(ms\):([^\]]+)\]/g, (_source, payload) => localizeGameLogPerformance(payload, language));
 }
 
 function localizeGameLogLine(entry, language = currentUiLanguage()) {
     const source = String(entry ?? "");
-    if(language === "en") return source;
+    if(language === "en") {
+        return source
+            .replace(
+                /\[AI-CANDIDATES:([^\]]+)\]/g,
+                (match, payload) => localizeGameLogAttackCandidates(payload, language) || match
+            )
+            .replace(
+                /\[PERF\(ms\):([^\]]+)\]/g,
+                (_match, payload) => localizeGameLogPerformance(payload, language)
+            );
+    }
 
     let match = source.match(/^Game start\. dealer=([ABCD])(.*)$/);
     if(match) {
@@ -4262,6 +4533,73 @@ function localizeGameLogLine(entry, language = currentUiLanguage()) {
 
     return localizeGameLogSuffix(source, language);
 }
+
+function aiBoardExplanationKey(seat, kind, index) {
+    return `${seat}:${kind}:${index}`;
+}
+
+function findAiBoardExplanation(state, keyValue) {
+    const targetKey = String(keyValue || "");
+    const items = Array.isArray(state?.ai_board_explanations)
+        ? state.ai_board_explanations
+        : [];
+    return items.find((item) => (
+        aiBoardExplanationKey(item?.seat, item?.kind, item?.index) === targetKey
+    )) || null;
+}
+
+function aiThoughtSender(seat, language) {
+    if(language === "en") return `${seat} AI reasoning`;
+    if(language === "zh") return `${seat} AI思考`;
+    return `${seat} AIの思考`;
+}
+
+function showAiBoardThought(keyValue) {
+    const item = findAiBoardExplanation(latestState, keyValue);
+    if(!item) return;
+    const language = currentUiLanguage();
+    const intro = language === "en"
+        ? "Reasoning and candidate comparison for this move:"
+        : language === "zh"
+            ? "这一步的判断与候选比较："
+            : "この手の判断と候補比較：";
+    localAiThoughtMessages.push({
+        seat: "ai_thought",
+        sender: aiThoughtSender(item.seat, language),
+        message: `${intro}\n${localizeGameLogLine(item.log, language)}`,
+        ts: Date.now(),
+        local_ai_thought: true,
+    });
+    if(localAiThoughtMessages.length > 20){
+        localAiThoughtMessages.splice(0, localAiThoughtMessages.length - 20);
+    }
+    renderChat(latestState);
+    if(!isDesktopChatDocked() && !chatOpen){
+        toggleChatPanel(true, false);
+    }else{
+        const box = document.getElementById("chatMessages");
+        if(box) setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
+    }
+}
+
+function attachAiBoardThoughtInteraction(element, keyValue) {
+    if(!element || !keyValue) return;
+    element.classList.add("ai-thought-clickable");
+    element.tabIndex = 0;
+    element.setAttribute("role", "button");
+    element.setAttribute("aria-label", "AIの思考と候補比較をチャットに表示");
+    element.title = "AIの思考と候補比較を表示";
+    element.addEventListener("click", () => showAiBoardThought(keyValue));
+    element.addEventListener("keydown", (event) => {
+        if(event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        showAiBoardThought(keyValue);
+    });
+}
+
+window.addEventListener("goita-ai-piece-thought", (event) => {
+    showAiBoardThought(event?.detail?.thoughtKey);
+});
 
 function renderGameLog(entries) {
     const logElement = document.getElementById("log");
@@ -4576,6 +4914,8 @@ function loadPersonalSettings() {
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
+            showAiThinkingBreakdown: saved.showAiThinkingBreakdown === true,
+            autoRevealOwnAndAiHands: saved.autoRevealOwnAndAiHands === true,
             boardViewMode: normalizeBoardViewMode(saved.boardViewMode),
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
@@ -4598,6 +4938,8 @@ function loadPersonalSettings() {
             pieceSound: "notanomori",
             enableCVoice: false,
             enableBeginnerSupport: false,
+            showAiThinkingBreakdown: false,
+            autoRevealOwnAndAiHands: false,
             boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
@@ -4713,6 +5055,8 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyPieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
+    document.getElementById("lobbyCheckAutoRevealOwnAndAiHands").checked = personalSettings.autoRevealOwnAndAiHands === true;
     setLobbyBoardViewControl(personalSettings.boardViewMode);
     document.getElementById("lobbyPersonalSettingsStatus").textContent = "";
 }
@@ -4737,6 +5081,8 @@ function saveLobbyPersonalSettings() {
         pieceSound: document.getElementById("lobbyPieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
+        showAiThinkingBreakdown: document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked,
+        autoRevealOwnAndAiHands: document.getElementById("lobbyCheckAutoRevealOwnAndAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
     };
     applyPersonalSettingsAppearance();
@@ -4750,6 +5096,7 @@ function saveLobbyPersonalSettings() {
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存できませんでした。";
     }
     refreshChatNoticeVisibility();
+    if(latestState) renderGameLog(latestState.log || []);
 }
 
 applyPersonalSettingsAppearance();
@@ -4806,6 +5153,7 @@ let chatToastTimer = null;
 let desktopRoomChatHeightObserver = null;
 let desktopRoomLogHeightObserver = null;
 let localChatNotices = [];
+let localAiThoughtMessages = [];
 let lastHintNoticeKey = "";
 let socket = null;
 let voiceChatController = null;
@@ -4823,6 +5171,8 @@ let kifuArchiveCache = null;
 let kifuPresetLoading = false;
 let startRequestInFlight = false;
 let nextRoundRequestInFlight = false;
+let autoRevealHandsInFlight = false;
+let autoRevealHandsRoundKey = "";
 let autoPlayEnabled = false;
 let keepScoreForPendingSetup = false;
 let audioUnlocked = false;
@@ -5297,6 +5647,8 @@ async function enterRoom(targetGid, roomName) {
     renderChat.roomId = null;
     lastChatToastCount = 0;
     localChatNotices = [];
+    localAiThoughtMessages = [];
+    autoRevealHandsRoundKey = "";
     lastHintNoticeKey = "";
     mySeat = WATCH;
     gid = targetGid;
@@ -5340,6 +5692,8 @@ async function returnToLobby() {
     renderChat.roomId = null;
     lastChatToastCount = 0;
     localChatNotices = [];
+    localAiThoughtMessages = [];
+    autoRevealHandsRoundKey = "";
     lastHintNoticeKey = "";
     mySeat = WATCH;
 
@@ -5686,6 +6040,8 @@ function syncPersonalSettingsControls() {
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    document.getElementById("checkShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
+    document.getElementById("checkAutoRevealOwnAndAiHands").checked = personalSettings.autoRevealOwnAndAiHands === true;
     setBoardViewControl(effectiveBoardViewMode(settingTargetGid || gid));
     document.getElementById("personalSettingsStatus").textContent = "";
 }
@@ -5838,6 +6194,8 @@ async function savePersonalSettings() {
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
+        showAiThinkingBreakdown: document.getElementById("checkShowAiThinkingBreakdown").checked,
+        autoRevealOwnAndAiHands: document.getElementById("checkAutoRevealOwnAndAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
     };
     latestBeginnerRecommendation = null;
@@ -5857,6 +6215,7 @@ async function savePersonalSettings() {
         document.getElementById("personalSettingsStatus").textContent = "保存できませんでした。";
     }
     refreshChatNoticeVisibility();
+    if(latestState) renderGameLog(latestState.log || []);
 }
 
 async function unlockRoomManagement() {
@@ -7108,7 +7467,7 @@ async function refreshRoomChatPeople(){
   }
 }
 
-function toggleChatPanel(open){
+function toggleChatPanel(open, focusComposer = true){
   if(isDesktopChatDocked()) return;
   chatOpen = (typeof open === "boolean") ? open : !chatOpen;
   const panel = document.getElementById("chatPanel");
@@ -7128,7 +7487,7 @@ function toggleChatPanel(open){
       const box = document.getElementById("chatMessages");
       const input = document.getElementById("chatInput");
       if(box) box.scrollTop = box.scrollHeight;
-      if(input) input.focus();
+      if(input && focusComposer) input.focus();
     }, 0);
   }
   updateMobileChatPageScrollLock();
@@ -7264,7 +7623,8 @@ function setChatMessageText(element, message, translateMessage = false){
 function mergedChatMessages(serverMessages){
   return [
     ...serverMessages,
-    ...localChatNotices.filter(shouldDisplayChatNotice)
+    ...localChatNotices.filter(shouldDisplayChatNotice),
+    ...localAiThoughtMessages,
   ].sort((a, b) => chatItemTimeValue(a) - chatItemTimeValue(b));
 }
 
@@ -7285,6 +7645,7 @@ function renderChatItems(box, messages, isMine = null){
     if(typeof isMine === "function" && isMine(item)) row.classList.add("mine");
     if(item?.local_notice) row.classList.add("notice");
     if(item?.ai_answer) row.classList.add("ai-answer");
+    if(item?.local_ai_thought) row.classList.add("ai-answer", "ai-thought");
 
     const sender = document.createElement("div");
     sender.className = "chat-sender";
@@ -8104,6 +8465,11 @@ function isSeatHandRevealed(state, seat){
   return Array.isArray(state?.revealed_hand_seats) && state.revealed_hand_seats.includes(seat);
 }
 
+function aiBoardThoughtKeyForSlot(state, seat, kind, index) {
+  const keyValue = aiBoardExplanationKey(seat, kind, index);
+  return findAiBoardExplanation(state, keyValue) ? keyValue : "";
+}
+
 function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
   const out = new Map();
 
@@ -8178,6 +8544,9 @@ function buildBoard3DSnapshot(state) {
     const isRevealedHand = !boardPiece && !isPendingReceive && !!revealedHandPiece;
     const piece = boardPiece || (isPendingReceive ? pendingReceive.piece : revealedHandPiece);
     if(!piece) continue;
+    const thoughtKey = boardPiece
+      ? aiBoardThoughtKeyForSlot(state, slot.p, kindKey, slot.idx)
+      : "";
 
     pieces.push({
       key: `${slot.p}-${kindKey}-${slot.idx}-${piece}`,
@@ -8196,6 +8565,7 @@ function buildBoard3DSnapshot(state) {
       revealedHidden: !!isRevealedHidden,
       ai: seatIsAi(state, slot.p),
       current: slot.p === currentAttacker && slot.idx === currentAttackIndex && !state.finished,
+      thoughtKey,
     });
   }
 
@@ -8402,9 +8772,7 @@ function confirmHandReveal(target){
   });
 }
 
-async function revealSeatHand(target){
-  if(!await confirmHandReveal(target)) return;
-
+async function requestSeatHandReveal(target, showError = true){
   try{
     const qs = new URLSearchParams({
       requester: mySeat,
@@ -8413,13 +8781,58 @@ async function revealSeatHand(target){
     });
     const res = await fetch(`${API}/games/${gid}/reveal_hand?${qs.toString()}`, {method: "POST"});
     if(!res.ok){
-      alert(uiText("手札を公開できませんでした。"));
-      return;
+      if(showError) alert(uiText("手札を公開できませんでした。"));
+      return false;
     }
-    await refresh();
+    return true;
   }catch(e){
-    alert(uiText("手札を公開できませんでした。"));
+    if(showError) alert(uiText("手札を公開できませんでした。"));
+    return false;
   }
+}
+
+async function revealSeatHand(target){
+  if(!await confirmHandReveal(target)) return;
+  if(await requestSeatHandReveal(target)) await refresh();
+}
+
+async function maybeAutoRevealOwnAndAiHands(state){
+  if(
+    personalSettings.autoRevealOwnAndAiHands !== true
+    || !state?.is_started
+    || !state.finished
+    || isSpectator()
+    || autoRevealHandsInFlight
+  ) return false;
+
+  const ownedSeats = Array.isArray(state.owned_human_seats) ? state.owned_human_seats : [];
+  if(!ownedSeats.includes(mySeat)) return false;
+
+  const roundKey = `${gid}:${state.round_count || 1}`;
+  if(autoRevealHandsRoundKey === roundKey) return false;
+
+  const revealed = new Set(Array.isArray(state.revealed_hand_seats) ? state.revealed_hand_seats : []);
+  const aiSeats = Array.isArray(state.ai_seats) ? state.ai_seats : [];
+  const targets = [mySeat, ...aiSeats].filter((seat, index, list) => (
+    !revealed.has(seat) && list.indexOf(seat) === index
+  ));
+  if(targets.length === 0){
+    autoRevealHandsRoundKey = roundKey;
+    return false;
+  }
+
+  autoRevealHandsInFlight = true;
+  autoRevealHandsRoundKey = roundKey;
+  let changed = false;
+  try{
+    for(const target of targets){
+      if(await requestSeatHandReveal(target, false)) changed = true;
+    }
+  }finally{
+    autoRevealHandsInFlight = false;
+    if(!changed) autoRevealHandsRoundKey = "";
+  }
+  return changed;
 }
 
 function renderHandRevealControls(state){
@@ -8849,6 +9262,12 @@ function renderBoard(state){
             setPieceValue(val, piece);
           }
           div.appendChild(val);
+          if(boardPiece){
+            attachAiBoardThoughtInteraction(
+              div,
+              aiBoardThoughtKeyForSlot(state, slot.p, kindKey, slot.idx),
+            );
+          }
         }
       }
       board.appendChild(div);
@@ -9262,6 +9681,10 @@ async function refresh(){
     return;
   }
   latestState = state;
+  if(await maybeAutoRevealOwnAndAiHands(state)){
+    window.setTimeout(() => refresh(), 0);
+    return;
+  }
   voiceChatController?.syncContext?.();
   applyRoomBackground(state);
   
@@ -9304,6 +9727,7 @@ async function refresh(){
       isGameStarted = false;
       resetLogAudioSync(currentLogCount);
       fixedHandMemory = {};
+      autoRevealHandsRoundKey = "";
   }
   
   if (currentLogCount > 1) {

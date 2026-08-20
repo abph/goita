@@ -279,6 +279,8 @@ class RuleBasedAgent(
         self._initialize_background_search()
         self.last_decision_reason = ""
         self.last_score_fallback_detail = ""
+        self.last_attack_candidate_scores: List[dict] = []
+        self.last_attack_candidate_snapshot: Dict[str, object] = {}
         self.last_information_set_search = None
 
     def bind_player(self, player: str) -> None:

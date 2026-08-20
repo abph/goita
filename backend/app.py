@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import random
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -1649,6 +1650,31 @@ def _format_ai_performance(agent: Any) -> str:
     return f" [PERF(ms):{','.join(values)}]"
 
 
+def _format_ai_attack_candidates(agent: Any) -> str:
+    snapshot = getattr(agent, "last_attack_candidate_snapshot", None)
+    if not isinstance(snapshot, dict) or not snapshot.get("alternatives"):
+        return ""
+    payload = urllib.parse.quote(
+        json.dumps(snapshot, ensure_ascii=True, separators=(",", ":")),
+        safe="",
+    )
+    return f" [AI-CANDIDATES:{payload}]"
+
+
+AI_CANDIDATE_LOG_PATTERN = re.compile(r"\s*\[AI-CANDIDATES:[^\]]+\]")
+
+
+def _visible_game_log(
+    log: List[str],
+    *,
+    round_finished: bool,
+    is_debug_room: bool,
+) -> List[str]:
+    if round_finished or is_debug_room:
+        return list(log)
+    return [AI_CANDIDATE_LOG_PATTERN.sub("", str(line)) for line in log]
+
+
 def _actions_to_json(actions: List[Tuple[str, Optional[str], Optional[str]]]) -> List[Dict[str, Any]]:
     return [{"action_type": t, "block": b, "attack": a} for (t, b, a) in actions]
 
@@ -1780,21 +1806,68 @@ def _update_board_snapshot(
     action: Tuple[str, Optional[str], Optional[str]],
     *,
     hidden_receive: bool = False,
-) -> None:
+) -> List[Dict[str, Any]]:
+    targets: List[Dict[str, Any]] = []
     t, b, a = action
     if player not in board:
-        return
+        return targets
     if t == "receive":
         idx = _push_first_empty(board[player]["receive"], b)
         if idx is not None:
             board[player]["receive_hidden"][idx] = bool(hidden_receive)
+            targets.append({"kind": "receive", "index": idx, "piece": str(b)})
     elif t == "attack":
-        _push_first_empty(board[player]["attack"], a)
+        idx = _push_first_empty(board[player]["attack"], a)
+        if idx is not None:
+            targets.append({"kind": "attack", "index": idx, "piece": str(a)})
     elif t == "attack_after_block":
         idx = _push_first_empty(board[player]["receive"], b)
         if idx is not None:
             board[player]["receive_hidden"][idx] = bool(hidden_receive)
-        _push_first_empty(board[player]["attack"], a)
+            targets.append({"kind": "receive", "index": idx, "piece": str(b)})
+        idx = _push_first_empty(board[player]["attack"], a)
+        if idx is not None:
+            targets.append({"kind": "attack", "index": idx, "piece": str(a)})
+    return targets
+
+
+def _visible_ai_board_explanations(
+    game_obj: Dict[str, Any],
+    state: GoitaState,
+    revealed_hand_seats: Set[str],
+) -> List[Dict[str, Any]]:
+    is_debug_room = bool(game_obj.get("is_debug_room", False))
+    if not is_debug_room and not state.finished:
+        return []
+
+    visible: List[Dict[str, Any]] = []
+    for item in game_obj.get("ai_board_explanations", []):
+        if not isinstance(item, dict):
+            continue
+        seat = str(item.get("seat", ""))
+        if seat not in ALL_SEATS:
+            continue
+        if not is_debug_room and seat not in revealed_hand_seats:
+            continue
+        log_line = str(item.get("log", ""))
+        for target in item.get("targets", []):
+            if not isinstance(target, dict):
+                continue
+            kind = str(target.get("kind", ""))
+            index = target.get("index")
+            piece = str(target.get("piece", ""))
+            if kind not in ("receive", "attack") or not isinstance(index, int):
+                continue
+            if not (0 <= index < 4) or piece not in PIECE_POINTS:
+                continue
+            visible.append({
+                "seat": seat,
+                "kind": kind,
+                "index": index,
+                "piece": piece,
+                "log": log_line,
+            })
+    return visible
 
 
 def _record_public_action(
@@ -1832,7 +1905,11 @@ def _state_public_view(
     client_id: str = "",
 ) -> Dict[str, Any]:
     
-    log = game_obj.get("log", [])
+    log = _visible_game_log(
+        game_obj.get("log", []),
+        round_finished=bool(state.finished),
+        is_debug_room=bool(game_obj.get("is_debug_room", False)),
+    )
     board_public = game_obj.get("board", _new_board_snapshot())
     human_seats = game_obj.get("human_seats", {})
     owned_human_seats = _client_owned_human_seats(game_obj, client_id)
@@ -1897,6 +1974,11 @@ def _state_public_view(
         "face_down_pieces": face_down_pieces_view,
         "scores": scores,
         "board_public": board_view,
+        "ai_board_explanations": _visible_ai_board_explanations(
+            game_obj,
+            state,
+            revealed_hand_seats,
+        ),
         "log": log[-200:],
         "finished": finished,
         "winner": winner,
@@ -1956,6 +2038,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "ai_profile": ai_profile,
         "log": [],
         "board": _new_board_snapshot(),
+        "ai_board_explanations": [],
         "last_public_action": None,
         "init_hands": hands,
         "dealer": dealer,
@@ -2181,7 +2264,12 @@ def _apply_agent_turn(
     hidden_receive = _is_hidden_receive_by_state_delta(state, player, agent_action[0], before_fd)
     if _visible_receive_for_score_effect(agent_action, effects):
         hidden_receive = False
-    _update_board_snapshot(board, player, agent_action, hidden_receive=hidden_receive)
+    board_targets = _update_board_snapshot(
+        board,
+        player,
+        agent_action,
+        hidden_receive=hidden_receive,
+    )
     _record_public_action(game, player, agent_action)
 
     log_str = _format_action(player, agent_action) + (" (hidden)" if hidden_receive else "")
@@ -2189,9 +2277,16 @@ def _apply_agent_turn(
         log_str += f" [EFFECT:{ef}]"
     if forced_action is None:
         log_str += _format_ai_decision(agent)
+        log_str += _format_ai_attack_candidates(agent)
         log_str += _format_ai_performance(agent)
     log_str += str(log_suffix or "")
     log.append(log_str)
+    if forced_action is None and player in _ai_seat_set(game) and board_targets:
+        game.setdefault("ai_board_explanations", []).append({
+            "seat": player,
+            "targets": board_targets,
+            "log": log_str,
+        })
 
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
     _notify_public(agents, state, player, agent_action)
@@ -2615,9 +2710,14 @@ async def reveal_hand(
             raise HTTPException(status_code=403, detail="Players can reveal only their own hand.")
         _require_human_seat_owner(game, target, client_id)
     elif target in ai_seats:
-        if requester != "A":
-            raise HTTPException(status_code=403, detail="Only the host can reveal an AI hand.")
-        _require_human_seat_owner(game, "A", client_id)
+        if state.finished:
+            if requester not in human_seats:
+                raise HTTPException(status_code=403, detail="Only a seated player can reveal an AI hand.")
+            _require_human_seat_owner(game, requester, client_id)
+        else:
+            if requester != "A":
+                raise HTTPException(status_code=403, detail="Only the host can reveal an AI hand.")
+            _require_human_seat_owner(game, "A", client_id)
     else:
         raise HTTPException(status_code=409, detail=f"Seat {target} has no player to reveal.")
 

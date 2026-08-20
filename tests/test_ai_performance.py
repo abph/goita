@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import urllib.parse
+
 from backend import app as app_module
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import (
@@ -88,8 +91,85 @@ def test_performance_log_format_is_current_ai_only() -> None:
     assert app_module._format_ai_performance(IntermediateMiddleRuleBasedAgent()) == ""
 
 
+def test_attack_candidate_snapshot_keeps_chosen_and_top_alternatives() -> None:
+    state = GoitaState(HANDS, dealer="A")
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent.TIME_SEARCH_ENABLED = False
+
+    action = agent.select_action(state, "A", state.legal_actions("A"))
+    snapshot = agent.last_attack_candidate_snapshot
+
+    assert action[0] == "attack_after_block"
+    assert snapshot["chosen"]["attack"] == action[2]
+    assert 1 <= len(snapshot["alternatives"]) <= 3
+    assert all(item["attack"] != action[2] for item in snapshot["alternatives"])
+    assert len({item["attack"] for item in snapshot["alternatives"]}) == len(
+        snapshot["alternatives"]
+    )
+
+    formatted = app_module._format_ai_attack_candidates(agent)
+    assert formatted.startswith(" [AI-CANDIDATES:")
+    encoded = formatted.removeprefix(" [AI-CANDIDATES:").removesuffix("]")
+    decoded = json.loads(urllib.parse.unquote(encoded))
+    assert decoded == snapshot
+
+    live_log = [f"A: attack {action[2]}{formatted}"]
+    assert "AI-CANDIDATES" not in app_module._visible_game_log(
+        live_log,
+        round_finished=False,
+        is_debug_room=False,
+    )[0]
+    assert app_module._visible_game_log(
+        live_log,
+        round_finished=True,
+        is_debug_room=False,
+    ) == live_log
+    assert app_module._visible_game_log(
+        live_log,
+        round_finished=False,
+        is_debug_room=True,
+    ) == live_log
+
+
+def test_ai_board_explanations_follow_board_slots_and_hand_reveal() -> None:
+    game = app_module._create_game_obj(dealer="A")
+    game["ai_seats"] = ["A"]
+    game["agents"]["A"].TIME_SEARCH_ENABLED = False
+
+    result = app_module._apply_agent_turn(game, "A")
+
+    assert result["status"] == "ok"
+    records = game["ai_board_explanations"]
+    assert len(records) == 1
+    assert records[0]["seat"] == "A"
+    assert [(item["kind"], item["index"]) for item in records[0]["targets"]] == [
+        ("receive", 0),
+        ("attack", 0),
+    ]
+    assert all(item["piece"] in app_module.PIECE_POINTS for item in records[0]["targets"])
+    assert "[AI:" in records[0]["log"]
+
+    state = game["state"]
+    assert app_module._visible_ai_board_explanations(game, state, {"A"}) == []
+
+    state.finished = True
+    assert app_module._visible_ai_board_explanations(game, state, set()) == []
+    visible = app_module._visible_ai_board_explanations(game, state, {"A"})
+    assert [(item["kind"], item["index"]) for item in visible] == [
+        ("receive", 0),
+        ("attack", 0),
+    ]
+
+    state.finished = False
+    game["is_debug_room"] = True
+    assert len(app_module._visible_ai_board_explanations(game, state, set())) == 2
+
+
 if __name__ == "__main__":
     test_current_ai_records_stage_timings_without_changing_action()
     test_timed_search_records_sampling_and_search_separately()
     test_performance_log_format_is_current_ai_only()
+    test_attack_candidate_snapshot_keeps_chosen_and_top_alternatives()
+    test_ai_board_explanations_follow_board_slots_and_hand_reveal()
     print("AI_PERFORMANCE_TEST_OK")
