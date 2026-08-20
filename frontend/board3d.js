@@ -947,6 +947,26 @@ function publicRoomIdAtPointer(event) {
   return meetingPublicTables.get(roomId)?.root.visible ? roomId : "";
 }
 
+function aiThoughtKeyAtPointer(event) {
+  if (!camera || !renderer || !pieceLayer) return "";
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return "";
+  const pointer = new THREE.Vector2(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(pieceLayer.children, true)[0];
+  let object = hit?.object || null;
+  while (object) {
+    const thoughtKey = String(object.userData?.aiThoughtKey || "");
+    if (thoughtKey) return thoughtKey;
+    object = object.parent;
+  }
+  return "";
+}
+
 function attachInteraction() {
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
@@ -1006,6 +1026,13 @@ function attachInteraction() {
   canvas.addEventListener("click", (event) => {
     if (suppressNextClick) {
       suppressNextClick = false;
+      return;
+    }
+    const thoughtKey = aiThoughtKeyAtPointer(event);
+    if (thoughtKey) {
+      window.dispatchEvent(new CustomEvent("goita-ai-piece-thought", {
+        detail: { thoughtKey },
+      }));
       return;
     }
     const roomId = publicRoomIdAtPointer(event);
@@ -1084,6 +1111,7 @@ function pieceTextMaterial(label, englishLabel, color, opacity) {
 
 function createPieceObject(piece) {
   const root = new THREE.Group();
+  if (piece.thoughtKey) root.userData.aiThoughtKey = String(piece.thoughtKey);
   root.position.set((piece.col - 4.5) * 1.04, 0.2, (piece.row - 4.5) * 1.04);
   root.rotation.y = PHYS_ROTATION[piece.phys] || 0;
 

@@ -260,10 +260,34 @@ function setTheme(theme) {
   if (visible && latestSnapshot) drawScene();
 }
 
+function thoughtKeyAtPointer(event) {
+  if (!visible || !latestSnapshot) return "";
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return "";
+  const x = (event.clientX - bounds.left) * SIZE / bounds.width;
+  const y = (event.clientY - bounds.top) * SIZE / bounds.height;
+  const col = Math.floor((x - GRID_ORIGIN) / CELL) + 1;
+  const row = Math.floor((y - GRID_ORIGIN) / CELL) + 1;
+  const piece = latestSnapshot.pieces.find((item) => (
+    item.col === col && item.row === row && item.thoughtKey
+  ));
+  return String(piece?.thoughtKey || "");
+}
+
 if (canvas && context) {
   canvas.width = SIZE;
   canvas.height = SIZE;
   context.imageSmoothingEnabled = false;
+  canvas.addEventListener("click", (event) => {
+    const thoughtKey = thoughtKeyAtPointer(event);
+    if (!thoughtKey) return;
+    window.dispatchEvent(new CustomEvent("goita-ai-piece-thought", {
+      detail: { thoughtKey },
+    }));
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    canvas.style.cursor = thoughtKeyAtPointer(event) ? "pointer" : "default";
+  });
 }
 
 window.goitaBoardPixel = {
