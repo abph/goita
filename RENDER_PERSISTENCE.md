@@ -24,8 +24,9 @@ The files are then stored at:
 
 The room settings file contains only editable room-management values: room
 name, entry passphrase, AI profile, legal-action visibility, log visibility,
-and the configured room background path. It does not contain admin passwords,
-hands, scores, occupied seats, or other live match state.
+the configured room background path, and changed room-admin passwords as
+salted PBKDF2 hashes. It never stores room-admin passwords in plaintext, and
+does not contain hands, scores, occupied seats, or other live match state.
 
 The existing `GOITA_AI_ADAPTIVE_VALUE_PATH` variable still has priority when
 an exact file path is required. Without either setting, local development keeps

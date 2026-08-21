@@ -8,8 +8,11 @@ Writes use an atomic replacement so an interrupted save keeps the old file.
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import logging
 import os
+import secrets
 import threading
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -17,8 +20,58 @@ from typing import Any, Mapping, Optional
 
 ROOM_SETTINGS_FILENAME = "goita-room-settings.json"
 ROOM_SETTINGS_VERSION = 1
+ADMIN_PASSWORD_HASH_SCHEME = "pbkdf2_sha256"
+ADMIN_PASSWORD_HASH_ITERATIONS = 260_000
 _SAVE_LOCK = threading.Lock()
 _LOGGER = logging.getLogger(__name__)
+
+
+def hash_admin_password(password: str) -> str:
+    """Hash a room administrator password for persistent storage."""
+
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        ADMIN_PASSWORD_HASH_ITERATIONS,
+    )
+    return (
+        f"{ADMIN_PASSWORD_HASH_SCHEME}${ADMIN_PASSWORD_HASH_ITERATIONS}"
+        f"${salt.hex()}${digest.hex()}"
+    )
+
+
+def is_admin_password_hash(value: Any) -> bool:
+    """Return whether a value has the supported stored-password format."""
+
+    if not isinstance(value, str):
+        return False
+    parts = value.split("$")
+    if len(parts) != 4 or parts[0] != ADMIN_PASSWORD_HASH_SCHEME:
+        return False
+    try:
+        iterations = int(parts[1])
+        salt = bytes.fromhex(parts[2])
+        digest = bytes.fromhex(parts[3])
+    except (TypeError, ValueError):
+        return False
+    return iterations > 0 and len(salt) >= 16 and len(digest) == 32
+
+
+def verify_admin_password(password: str, stored_hash: str) -> bool:
+    """Verify a submitted password without exposing the stored value."""
+
+    if not is_admin_password_hash(stored_hash):
+        return False
+    _scheme, iterations_text, salt_hex, digest_hex = stored_hash.split("$")
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        bytes.fromhex(salt_hex),
+        int(iterations_text),
+    )
+    return hmac.compare_digest(candidate, bytes.fromhex(digest_hex))
 
 
 def resolve_room_settings_path(environ: Mapping[str, str]) -> Optional[Path]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hmac
 import json
 import logging
 import os
@@ -40,9 +41,12 @@ from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapsh
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 from backend.room_settings_persistence import (
+    hash_admin_password,
+    is_admin_password_hash,
     load_room_settings,
     resolve_room_settings_path,
     save_room_settings,
+    verify_admin_password,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -80,6 +84,8 @@ PRIVATE_ROOM_DEFINITIONS = (
         "owner": "金沢大会チーム埼玉",
     },
     {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
+    {"gid": "room-iron-05", "pass": None, "admin": "admin-e", "owner": "プライベートE"},
+    {"gid": "room-platinum-06", "pass": None, "admin": "admin-f", "owner": "プライベートF"},
 )
 PRIVATE_ROOM_NAMES = {
     room["gid"]: room["owner"] for room in PRIVATE_ROOM_DEFINITIONS
@@ -100,7 +106,7 @@ LOBBY_ROOM_SETTINGS = {
         "LOBBY_MAIN_ROOM_COUNT", 4, 1, len(LOBBY_MAIN_ROOM_IDS)
     ),
     "private_room_count": _initial_room_count(
-        "LOBBY_PRIVATE_ROOM_COUNT", 3, 0, len(PRIVATE_ROOM_DEFINITIONS)
+        "LOBBY_PRIVATE_ROOM_COUNT", 4, 0, len(PRIVATE_ROOM_DEFINITIONS)
     ),
 }
 NAME_MAX_LEN = 9
@@ -1512,6 +1518,13 @@ class LobbySettingsUpdateRequest(BaseModel):
     private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
 
 
+class PrivateRoomAdminPasswordUpdateRequest(BaseModel):
+    admin_password: str
+    game_id: str
+    new_password: str = Field(default="", max_length=128)
+    reset_to_default: bool = False
+
+
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
     image_path = str(value or "").strip()
     if not image_path:
@@ -2059,6 +2072,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "chat_messages": [],
         "password": None,
         "admin_password": None,
+        "admin_password_hash": "",
         "owner_name": "",
         "reveal_hands": False,
         "revealed_hand_seats": [],
@@ -2159,6 +2173,11 @@ def _room_management_settings(game: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "owner_name": str(game.get("owner_name", "")),
         "password": game.get("password") if isinstance(game.get("password"), str) else None,
+        "admin_password_hash": (
+            game.get("admin_password_hash")
+            if is_admin_password_hash(game.get("admin_password_hash"))
+            else ""
+        ),
         "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
         "show_legal_actions": bool(game.get("show_legal_actions", False)),
         "show_log": bool(game.get("show_log", False)),
@@ -2177,6 +2196,12 @@ def _apply_room_management_settings(
     if "password" in settings:
         password = settings.get("password")
         game["password"] = password if isinstance(password, str) and password else None
+
+    admin_password_hash = settings.get("admin_password_hash")
+    if is_admin_password_hash(admin_password_hash):
+        game["admin_password_hash"] = admin_password_hash
+    elif "admin_password_hash" in settings:
+        game["admin_password_hash"] = ""
 
     next_ai_profile = _normalize_ai_profile(settings.get("ai_profile"))
     if game.get("ai_profile") != next_ai_profile:
@@ -2217,6 +2242,17 @@ def _save_persisted_room_management_settings() -> bool:
         if game_id in GAMES
     }
     return save_room_settings(ROOM_SETTINGS_PATH, rooms)
+
+
+def _room_admin_password_matches(game: Dict[str, Any], password: str) -> bool:
+    stored_hash = game.get("admin_password_hash")
+    if is_admin_password_hash(stored_hash):
+        return verify_admin_password(password, stored_hash)
+    initial_password = game.get("admin_password")
+    return isinstance(initial_password, str) and hmac.compare_digest(
+        initial_password,
+        password,
+    )
 
 
 setup_main_rooms()
@@ -2609,6 +2645,15 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
         "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
         "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
+        "private_rooms": [
+            {
+                "game_id": room["gid"],
+                "owner_name": str(
+                    GAMES.get(room["gid"], {}).get("owner_name", room["owner"])
+                ),
+            }
+            for room in PRIVATE_ROOM_DEFINITIONS
+        ],
         "room_totals": room_data["room_totals"],
         "ai_search_telemetry": ai_search_telemetry_snapshot(),
         "ai_background_search": background_search_runtime_snapshot(),
@@ -2637,6 +2682,36 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
     return _lobby_admin_payload()
 
 
+@app.post("/lobby/admin/private-room-password")
+def update_private_room_admin_password(req: PrivateRoomAdminPasswordUpdateRequest):
+    if req.admin_password != LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+    if req.game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(status_code=404, detail="プライベートルームが存在しません")
+    if not req.reset_to_default and not req.new_password.strip():
+        raise HTTPException(status_code=400, detail="新しい管理用パスワードを入力してください")
+
+    game = GAMES[req.game_id]
+    previous_hash = str(game.get("admin_password_hash", ""))
+    game["admin_password_hash"] = (
+        "" if req.reset_to_default else hash_admin_password(req.new_password)
+    )
+
+    if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
+        game["admin_password_hash"] = previous_hash
+        raise HTTPException(
+            status_code=500,
+            detail="管理用パスワードを永続保存できませんでした",
+        )
+
+    return {
+        "ok": True,
+        "game_id": req.game_id,
+        "reset_to_default": bool(req.reset_to_default),
+        "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
+    }
+
+
 @app.post("/games/{game_id}/verify_password")
 def verify_password(game_id: str, password: str = Body(..., embed=True)):
     if game_id not in GAMES:
@@ -2652,7 +2727,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    if game.get("admin_password") == password:
+    if _room_admin_password_matches(game, password):
         return {
             "ok": True, 
             "owner_name": game.get("owner_name", ""),
@@ -2675,7 +2750,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    if game.get("admin_password") != req.admin_password:
+    if not _room_admin_password_matches(game, req.admin_password):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     previous_settings = _room_management_settings(game)
@@ -2852,6 +2927,7 @@ async def reset_game(
     _require_human_seat_owner(old_game, "A", client_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
+    admin_password_hash = old_game.get("admin_password_hash", "")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
@@ -2874,6 +2950,7 @@ async def reset_game(
     new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
     new_game["password"] = password
     new_game["admin_password"] = admin_password
+    new_game["admin_password_hash"] = admin_password_hash
     new_game["owner_name"] = owner_name
     new_game["human_seats"] = human_seats
     new_game["ai_seats"] = ai_seats
@@ -2918,6 +2995,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     _require_human_seat_owner(old_game, "A", body.client_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
+    admin_password_hash = old_game.get("admin_password_hash", "")
     owner_name = old_game.get("owner_name", "")
     human_seats = old_game.get("human_seats", {})
     ai_seats = sorted(_ai_seat_set(old_game))
@@ -2951,6 +3029,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["kifu_moves"] = []
         new_game["password"] = password
         new_game["admin_password"] = admin_password
+        new_game["admin_password_hash"] = admin_password_hash
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats
@@ -2977,6 +3056,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
         new_game["password"] = password
         new_game["admin_password"] = admin_password
+        new_game["admin_password_hash"] = admin_password_hash
         new_game["owner_name"] = owner_name
         new_game["human_seats"] = human_seats
         new_game["ai_seats"] = ai_seats

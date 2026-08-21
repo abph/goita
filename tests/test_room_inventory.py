@@ -59,7 +59,7 @@ def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
 def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
     room_definition = app_module.PRIVATE_ROOM_DEFINITIONS[2]
 
-    assert app_module.LOBBY_ROOM_SETTINGS["private_room_count"] == 3
+    assert app_module.LOBBY_ROOM_SETTINGS["private_room_count"] == 4
     assert room_definition == {
         "gid": "room-bronze-03",
         "pass": "saitama1011",
@@ -72,7 +72,9 @@ def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
     assert room["admin_password"] == "1011made"
     assert room["owner_name"] == "金沢大会チーム埼玉"
     assert room["hidden_from_lobby"] is False
-    assert app_module.GAMES["room-copper-04"]["hidden_from_lobby"] is True
+    assert app_module.GAMES["room-copper-04"]["hidden_from_lobby"] is False
+    assert app_module.GAMES["room-iron-05"]["hidden_from_lobby"] is True
+    assert app_module.GAMES["room-platinum-06"]["hidden_from_lobby"] is True
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
@@ -107,14 +109,19 @@ def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
         app_module.setup_supporter_rooms()
 
 
-def test_private_c_and_d_exist_but_are_hidden_from_lobby() -> None:
+def test_private_c_through_f_exist_but_are_hidden_when_only_two_are_shown() -> None:
     old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
     try:
         app_module.LOBBY_ROOM_SETTINGS["private_room_count"] = 2
         app_module.setup_supporter_rooms()
         room_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
 
-        for game_id in ("room-bronze-03", "room-copper-04"):
+        for game_id in (
+            "room-bronze-03",
+            "room-copper-04",
+            "room-iron-05",
+            "room-platinum-06",
+        ):
             assert game_id in app_module.GAMES
             assert app_module.GAMES[game_id]["hidden_from_lobby"] is True
             assert game_id not in room_ids
@@ -355,6 +362,10 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert 'id="lobbyAllPeopleCount"' in html
     assert 'id="lobbyMainRoomCount"' in html
     assert 'id="lobbyPrivateRoomCount"' in html
+    assert 'max="6"' in html
+    assert 'id="lobbyPrivateRoomPasswordList"' in html
+    assert "async function changePrivateRoomAdminPassword(gameId, resetToDefault)" in html
+    assert "`${API}/lobby/admin/private-room-password`" in html
     assert "function updateLobbyAdminPeopleCounts(roomTotals = null)" in html
     assert 'id="handRevealConfirmModal"' in html
     assert "if(!await confirmHandReveal(target)) return;" in html
@@ -389,6 +400,9 @@ def test_lobby_admin_can_change_visible_room_counts() -> None:
         assert payload["private_room_max"] == len(
             app_module.PRIVATE_ROOM_DEFINITIONS
         )
+        assert payload["private_room_max"] == 6
+        assert len(payload["private_rooms"]) == 6
+        assert all("admin_password" not in room for room in payload["private_rooms"])
 
         expanded = asyncio.run(
             app_module.update_lobby_admin_settings(
@@ -483,7 +497,7 @@ def test_room_list_counts_human_players_and_spectators_without_ai() -> None:
 
 def test_private_total_includes_hidden_private_rooms_but_not_debug_room() -> None:
     app_module.setup_supporter_rooms()
-    hidden_game_id = "room-bronze-03"
+    hidden_game_id = "room-iron-05"
     hidden_game = app_module.GAMES[hidden_game_id]
     old_human_seats = hidden_game.get("human_seats")
 
@@ -687,14 +701,19 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
 
 if __name__ == "__main__":
     test_private_b_uses_updated_entry_password()
-    test_public_rooms_default_to_four_people_rooms_and_two_ai_rooms()
+    test_public_rooms_default_to_three_people_rooms_and_one_ai_room()
+    test_private_c_defaults_to_kanazawa_team_saitama_room()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
-    test_private_c_and_d_exist_but_are_hidden_from_lobby()
+    test_private_c_through_f_exist_but_are_hidden_when_only_two_are_shown()
     test_every_main_room_disables_beginner_support()
-    test_main_room_host_can_toggle_all_hands()
+    test_public_room_reveal_requires_round_end_and_player_consent()
+    test_private_room_allows_ai_reveal_by_any_seated_player_after_round_end()
+    test_next_round_reset_can_start_immediately_with_score_preserved()
     test_frontend_recognizes_all_main_room_ids()
     test_lobby_admin_can_change_visible_room_counts()
     test_room_list_counts_human_players_and_spectators_without_ai()
     test_private_total_includes_hidden_private_rooms_but_not_debug_room()
     test_room_list_returns_named_site_presence_without_client_ids()
+    test_debug_room_presence_is_completely_hidden()
+    test_private_room_presence_masks_names_outside_the_same_room()
     print("ROOM_INVENTORY_TEST_OK")

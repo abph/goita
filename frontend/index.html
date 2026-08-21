@@ -2360,11 +2360,63 @@
       font-size: 12px;
       line-height: 1.6;
     }
+    .private-room-admin-passwords {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(139, 90, 43, 0.28);
+    }
+    .private-room-admin-passwords h4 {
+      margin: 0 0 5px;
+      color: #6d461f;
+      font-size: 15px;
+    }
+    .private-room-password-row {
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(139, 90, 43, 0.18);
+    }
+    .private-room-password-row:last-child { border-bottom: 0; }
+    .private-room-password-name {
+      display: block;
+      margin-bottom: 7px;
+      font-weight: 900;
+      color: #4f3824;
+    }
+    .private-room-password-inputs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .private-room-password-inputs input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 8px;
+    }
+    .private-room-password-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 7px;
+    }
+    .private-room-password-actions button { padding: 8px 5px; }
+    .private-room-password-reset {
+      background: #fffdf5;
+      color: #8b5a2b;
+      border: 1px solid #b98b5d;
+    }
+    .private-room-password-status {
+      min-height: 1.3em;
+      margin-top: 5px;
+      color: #b00000;
+      font-size: 11px;
+      font-weight: 700;
+    }
     @media (max-width: 520px) {
       .lobby-admin-counts { gap: 5px; }
       .lobby-admin-count-item { padding: 8px 3px; }
       .lobby-admin-count-item strong { font-size: 17px; }
       .lobby-room-count-fields { grid-template-columns: 1fr; gap: 0; }
+      .private-room-password-inputs { grid-template-columns: 1fr; }
     }
     .board-view-segmented {
       display: grid;
@@ -3805,12 +3857,17 @@
             </div>
             <div class="settings-row">
               <label for="lobbyPrivateRoomCount">表示するプライベートルーム数</label>
-              <input type="number" id="lobbyPrivateRoomCount" min="0" max="4" step="1" inputmode="numeric">
+              <input type="number" id="lobbyPrivateRoomCount" min="0" max="6" step="1" inputmode="numeric">
             </div>
           </div>
           <p class="lobby-admin-help">部屋を減らすとロビーから非表示になります。進行中の対局は中断されません。</p>
           <button class="settings-save-button" type="button" onclick="saveLobbyAdminSettings()">設定を保存</button>
           <div id="lobbyAdminSaveStatus" class="settings-status" aria-live="polite"></div>
+          <section class="private-room-admin-passwords" aria-labelledby="privateRoomAdminPasswordsTitle">
+            <h4 id="privateRoomAdminPasswordsTitle">プライベートルームの管理用パスワード</h4>
+            <p class="lobby-admin-help">現在のパスワードは表示しません。変更する部屋だけ新しいパスワードを入力してください。</p>
+            <div id="lobbyPrivateRoomPasswordList"></div>
+          </section>
         </div>
     </section>
     <div class="settings-footer">
@@ -4114,8 +4171,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260821c"></script>
-<script src="/static/i18n.js?v=20260821c"></script>
+<script src="/static/i18n-en.js?v=20260821d"></script>
+<script src="/static/i18n.js?v=20260821d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4141,7 +4198,7 @@
 <script>
 const API = "";
 const MAIN_GID = "main";
-const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-d", "main-e", "main-f"]);
+const MAIN_ROOM_IDS = new Set([MAIN_GID, "main-b", "main-c", "main-e", "main-d", "main-f"]);
 const MEETING_ROOM_GID = "main-d";
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
@@ -4151,6 +4208,8 @@ const PRIVATE_ROOM_IDS = new Set([
     "room-silver-02",
     "room-bronze-03",
     "room-copper-04",
+    "room-iron-05",
+    "room-platinum-06",
 ]);
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
@@ -4729,7 +4788,8 @@ function uiText(value) {
 const BUILT_IN_ROOM_NAMES = new Set([
     "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "埼玉的な集会室",
     "AIとごいたA", "AIとごいたB", "プライベートA", "プライベートB",
-    "プライベートC", "プライベートD", "デバッグルーム"
+    "プライベートC", "プライベートD", "プライベートE", "プライベートF",
+    "デバッグルーム"
 ]);
 function isBuiltInRoomName(value) {
     return BUILT_IN_ROOM_NAMES.has(String(value || ""));
@@ -5790,9 +5850,102 @@ function applyLobbyAdminPayload(data) {
     mainInput.max = String(data.main_room_max || 6);
     mainInput.value = String(data.main_room_count || 4);
     privateInput.min = "0";
-    privateInput.max = String(data.private_room_max || 4);
+    privateInput.max = String(data.private_room_max || 6);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
     updateLobbyAdminPeopleCounts(data.room_totals);
+    renderPrivateRoomAdminPasswordControls(data.private_rooms || []);
+}
+
+function renderPrivateRoomAdminPasswordControls(privateRooms) {
+    const container = document.getElementById("lobbyPrivateRoomPasswordList");
+    if (!container) return;
+    container.innerHTML = privateRooms.map((room) => {
+        const gameId = escapeLobbyHtml(room.game_id);
+        const roomName = escapeLobbyHtml(room.owner_name || room.game_id);
+        return `
+          <div class="private-room-password-row" data-private-room-password-row="${gameId}">
+            <span class="private-room-password-name">${roomName}</span>
+            <div class="private-room-password-inputs">
+              <input class="private-room-new-admin-password" type="password" maxlength="128" autocomplete="new-password" placeholder="新しい管理用パスワード">
+              <input class="private-room-confirm-admin-password" type="password" maxlength="128" autocomplete="new-password" placeholder="新しいパスワード（確認）">
+            </div>
+            <div class="private-room-password-actions">
+              <button type="button" onclick="changePrivateRoomAdminPassword('${gameId}', false)">変更</button>
+              <button class="private-room-password-reset" type="button" onclick="changePrivateRoomAdminPassword('${gameId}', true)">初期値に戻す</button>
+            </div>
+            <div class="private-room-password-status" aria-live="polite"></div>
+          </div>`;
+    }).join("");
+}
+
+async function changePrivateRoomAdminPassword(gameId, resetToDefault) {
+    if (!lobbyAdminPasswordValue) return;
+    const row = document.querySelector(`[data-private-room-password-row="${gameId}"]`);
+    if (!row) return;
+    const passwordInput = row.querySelector(".private-room-new-admin-password");
+    const confirmationInput = row.querySelector(".private-room-confirm-admin-password");
+    const status = row.querySelector(".private-room-password-status");
+    const newPassword = passwordInput.value;
+
+    if (!resetToDefault) {
+        if (!newPassword.trim()) {
+            status.textContent = "新しい管理用パスワードを入力してください。";
+            passwordInput.focus();
+            return;
+        }
+        if (newPassword !== confirmationInput.value) {
+            status.textContent = "確認用のパスワードが一致しません。";
+            confirmationInput.focus();
+            return;
+        }
+    }
+
+    const roomName = row.querySelector(".private-room-password-name")?.textContent || gameId;
+    const language = currentUiLanguage();
+    const confirmationMessage = language === "en"
+        ? (resetToDefault
+            ? `Restore the admin password for ${roomName} to its default?`
+            : `Change the admin password for ${roomName}?`)
+        : (language === "zh"
+            ? (resetToDefault
+                ? `要将${roomName}的管理员密码恢复为初始值吗？`
+                : `要更改${roomName}的管理员密码吗？`)
+            : (resetToDefault
+                ? `${roomName}の管理用パスワードを初期値に戻しますか？`
+                : `${roomName}の管理用パスワードを変更しますか？`));
+    if (!window.confirm(confirmationMessage)) return;
+
+    const buttons = Array.from(row.querySelectorAll("button"));
+    buttons.forEach(button => { button.disabled = true; });
+    status.textContent = "保存しています...";
+    try {
+        const response = await fetch(`${API}/lobby/admin/private-room-password`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                admin_password: lobbyAdminPasswordValue,
+                game_id: gameId,
+                new_password: resetToDefault ? "" : newPassword,
+                reset_to_default: resetToDefault,
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            status.textContent = response.status === 401
+                ? "管理用パスワードが正しくありません。"
+                : (data.detail || "管理用パスワードの保存に失敗しました。");
+            return;
+        }
+        passwordInput.value = "";
+        confirmationInput.value = "";
+        status.textContent = resetToDefault
+            ? "管理用パスワードを初期値に戻しました。"
+            : "管理用パスワードを変更しました。";
+    } catch (_error) {
+        status.textContent = "通信エラーが発生しました。";
+    } finally {
+        buttons.forEach(button => { button.disabled = false; });
+    }
 }
 
 function showLobbySettingsTab(tabName) {
