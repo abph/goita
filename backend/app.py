@@ -110,6 +110,7 @@ LOBBY_ROOM_SETTINGS = {
     ),
 }
 NAME_MAX_LEN = 9
+ROOM_NAME_MAX_LEN = 12
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
 AI_HELP_COOLDOWN_SECONDS = 10
@@ -593,8 +594,16 @@ def build_hands_from_preset_counts(
 def _sanitize_player_name(s: str) -> str:
     s = (s or "").strip()
     s = s.replace("\r", "").replace("\n", "")
-    if len(s) > 9:
-        s = s[:9]
+    if len(s) > NAME_MAX_LEN:
+        s = s[:NAME_MAX_LEN]
+    return s
+
+
+def _sanitize_room_name(s: str) -> str:
+    s = (s or "").strip()
+    s = s.replace("\r", "").replace("\n", "")
+    if len(s) > ROOM_NAME_MAX_LEN:
+        s = s[:ROOM_NAME_MAX_LEN]
     return s
 
 
@@ -1503,7 +1512,7 @@ class TurnTimeLimitUpdateRequest(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
-    new_owner_name: str
+    new_owner_name: str = Field(max_length=ROOM_NAME_MAX_LEN)
     update_password: bool = False
     new_password: Optional[str] = None
     ai_profile: str = DEFAULT_AI_PROFILE
@@ -2191,7 +2200,7 @@ def _apply_room_management_settings(
     settings: Dict[str, Any],
 ) -> None:
     if isinstance(settings.get("owner_name"), str):
-        game["owner_name"] = settings["owner_name"].replace("\r", "").replace("\n", "").strip()
+        game["owner_name"] = _sanitize_room_name(settings["owner_name"])
 
     if "password" in settings:
         password = settings.get("password")
@@ -2754,7 +2763,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     previous_settings = _room_management_settings(game)
-    game["owner_name"] = _sanitize_player_name(req.new_owner_name)
+    game["owner_name"] = _sanitize_room_name(req.new_owner_name)
     game["show_legal_actions"] = bool(req.show_legal_actions)
     game["show_log"] = bool(req.show_log)
     if req.room_background_image is not None:

@@ -1230,10 +1230,13 @@
     .room-card .center-info {
         grid-column: 2;
         grid-row: 2;
+        width: 112px;
+        max-width: 112px;
         text-align: center;
         display: flex;
         flex-direction: column;
         justify-content: center;
+        justify-self: center;
     }
     .room-card .center-info .title { 
         font-size: 16px; 
@@ -1241,6 +1244,8 @@
         color: #b00000; 
         margin-bottom: 4px; 
         line-height: 1.2;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     .room-card .center-info .count { 
         font-size: 14px; 
@@ -4135,8 +4140,8 @@
 
       <div id="roomManagementFields" style="display:none;">
         <div class="settings-row">
-          <label for="setRoomName">ルーム名（最大9文字）</label>
-          <input type="text" id="setRoomName" maxlength="9">
+          <label for="setRoomName">ルーム名（最大12文字）</label>
+          <input type="text" id="setRoomName" maxlength="12">
         </div>
         <div class="settings-row">
           <label><input type="checkbox" id="checkUpdatePass" onchange="togglePassInput()" style="width:auto;"> 入室用の合言葉を変更・解除する</label>
@@ -4171,8 +4176,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260821d"></script>
-<script src="/static/i18n.js?v=20260821d"></script>
+<script src="/static/i18n-en.js?v=20260821e"></script>
+<script src="/static/i18n.js?v=20260821e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4214,6 +4219,7 @@ const PRIVATE_ROOM_IDS = new Set([
 const GOITA_RULE_URL = "https://vrcgoita.com/goita/rule/";
 const GOITA_STRATEGY_URL = "https://vrcgoita.com/goita/strategy/";
 const CHAT_KNOWN_URLS = [GOITA_RULE_URL, GOITA_STRATEGY_URL];
+const ROOM_NAME_MAX_CHARACTERS = 12;
 const LINKED_KIFU_QUERY_KEYS = ["kifu", "round", "seat", "hands"];
 const LINKED_KIFU_HAND_COUNTS = {
     "1": 10,
@@ -4785,6 +4791,9 @@ function uiText(value) {
     const source = String(value ?? "");
     return window.goitaI18n?.translate?.(source) ?? source;
 }
+function roomNameForDisplay(value) {
+    return Array.from(String(value || "")).slice(0, ROOM_NAME_MAX_CHARACTERS).join("");
+}
 const BUILT_IN_ROOM_NAMES = new Set([
     "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "埼玉的な集会室",
     "AIとごいたA", "AIとごいたB", "プライベートA", "プライベートB",
@@ -4796,7 +4805,7 @@ function isBuiltInRoomName(value) {
 }
 function setRoomNameText(element, value) {
     if(!element) return;
-    const roomName = String(value || "");
+    const roomName = roomNameForDisplay(value);
     if(isBuiltInRoomName(roomName)) element.removeAttribute("data-i18n-ignore");
     else element.setAttribute("data-i18n-ignore", "");
     element.textContent = roomName;
@@ -6130,13 +6139,14 @@ async function fetchRoomList() {
                 ? `<div class="settings-icon" onclick="openSettingsModal('${room.game_id}', event, 'management')" title="ルーム設定">⚙️</div>`
                 : "";
             const roomNameIgnore = isBuiltInRoomName(room.owner_name) ? "" : " data-i18n-ignore";
+            const displayRoomName = escapeLobbyHtml(roomNameForDisplay(room.owner_name));
 
             if (requiresPassword) {
                 card.innerHTML = `
                     ${settingsIcon}
                     <div class="lock-icon">🔒</div>
                     <div class="center-info">
-                        <div class="title"${roomNameIgnore}>${room.owner_name}</div>
+                        <div class="title"${roomNameIgnore}>${displayRoomName}</div>
                         <div class="count" style="color: #b00000; font-size: 12px; margin-top: 4px;">※合言葉が必要です</div>
                     </div>
                 `;
@@ -6146,7 +6156,7 @@ async function fetchRoomList() {
                     <div class="seat-top">${makeBadge('C', s['C'])}</div>
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
-                        <div class="title"${roomNameIgnore}>${room.owner_name}</div>
+                        <div class="title"${roomNameIgnore}>${displayRoomName}</div>
                         <div class="count">(${room.player_count}/4人)</div>
                     </div>
                     <div class="seat-right">${makeBadge('B', s['B'])}</div>

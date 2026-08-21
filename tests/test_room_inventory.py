@@ -16,6 +16,34 @@ def test_private_b_uses_updated_entry_password() -> None:
     assert app_module.GAMES["room-silver-02"]["password"] == "1222"
 
 
+def test_room_names_allow_twelve_characters_without_changing_player_name_limit() -> None:
+    assert app_module._sanitize_room_name("1234567890123") == "123456789012"
+    assert app_module._sanitize_player_name("1234567890") == "123456789"
+
+    html = (app_module.FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    assert "ルーム名（最大12文字）" in html
+    assert 'id="setRoomName" maxlength="12"' in html
+    assert "名前（最大9文字）" in html
+    assert "const ROOM_NAME_MAX_CHARACTERS = 12;" in html
+    assert "function roomNameForDisplay(value)" in html
+    assert "escapeLobbyHtml(roomNameForDisplay(room.owner_name))" in html
+    assert ".slice(0, ROOM_NAME_MAX_CHARACTERS)" in html
+
+    game_id = "room-copper-04"
+    game = app_module.GAMES[game_id]
+    original_owner_name = game["owner_name"]
+    try:
+        game["owner_name"] = "123456789012"
+        listed_room = next(
+            room
+            for room in app_module.list_rooms()["rooms"]
+            if room["game_id"] == game_id
+        )
+        assert listed_room["owner_name"] == "123456789012"
+    finally:
+        game["owner_name"] = original_owner_name
+
+
 def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
     assert list(app_module.MAIN_ROOM_NAMES) == [
         "main",
@@ -701,6 +729,7 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
 
 if __name__ == "__main__":
     test_private_b_uses_updated_entry_password()
+    test_room_names_allow_twelve_characters_without_changing_player_name_limit()
     test_public_rooms_default_to_three_people_rooms_and_one_ai_room()
     test_private_c_defaults_to_kanazawa_team_saitama_room()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()

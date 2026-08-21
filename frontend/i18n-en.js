@@ -244,7 +244,7 @@
     "さらに「し」は各プレイヤー4枚まで（5以上は不可）。": "Each player may also hold no more than four し.",
     "※この設定は「新規ゲーム」では保持され、「リセット」で消えます。": "These settings remain for a New Game and are cleared by Reset.",
     "確認": "Verify",
-    "ルーム名（最大9文字）": "Room Name (up to 9 characters)",
+    "ルーム名（最大12文字）": "Room Name (up to 12 characters)",
     "入室用の合言葉を変更・解除する": "Change or remove the room passphrase",
     "空欄にすると誰でも入れる公開部屋になります": "Leave blank to make this a public room",
     "AIの選択": "AI Selection",
