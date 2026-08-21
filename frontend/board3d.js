@@ -1145,6 +1145,16 @@ function createPieceObject(piece) {
     flat.add(textPlane);
   }
 
+  if (piece.thoughtKey) {
+    const thoughtMark = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.22, 0.28),
+      pieceTextMaterial("?", "", "#155a8a", 1)
+    );
+    thoughtMark.position.set(0.25, -0.3, 0.215);
+    thoughtMark.renderOrder = 8;
+    flat.add(thoughtMark);
+  }
+
   if (piece.current || piece.pending) {
     const highlightKind = piece.pending ? "pending" : "current";
     if (!highlightMaterials.has(highlightKind)) {

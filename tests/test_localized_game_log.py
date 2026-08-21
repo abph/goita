@@ -32,6 +32,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
     for expected in (
         'shi_signal: "し攻めに賛同する意思表示"',
         'kakari: "味方の攻めに合わせる判断"',
+        'attack_tatewari: "王を切らせる攻め"',
         "function localizeGameLogAiDetail(",
         "function localizeGameLogAiDecision(",
         "function formatGameLogSeconds(",
@@ -45,6 +46,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         "【思考時間：合計",
     ):
         assert expected in HTML
+
+    assert 'attack_tatewari: "縦割りを狙う攻め"' not in HTML
 
     suffix_start = HTML.index("function localizeGameLogSuffix(")
     suffix_end = HTML.index("function localizeGameLogLine(", suffix_start)
@@ -99,6 +102,8 @@ def test_ai_board_piece_opens_local_candidate_comparison_in_chat():
     for expected in (
         "function showAiBoardThought(",
         "function attachAiBoardThoughtInteraction(",
+        'mark.className = "ai-thought-mark"',
+        'mark.textContent = "?"',
         "ai_board_explanations",
         "localAiThoughtMessages",
         "この手の判断と候補比較：",
@@ -110,6 +115,9 @@ def test_ai_board_piece_opens_local_candidate_comparison_in_chat():
     board_3d = (Path(__file__).parents[1] / "frontend" / "board3d.js").read_text(encoding="utf-8")
     board_pixel = (Path(__file__).parents[1] / "frontend" / "boardPixel.js").read_text(encoding="utf-8")
     assert "function aiThoughtKeyAtPointer(" in board_3d
+    assert 'pieceTextMaterial("?", "", "#155a8a", 1)' in board_3d
     assert 'new CustomEvent("goita-ai-piece-thought"' in board_3d
     assert "function thoughtKeyAtPointer(" in board_pixel
+    assert 'drawPixelText("?", 9, -10' in board_pixel
     assert 'new CustomEvent("goita-ai-piece-thought"' in board_pixel
+    assert 'element.title = "AIの思考と候補比較を表示"' not in HTML

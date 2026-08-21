@@ -248,11 +248,24 @@
     }
     .slot.ai-thought-clickable {
       cursor: pointer;
+      position: relative;
     }
-    .slot.ai-thought-clickable:hover,
     .slot.ai-thought-clickable:focus-visible {
-      outline: 3px solid rgba(28, 91, 139, 0.72);
+      outline: 2px solid rgba(28, 91, 139, 0.78);
       outline-offset: 2px;
+    }
+    .slot .ai-thought-mark {
+      position: absolute;
+      top: 20%;
+      right: 9%;
+      z-index: 2;
+      color: #155a8a;
+      font-family: Arial, sans-serif;
+      font-size: clamp(11px, calc(var(--cell) * 0.28), 16px);
+      font-weight: 900;
+      line-height: 1;
+      pointer-events: none;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
     }
     .slot.revealed-hand {
       background: linear-gradient(135deg, #e4e4e4, #bcbcbc);
@@ -3735,7 +3748,10 @@
               <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
             </div>
             <div class="settings-row">
-              <label><input type="checkbox" id="lobbyCheckAutoRevealOwnAndAiHands" style="width:auto;"> 終局後に自分とAIの手札を自動で公開する</label>
+              <label><input type="checkbox" id="lobbyCheckAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
+            </div>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckAutoRevealAiHands" style="width:auto;"> 終局後にAIの手札を自動で公開する</label>
             </div>
           </div>
         </details>
@@ -3916,7 +3932,10 @@
             <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
           </div>
           <div class="settings-row">
-            <label><input type="checkbox" id="checkAutoRevealOwnAndAiHands" style="width:auto;"> 終局後に自分とAIの手札を自動で公開する</label>
+            <label><input type="checkbox" id="checkAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
+          </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkAutoRevealAiHands" style="width:auto;"> 終局後にAIの手札を自動で公開する</label>
           </div>
         </div>
       </details>
@@ -4095,17 +4114,17 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260821b"></script>
-<script src="/static/i18n.js?v=20260821b"></script>
+<script src="/static/i18n-en.js?v=20260821c"></script>
+<script src="/static/i18n.js?v=20260821c"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260821a").catch((error) => {
+  import("/static/board3d.js?v=20260821b").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260821a").catch((error) => {
+  import("/static/boardPixel.js?v=20260821b").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -4268,7 +4287,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_force_enemy_king: "相手に王・玉を使わせる攻め",
         attack_continuous_score: "同じ駒で攻めを継続",
         attack_absolute_safe: "同じ駒では誰にも受けられない攻め",
-        attack_tatewari: "縦割りを狙う攻め",
+        attack_tatewari: "王を切らせる攻め",
         attack_occupancy: "残り枚数が少なく、相手が受けにくい駒を選択",
         attack_avoid_enemy_piece_count: "相手が持つ可能性の低い駒を選択",
         attack_public_safe: "公開情報から安全と判断した攻め",
@@ -4293,15 +4312,22 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         receive_win_after: "接牌后可以直接获胜",
         receive_tsume_after: "接牌后存在获胜路线",
         attack_continuous_score: "继续使用相同棋子进攻",
+        attack_tatewari: "迫使对手用王接牌的进攻",
         attack_occupancy: "选择对手较难接住的棋子",
         attack_avoid_enemy_piece_count: "选择对手持有概率较低的棋子",
         attack_kakari_score: "配合搭档之前打出的棋子",
         pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
     },
+    en: {
+        attack_tatewari: "An attack intended to force the opponent to receive with a King",
+    },
 });
 
 function localizeGameLogAiDetail(detail, language) {
-    const labels = GAME_LOG_AI_DETAIL_LABELS[language] || GAME_LOG_AI_DETAIL_LABELS.ja;
+    const labels = {
+        ...GAME_LOG_AI_DETAIL_LABELS.ja,
+        ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
+    };
     if(labels[detail]) return labels[detail];
     let match = String(detail || "").match(/^high_score_(\d+)$/);
     if(match) return language === "zh" ? `争取${match[1]}分的获胜` : `${match[1]}点の上がりを狙う`;
@@ -4588,7 +4614,11 @@ function attachAiBoardThoughtInteraction(element, keyValue) {
     element.tabIndex = 0;
     element.setAttribute("role", "button");
     element.setAttribute("aria-label", "AIの思考と候補比較をチャットに表示");
-    element.title = "AIの思考と候補比較を表示";
+    const mark = document.createElement("span");
+    mark.className = "ai-thought-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "?";
+    element.appendChild(mark);
     element.addEventListener("click", () => showAiBoardThought(keyValue));
     element.addEventListener("keydown", (event) => {
         if(event.key !== "Enter" && event.key !== " ") return;
@@ -4915,7 +4945,9 @@ function loadPersonalSettings() {
             enableCVoice: saved.enableCVoice === true,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
             showAiThinkingBreakdown: saved.showAiThinkingBreakdown === true,
-            autoRevealOwnAndAiHands: saved.autoRevealOwnAndAiHands === true,
+            autoRevealOwnHand: saved.autoRevealOwnHand === true
+                || (saved.autoRevealOwnHand === undefined && saved.autoRevealOwnAndAiHands === true),
+            autoRevealAiHands: saved.autoRevealAiHands !== false,
             boardViewMode: normalizeBoardViewMode(saved.boardViewMode),
             mobileChatPlacement: saved.mobileChatPlacement === "top" ? "top" : "right",
             mobileChatWidth: ["wide", "normal", "narrow"].includes(saved.mobileChatWidth)
@@ -4939,7 +4971,8 @@ function loadPersonalSettings() {
             enableCVoice: false,
             enableBeginnerSupport: false,
             showAiThinkingBreakdown: false,
-            autoRevealOwnAndAiHands: false,
+            autoRevealOwnHand: false,
+            autoRevealAiHands: true,
             boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
@@ -5056,7 +5089,8 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
-    document.getElementById("lobbyCheckAutoRevealOwnAndAiHands").checked = personalSettings.autoRevealOwnAndAiHands === true;
+    document.getElementById("lobbyCheckAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
+    document.getElementById("lobbyCheckAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
     setLobbyBoardViewControl(personalSettings.boardViewMode);
     document.getElementById("lobbyPersonalSettingsStatus").textContent = "";
 }
@@ -5082,7 +5116,8 @@ function saveLobbyPersonalSettings() {
         enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
         showAiThinkingBreakdown: document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked,
-        autoRevealOwnAndAiHands: document.getElementById("lobbyCheckAutoRevealOwnAndAiHands").checked,
+        autoRevealOwnHand: document.getElementById("lobbyCheckAutoRevealOwnHand").checked,
+        autoRevealAiHands: document.getElementById("lobbyCheckAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
     };
     applyPersonalSettingsAppearance();
@@ -6041,7 +6076,8 @@ function syncPersonalSettingsControls() {
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("checkShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
-    document.getElementById("checkAutoRevealOwnAndAiHands").checked = personalSettings.autoRevealOwnAndAiHands === true;
+    document.getElementById("checkAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
+    document.getElementById("checkAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
     setBoardViewControl(effectiveBoardViewMode(settingTargetGid || gid));
     document.getElementById("personalSettingsStatus").textContent = "";
 }
@@ -6195,7 +6231,8 @@ async function savePersonalSettings() {
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
         showAiThinkingBreakdown: document.getElementById("checkShowAiThinkingBreakdown").checked,
-        autoRevealOwnAndAiHands: document.getElementById("checkAutoRevealOwnAndAiHands").checked,
+        autoRevealOwnHand: document.getElementById("checkAutoRevealOwnHand").checked,
+        autoRevealAiHands: document.getElementById("checkAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
     };
     latestBeginnerRecommendation = null;
@@ -8798,7 +8835,7 @@ async function revealSeatHand(target){
 
 async function maybeAutoRevealOwnAndAiHands(state){
   if(
-    personalSettings.autoRevealOwnAndAiHands !== true
+    (personalSettings.autoRevealOwnHand !== true && personalSettings.autoRevealAiHands === false)
     || !state?.is_started
     || !state.finished
     || isSpectator()
@@ -8813,7 +8850,11 @@ async function maybeAutoRevealOwnAndAiHands(state){
 
   const revealed = new Set(Array.isArray(state.revealed_hand_seats) ? state.revealed_hand_seats : []);
   const aiSeats = Array.isArray(state.ai_seats) ? state.ai_seats : [];
-  const targets = [mySeat, ...aiSeats].filter((seat, index, list) => (
+  const requestedTargets = [
+    ...(personalSettings.autoRevealOwnHand === true ? [mySeat] : []),
+    ...(personalSettings.autoRevealAiHands !== false ? aiSeats : []),
+  ];
+  const targets = requestedTargets.filter((seat, index, list) => (
     !revealed.has(seat) && list.indexOf(seat) === index
   ));
   if(targets.length === 0){

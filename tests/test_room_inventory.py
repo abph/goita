@@ -368,10 +368,12 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert 'safeCount === 1 ? "person" : "people"' in html
     assert 'id="handRevealPanel"' in html
     assert "function renderHandRevealControls(state)" in html
-    assert 'id="lobbyCheckAutoRevealOwnAndAiHands"' in html
-    assert 'id="checkAutoRevealOwnAndAiHands"' in html
+    assert 'id="lobbyCheckAutoRevealOwnHand"' in html
+    assert 'id="lobbyCheckAutoRevealAiHands"' in html
+    assert 'id="checkAutoRevealOwnHand"' in html
+    assert 'id="checkAutoRevealAiHands"' in html
     assert "function maybeAutoRevealOwnAndAiHands(state)" in html
-    assert "personalSettings.autoRevealOwnAndAiHands !== true" in html
+    assert "personalSettings.autoRevealOwnHand !== true && personalSettings.autoRevealAiHands === false" in html
     assert "/reveal_hand?${qs.toString()}" in html
     assert "toggle_reveal_hands" not in html
     assert "auto_start: autoStart" in html

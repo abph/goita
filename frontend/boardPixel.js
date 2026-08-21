@@ -39,6 +39,7 @@ const palettes = {
     hiddenPiece: "#8a5a3b",
     pieceEdge: "#7a4d2e",
     turn: "#c52327",
+    thought: "#155a8a",
     grain: "#fff0c5",
     grid: "#f9dfad",
     acText: "#265e58",
@@ -61,6 +62,7 @@ const palettes = {
     hiddenPiece: "#ffffff",
     pieceEdge: "#000000",
     turn: "#000000",
+    thought: "#000000",
     grain: "#ffffff",
     grid: "#ffffff",
     acText: "#000000",
@@ -191,6 +193,13 @@ function drawPiece(piece) {
       });
     }
     context.globalAlpha = piece.revealedHidden ? 0.56 : 1;
+  }
+  if (piece.thoughtKey) {
+    drawPixelText("?", 9, -10, {
+      size: 10,
+      color: palette.thought,
+      weight: "900",
+    });
   }
   context.restore();
 }
