@@ -5234,6 +5234,8 @@ let latestLegal = [];
 let latestBeginnerRecommendation = null;
 let beginnerRecommendationKey = "";
 let pending = null;
+let legalActionsRetryTimer = null;
+let refreshRequestSequence = 0;
 let isGameStarted = false; 
 let activeRoomId = null;
 let chatOpen = false;
@@ -9083,24 +9085,34 @@ function renderHandRevealControls(state){
 }
 
 async function submitAction(actionObj, usedSlots = []){
-  const res = await fetch(`${API}/games/${gid}/step`, {
-    method:"POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ player: mySeat, client_id: clientId, action: actionObj })
-  });
-  if(res.ok){
-    usedSlots.forEach(item => markFixedHandSlotUsed(
-      latestState,
-      item.seat || mySeat,
-      item.slotIndex,
-      item.piece,
-      item.hidden === true
-    ));
-  }else if(res.status === 403){
-    pending = null;
-    await refresh();
+  try{
+    const res = await fetch(`${API}/games/${gid}/step`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ player: mySeat, client_id: clientId, action: actionObj })
+    });
+    if(res.ok){
+      usedSlots.forEach(item => markFixedHandSlotUsed(
+        latestState,
+        item.seat || mySeat,
+        item.slotIndex,
+        item.piece,
+        item.hidden === true
+      ));
+      await refresh();
+    }else if(res.status === 403){
+      pending = null;
+      await refresh();
+    }else{
+      scheduleLegalActionsRetry();
+    }
+    return res.ok;
+  }catch(error){
+    console.warn("Action request failed; waiting for connection recovery.", error);
+    setHint("通信を確認しています。接続が戻ると自動で操作できるようになります。");
+    scheduleLegalActionsRetry();
+    return false;
   }
-  return res.ok;
 }
 
 async function onHandPieceClick(piece, slotIndex){
@@ -9810,11 +9822,97 @@ async function confirmForceReset(){
   }
 }
 
+function legalActionsContextKey(state){
+  if(!state) return "";
+  const hand = Array.isArray(state.hands?.[mySeat]) ? state.hands[mySeat].join("") : "";
+  return [
+    gid,
+    mySeat,
+    state.round_count || 1,
+    state.turn || "",
+    state.phase || "",
+    state.attacker || "",
+    state.current_attack || "",
+    hand,
+    Array.isArray(state.log) ? state.log.length : 0,
+  ].join("|");
+}
+
+function legalActionsMatchState(state, actions){
+  if(!Array.isArray(actions)) return false;
+  if(!state?.is_started || isSpectator() || state.finished || state.turn !== mySeat){
+    return actions.length === 0;
+  }
+  if(state.phase === "receive"){
+    return actions.some(action => action.action_type === "pass") &&
+      actions.every(action => action.action_type === "pass" || action.action_type === "receive");
+  }
+  if(state.phase !== "attack" || actions.length === 0) return false;
+  const attackType = state.current_attack == null && state.attacker === mySeat
+    ? "attack"
+    : "attack_after_block";
+  return actions.every(action => action.action_type === attackType);
+}
+
+function localFollowupAttackActions(state){
+  if(
+    !state ||
+    !state.is_started ||
+    state.finished ||
+    state.turn !== mySeat ||
+    state.phase !== "attack" ||
+    state.attacker !== mySeat ||
+    state.current_attack != null
+  ) return [];
+
+  const hand = Array.isArray(state.hands?.[mySeat]) ? state.hands[mySeat] : [];
+  const receiveRows = Object.values(state.board_public || {}).flatMap(row =>
+    Array.isArray(row?.receive) ? row.receive : []
+  );
+  const royalWasUsed = receiveRows.some(piece => piece === "8" || piece === "9");
+  const heldBothRoyals = hand.includes("8") && hand.includes("9");
+  return [...new Set(hand)]
+    .filter(piece => (
+      ["1", "2", "3", "4", "5", "6", "7"].includes(piece) ||
+      royalWasUsed ||
+      heldBothRoyals ||
+      hand.length === 1
+    ))
+    .map(attack => ({ action_type: "attack", block: null, attack }));
+}
+
+function clearLegalActionsRetry(){
+  if(!legalActionsRetryTimer) return;
+  clearTimeout(legalActionsRetryTimer);
+  legalActionsRetryTimer = null;
+}
+
+function scheduleLegalActionsRetry(delay = 450){
+  if(legalActionsRetryTimer || currentWsGid === "lobby") return;
+  legalActionsRetryTimer = setTimeout(() => {
+    legalActionsRetryTimer = null;
+    refresh();
+  }, delay);
+}
+
 async function fetchLegal(){
   if(isSpectator()) return [];
-  const res = await fetch(`${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`);
-  const acts = await res.json();
-  return Array.isArray(acts) ? acts : [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try{
+    const res = await fetch(
+      `${API}/games/${gid}/legal_actions?player=${encodeURIComponent(mySeat)}&client_id=${encodeURIComponent(clientId)}`,
+      { signal: controller.signal }
+    );
+    if(!res.ok) return null;
+    const acts = await res.json();
+    return Array.isArray(acts) ? acts : null;
+  }catch(error){
+    console.warn("Legal action request failed; retrying shortly.", error);
+    return null;
+  }finally{
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchBeginnerRecommendation(state){
@@ -9863,11 +9961,26 @@ async function fetchBeginnerRecommendation(state){
 async function refresh(){
   if(isProcessingCpu) return;
 
+  const requestSequence = ++refreshRequestSequence;
+
   const qs = new URLSearchParams(); 
   qs.set("viewer", viewerSeat());
   qs.set("client_id", clientId);
 
-  const state = await (await fetch(`${API}/games/${gid}/state?${qs.toString()}`)).json();
+  let state;
+  try{
+    const response = await fetch(`${API}/games/${gid}/state?${qs.toString()}`);
+    if(!response.ok) throw new Error(`state request failed: ${response.status}`);
+    state = await response.json();
+  }catch(error){
+    console.warn("State request failed; retrying shortly.", error);
+    scheduleLegalActionsRetry();
+    return;
+  }
+  if(requestSequence !== refreshRequestSequence) return;
+
+  const previousLegalContext = legalActionsContextKey(latestState);
+  const nextLegalContext = legalActionsContextKey(state);
   const ownershipSupported = Array.isArray(state?.owned_human_seats);
   const ownedHumanSeats = ownershipSupported ? state.owned_human_seats : [];
   if(ownershipSupported && isSpectator() && ownedHumanSeats.length === 1){
@@ -9915,8 +10028,32 @@ async function refresh(){
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
-  latestLegal = await fetchLegal();
+  const localFollowupActions = localFollowupAttackActions(state);
+  if(localFollowupActions.length > 0){
+    latestLegal = localFollowupActions;
+    renderBoard(state);
+    renderHands(state);
+    renderActions();
+  }
+
+  const fetchedLegal = await fetchLegal();
+  if(requestSequence !== refreshRequestSequence) return;
+  if(legalActionsMatchState(state, fetchedLegal)){
+    latestLegal = fetchedLegal;
+    clearLegalActionsRetry();
+  }else{
+    if(localFollowupActions.length > 0){
+      latestLegal = localFollowupActions;
+    }else if(previousLegalContext !== nextLegalContext){
+      latestLegal = [];
+    }
+    scheduleLegalActionsRetry();
+  }
+  renderBoard(state);
+  renderHands(state);
+  renderActions();
   await fetchBeginnerRecommendation(state);
+  if(requestSequence !== refreshRequestSequence) return;
 
   const currentLogCount = state.log ? state.log.length : 0;
 
