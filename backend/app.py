@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import os
 import random
 import re
@@ -38,6 +39,13 @@ from goita_ai2.current_ai.search_budget import time_search_budget_snapshot
 from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapshot
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
+from backend.room_settings_persistence import (
+    load_room_settings,
+    resolve_room_settings_path,
+    save_room_settings,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 MAIN_GID = "main"
 MAIN_ROOM_NAMES: Dict[str, str] = {
@@ -76,6 +84,7 @@ PRIVATE_ROOM_DEFINITIONS = (
 PRIVATE_ROOM_NAMES = {
     room["gid"]: room["owner"] for room in PRIVATE_ROOM_DEFINITIONS
 }
+ROOM_SETTINGS_PATH = resolve_room_settings_path(os.environ)
 
 
 def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
@@ -2142,9 +2151,82 @@ def setup_debug_room() -> None:
     GAMES[DEBUG_GID] = room
 
 
+def _persisted_room_ids() -> Set[str]:
+    return set(PRIVATE_ROOM_NAMES) | {DEBUG_GID}
+
+
+def _room_management_settings(game: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "owner_name": str(game.get("owner_name", "")),
+        "password": game.get("password") if isinstance(game.get("password"), str) else None,
+        "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+        "show_legal_actions": bool(game.get("show_legal_actions", False)),
+        "show_log": bool(game.get("show_log", False)),
+        "room_background_image": str(game.get("room_background_image", "")),
+    }
+
+
+def _apply_room_management_settings(
+    game_id: str,
+    game: Dict[str, Any],
+    settings: Dict[str, Any],
+) -> None:
+    if isinstance(settings.get("owner_name"), str):
+        game["owner_name"] = settings["owner_name"].replace("\r", "").replace("\n", "").strip()
+
+    if "password" in settings:
+        password = settings.get("password")
+        game["password"] = password if isinstance(password, str) and password else None
+
+    next_ai_profile = _normalize_ai_profile(settings.get("ai_profile"))
+    if game.get("ai_profile") != next_ai_profile:
+        game["ai_profile"] = next_ai_profile
+        state = game.get("state")
+        if not game.get("is_started") or bool(getattr(state, "finished", False)):
+            game["agents"] = _create_agents(next_ai_profile)
+
+    if isinstance(settings.get("show_legal_actions"), bool):
+        game["show_legal_actions"] = settings["show_legal_actions"]
+    if isinstance(settings.get("show_log"), bool):
+        game["show_log"] = settings["show_log"]
+
+    background = settings.get("room_background_image")
+    if isinstance(background, str):
+        try:
+            game["room_background_image"] = _normalize_room_background_image(
+                game_id,
+                background,
+            )
+        except HTTPException:
+            game["room_background_image"] = ""
+
+
+def _load_persisted_room_management_settings() -> None:
+    stored_rooms = load_room_settings(ROOM_SETTINGS_PATH)
+    for game_id in _persisted_room_ids():
+        game = GAMES.get(game_id)
+        settings = stored_rooms.get(game_id)
+        if game is not None and settings is not None:
+            _apply_room_management_settings(game_id, game, settings)
+
+
+def _save_persisted_room_management_settings() -> bool:
+    rooms = {
+        game_id: _room_management_settings(GAMES[game_id])
+        for game_id in _persisted_room_ids()
+        if game_id in GAMES
+    }
+    return save_room_settings(ROOM_SETTINGS_PATH, rooms)
+
+
 setup_main_rooms()
 setup_supporter_rooms()
 setup_debug_room()
+_load_persisted_room_management_settings()
+if os.getenv("RENDER") and ROOM_SETTINGS_PATH is None:
+    LOGGER.warning(
+        "Room settings are not persistent. Set GOITA_PERSISTENT_DATA_DIR to a Render disk mount."
+    )
 
 
 def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[str], Optional[str]], board_public: Dict[str, Dict[str, Any]], dealer: str) -> List[str]:
@@ -2579,6 +2661,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "show_legal_actions": bool(game.get("show_legal_actions", False)),
             "show_log": bool(game.get("show_log", False)),
             "room_background_image": str(game.get("room_background_image", "")),
+            "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
             "ai_profiles": {
                 key: str(info["label"])
                 for key, info in AI_PROFILES.items()
@@ -2594,7 +2677,8 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=404, detail="game not found")
     if game.get("admin_password") != req.admin_password:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
+
+    previous_settings = _room_management_settings(game)
     game["owner_name"] = _sanitize_player_name(req.new_owner_name)
     game["show_legal_actions"] = bool(req.show_legal_actions)
     game["show_log"] = bool(req.show_log)
@@ -2611,7 +2695,18 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
             game["agents"] = _create_agents(next_ai_profile)
     if req.update_password:
         game["password"] = req.new_password if req.new_password else None
-    
+
+    if (
+        game_id in _persisted_room_ids()
+        and ROOM_SETTINGS_PATH is not None
+        and not _save_persisted_room_management_settings()
+    ):
+        _apply_room_management_settings(game_id, game, previous_settings)
+        raise HTTPException(
+            status_code=500,
+            detail="ルーム設定を永続保存できませんでした",
+        )
+
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
     return {
@@ -2620,6 +2715,7 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         "show_legal_actions": bool(game.get("show_legal_actions", False)),
         "show_log": bool(game.get("show_log", False)),
         "room_background_image": str(game.get("room_background_image", "")),
+        "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
     }
 
 
