@@ -2255,7 +2255,7 @@
     }
     .settings-modal-content > h3 {
       padding-right: 36px;
-      font-size: 18px;
+      font-size: 15px;
     }
     .settings-modal-content button,
     .settings-modal-content select,
@@ -2275,13 +2275,13 @@
       top: 10px;
       right: 12px;
       z-index: 2;
-      width: 32px;
-      height: 32px;
+      width: 38px;
+      height: 38px;
       padding: 0;
       border: 0;
       background: transparent;
       color: #6d461f;
-      font-size: 25px;
+      font-size: 31px;
       line-height: 1;
       cursor: pointer;
     }
@@ -2321,6 +2321,15 @@
     .settings-panel.active { display: block; }
     .settings-inline-action { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
     .settings-inline-action button { white-space: nowrap; }
+    .settings-inline-action input[type="password"] {
+      border: 1px solid #a98c6c;
+      box-shadow: none;
+    }
+    .settings-inline-action input[type="password"]:focus {
+      outline: none;
+      border-color: #8b5a2b;
+      box-shadow: none;
+    }
     .settings-status { min-height: 1.4em; margin-top: 7px; color: #b00000; font-size: 12px; font-weight: 700; }
     .settings-action-button { width: 100%; background: #fffdf5; color: #6d461f; border: 1px solid #c8a77a; font-weight: bold; padding: 10px; }
     .settings-save-button { width: 100%; background: #8b5a2b; color: #fff; font-weight: bold; padding: 10px; }
@@ -2344,12 +2353,27 @@
       border: 1px solid #d7c2a4;
       background: rgba(255,255,255,0.48);
     }
+    .research-kifu-save-heading {
+      margin: 0 0 2px;
+      color: #6d461f;
+      font-size: 14px;
+    }
     .research-kifu-form input,
     .research-kifu-form textarea {
       box-sizing: border-box;
       width: 100%;
     }
-    .research-kifu-form textarea { min-height: 64px; resize: vertical; }
+    .research-kifu-form input[type="text"] {
+      min-height: 28px;
+      padding: 4px 7px;
+    }
+    .research-kifu-form textarea {
+      height: 42px;
+      min-height: 42px;
+      padding: 5px 7px;
+      line-height: 1.35;
+      resize: vertical;
+    }
     .research-kifu-tag-options {
       display: flex;
       flex-wrap: wrap;
@@ -2395,8 +2419,19 @@
       gap: 7px;
       margin-top: 11px;
     }
-    .research-kifu-filter label { flex: 0 0 auto; font-weight: 800; color: #604322; }
-    .research-kifu-filter select { min-width: 0; flex: 1 1 auto; padding: 6px; }
+    .research-kifu-list-heading {
+      flex: 1 1 auto;
+      color: #604322;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .research-kifu-filter select {
+      flex: 0 1 150px;
+      width: 150px;
+      max-width: 52%;
+      min-width: 0;
+      padding: 6px;
+    }
     .research-kifu-list {
       max-height: 250px;
       margin-top: 12px;
@@ -2698,6 +2733,19 @@
     .settings-modal-content > .settings-footer,
     .lobby-admin-modal-content > .settings-footer {
       margin-top: 10px;
+    }
+    .settings-modal-content > .settings-footer {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .settings-modal-content > .settings-footer > #personalSettingsFooterActions,
+    .settings-modal-content > .settings-footer > button {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .settings-modal-content > .settings-footer .settings-save-button {
+      margin-bottom: 0;
     }
     @media (max-width: 701px) {
       .lobby-admin-modal-content {
@@ -4573,7 +4621,6 @@
     </section>
 
     <section id="researchKifuPanel" class="settings-panel" role="tabpanel">
-      <h4 style="margin:0 0 10px; color:#6d461f;">研究用棋譜ライブラリ</h4>
       <div id="researchKifuAuthArea" class="settings-row">
         <label for="researchKifuAdminPassword">管理用パスワード</label>
         <div class="settings-inline-action">
@@ -4586,18 +4633,17 @@
       <div id="researchKifuLibrary" style="display:none;">
         <div id="researchKifuListView">
           <div class="research-kifu-form">
-            <label for="researchKifuTitle">タイトル</label>
-            <input id="researchKifuTitle" type="text" maxlength="80" placeholder="例：終盤の王受け">
-            <label for="researchKifuMemo">研究メモ</label>
-            <textarea id="researchKifuMemo" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>
+            <input id="researchKifuTitle" type="text" maxlength="80" aria-label="タイトル" placeholder="タイトル　例：終盤の王受け">
+            <textarea id="researchKifuMemo" maxlength="2000" aria-label="研究メモ" placeholder="気になった点をメモできます"></textarea>
             <label>タグ</label>
             <div id="researchKifuSaveTags" class="research-kifu-tag-options"></div>
             <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu()">終局した一局を保存</button>
           </div>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
           <div class="research-kifu-filter">
-            <label for="researchKifuTagFilter">タグで絞り込み</label>
-            <select id="researchKifuTagFilter" onchange="renderResearchKifuList()"></select>
+            <strong class="research-kifu-list-heading">棋譜一覧</strong>
+            <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
           </div>
           <div id="researchKifuList" class="research-kifu-list"></div>
         </div>
@@ -4644,8 +4690,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822k"></script>
-<script src="/static/i18n.js?v=20260822k"></script>
+<script src="/static/i18n-en.js?v=20260823a"></script>
+<script src="/static/i18n.js?v=20260823a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -8708,17 +8754,22 @@ function hintNoticeImportance(text){
 }
 
 function shouldDisplayChatNotice(item){
-  if(item?.local_notice !== true) return true;
+  const isNotice = item?.local_notice === true || item?.seat === "notice";
+  if(!isNotice) return true;
   const visibility = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
   if(visibility === "all") return true;
   if(visibility === "none") return false;
-  return item?.notice_importance === "important";
+  const importance = item?.notice_importance || hintNoticeImportance(item?.message);
+  return importance === "important";
 }
 
 function refreshChatNoticeVisibility(){
   if(latestState) renderChat(latestState);
   const lobbyServerMessages = lobbyChatMessages.filter((item) => item?.local_notice !== true);
   renderLobbyChat(lobbyServerMessages);
+  if(normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility) === "none"){
+    hideChatToast();
+  }
 }
 
 function recordHintNotice(msg){
@@ -8973,6 +9024,7 @@ function localizedChatSenderWithTag(item){
 }
 
 function showChatToast(item){
+  if(!shouldDisplayChatNotice(item)) return;
   const toast = document.getElementById("chatToast");
   const sender = document.getElementById("chatToastSender");
   const text = document.getElementById("chatToastText");
@@ -9073,7 +9125,7 @@ function setChatMessageText(element, message, translateMessage = false){
 
 function mergedChatMessages(serverMessages){
   return [
-    ...serverMessages,
+    ...serverMessages.filter(shouldDisplayChatNotice),
     ...localChatNotices.filter(shouldDisplayChatNotice),
     ...localAiThoughtMessages,
   ].sort((a, b) => chatItemTimeValue(a) - chatItemTimeValue(b));
@@ -9128,7 +9180,7 @@ function renderLobbyChat(serverMessages){
 
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
   const sharedMessages = Array.isArray(serverMessages)
-    ? serverMessages.filter((item) => item?.lobby_notice !== true)
+    ? serverMessages.filter((item) => item?.lobby_notice !== true && shouldDisplayChatNotice(item))
     : [];
   lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices.filter(shouldDisplayChatNotice)]
     .sort((left, right) => chatItemTimeValue(left) - chatItemTimeValue(right));

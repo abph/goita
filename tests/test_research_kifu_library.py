@@ -240,6 +240,13 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'id="researchKifuSaveTags"' in HTML
     assert 'id="researchKifuEditTags"' in HTML
     assert 'id="researchKifuTagFilter"' in HTML
+    assert '<h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>' in HTML
+    assert 'placeholder="タイトル　例：終盤の王受け"' in HTML
+    assert 'placeholder="気になった点をメモできます"' in HTML
+    assert '<strong class="research-kifu-list-heading">棋譜一覧</strong>' in HTML
+    assert '<label for="researchKifuTitle">タイトル</label>' not in HTML
+    assert '<label for="researchKifuMemo">研究メモ</label>' not in HTML
+    assert '<h4 style="margin:0 0 10px; color:#6d461f;">研究用棋譜ライブラリ</h4>' not in HTML
     for tag in RESEARCH_KIFU_TAGS:
         assert f'"{tag}"' in HTML
     assert "← 棋譜一覧へ" in HTML

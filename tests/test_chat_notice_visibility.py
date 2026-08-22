@@ -23,15 +23,18 @@ def test_notice_visibility_defaults_to_important_and_is_persisted() -> None:
     assert 'document.getElementById("chatNoticeVisibility").value' in HTML
 
 
-def test_chat_filters_local_notices_without_hiding_toasts() -> None:
+def test_chat_filters_all_notices_and_hides_disabled_toasts() -> None:
     assert 'function hintNoticeImportance(text)' in HTML
     assert 'function shouldDisplayChatNotice(item)' in HTML
+    assert 'item?.local_notice === true || item?.seat === "notice"' in HTML
     assert 'if(visibility === "all") return true;' in HTML
     assert 'if(visibility === "none") return false;' in HTML
-    assert 'return item?.notice_importance === "important";' in HTML
+    assert 'item?.notice_importance || hintNoticeImportance(item?.message)' in HTML
+    assert '...serverMessages.filter(shouldDisplayChatNotice)' in HTML
     assert '...localChatNotices.filter(shouldDisplayChatNotice)' in HTML
     assert '...lobbyChatNotices.filter(shouldDisplayChatNotice)' in HTML
-    assert 'if(shouldShowHintToast(text)) showChatToast(notice);' in HTML
+    assert 'if(!shouldDisplayChatNotice(item)) return;' in HTML
+    assert 'hideChatToast();' in HTML
 
 
 def test_notice_visibility_labels_are_translated() -> None:
@@ -45,6 +48,6 @@ def test_notice_visibility_labels_are_translated() -> None:
 if __name__ == "__main__":
     test_notice_visibility_setting_is_available_in_lobby_and_room()
     test_notice_visibility_defaults_to_important_and_is_persisted()
-    test_chat_filters_local_notices_without_hiding_toasts()
+    test_chat_filters_all_notices_and_hides_disabled_toasts()
     test_notice_visibility_labels_are_translated()
     print("CHAT_NOTICE_VISIBILITY_TEST_OK")

@@ -109,6 +109,18 @@ def test_settings_modals_keep_a_fixed_height_while_panels_scroll() -> None:
     assert html.count("height: calc(100dvh - 12px);") >= 2
 
 
+def test_room_settings_header_and_footer_use_compact_actions() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert ".settings-modal-content > .settings-footer {" in html
+    assert "display: flex;" in html
+    assert 'id="personalSettingsFooterActions"' in html
+    assert "font-size: 31px;" in html
+    assert "font-size: 15px;" in html
+    assert '.settings-inline-action input[type="password"]:focus' in html
+    assert "outline: none;" in html
+
+
 if __name__ == "__main__":
     test_match_setup_is_grouped_in_the_settings_modal()
     test_match_setup_is_host_only_and_private_hands_stay_private()
@@ -116,4 +128,5 @@ if __name__ == "__main__":
     test_personal_kifu_save_actions_are_grouped()
     test_effects_and_beginner_support_are_grouped()
     test_settings_modals_keep_a_fixed_height_while_panels_scroll()
+    test_room_settings_header_and_footer_use_compact_actions()
     print("MATCH_SETTINGS_PANEL_TEST_OK")
