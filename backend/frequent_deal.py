@@ -1,0 +1,101 @@
+"""High-frequency hand-structure filtering for practice deals.
+
+The accepted signatures are the 100 most frequent structures from the
+10,000,000-deal structure analysis.  Only aggregate shapes are embedded here,
+so production does not depend on the untracked analysis CSV.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from typing import Iterable, Mapping, Sequence
+
+
+HandStructure = tuple[int, int, int, int, int, int, int, int, int]
+
+
+# (shi, kyosha, middle singles/pairs/triples/quads,
+#  big-piece singles/pairs, king-or-gyoku count)
+TOP_100_HAND_STRUCTURES: frozenset[HandStructure] = frozenset(
+    {
+        (3, 1, 1, 1, 0, 0, 1, 0, 0), (2, 1, 1, 1, 0, 0, 1, 0, 1),
+        (2, 1, 2, 1, 0, 0, 1, 0, 0), (3, 1, 2, 0, 0, 0, 1, 0, 1),
+        (4, 1, 2, 0, 0, 0, 1, 0, 0), (2, 2, 1, 1, 0, 0, 1, 0, 0),
+        (3, 0, 1, 1, 0, 0, 1, 0, 1), (3, 2, 2, 0, 0, 0, 1, 0, 0),
+        (3, 0, 2, 1, 0, 0, 1, 0, 0), (3, 1, 1, 1, 0, 0, 0, 0, 1),
+        (3, 1, 2, 1, 0, 0, 0, 0, 0), (4, 1, 1, 1, 0, 0, 0, 0, 0),
+        (4, 0, 1, 1, 0, 0, 1, 0, 0), (3, 1, 3, 0, 0, 0, 1, 0, 0),
+        (3, 2, 1, 1, 0, 0, 0, 0, 0), (2, 1, 1, 1, 0, 0, 2, 0, 0),
+        (2, 1, 2, 1, 0, 0, 0, 0, 1), (2, 0, 2, 1, 0, 0, 1, 0, 1),
+        (2, 2, 2, 0, 0, 0, 1, 0, 1), (3, 1, 2, 0, 0, 0, 2, 0, 0),
+        (4, 1, 2, 0, 0, 0, 0, 0, 1), (2, 1, 3, 0, 0, 0, 1, 0, 1),
+        (4, 0, 2, 0, 0, 0, 1, 0, 1), (4, 1, 1, 0, 0, 0, 1, 0, 1),
+        (2, 0, 1, 2, 0, 0, 1, 0, 0), (1, 1, 2, 1, 0, 0, 1, 0, 1),
+        (2, 1, 0, 2, 0, 0, 1, 0, 0), (2, 2, 1, 1, 0, 0, 0, 0, 1),
+        (2, 2, 2, 1, 0, 0, 0, 0, 0), (2, 1, 1, 2, 0, 0, 0, 0, 0),
+        (3, 1, 0, 1, 0, 0, 1, 0, 1), (3, 0, 1, 1, 0, 0, 2, 0, 0),
+        (3, 0, 2, 1, 0, 0, 0, 0, 1), (3, 2, 1, 0, 0, 0, 1, 0, 1),
+        (3, 2, 2, 0, 0, 0, 0, 0, 1), (4, 0, 2, 1, 0, 0, 0, 0, 0),
+        (4, 0, 1, 1, 0, 0, 0, 0, 1), (2, 1, 1, 0, 1, 0, 1, 0, 0),
+        (2, 1, 2, 0, 0, 0, 2, 0, 1), (4, 2, 2, 0, 0, 0, 0, 0, 0),
+        (4, 1, 0, 1, 0, 0, 1, 0, 0), (4, 2, 1, 0, 0, 0, 1, 0, 0),
+        (2, 2, 3, 0, 0, 0, 1, 0, 0), (3, 0, 3, 0, 0, 0, 1, 0, 1),
+        (3, 1, 3, 0, 0, 0, 0, 0, 1), (4, 1, 3, 0, 0, 0, 0, 0, 0),
+        (4, 0, 3, 0, 0, 0, 1, 0, 0), (1, 2, 1, 1, 0, 0, 1, 0, 1),
+        (1, 2, 2, 1, 0, 0, 1, 0, 0), (1, 1, 1, 2, 0, 0, 1, 0, 0),
+        (3, 0, 0, 2, 0, 0, 1, 0, 0), (3, 1, 0, 2, 0, 0, 0, 0, 0),
+        (3, 0, 1, 2, 0, 0, 0, 0, 0), (3, 2, 0, 1, 0, 0, 1, 0, 0),
+        (2, 0, 1, 1, 0, 0, 2, 0, 1), (2, 0, 2, 1, 0, 0, 2, 0, 0),
+        (2, 2, 2, 0, 0, 0, 2, 0, 0), (2, 1, 1, 1, 0, 0, 0, 1, 0),
+        (3, 0, 1, 0, 1, 0, 1, 0, 0), (3, 1, 1, 0, 0, 0, 2, 0, 1),
+        (3, 1, 2, 0, 0, 0, 0, 1, 0), (3, 1, 1, 0, 1, 0, 0, 0, 0),
+        (3, 2, 3, 0, 0, 0, 0, 0, 0), (3, 0, 2, 0, 0, 0, 2, 0, 1),
+        (2, 1, 3, 0, 0, 0, 2, 0, 0), (4, 0, 2, 0, 0, 0, 2, 0, 0),
+        (4, 1, 1, 0, 0, 0, 2, 0, 0), (1, 1, 2, 1, 0, 0, 2, 0, 0),
+        (1, 1, 1, 1, 0, 0, 2, 0, 1), (2, 0, 0, 2, 0, 0, 1, 0, 1),
+        (2, 2, 0, 1, 0, 0, 1, 0, 1), (2, 1, 0, 2, 0, 0, 0, 0, 1),
+        (2, 0, 1, 2, 0, 0, 0, 0, 1), (3, 2, 1, 0, 0, 0, 2, 0, 0),
+        (3, 0, 1, 1, 0, 0, 0, 1, 0), (3, 1, 0, 1, 0, 0, 2, 0, 0),
+        (4, 1, 0, 1, 0, 0, 0, 0, 1), (2, 0, 1, 0, 1, 0, 1, 0, 1),
+        (2, 1, 2, 0, 0, 0, 1, 1, 0), (4, 0, 0, 1, 0, 0, 1, 0, 1),
+        (2, 1, 2, 0, 1, 0, 0, 0, 0), (2, 2, 3, 0, 0, 0, 0, 0, 1),
+        (4, 2, 1, 0, 0, 0, 0, 0, 1), (2, 1, 2, 0, 0, 0, 0, 1, 1),
+        (2, 1, 2, 0, 0, 0, 1, 0, 2), (2, 0, 2, 0, 1, 0, 1, 0, 0),
+        (2, 1, 1, 0, 1, 0, 0, 0, 1), (2, 3, 2, 0, 0, 0, 1, 0, 0),
+        (3, 0, 3, 0, 0, 0, 2, 0, 0), (4, 0, 3, 0, 0, 0, 0, 0, 1),
+        (1, 2, 1, 1, 0, 0, 2, 0, 0), (1, 1, 0, 2, 0, 0, 1, 0, 1),
+        (1, 1, 1, 2, 0, 0, 0, 0, 1), (1, 0, 1, 2, 0, 0, 1, 0, 1),
+        (1, 2, 2, 1, 0, 0, 0, 0, 1), (2, 2, 0, 2, 0, 0, 0, 0, 0),
+        (3, 2, 0, 1, 0, 0, 0, 0, 1), (3, 0, 0, 2, 0, 0, 0, 0, 1),
+        (2, 0, 0, 1, 1, 0, 1, 0, 0), (2, 1, 1, 1, 0, 0, 0, 0, 2),
+    }
+)
+
+
+def _group_shape(counts: Counter[str], pieces: Iterable[str]) -> tuple[int, int, int, int]:
+    values = [counts.get(piece, 0) for piece in pieces]
+    return tuple(sum(value == size for value in values) for size in range(1, 5))
+
+
+def hand_structure(hand: Sequence[str]) -> HandStructure:
+    """Return the frequency-list structure signature for an eight-piece hand."""
+    counts = Counter(str(piece) for piece in hand)
+    middle = _group_shape(counts, ("3", "4", "5"))
+    big = _group_shape(counts, ("6", "7"))
+    return (
+        counts.get("1", 0),
+        counts.get("2", 0),
+        *middle,
+        big[0],
+        big[1],
+        counts.get("8", 0) + counts.get("9", 0),
+    )
+
+
+def is_frequent_hand(hand: Sequence[str]) -> bool:
+    return hand_structure(hand) in TOP_100_HAND_STRUCTURES
+
+
+def is_frequent_deal(hands: Mapping[str, Sequence[str]]) -> bool:
+    return all(is_frequent_hand(hand) for hand in hands.values())
+

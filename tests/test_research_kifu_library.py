@@ -57,6 +57,14 @@ def test_store_keeps_room_libraries_isolated_and_supports_crud():
         assert store.list("private-b") == []
         assert store.get("private-a", record_id)["payload"]["dealer"] == "C"
         assert store.get("private-b", record_id) is None
+        edited = store.update_details(
+            "private-a",
+            record_id,
+            title="高得点ルート",
+            memo="王上がりも比較",
+        )
+        assert edited["title"] == "高得点ルート"
+        assert edited["memo"] == "王上がりも比較"
         assert store.delete("private-b", record_id) is False
         assert store.delete("private-a", record_id) is True
         assert store.get("private-a", record_id) is None
@@ -126,6 +134,18 @@ def test_private_room_api_requires_admin_and_round_trips_records():
             )["record"]
             assert updated["memo"] == "王を残す形も比較する"
             assert updated["payload"]["round_index"] == 7
+            edited = app_module.update_research_kifu(
+                room_id,
+                saved["id"],
+                app_module.ResearchKifuUpdateRequest(
+                    admin_password="research-secret",
+                    title="王を残す終盤",
+                    memo="角上がりとの点数比較",
+                ),
+            )["record"]
+            assert edited["title"] == "王を残す終盤"
+            assert edited["memo"] == "角上がりとの点数比較"
+            assert edited["payload"]["round_index"] == 7
             assert app_module.delete_research_kifu(
                 room_id,
                 saved["id"],
@@ -143,8 +163,11 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "saveCurrentResearchKifu()" in HTML
     assert "openResearchKifu(record.id)" in HTML
     assert "applySelectedResearchKifu()" in HTML
-    assert "startResearchKifuMemoEdit()" in HTML
-    assert "saveResearchKifuMemoEdit()" in HTML
+    assert "startResearchKifuEdit()" in HTML
+    assert "saveResearchKifuEdit()" in HTML
+    assert 'id="researchKifuTitleEditInput"' in HTML
+    assert "← 棋譜一覧へ" in HTML
+    assert ">編集</button>" in HTML
     assert "deleteSelectedResearchKifu()" in HTML
     assert 'id="researchKifuBoard"' in HTML
     assert "buildResearchKifuFinalState(payload)" in HTML

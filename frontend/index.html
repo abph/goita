@@ -2396,6 +2396,10 @@
       color: #69411e;
       font-weight: 800;
     }
+    .research-kifu-detail-heading button.danger {
+      color: #a62424;
+      border-color: #c78888;
+    }
     .research-kifu-detail-heading .research-kifu-actions {
       display: flex;
       min-width: 0;
@@ -2414,6 +2418,17 @@
     .research-kifu-memo-editor {
       display: none;
       margin: 8px 0 10px;
+    }
+    .research-kifu-memo-editor label {
+      display: block;
+      margin: 7px 0 4px;
+      color: #5f3517;
+      font-weight: 800;
+    }
+    .research-kifu-memo-editor input {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 7px;
     }
     .research-kifu-memo-editor textarea {
       box-sizing: border-box;
@@ -4310,6 +4325,24 @@
     <section id="matchSettingsPanel" class="settings-panel" role="tabpanel">
       <p class="match-settings-note">親と手札の変更は、ゲーム開始前なら現在の配牌へすぐ反映されます。対局中の変更は次の新規ゲームから適用されます。</p>
 
+      <details id="dealModeDetails" class="settings-disclosure" open>
+        <summary>
+          <span class="when-closed">▶ 配牌設定を開く</span>
+          <span class="when-open">▼ 配牌設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label for="dealModeSelect">配牌方式</label>
+            <select id="dealModeSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;" onchange="saveDealModeSetting()">
+              <option value="normal" selected>通常配牌</option>
+              <option value="frequent">高頻度配牌（練習用）</option>
+            </select>
+          </div>
+          <div class="small">高頻度配牌では、4人全員の手駒を出現頻度上位100分類に限定します。手札指定がある局は、手札指定を優先します。</div>
+          <div id="dealModeStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+      </details>
+
       <details id="turnTimeLimitDetails" class="settings-disclosure" open>
         <summary>
           <span class="when-closed">▶ 持ち時間設定を開く</span>
@@ -4461,20 +4494,21 @@
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
           <div class="research-kifu-detail-heading">
             <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
-            <div class="research-kifu-actions">
-              <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
-              <button type="button" onclick="startResearchKifuMemoEdit()">メモ編集</button>
-              <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
-            </div>
+            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
+            <button type="button" onclick="startResearchKifuEdit()">編集</button>
+            <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
           </div>
           <h4 id="researchKifuDetailTitle"></h4>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
           <div id="researchKifuMemoEditor" class="research-kifu-memo-editor">
+            <label for="researchKifuTitleEditInput">棋譜の名前</label>
+            <input id="researchKifuTitleEditInput" type="text" maxlength="80" placeholder="例：終盤の王受け">
+            <label for="researchKifuMemoEditInput">メモ</label>
             <textarea id="researchKifuMemoEditInput" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
             <div class="research-kifu-memo-editor-actions">
-              <button type="button" onclick="cancelResearchKifuMemoEdit()">キャンセル</button>
-              <button type="button" onclick="saveResearchKifuMemoEdit()">メモを保存</button>
+              <button type="button" onclick="cancelResearchKifuEdit()">キャンセル</button>
+              <button type="button" onclick="saveResearchKifuEdit()">保存</button>
             </div>
           </div>
           <div class="research-kifu-board-wrap">
@@ -4495,8 +4529,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822f"></script>
-<script src="/static/i18n.js?v=20260822f"></script>
+<script src="/static/i18n-en.js?v=20260822h"></script>
+<script src="/static/i18n.js?v=20260822h"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -5546,6 +5580,7 @@ let logAnimationGeneration = 0;
 let cpuTimer = null; 
 let turnCountdownTimer = null;
 let turnTimeLimitSaving = false;
+let dealModeSaving = false;
 let latestState = null;
 let meetingPublicTableRefreshInFlight = false;
 let meetingPublicTableLastRefreshAt = 0;
@@ -6593,6 +6628,62 @@ function syncTurnTimeLimitControls() {
     select.disabled = !isCurrentClientHost();
 }
 
+function syncDealModeControls() {
+    const details = document.getElementById("dealModeDetails");
+    const select = document.getElementById("dealModeSelect");
+    if (!details || !select || dealModeSaving) return;
+    const isPrivateRoom = PRIVATE_ROOM_IDS.has(settingTargetGid || gid);
+    details.style.display = isPrivateRoom ? "block" : "none";
+    const configured = String(
+        latestState?.next_deal_mode
+        ?? latestState?.deal_mode
+        ?? "normal"
+    );
+    select.value = configured === "frequent" ? "frequent" : "normal";
+    select.disabled = !isCurrentClientHost() || !isPrivateRoom;
+}
+
+async function saveDealModeSetting() {
+    const targetGid = settingTargetGid || gid;
+    if (!isCurrentClientHost() || !PRIVATE_ROOM_IDS.has(targetGid) || dealModeSaving) return;
+    const select = document.getElementById("dealModeSelect");
+    const status = document.getElementById("dealModeStatus");
+    if (!select || !status) return;
+
+    const mode = select.value === "frequent" ? "frequent" : "normal";
+    dealModeSaving = true;
+    select.disabled = true;
+    status.textContent = uiText("配牌を準備しています...");
+    try {
+        const res = await fetch(`${API}/games/${targetGid}/deal_mode`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                requester: mySeat,
+                client_id: clientId,
+                mode,
+            }),
+        });
+        if (!res.ok) throw new Error("Failed to save the deal mode.");
+        const saved = await res.json();
+        if (latestState) {
+            latestState.deal_mode = saved.deal_mode || "normal";
+            latestState.next_deal_mode = saved.next_deal_mode || "normal";
+        }
+        status.textContent = uiText(saved.applies_next_round
+            ? "保存しました。次の一局から反映されます。"
+            : "保存しました。配牌を更新しました。"
+        );
+    } catch (error) {
+        console.error("Deal mode save error:", error);
+        status.textContent = uiText("配牌設定を保存できませんでした。");
+        syncDealModeControls();
+    } finally {
+        dealModeSaving = false;
+        syncDealModeControls();
+    }
+}
+
 async function saveTurnTimeLimitSetting() {
     if (!isCurrentClientHost() || turnTimeLimitSaving) return;
     const select = document.getElementById("turnTimeLimitSelect");
@@ -6646,8 +6737,11 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     currentAdminPass = "";
     const turnTimeLimitStatus = document.getElementById("turnTimeLimitStatus");
     if(turnTimeLimitStatus) turnTimeLimitStatus.textContent = "";
+    const dealModeStatus = document.getElementById("dealModeStatus");
+    if(dealModeStatus) dealModeStatus.textContent = "";
     syncPersonalSettingsControls();
     syncTurnTimeLimitControls();
+    syncDealModeControls();
     document.getElementById("setAdminPassword").value = "";
     document.getElementById("adminAuthStatus").textContent = "";
     document.getElementById("adminAuthArea").style.display = "block";
@@ -7142,36 +7236,49 @@ function renderResearchKifuDetail(record) {
     selectedResearchKifu = record;
     document.getElementById("researchKifuListView").style.display = "none";
     document.getElementById("researchKifuDetailView").style.display = "block";
-    document.getElementById("researchKifuDetailTitle").textContent = record.title || record.id;
+    const title = document.getElementById("researchKifuDetailTitle");
+    title.textContent = record.title || record.id;
+    title.style.display = "block";
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
     memo.style.display = record.memo ? "block" : "none";
     const memoEditor = document.getElementById("researchKifuMemoEditor");
+    const titleInput = document.getElementById("researchKifuTitleEditInput");
     const memoInput = document.getElementById("researchKifuMemoEditInput");
     if (memoEditor) memoEditor.style.display = "none";
+    if (titleInput) titleInput.value = record.title || "";
     if (memoInput) memoInput.value = record.memo || "";
     renderResearchKifuBoard(payload);
 
     document.getElementById("researchKifuDetailStatus").textContent = "";
 }
 
-function startResearchKifuMemoEdit() {
+function startResearchKifuEdit() {
     if (!selectedResearchKifu) return;
+    const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
     const editor = document.getElementById("researchKifuMemoEditor");
-    const input = document.getElementById("researchKifuMemoEditInput");
+    const titleInput = document.getElementById("researchKifuTitleEditInput");
+    const memoInput = document.getElementById("researchKifuMemoEditInput");
+    if (title) title.style.display = "none";
     if (memo) memo.style.display = "none";
-    if (input) input.value = selectedResearchKifu.memo || "";
+    if (titleInput) titleInput.value = selectedResearchKifu.title || "";
+    if (memoInput) memoInput.value = selectedResearchKifu.memo || "";
     if (editor) editor.style.display = "block";
     document.getElementById("researchKifuDetailStatus").textContent = "";
-    setTimeout(() => input?.focus(), 0);
+    setTimeout(() => titleInput?.focus(), 0);
 }
 
-function cancelResearchKifuMemoEdit() {
+function cancelResearchKifuEdit() {
+    const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
     const editor = document.getElementById("researchKifuMemoEditor");
+    if (title) {
+        title.textContent = selectedResearchKifu?.title || selectedResearchKifu?.id || "";
+        title.style.display = "block";
+    }
     if (memo) {
         memo.textContent = selectedResearchKifu?.memo || "";
         memo.style.display = selectedResearchKifu?.memo ? "block" : "none";
@@ -7179,23 +7286,28 @@ function cancelResearchKifuMemoEdit() {
     if (editor) editor.style.display = "none";
 }
 
-async function saveResearchKifuMemoEdit() {
+async function saveResearchKifuEdit() {
     if (!selectedResearchKifu) return;
     const status = document.getElementById("researchKifuDetailStatus");
-    const input = document.getElementById("researchKifuMemoEditInput");
+    const titleInput = document.getElementById("researchKifuTitleEditInput");
+    const memoInput = document.getElementById("researchKifuMemoEditInput");
     status.textContent = uiText("保存しています...");
     try {
-        const data = await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/memo`, {
-            memo: input?.value || "",
+        const data = await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/edit`, {
+            title: titleInput?.value || "",
+            memo: memoInput?.value || "",
         });
         selectedResearchKifu = data.record;
         researchKifuRecords = researchKifuRecords.map(record =>
-            record.id === data.record.id ? {...record, memo: data.record.memo} : record
+            record.id === data.record.id
+                ? {...record, title: data.record.title, memo: data.record.memo}
+                : record
         );
-        cancelResearchKifuMemoEdit();
-        status.textContent = uiText("メモを更新しました。");
+        renderResearchKifuList();
+        cancelResearchKifuEdit();
+        status.textContent = uiText("棋譜を更新しました。");
     } catch (error) {
-        status.textContent = uiText(error?.message || "メモを更新できませんでした。");
+        status.textContent = uiText(error?.message || "棋譜を更新できませんでした。");
     }
 }
 
@@ -7492,6 +7604,7 @@ function updateRoomUI() {
     const showActions = !isMain && isHost && latestState?.show_legal_actions === true;
 
     syncTurnTimeLimitControls();
+    syncDealModeControls();
     
     if (btnNewGame) btnNewGame.style.display = (isHost && latestState?.finished) ? "" : "none";
     if (forceResetSettingsRow) forceResetSettingsRow.style.display = (isHost && latestState && !latestState.finished) ? "block" : "none";

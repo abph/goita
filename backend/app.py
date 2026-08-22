@@ -53,6 +53,7 @@ from backend.research_kifu_store import (
     is_persistent_research_kifu_configured,
     resolve_research_kifu_path,
 )
+from backend.frequent_deal import is_frequent_deal
 
 LOGGER = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
+DEAL_MODE_OPTIONS = frozenset({"normal", "frequent"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "current"
@@ -520,6 +522,29 @@ def create_random_hands_no_five_shi(max_retry: int = 5000) -> Dict[str, List[str
         if all(sum(1 for x in hands[p] if x == "1") <= 4 for p in ALL_SEATS):
             return hands
     raise RuntimeError(f"Failed to generate valid hands after {max_retry} retries.")
+
+
+def _normalize_deal_mode(value: Any) -> str:
+    mode = str(value or "normal").strip().lower()
+    return mode if mode in DEAL_MODE_OPTIONS else "normal"
+
+
+def create_hands_for_deal_mode(
+    deal_mode: str = "normal",
+    max_retry: int = 1000,
+) -> Dict[str, List[str]]:
+    """Deal normally, optionally keeping only top-100 hand structures."""
+    mode = _normalize_deal_mode(deal_mode)
+    if mode == "normal":
+        return create_random_hands_no_five_shi()
+
+    for _ in range(max_retry):
+        hands = create_random_hands_no_five_shi()
+        if is_frequent_deal(hands):
+            return hands
+    raise RuntimeError(
+        f"Failed to generate a high-frequency deal after {max_retry} retries."
+    )
 
 def build_hands_from_preset_counts(
     preset: Dict[str, Dict[str, int]],
@@ -1569,6 +1594,12 @@ class TurnTimeLimitUpdateRequest(BaseModel):
     client_id: str = ""
     seconds: int = 0
 
+
+class DealModeUpdateRequest(BaseModel):
+    requester: str = Field(default="W")
+    client_id: str = ""
+    mode: str = "normal"
+
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
     new_owner_name: str = Field(max_length=ROOM_NAME_MAX_LEN)
@@ -1603,6 +1634,11 @@ class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
 
 
 class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
+    memo: str = Field(default="", max_length=2000)
+
+
+class ResearchKifuUpdateRequest(ResearchKifuAuthRequest):
+    title: str = Field(default="", max_length=80)
     memo: str = Field(default="", max_length=2000)
 
 
@@ -2104,6 +2140,10 @@ def _state_public_view(
                 game_obj.get("turn_time_limit_seconds", 0),
             )
         ),
+        "deal_mode": _normalize_deal_mode(game_obj.get("deal_mode", "normal")),
+        "next_deal_mode": _normalize_deal_mode(
+            game_obj.get("next_deal_mode", game_obj.get("deal_mode", "normal"))
+        ),
         "turn_started_at_ms": (
             int(float(game_obj["turn_started_at"]) * 1000)
             if game_obj.get("turn_started_at") is not None
@@ -2128,10 +2168,15 @@ def _state_public_view(
     return payload
 
 
-def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dict[str, Any]:
+def _create_game_obj(
+    dealer: str = "A",
+    ai_profile: Optional[str] = None,
+    deal_mode: str = "normal",
+) -> Dict[str, Any]:
     dealer = _validate_seat(dealer, name="dealer")
     ai_profile = _normalize_ai_profile(ai_profile)
-    hands = create_random_hands_no_five_shi()
+    deal_mode = _normalize_deal_mode(deal_mode)
+    hands = create_hands_for_deal_mode(deal_mode)
     state = GoitaState(hands=hands, dealer=dealer)
     agents = _create_agents(ai_profile)
     return {
@@ -2172,6 +2217,8 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "last_completed_kifu": None,
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
+        "deal_mode": deal_mode,
+        "next_deal_mode": deal_mode,
         "turn_started_at": None,
         "turn_deadline_at": None,
         "turn_timer_token": 0,
@@ -2935,6 +2982,49 @@ async def update_turn_time_limit(game_id: str, req: TurnTimeLimitUpdateRequest):
     }
 
 
+@app.post("/games/{game_id}/deal_mode")
+async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="High-frequency deals are available only in private rooms.",
+        )
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if req.requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can change the deal mode.")
+    _require_human_seat_owner(game, "A", req.client_id)
+
+    mode = _normalize_deal_mode(req.mode)
+    if mode != str(req.mode or "").strip().lower():
+        raise HTTPException(status_code=400, detail="Unsupported deal mode.")
+
+    applies_next_round = bool(game.get("is_started"))
+    game["next_deal_mode"] = mode
+    if not applies_next_round:
+        dealer = game.get("dealer", "A")
+        hands = create_hands_for_deal_mode(mode)
+        game["state"] = GoitaState(hands=hands, dealer=dealer)
+        game["init_hands"] = hands
+        game["board"] = _new_board_snapshot()
+        game["log"] = []
+        game["kifu_moves"] = []
+        game["ai_board_explanations"] = []
+        game["last_public_action"] = None
+        game["reveal_hands"] = False
+        game["revealed_hand_seats"] = []
+        game["deal_mode"] = mode
+
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "deal_mode": _normalize_deal_mode(game.get("deal_mode", "normal")),
+        "next_deal_mode": mode,
+        "applies_next_round": applies_next_round,
+    }
+
+
 @app.post("/games/{game_id}/reveal_hand")
 async def reveal_hand(
     game_id: str,
@@ -3032,8 +3122,15 @@ async def reset_game(
             old_game.get("turn_time_limit_seconds", 0),
         )
     )
+    deal_mode = _normalize_deal_mode(
+        old_game.get("next_deal_mode", old_game.get("deal_mode", "normal"))
+    )
     
-    new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
+    new_game = _create_game_obj(
+        dealer=dealer,
+        ai_profile=ai_profile,
+        deal_mode=deal_mode,
+    )
     new_game["password"] = password
     new_game["admin_password"] = admin_password
     new_game["admin_password_hash"] = admin_password_hash
@@ -3054,6 +3151,8 @@ async def reset_game(
     new_game["is_debug_room"] = is_debug_room
     new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
+    new_game["deal_mode"] = deal_mode
+    new_game["next_deal_mode"] = deal_mode
     
     if keep_score:
         _preserve_match_progress(new_game, old_game)
@@ -3100,6 +3199,9 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
             old_game.get("turn_time_limit_seconds", 0),
         )
     )
+    deal_mode = _normalize_deal_mode(
+        old_game.get("next_deal_mode", old_game.get("deal_mode", "normal"))
+    )
 
     if preset:
         try:
@@ -3133,13 +3235,19 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["is_debug_room"] = is_debug_room
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
+        new_game["deal_mode"] = deal_mode
+        new_game["next_deal_mode"] = deal_mode
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
 
         GAMES[game_id] = new_game
     else:
-        new_game = _create_game_obj(dealer=dealer, ai_profile=ai_profile)
+        new_game = _create_game_obj(
+            dealer=dealer,
+            ai_profile=ai_profile,
+            deal_mode=deal_mode,
+        )
         new_game["password"] = password
         new_game["admin_password"] = admin_password
         new_game["admin_password_hash"] = admin_password_hash
@@ -3160,6 +3268,8 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["is_debug_room"] = is_debug_room
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
+        new_game["deal_mode"] = deal_mode
+        new_game["next_deal_mode"] = deal_mode
         
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
@@ -3842,6 +3952,30 @@ def update_research_kifu_memo(
         game_id,
         record_id,
         str(req.memo or "").strip(),
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    return {"ok": True, "record": record}
+
+
+@app.post("/games/{game_id}/research_kifu/{record_id}/edit")
+def update_research_kifu(
+    game_id: str,
+    record_id: str,
+    req: ResearchKifuUpdateRequest,
+):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    current = RESEARCH_KIFU_STORE.get(game_id, record_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    title = str(req.title or "").strip() or str(current.get("title") or record_id)
+    record = RESEARCH_KIFU_STORE.update_details(
+        game_id,
+        record_id,
+        title=title,
+        memo=str(req.memo or "").strip(),
     )
     if record is None:
         raise HTTPException(status_code=404, detail="棋譜が見つかりません")

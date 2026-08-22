@@ -202,6 +202,30 @@ class ResearchKifuStore:
             return None
         return self.get(room_id, record_id)
 
+    def update_details(
+        self,
+        room_id: str,
+        record_id: str,
+        *,
+        title: str,
+        memo: str,
+    ) -> Optional[dict[str, Any]]:
+        """Update the editable name and memo without changing the game record."""
+        self._ensure_schema()
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE research_kifu
+                SET title = ?, memo = ?
+                WHERE room_id = ? AND id = ?
+                """,
+                (title, memo, room_id, record_id),
+            )
+            connection.commit()
+        if cursor.rowcount <= 0:
+            return None
+        return self.get(room_id, record_id)
+
     def delete(self, room_id: str, record_id: str) -> bool:
         self._ensure_schema()
         with closing(self._connect()) as connection:
