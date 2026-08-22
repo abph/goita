@@ -49,6 +49,7 @@ class TimedSearchResult:
     candidate_count: int = 0
     information_confidence: float = 0.0
     policy_decisions: int = 0
+    enemy_third_attack_wait: bool = False
 
     def as_dict(self) -> Dict[str, object]:
         result = {
@@ -69,11 +70,56 @@ class TimedSearchResult:
                 "information_confidence": round(self.information_confidence, 3),
                 "policy_decisions": self.policy_decisions,
             })
+        if self.enemy_third_attack_wait:
+            result["enemy_third_attack_wait"] = True
         return result
 
 
 class TimedSearchMixin:
     """Adds public-information sampling and time-limited coalition search."""
+
+    def _timed_search_enemy_third_attack_wait_is_safe(
+        self,
+        state,
+        player: str,
+        tracker: dict,
+        *,
+        baseline_action: Action,
+        best_action: Action,
+        completed_depth: int,
+        agreement: float,
+        information_enabled: bool,
+        information_confidence: float,
+        best_minimum: float,
+        baseline_minimum: float,
+        margin: float,
+    ) -> bool:
+        """Accept a second-attack pass only when every inferred world still wins."""
+        if (
+            not information_enabled
+            or state.phase != "receive"
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or best_action[0] != "pass"
+            or baseline_action[0] != "receive"
+            or int(tracker.get("enemy_attack_counts", {}).get(state.attacker, 0)) != 2
+        ):
+            return False
+
+        minimum_depth = max(5, min(7, int(self.TIME_SEARCH_MAX_DEPTH)))
+        if completed_depth < minimum_depth:
+            return False
+
+        # Terminal team wins score at 100000 or more. Staying above 50000 in
+        # every sampled world excludes attractive but unproven horizon values.
+        if best_minimum < 50000.0 or best_minimum < baseline_minimum:
+            return False
+
+        return (
+            agreement >= max(0.80, float(self.TIME_SEARCH_OVERRIDE_AGREEMENT))
+            and information_confidence >= 0.60
+            and margin >= max(150.0, float(self.TIME_SEARCH_OVERRIDE_MARGIN) * 0.5)
+        )
 
     def _timed_search_public_seed(self, state, player: str, tr: dict) -> int:
         estimates = tr.get("estimated_current_hands", {})
@@ -1359,6 +1405,22 @@ class TimedSearchMixin:
         best_minimum = min(completed_values[best_action])
         baseline_values = completed_values.get(baseline_action, [])
         baseline_minimum = min(baseline_values) if baseline_values else -float("inf")
+        enemy_third_attack_wait = self._timed_search_enemy_third_attack_wait_is_safe(
+            state,
+            player,
+            information_tracker,
+            baseline_action=baseline_action,
+            best_action=best_action,
+            completed_depth=completed_depth,
+            agreement=agreement,
+            information_enabled=information_enabled,
+            information_confidence=(
+                float(information_set.confidence) if information_enabled else 0.0
+            ),
+            best_minimum=best_minimum,
+            baseline_minimum=baseline_minimum,
+            margin=margin,
+        )
         decisive = (
             best_action != baseline_action
             and best_minimum >= 50000.0
@@ -1368,7 +1430,7 @@ class TimedSearchMixin:
             and completed_depth >= minimum_override_depth
             and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
             and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
-        )
+        ) or enemy_third_attack_wait
         return TimedSearchResult(
             action=best_action,
             depth=completed_depth,
@@ -1389,6 +1451,7 @@ class TimedSearchMixin:
                 if information_enabled
                 else 0
             ),
+            enemy_third_attack_wait=enemy_third_attack_wait,
         )
 
     def _commit_timed_search_action(self, state, player: str, action: Action) -> None:

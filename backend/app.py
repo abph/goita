@@ -49,8 +49,10 @@ from backend.room_settings_persistence import (
     verify_admin_password,
 )
 from backend.research_kifu_store import (
+    RESEARCH_KIFU_TAGS,
     ResearchKifuStore,
     is_persistent_research_kifu_configured,
+    normalize_research_kifu_tags,
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
@@ -131,7 +133,7 @@ AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
-DEAL_MODE_OPTIONS = frozenset({"normal", "frequent"})
+DEAL_MODE_OPTIONS = frozenset({"normal", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "current"
@@ -540,7 +542,8 @@ def create_hands_for_deal_mode(
 
     for _ in range(max_retry):
         hands = create_random_hands_no_five_shi()
-        if is_frequent_deal(hands):
+        top_n = 200 if mode == "frequent_200" else 100
+        if is_frequent_deal(hands, top_n=top_n):
             return hands
     raise RuntimeError(
         f"Failed to generate a high-frequency deal after {max_retry} retries."
@@ -1631,6 +1634,7 @@ class ResearchKifuAuthRequest(BaseModel):
 class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
     title: str = Field(default="", max_length=80)
     memo: str = Field(default="", max_length=2000)
+    tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
 
 
 class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
@@ -1640,6 +1644,7 @@ class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
 class ResearchKifuUpdateRequest(ResearchKifuAuthRequest):
     title: str = Field(default="", max_length=80)
     memo: str = Field(default="", max_length=2000)
+    tags: Optional[List[str]] = Field(default=None, max_length=len(RESEARCH_KIFU_TAGS))
 
 
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
@@ -1873,6 +1878,11 @@ def _beginner_support_explanation(
                 "味方の駒は基本的にパスします。"
                 "3香を持っている、しを持っていないなど、"
                 "大きな理由がない限りはパスしましょう。"
+            )
+        if detail.startswith("wait_enemy_third_guaranteed_win_"):
+            return (
+                "敵の2枚目を今すぐ受けなくても上がり筋が残るため、"
+                "3枚目の攻めを待つのがおすすめです。"
             )
         current_attack = state.current_attack
         hand = state.hands.get(player, [])
@@ -3873,6 +3883,17 @@ def _require_research_kifu_admin(
     return game
 
 
+def _validated_research_kifu_tags(tags: Optional[List[str]]) -> List[str]:
+    requested = [str(tag or "").strip() for tag in (tags or [])]
+    unknown = sorted({tag for tag in requested if tag not in RESEARCH_KIFU_TAGS})
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"使用できないタグです: {', '.join(unknown)}",
+        )
+    return normalize_research_kifu_tags(requested)
+
+
 @app.post("/games/{game_id}/research_kifu/list")
 def list_research_kifu(game_id: str, req: ResearchKifuAuthRequest):
     _require_research_kifu_admin(game_id, req.admin_password)
@@ -3903,6 +3924,7 @@ def save_research_kifu(game_id: str, req: ResearchKifuSaveRequest):
         game_id,
         title=title,
         memo=str(req.memo or "").strip(),
+        tags=_validated_research_kifu_tags(req.tags),
         payload=snapshot,
     )
     return {
@@ -3976,6 +3998,11 @@ def update_research_kifu(
         record_id,
         title=title,
         memo=str(req.memo or "").strip(),
+        tags=(
+            None
+            if req.tags is None
+            else _validated_research_kifu_tags(req.tags)
+        ),
     )
     if record is None:
         raise HTTPException(status_code=404, detail="棋譜が見つかりません")

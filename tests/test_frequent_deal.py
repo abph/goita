@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from backend import app as app_module
 from backend.frequent_deal import (
     TOP_100_HAND_STRUCTURES,
+    TOP_200_HAND_STRUCTURES,
     hand_structure,
     is_frequent_deal,
     is_frequent_hand,
@@ -17,9 +18,11 @@ from goita_ai2.constants import PIECE_TOTALS
 
 def test_top_100_structure_filter() -> None:
     assert len(TOP_100_HAND_STRUCTURES) == 100
+    assert len(TOP_200_HAND_STRUCTURES) == 200
     assert is_frequent_hand(list("11123447"))
     assert hand_structure(list("11123447")) == (3, 1, 1, 1, 0, 0, 1, 0, 0)
     assert not is_frequent_hand(list("11111111"))
+    assert TOP_100_HAND_STRUCTURES < TOP_200_HAND_STRUCTURES
 
 
 def test_frequent_deals_keep_the_full_deck_and_structure_limit() -> None:
@@ -30,6 +33,12 @@ def test_frequent_deals_keep_the_full_deck_and_structure_limit() -> None:
         assert all(len(hand) == 8 for hand in hands.values())
         assert Counter(piece for hand in hands.values() for piece in hand) == expected
         assert is_frequent_deal(hands)
+        assert all(hand.count("1") <= 4 for hand in hands.values())
+
+    for _ in range(20):
+        hands = app_module.create_hands_for_deal_mode("frequent_200")
+        assert Counter(piece for hand in hands.values() for piece in hand) == expected
+        assert is_frequent_deal(hands, top_n=200)
         assert all(hand.count("1") <= 4 for hand in hands.values())
 
 
@@ -153,7 +162,8 @@ def test_frontend_contains_private_room_deal_setting() -> None:
     html = app_module.FRONTEND_DIR.joinpath("index.html").read_text(encoding="utf-8")
     assert 'id="dealModeSelect"' in html
     assert '<option value="normal" selected>通常配牌</option>' in html
-    assert '<option value="frequent">高頻度配牌（練習用）</option>' in html
+    assert '<option value="frequent">高頻度配牌（上位100）</option>' in html
+    assert '<option value="frequent_200">実戦練習配牌（上位200）</option>' in html
     assert "PRIVATE_ROOM_IDS.has(settingTargetGid || gid)" in html
     assert "/deal_mode" in html
 

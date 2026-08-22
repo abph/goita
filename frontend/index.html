@@ -2345,6 +2345,53 @@
       width: 100%;
     }
     .research-kifu-form textarea { min-height: 64px; resize: vertical; }
+    .research-kifu-tag-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 7px;
+    }
+    .research-kifu-tag-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      min-height: 27px;
+      padding: 2px 6px;
+      border: 1px solid #cdb796;
+      background: #fffdf8;
+      color: #604322;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .research-kifu-tag-option:has(input:checked) {
+      border-color: #8b5a2b;
+      background: #f5e5c9;
+      font-weight: 800;
+    }
+    .research-kifu-tag-option input { width: auto; margin: 0; }
+    .research-kifu-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 5px;
+    }
+    .research-kifu-tag {
+      display: inline-block;
+      padding: 2px 5px;
+      border: 1px solid #c9ad84;
+      background: #fff8e9;
+      color: #68451f;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .research-kifu-filter {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 11px;
+    }
+    .research-kifu-filter label { flex: 0 0 auto; font-weight: 800; color: #604322; }
+    .research-kifu-filter select { min-width: 0; flex: 1 1 auto; padding: 6px; }
     .research-kifu-list {
       max-height: 250px;
       margin-top: 12px;
@@ -4335,10 +4382,11 @@
             <label for="dealModeSelect">配牌方式</label>
             <select id="dealModeSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;" onchange="saveDealModeSetting()">
               <option value="normal" selected>通常配牌</option>
-              <option value="frequent">高頻度配牌（練習用）</option>
+              <option value="frequent">高頻度配牌（上位100）</option>
+              <option value="frequent_200">実戦練習配牌（上位200）</option>
             </select>
           </div>
-          <div class="small">高頻度配牌では、4人全員の手駒を出現頻度上位100分類に限定します。手札指定がある局は、手札指定を優先します。</div>
+          <div class="small">4人全員の手駒を、選んだ範囲の分類に限定します。手札指定がある局は、手札指定を優先します。</div>
           <div id="dealModeStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </details>
@@ -4486,9 +4534,15 @@
             <input id="researchKifuTitle" type="text" maxlength="80" placeholder="例：終盤の王受け">
             <label for="researchKifuMemo">研究メモ</label>
             <textarea id="researchKifuMemo" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <label>タグ</label>
+            <div id="researchKifuSaveTags" class="research-kifu-tag-options"></div>
             <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu()">終局した一局を保存</button>
           </div>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
+          <div class="research-kifu-filter">
+            <label for="researchKifuTagFilter">タグで絞り込み</label>
+            <select id="researchKifuTagFilter" onchange="renderResearchKifuList()"></select>
+          </div>
           <div id="researchKifuList" class="research-kifu-list"></div>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
@@ -4500,12 +4554,15 @@
           </div>
           <h4 id="researchKifuDetailTitle"></h4>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
+          <div id="researchKifuDetailTags" class="research-kifu-tags"></div>
           <p id="researchKifuDetailMemo"></p>
           <div id="researchKifuMemoEditor" class="research-kifu-memo-editor">
             <label for="researchKifuTitleEditInput">棋譜の名前</label>
             <input id="researchKifuTitleEditInput" type="text" maxlength="80" placeholder="例：終盤の王受け">
             <label for="researchKifuMemoEditInput">メモ</label>
             <textarea id="researchKifuMemoEditInput" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <label>タグ</label>
+            <div id="researchKifuEditTags" class="research-kifu-tag-options"></div>
             <div class="research-kifu-memo-editor-actions">
               <button type="button" onclick="cancelResearchKifuEdit()">キャンセル</button>
               <button type="button" onclick="saveResearchKifuEdit()">保存</button>
@@ -4529,8 +4586,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822h"></script>
-<script src="/static/i18n.js?v=20260822h"></script>
+<script src="/static/i18n-en.js?v=20260822j"></script>
+<script src="/static/i18n.js?v=20260822j"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4755,6 +4812,11 @@ function localizeGameLogAiDetail(detail, language) {
         : `しと王・玉を使って${match[1]}点の上がりを狙う`;
     if(String(detail || "").startsWith("attack_sequence_")) {
         return language === "zh" ? "按照手牌结构选择进攻顺序" : "手駒構成に合う攻め順を選択";
+    }
+    if(String(detail || "").startsWith("wait_enemy_third_guaranteed_win_")) {
+        if(language === "zh") return "确认等待对手第三次进攻仍可获胜，因此暂时跳过";
+        if(language === "en") return "Pass now because waiting for the opponent's third attack still preserves a forced win";
+        return "敵の3枚目を待っても上がれると判断してパス";
     }
     if(/^enemy_first_(pass|receive)_hand_strength_/.test(String(detail || ""))) {
         const receives = String(detail).includes("_receive_");
@@ -5297,6 +5359,10 @@ let currentAdminPass = "";
 let settingTargetGid = null; 
 let researchKifuRecords = [];
 let selectedResearchKifu = null;
+const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
+    "王玉", "3し", "4し", "3香", "4香", "3中駒", "4中駒",
+    "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
+]);
 let lobbyAdminPasswordValue = "";
 let latestLobbyRoomTotals = { main_people_count: 0, private_people_count: 0 };
 let seatModeTarget = null;
@@ -6639,7 +6705,9 @@ function syncDealModeControls() {
         ?? latestState?.deal_mode
         ?? "normal"
     );
-    select.value = configured === "frequent" ? "frequent" : "normal";
+    select.value = ["frequent", "frequent_200"].includes(configured)
+        ? configured
+        : "normal";
     select.disabled = !isCurrentClientHost() || !isPrivateRoom;
 }
 
@@ -6650,7 +6718,9 @@ async function saveDealModeSetting() {
     const status = document.getElementById("dealModeStatus");
     if (!select || !status) return;
 
-    const mode = select.value === "frequent" ? "frequent" : "normal";
+    const mode = ["frequent", "frequent_200"].includes(select.value)
+        ? select.value
+        : "normal";
     dealModeSaving = true;
     select.disabled = true;
     status.textContent = uiText("配牌を準備しています...");
@@ -6757,6 +6827,10 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     document.getElementById("researchKifuStatus").textContent = "";
     document.getElementById("researchKifuTitle").value = "";
     document.getElementById("researchKifuMemo").value = "";
+    renderResearchKifuTagOptions("researchKifuSaveTags", []);
+    renderResearchKifuTagOptions("researchKifuEditTags", []);
+    const researchKifuTagFilter = document.getElementById("researchKifuTagFilter");
+    if (researchKifuTagFilter) researchKifuTagFilter.value = "";
     closeResearchKifuDetail();
     researchKifuRecords = [];
     selectedResearchKifu = null;
@@ -6960,6 +7034,75 @@ function researchKifuSummaryLabel(record) {
     return `${date} / 第${record.round_index}局${winner ? ` / ${winner} ${record.gained_score}点` : ""}`;
 }
 
+function normalizedResearchKifuTags(tags) {
+    const selected = new Set(Array.isArray(tags) ? tags.map(tag => String(tag || "")) : []);
+    return RESEARCH_KIFU_TAG_OPTIONS.filter(tag => selected.has(tag));
+}
+
+function selectedResearchKifuTags(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return normalizedResearchKifuTags(
+        Array.from(container.querySelectorAll("input[type='checkbox']:checked"))
+            .map(input => input.dataset.tag)
+    );
+}
+
+function renderResearchKifuTagOptions(containerId, tags = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selected = new Set(normalizedResearchKifuTags(tags));
+    container.replaceChildren();
+    RESEARCH_KIFU_TAG_OPTIONS.forEach(tag => {
+        const label = document.createElement("label");
+        label.className = "research-kifu-tag-option";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.tag = tag;
+        input.checked = selected.has(tag);
+        const text = document.createElement("span");
+        text.textContent = uiText(tag);
+        label.append(input, text);
+        container.appendChild(label);
+    });
+}
+
+function renderResearchKifuTags(container, tags) {
+    if (!container) return;
+    const normalized = normalizedResearchKifuTags(tags);
+    container.replaceChildren();
+    normalized.forEach(tag => {
+        const badge = document.createElement("span");
+        badge.className = "research-kifu-tag";
+        badge.textContent = uiText(tag);
+        container.appendChild(badge);
+    });
+    container.style.display = normalized.length ? "flex" : "none";
+}
+
+function initializeResearchKifuTagControls() {
+    const saveTags = selectedResearchKifuTags("researchKifuSaveTags");
+    const editTags = selectedResearchKifuTags("researchKifuEditTags");
+    const filter = document.getElementById("researchKifuTagFilter");
+    const selectedFilter = filter?.value || "";
+    renderResearchKifuTagOptions("researchKifuSaveTags", saveTags);
+    renderResearchKifuTagOptions("researchKifuEditTags", editTags);
+    if (filter) {
+        filter.replaceChildren();
+        const all = document.createElement("option");
+        all.value = "";
+        all.textContent = uiText("すべてのタグ");
+        filter.appendChild(all);
+        RESEARCH_KIFU_TAG_OPTIONS.forEach(tag => {
+            const option = document.createElement("option");
+            option.value = tag;
+            option.textContent = uiText(tag);
+            filter.appendChild(option);
+        });
+        filter.value = RESEARCH_KIFU_TAG_OPTIONS.includes(selectedFilter) ? selectedFilter : "";
+    }
+}
+
 function renderResearchKifuList() {
     const container = document.getElementById("researchKifuList");
     container.replaceChildren();
@@ -6970,7 +7113,18 @@ function renderResearchKifuList() {
         container.appendChild(empty);
         return;
     }
-    researchKifuRecords.forEach(record => {
+    const selectedTag = document.getElementById("researchKifuTagFilter")?.value || "";
+    const visibleRecords = researchKifuRecords.filter(record =>
+        !selectedTag || normalizedResearchKifuTags(record.tags).includes(selectedTag)
+    );
+    if (!visibleRecords.length) {
+        const empty = document.createElement("div");
+        empty.className = "research-kifu-empty";
+        empty.textContent = uiText("該当する棋譜はありません。");
+        container.appendChild(empty);
+        return;
+    }
+    visibleRecords.forEach(record => {
         const item = document.createElement("div");
         item.className = "research-kifu-item";
         const text = document.createElement("div");
@@ -6980,7 +7134,10 @@ function renderResearchKifuList() {
         const meta = document.createElement("div");
         meta.className = "research-kifu-item-meta";
         meta.textContent = researchKifuSummaryLabel(record);
-        text.append(title, meta);
+        const tags = document.createElement("div");
+        tags.className = "research-kifu-tags";
+        renderResearchKifuTags(tags, record.tags);
+        text.append(title, meta, tags);
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = uiText("棋譜を見る");
@@ -6994,6 +7151,7 @@ async function loadResearchKifuList() {
     const status = document.getElementById("researchKifuStatus");
     status.textContent = uiText("棋譜を読み込んでいます。");
     try {
+        initializeResearchKifuTagControls();
         const data = await researchKifuApi("/list");
         researchKifuRecords = Array.isArray(data.records) ? data.records : [];
         renderResearchKifuList();
@@ -7012,9 +7170,11 @@ async function saveCurrentResearchKifu() {
         const data = await researchKifuApi("/save", {
             title: document.getElementById("researchKifuTitle").value,
             memo: document.getElementById("researchKifuMemo").value,
+            tags: selectedResearchKifuTags("researchKifuSaveTags"),
         });
         document.getElementById("researchKifuTitle").value = "";
         document.getElementById("researchKifuMemo").value = "";
+        renderResearchKifuTagOptions("researchKifuSaveTags", []);
         await loadResearchKifuList();
         status.textContent = `${uiText("保存しました。")} ${data.record?.id || ""}`.trim();
     } catch (error) {
@@ -7241,6 +7401,7 @@ function renderResearchKifuDetail(record) {
     title.style.display = "block";
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
+    renderResearchKifuTags(document.getElementById("researchKifuDetailTags"), record.tags);
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
     memo.style.display = record.memo ? "block" : "none";
@@ -7250,6 +7411,7 @@ function renderResearchKifuDetail(record) {
     if (memoEditor) memoEditor.style.display = "none";
     if (titleInput) titleInput.value = record.title || "";
     if (memoInput) memoInput.value = record.memo || "";
+    renderResearchKifuTagOptions("researchKifuEditTags", record.tags);
     renderResearchKifuBoard(payload);
 
     document.getElementById("researchKifuDetailStatus").textContent = "";
@@ -7266,6 +7428,7 @@ function startResearchKifuEdit() {
     if (memo) memo.style.display = "none";
     if (titleInput) titleInput.value = selectedResearchKifu.title || "";
     if (memoInput) memoInput.value = selectedResearchKifu.memo || "";
+    renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu.tags);
     if (editor) editor.style.display = "block";
     document.getElementById("researchKifuDetailStatus").textContent = "";
     setTimeout(() => titleInput?.focus(), 0);
@@ -7283,6 +7446,7 @@ function cancelResearchKifuEdit() {
         memo.textContent = selectedResearchKifu?.memo || "";
         memo.style.display = selectedResearchKifu?.memo ? "block" : "none";
     }
+    renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu?.tags);
     if (editor) editor.style.display = "none";
 }
 
@@ -7296,11 +7460,12 @@ async function saveResearchKifuEdit() {
         const data = await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/edit`, {
             title: titleInput?.value || "",
             memo: memoInput?.value || "",
+            tags: selectedResearchKifuTags("researchKifuEditTags"),
         });
         selectedResearchKifu = data.record;
         researchKifuRecords = researchKifuRecords.map(record =>
             record.id === data.record.id
-                ? {...record, title: data.record.title, memo: data.record.memo}
+                ? {...record, title: data.record.title, memo: data.record.memo, tags: data.record.tags}
                 : record
         );
         renderResearchKifuList();
@@ -11294,6 +11459,14 @@ window.addEventListener("goita-voice-chat-ready", () => {
 });
 
 window.addEventListener("goita-language-change", () => {
+  initializeResearchKifuTagControls();
+  renderResearchKifuList();
+  if(selectedResearchKifu) {
+    renderResearchKifuTags(
+      document.getElementById("researchKifuDetailTags"),
+      selectedResearchKifu.tags
+    );
+  }
   renderLinkedKifuNotice();
   updateLobbyAdminPeopleCounts();
   renderLobbyChat(lobbyChatMessages);

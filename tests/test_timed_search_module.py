@@ -115,6 +115,55 @@ def test_select_action_records_search_without_changing_public_state() -> None:
     assert state.hands == hands_before
 
 
+def test_enemy_second_attack_wait_requires_a_robust_inferred_win() -> None:
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    tracker = agent._track[id(state)]
+    tracker["enemy_attack_counts"]["B"] = 2
+
+    common = dict(
+        baseline_action=("receive", "5", None),
+        best_action=("pass", None, None),
+        completed_depth=7,
+        agreement=0.875,
+        information_enabled=True,
+        information_confidence=0.75,
+        best_minimum=110000.0,
+        baseline_minimum=105000.0,
+        margin=5000.0,
+    )
+    assert agent._timed_search_enemy_third_attack_wait_is_safe(
+        state,
+        "A",
+        tracker,
+        **common,
+    )
+
+    unsafe = dict(common)
+    unsafe["best_minimum"] = 1200.0
+    assert not agent._timed_search_enemy_third_attack_wait_is_safe(
+        state,
+        "A",
+        tracker,
+        **unsafe,
+    )
+
+    tracker["enemy_attack_counts"]["B"] = 1
+    assert not agent._timed_search_enemy_third_attack_wait_is_safe(
+        state,
+        "A",
+        tracker,
+        **common,
+    )
+
+
 def test_one_second_search_keeps_ally_gold_pass_after_broader_sampling() -> None:
     clear_prediction_sample_cache()
     reset_time_search_budget_model()
@@ -173,5 +222,6 @@ if __name__ == "__main__":
     test_hidden_hand_sampling_does_not_read_actual_opponent_hands()
     test_time_limited_search_returns_a_completed_legal_result()
     test_select_action_records_search_without_changing_public_state()
+    test_enemy_second_attack_wait_requires_a_robust_inferred_win()
     test_one_second_search_keeps_ally_gold_pass_after_broader_sampling()
     print("TIMED_SEARCH_MODULE_TEST_OK")

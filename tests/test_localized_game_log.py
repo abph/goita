@@ -33,6 +33,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'shi_signal: "し攻めに賛同する意思表示"',
         'kakari: "味方の攻めに合わせる判断"',
         'attack_tatewari: "王を切らせる攻め"',
+        'return "敵の3枚目を待っても上がれると判断してパス";',
         "function localizeGameLogAiDetail(",
         "function localizeGameLogAiDecision(",
         "function formatGameLogSeconds(",

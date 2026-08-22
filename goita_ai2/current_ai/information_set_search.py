@@ -245,14 +245,30 @@ class InformationSetSearchMixin:
                 action_models[action] = model_score
                 action_reasons[action] = reasons
 
-            if reused:
+            enemy_third_attack_node = (
+                tracker is not None
+                and root_state.phase == "receive"
+                and root_state.attacker is not None
+                and actor == root_state.attacker
+                and not self._same_team(actor, root_player)
+                and group[0].state.phase == "attack"
+                and int(
+                    tracker.get("enemy_attack_counts", {}).get(actor, 0)
+                ) == 2
+            )
+            if reused and not enemy_third_attack_node:
                 candidates = [existing.action]
             else:
-                candidates = sorted(
+                ordered_candidates = sorted(
                     common_actions,
                     key=lambda action: (action_models[action], action),
                     reverse=True,
-                )[: max(1, int(self.TIME_SEARCH_BRANCH_BEAM))]
+                )
+                candidates = (
+                    ordered_candidates
+                    if enemy_third_attack_node
+                    else ordered_candidates[: max(1, int(self.TIME_SEARCH_BRANCH_BEAM))]
+                )
 
             role = self._information_set_action_role(root_player, actor)
             maximizing = role in ("self", "ally")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 
@@ -145,6 +146,37 @@ def test_enemy_attack_pass_names_the_saved_royal() -> None:
     assert explanation == "王（玉）を温存するため、今回はパスがおすすめです。"
 
 
+def test_enemy_second_attack_wait_explains_the_third_attack_plan() -> None:
+    state = GoitaState(
+        {
+            "A": ["1", "3", "3", "4", "4", "5", "6", "6"],
+            "B": ["1", "1", "2", "2", "3", "4", "5", "8"],
+            "C": ["1", "2", "3", "4", "5", "6", "7", "9"],
+            "D": ["1", "2", "3", "4", "5", "6", "7", "7"],
+        },
+        dealer="A",
+    )
+    state.apply_attack_after_block("A", "1", "6")
+    agent = SimpleNamespace(
+        last_decision_reason="time_search",
+        last_score_fallback_detail=(
+            "wait_enemy_third_guaranteed_win_depth_7_samples_8_agreement_88"
+        ),
+    )
+
+    explanation = app_module._beginner_support_explanation(
+        state,
+        "B",
+        ("pass", None, None),
+        agent,
+    )
+
+    assert explanation == (
+        "敵の2枚目を今すぐ受けなくても上がり筋が残るため、"
+        "3枚目の攻めを待つのがおすすめです。"
+    )
+
+
 def test_frontend_contains_beginner_support_controls() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert 'id="checkEnableBeginnerSupport"' in html
@@ -162,5 +194,6 @@ if __name__ == "__main__":
     test_forced_pass_is_reported_as_forced()
     test_ally_attack_pass_uses_ally_guidance()
     test_enemy_attack_pass_names_the_saved_royal()
+    test_enemy_second_attack_wait_explains_the_third_attack_plan()
     test_frontend_contains_beginner_support_controls()
     print("BEGINNER_SUPPORT_TEST_OK")

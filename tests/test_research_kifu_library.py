@@ -1,3 +1,6 @@
+import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -7,6 +10,7 @@ from fastapi import HTTPException
 from backend import app as app_module
 from backend.research_kifu_store import (
     RESEARCH_KIFU_FILENAME,
+    RESEARCH_KIFU_TAGS,
     ResearchKifuStore,
     resolve_research_kifu_path,
 )
@@ -49,11 +53,18 @@ def test_path_prefers_explicit_then_persistent_then_local_fallback():
 def test_store_keeps_room_libraries_isolated_and_supports_crud():
     with TemporaryDirectory() as directory:
         store = ResearchKifuStore(Path(directory) / "library.sqlite3")
-        saved = store.save("private-a", title="終盤研究", memo="王受け", payload=_payload())
+        saved = store.save(
+            "private-a",
+            title="終盤研究",
+            memo="王受け",
+            tags=["王玉", "3香", "王玉"],
+            payload=_payload(),
+        )
         record_id = saved["id"]
 
         assert record_id.startswith("K-")
         assert store.list("private-a")[0]["title"] == "終盤研究"
+        assert store.list("private-a")[0]["tags"] == ["王玉", "3香"]
         assert store.list("private-b") == []
         assert store.get("private-a", record_id)["payload"]["dealer"] == "C"
         assert store.get("private-b", record_id) is None
@@ -62,12 +73,68 @@ def test_store_keeps_room_libraries_isolated_and_supports_crud():
             record_id,
             title="高得点ルート",
             memo="王上がりも比較",
+            tags=["4し", "し攻め", "差し込み"],
         )
         assert edited["title"] == "高得点ルート"
         assert edited["memo"] == "王上がりも比較"
+        assert edited["tags"] == ["4し", "し攻め", "差し込み"]
         assert store.delete("private-b", record_id) is False
         assert store.delete("private-a", record_id) is True
         assert store.get("private-a", record_id) is None
+
+
+def test_store_adds_tags_to_an_existing_database_without_losing_records():
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "old-library.sqlite3"
+        payload = _payload()
+        with closing(sqlite3.connect(path)) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE research_kifu (
+                    id TEXT PRIMARY KEY,
+                    room_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    memo TEXT NOT NULL,
+                    round_index INTEGER NOT NULL,
+                    dealer TEXT NOT NULL,
+                    winner TEXT,
+                    gained_score INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO research_kifu (
+                    id, room_id, created_at, title, memo, round_index,
+                    dealer, winner, gained_score, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "K-23456789AB",
+                    "private-a",
+                    "2026-08-22T00:00:00+00:00",
+                    "既存棋譜",
+                    "移行確認",
+                    3,
+                    "C",
+                    "A",
+                    30,
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+            connection.commit()
+
+        store = ResearchKifuStore(path)
+        records = store.list("private-a")
+        assert records[0]["title"] == "既存棋譜"
+        assert records[0]["tags"] == []
+        with closing(sqlite3.connect(path)) as connection:
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(research_kifu)")
+            }
+        assert "tags_json" in columns
 
 
 def test_completed_round_snapshot_is_preserved_for_the_next_round():
@@ -111,6 +178,7 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                     admin_password="research-secret",
                     title="角を残す",
                     memo="3つ目の攻めを比較",
+                    tags=["3中駒", "大駒ペア"],
                 ),
             )["record"]
             listed = app_module.list_research_kifu(
@@ -118,6 +186,7 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
             )["records"]
             assert listed[0]["id"] == saved["id"]
+            assert listed[0]["tags"] == ["3中駒", "大駒ペア"]
             detail = app_module.get_research_kifu(
                 room_id,
                 saved["id"],
@@ -141,10 +210,12 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                     admin_password="research-secret",
                     title="王を残す終盤",
                     memo="角上がりとの点数比較",
+                    tags=["王玉", "ダブル狙い"],
                 ),
             )["record"]
             assert edited["title"] == "王を残す終盤"
             assert edited["memo"] == "角上がりとの点数比較"
+            assert edited["tags"] == ["王玉", "ダブル狙い"]
             assert edited["payload"]["round_index"] == 7
             assert app_module.delete_research_kifu(
                 room_id,
@@ -166,6 +237,11 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "startResearchKifuEdit()" in HTML
     assert "saveResearchKifuEdit()" in HTML
     assert 'id="researchKifuTitleEditInput"' in HTML
+    assert 'id="researchKifuSaveTags"' in HTML
+    assert 'id="researchKifuEditTags"' in HTML
+    assert 'id="researchKifuTagFilter"' in HTML
+    for tag in RESEARCH_KIFU_TAGS:
+        assert f'"{tag}"' in HTML
     assert "← 棋譜一覧へ" in HTML
     assert ">編集</button>" in HTML
     assert "deleteSelectedResearchKifu()" in HTML

@@ -509,11 +509,18 @@ class DecisionMixin:
             )
             self._commit_timed_search_action(state, player, search_result.action)
             self._set_decision_reason("time_search")
-            self._set_score_fallback_detail(
-                f"{'cache_' if self.last_time_search_cache_hit else ''}"
-                f"depth_{search_result.depth}_samples_{search_result.samples}_"
-                f"agreement_{int(round(search_result.agreement * 100))}"
-            )
+            if getattr(search_result, "enemy_third_attack_wait", False):
+                self._set_score_fallback_detail(
+                    f"wait_enemy_third_guaranteed_win_"
+                    f"depth_{search_result.depth}_samples_{search_result.samples}_"
+                    f"agreement_{int(round(search_result.agreement * 100))}"
+                )
+            else:
+                self._set_score_fallback_detail(
+                    f"{'cache_' if self.last_time_search_cache_hit else ''}"
+                    f"depth_{search_result.depth}_samples_{search_result.samples}_"
+                    f"agreement_{int(round(search_result.agreement * 100))}"
+                )
             return search_result.action
 
         self._adopt_rule_preview(preview)

@@ -15,12 +15,33 @@ import threading
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 
 RESEARCH_KIFU_FILENAME = "goita-research-kifu.sqlite3"
-RESEARCH_KIFU_VERSION = 1
+RESEARCH_KIFU_VERSION = 2
+RESEARCH_KIFU_TAGS = (
+    "王玉",
+    "3し",
+    "4し",
+    "3香",
+    "4香",
+    "3中駒",
+    "4中駒",
+    "大駒ペア",
+    "し攻め",
+    "差し込み",
+    "ダブル狙い",
+    "だまし香",
+    "だましし",
+)
 _ID_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def normalize_research_kifu_tags(tags: Optional[Sequence[str]]) -> list[str]:
+    """Return unique supported tags in their stable display order."""
+    requested = {str(tag or "").strip() for tag in (tags or ())}
+    return [tag for tag in RESEARCH_KIFU_TAGS if tag in requested]
 
 
 def resolve_research_kifu_path(
@@ -74,6 +95,7 @@ class ResearchKifuStore:
                         created_at TEXT NOT NULL,
                         title TEXT NOT NULL,
                         memo TEXT NOT NULL,
+                        tags_json TEXT NOT NULL DEFAULT '[]',
                         round_index INTEGER NOT NULL,
                         dealer TEXT NOT NULL,
                         winner TEXT,
@@ -84,6 +106,17 @@ class ResearchKifuStore:
                     ON research_kifu(room_id, created_at DESC, id DESC);
                     """
                 )
+                columns = {
+                    str(row["name"])
+                    for row in connection.execute(
+                        "PRAGMA table_info(research_kifu)"
+                    ).fetchall()
+                }
+                if "tags_json" not in columns:
+                    connection.execute(
+                        "ALTER TABLE research_kifu "
+                        "ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"
+                    )
                 connection.execute(
                     f"PRAGMA user_version = {RESEARCH_KIFU_VERSION}"
                 )
@@ -96,11 +129,18 @@ class ResearchKifuStore:
 
     @staticmethod
     def _summary(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            raw_tags = json.loads(str(row["tags_json"] or "[]"))
+        except (json.JSONDecodeError, TypeError):
+            raw_tags = []
         return {
             "id": str(row["id"]),
             "created_at": str(row["created_at"]),
             "title": str(row["title"]),
             "memo": str(row["memo"]),
+            "tags": normalize_research_kifu_tags(
+                raw_tags if isinstance(raw_tags, list) else []
+            ),
             "round_index": int(row["round_index"]),
             "dealer": str(row["dealer"]),
             "winner": str(row["winner"] or ""),
@@ -113,12 +153,18 @@ class ResearchKifuStore:
         *,
         title: str,
         memo: str,
+        tags: Optional[Sequence[str]] = None,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
         self._ensure_schema()
         created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         payload_json = json.dumps(
             dict(payload), ensure_ascii=False, separators=(",", ":")
+        )
+        tags_json = json.dumps(
+            normalize_research_kifu_tags(tags),
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
         for _attempt in range(8):
             record_id = self._new_id()
@@ -127,9 +173,9 @@ class ResearchKifuStore:
                     connection.execute(
                         """
                         INSERT INTO research_kifu (
-                            id, room_id, created_at, title, memo, round_index,
+                            id, room_id, created_at, title, memo, tags_json, round_index,
                             dealer, winner, gained_score, payload_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             record_id,
@@ -137,6 +183,7 @@ class ResearchKifuStore:
                             created_at,
                             title,
                             memo,
+                            tags_json,
                             int(payload.get("round_index", 1)),
                             str(payload.get("dealer", "A")),
                             str(payload.get("winner", "")) or None,
@@ -156,7 +203,7 @@ class ResearchKifuStore:
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
-                SELECT id, created_at, title, memo, round_index, dealer,
+                SELECT id, created_at, title, memo, tags_json, round_index, dealer,
                        winner, gained_score
                 FROM research_kifu
                 WHERE room_id = ?
@@ -172,7 +219,7 @@ class ResearchKifuStore:
         with closing(self._connect()) as connection:
             row = connection.execute(
                 """
-                SELECT id, created_at, title, memo, round_index, dealer,
+                SELECT id, created_at, title, memo, tags_json, round_index, dealer,
                        winner, gained_score, payload_json
                 FROM research_kifu
                 WHERE room_id = ? AND id = ?
@@ -209,18 +256,34 @@ class ResearchKifuStore:
         *,
         title: str,
         memo: str,
+        tags: Optional[Sequence[str]] = None,
     ) -> Optional[dict[str, Any]]:
-        """Update the editable name and memo without changing the game record."""
+        """Update editable metadata without changing the game record."""
         self._ensure_schema()
         with closing(self._connect()) as connection:
-            cursor = connection.execute(
-                """
-                UPDATE research_kifu
-                SET title = ?, memo = ?
-                WHERE room_id = ? AND id = ?
-                """,
-                (title, memo, room_id, record_id),
-            )
+            if tags is None:
+                cursor = connection.execute(
+                    """
+                    UPDATE research_kifu
+                    SET title = ?, memo = ?
+                    WHERE room_id = ? AND id = ?
+                    """,
+                    (title, memo, room_id, record_id),
+                )
+            else:
+                tags_json = json.dumps(
+                    normalize_research_kifu_tags(tags),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                cursor = connection.execute(
+                    """
+                    UPDATE research_kifu
+                    SET title = ?, memo = ?, tags_json = ?
+                    WHERE room_id = ? AND id = ?
+                    """,
+                    (title, memo, tags_json, room_id, record_id),
+                )
             connection.commit()
         if cursor.rowcount <= 0:
             return None
