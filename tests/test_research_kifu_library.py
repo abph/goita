@@ -134,6 +134,11 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "openResearchKifu(record.id)" in HTML
     assert "applySelectedResearchKifu()" in HTML
     assert "deleteSelectedResearchKifu()" in HTML
+    assert 'id="researchKifuBoard"' in HTML
+    assert "buildResearchKifuFinalState(payload)" in HTML
+    assert "renderResearchKifuBoard(payload)" in HTML
+    assert "research-kifu-move-number" in HTML
+    assert "薄い駒：伏せた駒・残った駒" in HTML
 
 
 if __name__ == "__main__":

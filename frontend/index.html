@@ -2248,6 +2248,10 @@
       max-height: min(680px, calc(100vh - 32px));
       overflow-y: auto;
     }
+    .settings-modal-content.research-kifu-detail-open {
+      width: min(680px, calc(100% - 32px));
+      max-width: 680px;
+    }
     .settings-modal-content > h3 { padding-right: 36px; }
     .settings-modal-close {
       position: absolute;
@@ -2356,11 +2360,166 @@
       font-weight: 800;
     }
     .research-kifu-detail {
-      max-height: 390px;
+      max-height: min(620px, calc(100vh - 190px));
       overflow-y: auto;
       overscroll-behavior: contain;
     }
     .research-kifu-detail h4 { margin: 8px 0; color: #5f3517; }
+    .research-kifu-board-wrap {
+      width: fit-content;
+      max-width: 100%;
+      margin: 12px auto;
+      padding: 8px;
+      overflow: hidden;
+      border: 3px solid #8b5a2b;
+      background: #d1ab75;
+    }
+    .research-kifu-board {
+      --research-cell: min(52px, calc((100vw - 112px) / 8));
+      --research-gap: 5px;
+      display: grid;
+      grid-template-columns: repeat(8, var(--research-cell));
+      grid-template-rows: repeat(8, var(--research-cell));
+      gap: var(--research-gap);
+      width: fit-content;
+      user-select: none;
+    }
+    .research-kifu-cell {
+      position: relative;
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed rgba(139, 90, 43, 0.38);
+    }
+    .research-kifu-piece {
+      display: flex;
+      width: 80%;
+      height: 94%;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #fceeb5, #e6c875);
+      clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%);
+      filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.28));
+    }
+    .research-kifu-piece span {
+      color: #1f2b9c;
+      font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif;
+      font-size: clamp(14px, 3.2vw, 25px);
+      font-weight: 900;
+      line-height: 1;
+      transform: translateY(3px);
+    }
+    .research-kifu-piece.team-b span { color: #b62020; }
+    .research-kifu-piece.seat-A { transform: rotate(0deg); }
+    .research-kifu-piece.seat-B { transform: rotate(-90deg); }
+    .research-kifu-piece.seat-C { transform: rotate(180deg); }
+    .research-kifu-piece.seat-D { transform: rotate(90deg); }
+    .research-kifu-piece.is-hidden,
+    .research-kifu-piece.is-face-down {
+      opacity: 0.42;
+      filter: none;
+    }
+    .research-kifu-piece.is-hidden { background: #f6f2e8; }
+    .research-kifu-piece.is-final-attack {
+      background: linear-gradient(135deg, #f7e1a0, #f1c40f);
+      outline: 3px solid #b74a18;
+      outline-offset: -2px;
+      opacity: 1;
+      z-index: 3;
+    }
+    .research-kifu-piece.is-final-attack span { color: #a40000; }
+    .research-kifu-move-number {
+      position: absolute;
+      z-index: 5;
+      display: grid;
+      min-width: 17px;
+      height: 17px;
+      place-items: center;
+      padding: 0 1px;
+      border: 1px solid rgba(17,24,39,0.55);
+      border-radius: 50%;
+      background: #fff;
+      color: #111827;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .research-kifu-move-number.seat-A { top: 0; left: 50%; transform: translate(-50%, -52%); }
+    .research-kifu-move-number.seat-B { top: 50%; left: 0; transform: translate(-52%, -50%) rotate(-90deg); }
+    .research-kifu-move-number.seat-C { bottom: 0; left: 50%; transform: translate(-50%, 52%) rotate(180deg); }
+    .research-kifu-move-number.seat-D { top: 50%; right: 0; transform: translate(52%, -50%) rotate(90deg); }
+    .research-kifu-seat-label {
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #8b5a2b;
+      background: #f4efdf;
+      color: #b00000;
+      font-size: clamp(14px, 2.8vw, 21px);
+      font-weight: 900;
+    }
+    .research-kifu-seat-label.is-winner {
+      border-color: #c24f16;
+      box-shadow: 0 0 8px rgba(194,79,22,0.42);
+    }
+    .research-kifu-seat-label.seat-A span { transform: rotate(0deg); }
+    .research-kifu-seat-label.seat-B span { transform: rotate(-90deg); }
+    .research-kifu-seat-label.seat-C span { transform: rotate(180deg); }
+    .research-kifu-seat-label.seat-D span { transform: rotate(90deg); }
+    .research-kifu-center-score {
+      grid-column: 4 / 6;
+      grid-row: 4 / 6;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border: 2px dashed #8b5a2b;
+      background: rgba(244,239,223,0.94);
+      color: #2b2b2b;
+      font-size: clamp(9px, 2vw, 13px);
+      font-weight: 900;
+      line-height: 1.35;
+      text-align: center;
+    }
+    .research-kifu-center-score strong { display: block; }
+    .research-kifu-board-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      margin: -4px 0 10px;
+      color: #6f6256;
+      font-size: 11px;
+      justify-content: center;
+    }
+    .research-kifu-board-legend span::before {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 4px;
+      border: 1px solid #9b754e;
+      background: #f6f2e8;
+      content: "";
+      vertical-align: -1px;
+    }
+    .research-kifu-board-legend .final::before {
+      border: 2px solid #b74a18;
+      background: #f1c40f;
+    }
+    .research-kifu-record-data {
+      margin: 10px 0;
+      border: 1px solid #d7c2a4;
+      background: rgba(255,255,255,0.48);
+    }
+    .research-kifu-record-data summary {
+      padding: 8px 10px;
+      color: #69411e;
+      font-weight: 900;
+      cursor: pointer;
+    }
     .research-kifu-hands {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2381,8 +2540,11 @@
     @media (max-width: 701px) {
       .settings-modal-content .settings-tab { padding-inline: 4px; font-size: 11px; }
       .research-kifu-list { max-height: 210px; }
-      .research-kifu-detail { max-height: 310px; }
+      .research-kifu-detail { max-height: min(430px, calc(100dvh - 118px)); }
       .research-kifu-hands { grid-template-columns: 1fr; }
+      .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
+      .research-kifu-board { --research-gap: 3px; --research-cell: min(40px, calc((100vw - 82px) / 8)); }
+      .research-kifu-move-number { min-width: 14px; height: 14px; font-size: 8px; }
     }
     .lobby-admin-modal-content {
       position: relative;
@@ -4264,8 +4426,18 @@
           <h4 id="researchKifuDetailTitle"></h4>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
-          <div id="researchKifuDetailHands" class="research-kifu-hands"></div>
-          <ol id="researchKifuDetailMoves" class="research-kifu-moves"></ol>
+          <div class="research-kifu-board-wrap">
+            <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
+          </div>
+          <div class="research-kifu-board-legend">
+            <span>薄い駒：伏せた駒・残った駒</span>
+            <span class="final">枠付き：最後の攻め</span>
+          </div>
+          <details class="research-kifu-record-data">
+            <summary>初期手駒・手順</summary>
+            <div id="researchKifuDetailHands" class="research-kifu-hands"></div>
+            <ol id="researchKifuDetailMoves" class="research-kifu-moves"></ol>
+          </details>
           <div class="research-kifu-actions">
             <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
             <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
@@ -4285,8 +4457,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822d"></script>
-<script src="/static/i18n.js?v=20260822d"></script>
+<script src="/static/i18n-en.js?v=20260822e"></script>
+<script src="/static/i18n.js?v=20260822e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -6325,6 +6497,9 @@ function showSettingsTab(tabName) {
     if (isResearch && !PRIVATE_ROOM_IDS.has(settingTargetGid)) return;
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
     const isPersonal = !isMatch && !isManagement && !isResearch;
+    if (!isResearch) {
+        document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
+    }
     document.getElementById("personalSettingsTab").classList.toggle("active", isPersonal);
     document.getElementById("matchSettingsTab").classList.toggle("active", isMatch);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
@@ -6469,6 +6644,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
 
 function closeSettings() {
     document.getElementById("settingsModal").style.display = "none";
+    document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
     currentAdminPass = "";
     settingTargetGid = null;
     researchKifuRecords = [];
@@ -6748,6 +6924,185 @@ function researchKifuDetailMetaLabel(record, payload) {
     return `${base} / 親${payload.dealer || "-"}`;
 }
 
+const RESEARCH_KIFU_SEATS = ["A", "B", "C", "D"];
+const RESEARCH_KIFU_HAND_KEYS = {A: "p0", B: "p1", C: "p2", D: "p3"};
+const RESEARCH_KIFU_SLOTS = {
+    A: {receive: [[3, 7], [4, 7], [5, 7], [6, 7]], attack: [[3, 8], [4, 8], [5, 8], [6, 8]]},
+    B: {receive: [[7, 6], [7, 5], [7, 4], [7, 3]], attack: [[8, 6], [8, 5], [8, 4], [8, 3]]},
+    C: {receive: [[6, 2], [5, 2], [4, 2], [3, 2]], attack: [[6, 1], [5, 1], [4, 1], [3, 1]]},
+    D: {receive: [[2, 3], [2, 4], [2, 5], [2, 6]], attack: [[1, 3], [1, 4], [1, 5], [1, 6]]},
+};
+const RESEARCH_KIFU_LABELS = {
+    A: {column: "4 / 6", row: "6"},
+    B: {column: "6", row: "4 / 6"},
+    C: {column: "4 / 6", row: "3"},
+    D: {column: "3", row: "4 / 6"},
+};
+const RESEARCH_KIFU_SKIPPED_CELLS = new Set(["5,6", "6,5", "5,3", "3,5"]);
+
+function removeResearchKifuPiece(pieces, target) {
+    const candidates = target === "王" ? ["王", "玉"] : target === "玉" ? ["玉", "王"] : [target];
+    for (const candidate of candidates) {
+        const index = pieces.indexOf(candidate);
+        if (index >= 0) {
+            pieces.splice(index, 1);
+            return;
+        }
+    }
+}
+
+function buildResearchKifuFinalState(payload) {
+    const board = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [seat, {receive: [], attack: []}]));
+    const remaining = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
+        seat,
+        Array.from(String(payload.hand?.[RESEARCH_KIFU_HAND_KEYS[seat]] || "")),
+    ]));
+    const faceDownReceives = new Set();
+    const attackNumbers = new Map();
+    const receiveCounts = {A: 0, B: 0, C: 0, D: 0};
+    const attackCounts = {A: 0, B: 0, C: 0, D: 0};
+    const rows = Array.isArray(payload.game) ? payload.game : [];
+
+    rows.forEach((row, rowIndex) => {
+        const seat = RESEARCH_KIFU_SEATS[Number(row?.[0])];
+        if (!seat) return;
+        const receive = String(row?.[1] || "");
+        const attack = String(row?.[2] || "");
+        if (receive && receive !== "パス") {
+            const receiveIndex = receiveCounts[seat];
+            const previousSeat = RESEARCH_KIFU_SEATS[Number(rows[rowIndex - 1]?.[0])];
+            if (rowIndex === 0 || previousSeat === seat) {
+                faceDownReceives.add(`${seat}:${receiveIndex}`);
+            }
+            board[seat].receive.push(receive);
+            receiveCounts[seat] += 1;
+            removeResearchKifuPiece(remaining[seat], receive);
+        }
+        if (attack) {
+            const attackIndex = attackCounts[seat];
+            board[seat].attack.push(attack);
+            attackNumbers.set(`${seat}:${attackIndex}`, rowIndex + 1);
+            attackCounts[seat] += 1;
+            removeResearchKifuPiece(remaining[seat], attack);
+        }
+    });
+
+    return {board, remaining, faceDownReceives, attackNumbers};
+}
+
+function researchKifuBoardCenterLabel(payload) {
+    const language = currentUiLanguage();
+    const round = Number(payload.round_index || 1);
+    if (language === "en") return `Round ${round}`;
+    return `第${round}局`;
+}
+
+function createResearchKifuPiece(piece, seat, options = {}) {
+    const element = document.createElement("div");
+    element.className = `research-kifu-piece seat-${seat} ${seat === "B" || seat === "D" ? "team-b" : "team-a"}`;
+    if (options.hidden) element.classList.add("is-hidden");
+    if (options.faceDown) element.classList.add("is-face-down");
+    if (options.finalAttack) element.classList.add("is-final-attack");
+    const value = document.createElement("span");
+    value.textContent = piece;
+    element.appendChild(value);
+    return element;
+}
+
+function renderResearchKifuBoard(payload) {
+    const container = document.getElementById("researchKifuBoard");
+    if (!container) return;
+    container.replaceChildren();
+    const finalState = buildResearchKifuFinalState(payload);
+    const slotMap = new Map();
+    const hiddenMap = new Map();
+    const winner = String(payload.winner || "");
+
+    RESEARCH_KIFU_SEATS.forEach(seat => {
+        ["receive", "attack"].forEach(kind => {
+            RESEARCH_KIFU_SLOTS[seat][kind].forEach(([column, row], index) => {
+                slotMap.set(`${column},${row}`, {seat, kind, index});
+            });
+        });
+        const remaining = [...finalState.remaining[seat]];
+        const slots = [
+            ...RESEARCH_KIFU_SLOTS[seat].receive.map((position, index) => ({position, kind: "receive", index})),
+            ...RESEARCH_KIFU_SLOTS[seat].attack.map((position, index) => ({position, kind: "attack", index})),
+        ];
+        slots.forEach(slot => {
+            if (finalState.board[seat][slot.kind][slot.index]) return;
+            const piece = remaining.shift();
+            if (piece) hiddenMap.set(`${slot.position[0]},${slot.position[1]}`, {seat, piece});
+        });
+    });
+
+    for (let row = 1; row <= 8; row += 1) {
+        for (let column = 1; column <= 8; column += 1) {
+            const key = `${column},${row}`;
+            if (RESEARCH_KIFU_SKIPPED_CELLS.has(key)) continue;
+            const labelSeat = RESEARCH_KIFU_SEATS.find(seat => {
+                const label = RESEARCH_KIFU_LABELS[seat];
+                return label.column.startsWith(String(column)) && label.row.startsWith(String(row));
+            });
+            if (labelSeat) {
+                const label = document.createElement("div");
+                label.className = `research-kifu-seat-label seat-${labelSeat}`;
+                if (winner === labelSeat) label.classList.add("is-winner");
+                label.style.gridColumn = RESEARCH_KIFU_LABELS[labelSeat].column;
+                label.style.gridRow = RESEARCH_KIFU_LABELS[labelSeat].row;
+                const text = document.createElement("span");
+                text.textContent = labelSeat;
+                label.appendChild(text);
+                container.appendChild(label);
+                continue;
+            }
+
+            const cell = document.createElement("div");
+            cell.className = "research-kifu-cell";
+            cell.style.gridColumn = String(column);
+            cell.style.gridRow = String(row);
+            const slot = slotMap.get(key);
+            if (slot) {
+                const piece = finalState.board[slot.seat][slot.kind][slot.index];
+                const isFinalAttack = slot.kind === "attack"
+                    && winner === slot.seat
+                    && slot.index === finalState.board[slot.seat].attack.length - 1;
+                if (piece) {
+                    cell.appendChild(createResearchKifuPiece(piece, slot.seat, {
+                        faceDown: slot.kind === "receive" && finalState.faceDownReceives.has(`${slot.seat}:${slot.index}`),
+                        finalAttack: isFinalAttack,
+                    }));
+                    if (slot.kind === "attack") {
+                        const moveNumber = finalState.attackNumbers.get(`${slot.seat}:${slot.index}`);
+                        if (moveNumber) {
+                            const number = document.createElement("span");
+                            number.className = `research-kifu-move-number seat-${slot.seat}`;
+                            number.textContent = String(moveNumber);
+                            cell.appendChild(number);
+                        }
+                    }
+                } else if (hiddenMap.has(key)) {
+                    const hidden = hiddenMap.get(key);
+                    cell.appendChild(createResearchKifuPiece(hidden.piece, hidden.seat, {hidden: true}));
+                }
+            }
+            container.appendChild(cell);
+        }
+    }
+
+    const score = document.createElement("div");
+    score.className = "research-kifu-center-score";
+    const round = document.createElement("strong");
+    round.textContent = researchKifuBoardCenterLabel(payload);
+    const scoreAfter = payload.score_after || {};
+    const ac = document.createElement("span");
+    ac.textContent = `AC ${Number(scoreAfter.AC || 0)}`;
+    const bd = document.createElement("span");
+    bd.textContent = `BD ${Number(scoreAfter.BD || 0)}`;
+    score.append(round, ac, bd);
+    container.appendChild(score);
+}
+
 function renderResearchKifuDetail(record) {
     const payload = record?.payload || {};
     selectedResearchKifu = record;
@@ -6756,9 +7111,11 @@ function renderResearchKifuDetail(record) {
     document.getElementById("researchKifuDetailTitle").textContent = record.title || record.id;
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
+    document.querySelector("#settingsModal .settings-modal-content")?.classList.add("research-kifu-detail-open");
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
     memo.style.display = record.memo ? "block" : "none";
+    renderResearchKifuBoard(payload);
 
     const hands = document.getElementById("researchKifuDetailHands");
     hands.replaceChildren();
@@ -6797,6 +7154,7 @@ function closeResearchKifuDetail() {
     const detail = document.getElementById("researchKifuDetailView");
     if (list) list.style.display = "block";
     if (detail) detail.style.display = "none";
+    document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
     selectedResearchKifu = null;
 }
 
