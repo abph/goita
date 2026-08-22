@@ -5396,6 +5396,7 @@ const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
 let settingTargetGid = null; 
+let lastSettingsTab = "personal";
 let researchKifuRecords = [];
 let selectedResearchKifu = null;
 const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
@@ -6195,6 +6196,9 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    if (settingTargetGid && settingTargetGid !== targetGid) {
+        clearRoomAdminSession({clearTarget: true});
+    }
     if (cpuTimer) {
         clearTimeout(cpuTimer);
         cpuTimer = null;
@@ -6238,6 +6242,7 @@ async function enterRoom(targetGid, roomName) {
 }
 
 async function returnToLobby() {
+    clearRoomAdminSession({clearTarget: true});
     if (cpuTimer) {
         clearTimeout(cpuTimer);
         cpuTimer = null;
@@ -6684,15 +6689,32 @@ function showSettingsTab(tabName) {
     document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
     document.getElementById("researchKifuPanel").classList.toggle("active", isResearch);
     document.getElementById("personalSettingsFooterActions").style.display = isPersonal ? "block" : "none";
-    if (isManagement && !currentAdminPass) {
-        setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
+    lastSettingsTab = isMatch
+        ? "match"
+        : (isManagement ? "management" : (isResearch ? "research" : "personal"));
+    if (isManagement) {
+        if (currentAdminPass) {
+            document.getElementById("adminAuthArea").style.display = "none";
+            const fields = document.getElementById("roomManagementFields");
+            const isLoaded = fields?.dataset.loadedFor === settingTargetGid;
+            if (fields) fields.style.display = isLoaded ? "block" : "none";
+            if (!isLoaded) {
+                unlockRoomManagement(currentAdminPass, true);
+            }
+        } else {
+            document.getElementById("adminAuthArea").style.display = "block";
+            document.getElementById("roomManagementFields").style.display = "none";
+            setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
+        }
     }
     if (isResearch) {
         if (currentAdminPass) {
             document.getElementById("researchKifuAuthArea").style.display = "none";
             document.getElementById("researchKifuLibrary").style.display = "block";
-            loadResearchKifuList();
+            if (!researchKifuRecords.length) loadResearchKifuList();
         } else {
+            document.getElementById("researchKifuAuthArea").style.display = "block";
+            document.getElementById("researchKifuLibrary").style.display = "none";
             setTimeout(() => document.getElementById("researchKifuAdminPassword")?.focus(), 0);
         }
     }
@@ -6838,12 +6860,31 @@ async function saveTurnTimeLimitSetting() {
     }
 }
 
+function clearRoomAdminSession({clearTarget = false} = {}) {
+    currentAdminPass = "";
+    lastSettingsTab = "personal";
+    researchKifuRecords = [];
+    selectedResearchKifu = null;
+    const fields = document.getElementById("roomManagementFields");
+    if (fields) {
+        fields.style.display = "none";
+        delete fields.dataset.loadedFor;
+    }
+    document.getElementById("adminAuthArea").style.display = "block";
+    document.getElementById("researchKifuAuthArea").style.display = "block";
+    document.getElementById("researchKifuLibrary").style.display = "none";
+    closeResearchKifuDetail();
+    if (clearTarget) settingTargetGid = null;
+}
+
 function openSettingsModal(targetGid, event, initialTab = "personal") {
     if (event) {
         event.stopPropagation();
     }
+    const sameTarget = settingTargetGid === targetGid;
+    const hasExplicitInitialTab = arguments.length >= 3;
+    if (!sameTarget) clearRoomAdminSession();
     settingTargetGid = targetGid;
-    currentAdminPass = "";
     const turnTimeLimitStatus = document.getElementById("turnTimeLimitStatus");
     if(turnTimeLimitStatus) turnTimeLimitStatus.textContent = "";
     const dealModeStatus = document.getElementById("dealModeStatus");
@@ -6853,43 +6894,46 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     syncDealModeControls();
     document.getElementById("setAdminPassword").value = "";
     document.getElementById("adminAuthStatus").textContent = "";
-    document.getElementById("adminAuthArea").style.display = "block";
-    document.getElementById("roomManagementFields").style.display = "none";
+    document.getElementById("adminAuthArea").style.display = currentAdminPass ? "none" : "block";
+    document.getElementById("roomManagementFields").style.display = currentAdminPass ? "block" : "none";
     document.getElementById("matchSettingsTab").style.display =
         (targetGid === gid && isCurrentClientHost()) ? "block" : "none";
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("researchKifuTab").style.display = PRIVATE_ROOM_IDS.has(targetGid) ? "block" : "none";
     document.getElementById("researchKifuAdminPassword").value = "";
     document.getElementById("researchKifuAuthStatus").textContent = "";
-    document.getElementById("researchKifuAuthArea").style.display = "block";
-    document.getElementById("researchKifuLibrary").style.display = "none";
+    document.getElementById("researchKifuAuthArea").style.display = currentAdminPass ? "none" : "block";
+    document.getElementById("researchKifuLibrary").style.display = currentAdminPass ? "block" : "none";
     document.getElementById("researchKifuStatus").textContent = "";
-    document.getElementById("researchKifuTitle").value = "";
-    document.getElementById("researchKifuMemo").value = "";
-    renderResearchKifuTagOptions("researchKifuSaveTags", []);
-    renderResearchKifuTagOptions("researchKifuEditTags", []);
-    const researchKifuTagFilter = document.getElementById("researchKifuTagFilter");
-    if (researchKifuTagFilter) researchKifuTagFilter.value = "";
-    closeResearchKifuDetail();
-    researchKifuRecords = [];
-    selectedResearchKifu = null;
+    if (!sameTarget) {
+        document.getElementById("researchKifuTitle").value = "";
+        document.getElementById("researchKifuMemo").value = "";
+        renderResearchKifuTagOptions("researchKifuSaveTags", []);
+        renderResearchKifuTagOptions("researchKifuEditTags", []);
+        const researchKifuTagFilter = document.getElementById("researchKifuTagFilter");
+        if (researchKifuTagFilter) researchKifuTagFilter.value = "";
+    }
     document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("boardViewSettingRow").style.display =
         supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
-    ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
-        const details = document.getElementById(id);
-        if (details) details.open = false;
-    });
-    showSettingsTab(initialTab === "management" ? "management" : "personal");
+    if (!sameTarget) {
+        ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
+            const details = document.getElementById(id);
+            if (details) details.open = false;
+        });
+    }
+    let tabToOpen = hasExplicitInitialTab
+        ? initialTab
+        : (sameTarget ? lastSettingsTab : "personal");
+    if (tabToOpen === "management" && isMainRoomId(targetGid)) tabToOpen = "personal";
+    if (tabToOpen === "research" && !PRIVATE_ROOM_IDS.has(targetGid)) tabToOpen = "personal";
+    if (tabToOpen === "match" && (targetGid !== gid || !isCurrentClientHost())) tabToOpen = "personal";
+    showSettingsTab(tabToOpen);
     document.getElementById("settingsModal").style.display = "flex";
 }
 
 function closeSettings() {
     document.getElementById("settingsModal").style.display = "none";
-    currentAdminPass = "";
-    settingTargetGid = null;
-    researchKifuRecords = [];
-    selectedResearchKifu = null;
 }
 
 function clearRoomBackground() {
@@ -6974,10 +7018,10 @@ async function savePersonalSettings() {
     if(latestState) renderGameLog(latestState.log || []);
 }
 
-async function unlockRoomManagement() {
+async function unlockRoomManagement(passwordOverride = "", fromRememberedSession = false) {
     const passInput = document.getElementById("setAdminPassword");
     const status = document.getElementById("adminAuthStatus");
-    const pass = passInput.value;
+    const pass = String(passwordOverride || passInput.value || "");
     if (!pass) {
         status.textContent = "管理用パスワードを入力してください。";
         return;
@@ -6991,6 +7035,9 @@ async function unlockRoomManagement() {
             body: JSON.stringify({ password: pass })
         });
         if (!res.ok) {
+            if (res.status === 401 && fromRememberedSession) {
+                clearRoomAdminSession();
+            }
             status.textContent = "管理用パスワードが正しくありません。";
             return;
         }
@@ -7004,7 +7051,9 @@ async function unlockRoomManagement() {
         document.getElementById("setRoomPass").style.display = "none";
         document.getElementById("setRoomPass").value = "";
         document.getElementById("adminAuthArea").style.display = "none";
-        document.getElementById("roomManagementFields").style.display = "block";
+        const fields = document.getElementById("roomManagementFields");
+        fields.style.display = "block";
+        fields.dataset.loadedFor = settingTargetGid;
     } catch (e) {
         status.textContent = "通信エラーが発生しました。";
     } finally {
@@ -7019,7 +7068,10 @@ async function researchKifuApi(path, body = {}) {
         body: JSON.stringify({admin_password: currentAdminPass, ...body}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.detail || "棋譜の処理に失敗しました。");
+    if (!response.ok) {
+        if (response.status === 401) clearRoomAdminSession();
+        throw new Error(data?.detail || "棋譜の処理に失敗しました。");
+    }
     return data;
 }
 
@@ -7609,6 +7661,7 @@ async function saveRoomManagement() {
             await refresh();
         } else {
             const error = await res.json().catch(() => null);
+            if (res.status === 401) clearRoomAdminSession();
             alert(error?.detail || "設定の保存に失敗しました。");
         }
     } catch (e) {
