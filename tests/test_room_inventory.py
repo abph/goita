@@ -608,6 +608,91 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
                 app_module.manager.client_names[key] = old_value
 
 
+def test_site_presence_prioritizes_the_viewers_location_and_seat_order() -> None:
+    app_module.setup_main_rooms()
+    app_module.setup_supporter_rooms()
+    main_room_ids = list(app_module.MAIN_ROOM_NAMES)
+    viewer_room_id = main_room_ids[1]
+    other_room_id = main_room_ids[0]
+    private_room_id = app_module.PRIVATE_A_GID
+    affected_games = {
+        room_id: app_module.GAMES[room_id]
+        for room_id in (viewer_room_id, other_room_id, private_room_id)
+    }
+    old_game_values = {
+        room_id: (
+            game.get("human_seats"),
+            game.get("player_names"),
+        )
+        for room_id, game in affected_games.items()
+    }
+    old_connections = dict(app_module.manager.client_connections)
+    old_names = dict(app_module.manager.client_names)
+
+    try:
+        app_module.manager.client_connections.clear()
+        app_module.manager.client_names.clear()
+        affected_games[viewer_room_id]["human_seats"] = {
+            "A": "same-a",
+            "B": "same-b",
+        }
+        affected_games[viewer_room_id]["player_names"] = {
+            "A": "同室A",
+            "B": "同室B",
+            "C": "",
+            "D": "",
+        }
+        affected_games[other_room_id]["human_seats"] = {"C": "other-c"}
+        affected_games[other_room_id]["player_names"] = {
+            "A": "",
+            "B": "",
+            "C": "別室C",
+            "D": "",
+        }
+        affected_games[private_room_id]["human_seats"] = {"D": "private-d"}
+        affected_games[private_room_id]["player_names"] = {
+            "A": "",
+            "B": "",
+            "C": "",
+            "D": "秘密D",
+        }
+
+        connection_names = {
+            (viewer_room_id, "same-b"): "同室B",
+            (viewer_room_id, "same-spectator"): "同室観戦",
+            (viewer_room_id, "same-a"): "同室A",
+            ("lobby", "lobby-person"): "ロビー",
+            (other_room_id, "other-c"): "別室C",
+            (private_room_id, "private-d"): "秘密D",
+        }
+        for key, name in connection_names.items():
+            app_module.manager.client_connections[key] = {object()}
+            app_module.manager.client_names[key] = name
+
+        people = app_module.list_rooms(
+            viewer_game_id=viewer_room_id,
+            client_id="same-a",
+        )["site_people"]
+
+        assert [person["name"] for person in people] == [
+            "同室A",
+            "同室B",
+            "同室観戦",
+            "ロビー",
+            "別室C",
+            "＊＊＊＊",
+        ]
+        assert [person["seat"] for person in people[:3]] == ["A", "B", ""]
+    finally:
+        app_module.manager.client_connections.clear()
+        app_module.manager.client_connections.update(old_connections)
+        app_module.manager.client_names.clear()
+        app_module.manager.client_names.update(old_names)
+        for room_id, (human_seats, player_names) in old_game_values.items():
+            affected_games[room_id]["human_seats"] = human_seats
+            affected_games[room_id]["player_names"] = player_names
+
+
 def test_debug_room_presence_is_completely_hidden() -> None:
     app_module.setup_debug_room()
     game = app_module.GAMES[app_module.DEBUG_GID]
@@ -743,6 +828,7 @@ if __name__ == "__main__":
     test_room_list_counts_human_players_and_spectators_without_ai()
     test_private_total_includes_hidden_private_rooms_but_not_debug_room()
     test_room_list_returns_named_site_presence_without_client_ids()
+    test_site_presence_prioritizes_the_viewers_location_and_seat_order()
     test_debug_room_presence_is_completely_hidden()
     test_private_room_presence_masks_names_outside_the_same_room()
     print("ROOM_INVENTORY_TEST_OK")

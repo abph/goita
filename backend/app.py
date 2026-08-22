@@ -2573,7 +2573,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         visible_private_room = viewer_game_id
 
     def build_site_people() -> List[Dict[str, Any]]:
-        candidates: Dict[str, Tuple[int, Dict[str, Any]]] = {}
+        candidates: Dict[str, Tuple[int, str, Dict[str, Any]]] = {}
         hidden_debug_clients = {
             connected_client_id
             for (connected_game_id, connected_client_id), connections
@@ -2654,11 +2654,57 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
             previous = candidates.get(client_id)
             if previous is None or priority > previous[0]:
-                candidates[client_id] = (priority, person)
+                candidates[client_id] = (priority, connected_game_id, person)
 
-        people = [person for _priority, person in candidates.values()]
-        people.sort(key=lambda item: (item["location"], item["seat"], item["name"]))
-        return people
+        viewer_location = viewer_game_id or "lobby"
+        main_room_order = {
+            room_id: index for index, room_id in enumerate(MAIN_ROOM_NAMES)
+        }
+        private_room_order = {
+            room_id: index for index, room_id in enumerate(PRIVATE_ROOM_NAMES)
+        }
+        seat_order = {seat: index for index, seat in enumerate("ABCD")}
+
+        def presence_sort_key(
+            entry: Tuple[int, str, Dict[str, Any]],
+        ) -> Tuple[int, int, str, int, str]:
+            _priority, location_id, person = entry
+            if location_id == viewer_location:
+                location_group = 0
+                room_order = 0
+            elif location_id == "lobby":
+                location_group = 1
+                room_order = 0
+            elif _is_main_game_id(location_id):
+                location_group = 2
+                room_order = main_room_order.get(location_id, len(main_room_order))
+            elif location_id in PRIVATE_ROOM_NAMES:
+                location_group = 3
+                room_order = private_room_order.get(
+                    location_id,
+                    len(private_room_order),
+                )
+            else:
+                location_group = 4
+                room_order = 0
+
+            seat = str(person.get("seat", "") or "")
+            if seat in seat_order:
+                person_order = seat_order[seat]
+            elif person.get("role") == "spectator":
+                person_order = 4
+            else:
+                person_order = 5
+            return (
+                location_group,
+                room_order,
+                str(person.get("location", "")),
+                person_order,
+                str(person.get("name", "")),
+            )
+
+        ordered = sorted(candidates.values(), key=presence_sort_key)
+        return [person for _priority, _location_id, person in ordered]
 
     def build_room_info(gid: str, data: dict):
         hs = data.get("human_seats", {})
