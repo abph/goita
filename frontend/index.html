@@ -2244,9 +2244,13 @@
     .settings-disclosure-content .settings-row:last-child { margin-bottom: 0; }
     .settings-modal-content {
       position: relative;
+      display: flex;
+      flex-direction: column;
       max-width: 440px;
-      max-height: min(760px, calc(100vh - 24px));
-      overflow-y: auto;
+      height: min(720px, calc(100dvh - 24px));
+      max-height: none;
+      overflow: hidden;
+      box-sizing: border-box;
       font-size: 13px;
     }
     .settings-modal-content > h3 {
@@ -2284,7 +2288,8 @@
     @media (max-width: 701px) {
       .settings-modal-content {
         width: calc(100% - 24px);
-        max-height: calc(100dvh - 12px);
+        height: calc(100dvh - 12px);
+        max-height: none;
         padding: 16px;
         box-sizing: border-box;
       }
@@ -2421,9 +2426,8 @@
       font-weight: 800;
     }
     .research-kifu-detail {
-      max-height: min(620px, calc(100vh - 190px));
-      overflow-y: auto;
-      overscroll-behavior: contain;
+      max-height: none;
+      overflow: visible;
     }
     .research-kifu-detail h4 { margin: 8px 0; color: #5f3517; }
     .research-kifu-detail-heading {
@@ -2639,7 +2643,7 @@
     @media (max-width: 701px) {
       .settings-modal-content .settings-tab { padding-inline: 4px; font-size: 11px; }
       .research-kifu-list { max-height: 210px; }
-      .research-kifu-detail { max-height: calc(100dvh - 118px); }
+      .research-kifu-detail { max-height: none; }
       .research-kifu-hands { grid-template-columns: 1fr; }
       .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
       .research-kifu-board { --research-gap: 3px; --research-cell: min(36px, calc((100vw - 96px) / 8)); }
@@ -2647,11 +2651,46 @@
     }
     .lobby-admin-modal-content {
       position: relative;
+      display: flex;
+      flex-direction: column;
       max-width: 440px;
-      max-height: min(620px, calc(100vh - 32px));
-      overflow-y: auto;
+      height: min(720px, calc(100dvh - 24px));
+      max-height: none;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .lobby-admin-modal-content > h3 { padding-right: 36px; }
+    .settings-modal-content > h3,
+    .settings-modal-content > .settings-tabs,
+    .settings-modal-content > .settings-footer,
+    .lobby-admin-modal-content > h3,
+    .lobby-admin-modal-content > .settings-tabs,
+    .lobby-admin-modal-content > .settings-footer {
+      flex: 0 0 auto;
+    }
+    .settings-modal-content > .settings-panel.active,
+    .lobby-admin-modal-content > .settings-panel.active {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding-right: 4px;
+    }
+    .settings-modal-content > .settings-footer,
+    .lobby-admin-modal-content > .settings-footer {
+      margin-top: 10px;
+    }
+    @media (max-width: 701px) {
+      .lobby-admin-modal-content {
+        width: calc(100% - 24px);
+        height: calc(100dvh - 12px);
+        max-height: none;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+    }
     .lobby-admin-counts {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));

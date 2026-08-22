@@ -97,10 +97,23 @@ def test_effects_and_beginner_support_are_grouped() -> None:
     assert '"playSupportSettingsDetails"' in html
 
 
+def test_settings_modals_keep_a_fixed_height_while_panels_scroll() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert html.count("height: min(720px, calc(100dvh - 24px));") >= 2
+    assert ".settings-modal-content > .settings-panel.active" in html
+    assert ".lobby-admin-modal-content > .settings-panel.active" in html
+    assert "flex: 1 1 auto;" in html
+    assert "min-height: 0;" in html
+    assert "overflow-y: auto;" in html
+    assert html.count("height: calc(100dvh - 12px);") >= 2
+
+
 if __name__ == "__main__":
     test_match_setup_is_grouped_in_the_settings_modal()
     test_match_setup_is_host_only_and_private_hands_stay_private()
     test_kifu_0001_round_1_has_the_expected_four_hands()
     test_personal_kifu_save_actions_are_grouped()
     test_effects_and_beginner_support_are_grouped()
+    test_settings_modals_keep_a_fixed_height_while_panels_scroll()
     print("MATCH_SETTINGS_PANEL_TEST_OK")
