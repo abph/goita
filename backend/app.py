@@ -48,6 +48,11 @@ from backend.room_settings_persistence import (
     save_room_settings,
     verify_admin_password,
 )
+from backend.research_kifu_store import (
+    ResearchKifuStore,
+    is_persistent_research_kifu_configured,
+    resolve_research_kifu_path,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -91,6 +96,14 @@ PRIVATE_ROOM_NAMES = {
     room["gid"]: room["owner"] for room in PRIVATE_ROOM_DEFINITIONS
 }
 ROOM_SETTINGS_PATH = resolve_room_settings_path(os.environ)
+RESEARCH_KIFU_PATH = resolve_research_kifu_path(
+    os.environ,
+    local_fallback=Path(__file__).resolve().parents[1]
+    / "results"
+    / "goita-research-kifu.sqlite3",
+)
+RESEARCH_KIFU_STORE = ResearchKifuStore(RESEARCH_KIFU_PATH)
+RESEARCH_KIFU_PERSISTENT = is_persistent_research_kifu_configured(os.environ)
 
 
 def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
@@ -1348,6 +1361,52 @@ def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
     return out
 
 
+def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str, Any]:
+    """Capture one completed round before a subsequent round replaces it."""
+
+    init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
+    dealer = str(game.get("dealer", "A"))
+    score_after = {
+        "AC": int(game.get("total_team_score", {}).get("AC", 0)),
+        "BD": int(game.get("total_team_score", {}).get("BD", 0)),
+    }
+    winner = str(state.winner or "")
+    gained_score = int(game.get("last_round_score", 0))
+    score_before = dict(score_after)
+    if winner:
+        winning_team = "AC" if winner in ("A", "C") else "BD"
+        score_before[winning_team] = max(0, score_before[winning_team] - gained_score)
+    raw_moves = [
+        [str(value) for value in row[:3]]
+        for row in game.get("kifu_moves", [])
+        if isinstance(row, list) and len(row) >= 3
+    ]
+    return {
+        "version": 1,
+        "round_index": int(game.get("round_count", 1)),
+        "dealer": dealer,
+        "winner": winner,
+        "gained_score": gained_score,
+        "score_before": score_before,
+        "score_after": score_after,
+        "hand": {
+            "p0": _hand_to_kifu_string(init_hands.get("A", [])),
+            "p1": _hand_to_kifu_string(init_hands.get("B", [])),
+            "p2": _hand_to_kifu_string(init_hands.get("C", [])),
+            "p3": _hand_to_kifu_string(init_hands.get("D", [])),
+        },
+        "hands": {
+            seat: [str(piece) for piece in init_hands.get(seat, [])]
+            for seat in ALL_SEATS
+        },
+        "uchidashi": int(PLAYER_IDX.get(dealer, "0")),
+        "moves": raw_moves,
+        "game": _compress_kifu_moves(raw_moves),
+        "ai_seats": sorted(_ai_seat_set(game)),
+        "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+    }
+
+
 GAMES: Dict[str, Dict[str, Any]] = {}
 GAME_TURN_LOCKS: Dict[str, asyncio.Lock] = {}
 TURN_TIMEOUT_TASKS: Dict[str, asyncio.Task] = {}
@@ -1532,6 +1591,15 @@ class PrivateRoomAdminPasswordUpdateRequest(BaseModel):
     game_id: str
     new_password: str = Field(default="", max_length=128)
     reset_to_default: bool = False
+
+
+class ResearchKifuAuthRequest(BaseModel):
+    admin_password: str = Field(max_length=128)
+
+
+class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
+    title: str = Field(default="", max_length=80)
+    memo: str = Field(default="", max_length=2000)
 
 
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
@@ -2097,6 +2165,7 @@ def _create_game_obj(dealer: str = "A", ai_profile: Optional[str] = None) -> Dic
         "match_winner": None,
         "current_round_finished": False,
         "last_round_score": 0,
+        "last_completed_kifu": None,
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
         "turn_started_at": None,
@@ -2114,6 +2183,9 @@ def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
     old_state = old_game.get("state")
     should_advance_round = bool(old_game.get("is_started")) or bool(getattr(old_state, "finished", False))
     new_game["round_count"] = old_round + (1 if should_advance_round else 0)
+    new_game["last_completed_kifu"] = copy.deepcopy(
+        old_game.get("last_completed_kifu")
+    )
 
 
 def _set_reset_start_state(game: Dict[str, Any], auto_start: bool) -> None:
@@ -2353,6 +2425,7 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             else:
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
+            game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
             checkpoint_ai_search_telemetry("round_finish")
             checkpoint_background_search_value_model("round_finish")
 
@@ -3667,6 +3740,89 @@ def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str 
         "explanation": explanation,
         "projected_score": _beginner_support_score_preview(state, player, action),
     }
+
+
+def _require_research_kifu_admin(
+    game_id: str,
+    admin_password: str,
+) -> Dict[str, Any]:
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="研究用棋譜ライブラリはプライベートルーム専用です",
+        )
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if not _room_admin_password_matches(game, admin_password):
+        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+    return game
+
+
+@app.post("/games/{game_id}/research_kifu/list")
+def list_research_kifu(game_id: str, req: ResearchKifuAuthRequest):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    return {
+        "ok": True,
+        "records": RESEARCH_KIFU_STORE.list(game_id),
+        "persistent": RESEARCH_KIFU_PERSISTENT,
+    }
+
+
+@app.post("/games/{game_id}/research_kifu/save")
+def save_research_kifu(game_id: str, req: ResearchKifuSaveRequest):
+    game = _require_research_kifu_admin(game_id, req.admin_password)
+    snapshot = copy.deepcopy(game.get("last_completed_kifu"))
+    state = game.get("state")
+    if snapshot is None and bool(getattr(state, "finished", False)):
+        snapshot = _research_kifu_snapshot(game, state)
+        game["last_completed_kifu"] = copy.deepcopy(snapshot)
+    if not isinstance(snapshot, dict):
+        raise HTTPException(
+            status_code=409,
+            detail="保存できる終局済みの棋譜がありません",
+        )
+    title = str(req.title or "").strip() or (
+        f"第{int(snapshot.get('round_index', 1))}局"
+    )
+    record = RESEARCH_KIFU_STORE.save(
+        game_id,
+        title=title,
+        memo=str(req.memo or "").strip(),
+        payload=snapshot,
+    )
+    return {
+        "ok": True,
+        "record": record,
+        "persistent": RESEARCH_KIFU_PERSISTENT,
+    }
+
+
+@app.post("/games/{game_id}/research_kifu/{record_id}")
+def get_research_kifu(
+    game_id: str,
+    record_id: str,
+    req: ResearchKifuAuthRequest,
+):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    record = RESEARCH_KIFU_STORE.get(game_id, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    return {"ok": True, "record": record}
+
+
+@app.post("/games/{game_id}/research_kifu/{record_id}/delete")
+def delete_research_kifu(
+    game_id: str,
+    record_id: str,
+    req: ResearchKifuAuthRequest,
+):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    if not RESEARCH_KIFU_STORE.delete(game_id, record_id):
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    return {"ok": True}
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)

@@ -2314,6 +2314,76 @@
       color: #a62424;
       font-weight: 900;
     }
+    .research-kifu-form {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid #d7c2a4;
+      background: rgba(255,255,255,0.48);
+    }
+    .research-kifu-form input,
+    .research-kifu-form textarea {
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .research-kifu-form textarea { min-height: 64px; resize: vertical; }
+    .research-kifu-list {
+      max-height: 250px;
+      margin-top: 12px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border: 1px solid #d7c2a4;
+      background: #fff;
+    }
+    .research-kifu-empty { padding: 18px 12px; color: #74695f; text-align: center; }
+    .research-kifu-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 10px;
+      border-bottom: 1px solid #eee3d5;
+    }
+    .research-kifu-item:last-child { border-bottom: 0; }
+    .research-kifu-item-title { color: #5f3517; font-weight: 900; overflow-wrap: anywhere; }
+    .research-kifu-item-meta { margin-top: 2px; color: #80746a; font-size: 11px; }
+    .research-kifu-item button,
+    .research-kifu-actions button {
+      min-height: 34px;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+      font-weight: 800;
+    }
+    .research-kifu-detail {
+      max-height: 390px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .research-kifu-detail h4 { margin: 8px 0; color: #5f3517; }
+    .research-kifu-hands {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.6);
+      font-weight: 700;
+    }
+    .research-kifu-moves {
+      margin: 8px 0;
+      padding: 8px 8px 8px 30px;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .research-kifu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .research-kifu-actions .danger { color: #a62424; border-color: #c78888; }
+    @media (max-width: 701px) {
+      .settings-modal-content .settings-tab { padding-inline: 4px; font-size: 11px; }
+      .research-kifu-list { max-height: 210px; }
+      .research-kifu-detail { max-height: 310px; }
+      .research-kifu-hands { grid-template-columns: 1fr; }
+    }
     .lobby-admin-modal-content {
       position: relative;
       max-width: 440px;
@@ -3903,6 +3973,7 @@
       <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
       <button id="matchSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('match')">対局設定</button>
       <button id="roomManagementTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('management')">ルーム管理</button>
+      <button id="researchKifuTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('research')">研究用棋譜</button>
     </div>
 
     <section id="personalSettingsPanel" class="settings-panel active" role="tabpanel">
@@ -4165,6 +4236,45 @@
       </div>
     </section>
 
+    <section id="researchKifuPanel" class="settings-panel" role="tabpanel">
+      <h4 style="margin:0 0 10px; color:#6d461f;">研究用棋譜ライブラリ</h4>
+      <div id="researchKifuAuthArea" class="settings-row">
+        <label for="researchKifuAdminPassword">管理用パスワード</label>
+        <div class="settings-inline-action">
+          <input type="password" id="researchKifuAdminPassword" autocomplete="current-password">
+          <button type="button" onclick="unlockResearchKifuLibrary()">確認</button>
+        </div>
+        <div id="researchKifuAuthStatus" class="settings-status" aria-live="polite"></div>
+      </div>
+
+      <div id="researchKifuLibrary" style="display:none;">
+        <div id="researchKifuListView">
+          <div class="research-kifu-form">
+            <label for="researchKifuTitle">タイトル</label>
+            <input id="researchKifuTitle" type="text" maxlength="80" placeholder="例：終盤の王受け">
+            <label for="researchKifuMemo">研究メモ</label>
+            <textarea id="researchKifuMemo" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu()">終局した一局を保存</button>
+          </div>
+          <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
+          <div id="researchKifuList" class="research-kifu-list"></div>
+        </div>
+        <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
+          <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
+          <h4 id="researchKifuDetailTitle"></h4>
+          <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
+          <p id="researchKifuDetailMemo"></p>
+          <div id="researchKifuDetailHands" class="research-kifu-hands"></div>
+          <ol id="researchKifuDetailMoves" class="research-kifu-moves"></ol>
+          <div class="research-kifu-actions">
+            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
+            <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
+          </div>
+          <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
     <div class="settings-footer">
       <div id="personalSettingsFooterActions">
         <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
@@ -4175,8 +4285,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822c"></script>
-<script src="/static/i18n.js?v=20260822c"></script>
+<script src="/static/i18n-en.js?v=20260822d"></script>
+<script src="/static/i18n.js?v=20260822d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4862,7 +4972,7 @@ const SITE_INFO = {
         title: "プライバシーポリシー",
         paragraphs: [
             "そろうごいたでは、対局や各機能の提供に必要な範囲で、設定した名前、チャット内容、対局情報、棋譜情報などを取り扱います。個人設定の一部は、ご利用のブラウザー内に保存されます。",
-            "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。ただし、運営側がその情報を勝手に棋譜として保存・収集することはありません。また、本人の同意なく、棋譜から個人の打ち方を分析したり、AI開発、研究、記事などに利用したりすることもありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。",
+            "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。運営側がその情報を勝手に棋譜として保存・収集することはありません。研究用棋譜ライブラリには、プライベートルームの管理者が明示的に保存した棋譜だけを保存します。保存された棋譜を、本人の同意なくAI開発、研究、記事などに利用することはありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。",
             "デバッグルームのボイスチャットは、参加者同士を直接つなぐためにWebRTCを利用します。音声を録音・保存することはありません。",
             "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
             "取得した情報は、サービスの提供、改善、不具合調査のために必要な範囲で利用します。",
@@ -4941,6 +5051,8 @@ const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
 let settingTargetGid = null; 
+let researchKifuRecords = [];
+let selectedResearchKifu = null;
 let lobbyAdminPasswordValue = "";
 let latestLobbyRoomTotals = { main_people_count: 0, private_people_count: 0 };
 let seatModeTarget = null;
@@ -6208,18 +6320,31 @@ function populateAiProfileSelect(profiles, selected) {
 function showSettingsTab(tabName) {
     const isMatch = tabName === "match";
     const isManagement = tabName === "management";
+    const isResearch = tabName === "research";
     if (isManagement && isMainRoomId(settingTargetGid)) return;
+    if (isResearch && !PRIVATE_ROOM_IDS.has(settingTargetGid)) return;
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
-    const isPersonal = !isMatch && !isManagement;
+    const isPersonal = !isMatch && !isManagement && !isResearch;
     document.getElementById("personalSettingsTab").classList.toggle("active", isPersonal);
     document.getElementById("matchSettingsTab").classList.toggle("active", isMatch);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
+    document.getElementById("researchKifuTab").classList.toggle("active", isResearch);
     document.getElementById("personalSettingsPanel").classList.toggle("active", isPersonal);
     document.getElementById("matchSettingsPanel").classList.toggle("active", isMatch);
     document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
+    document.getElementById("researchKifuPanel").classList.toggle("active", isResearch);
     document.getElementById("personalSettingsFooterActions").style.display = isPersonal ? "block" : "none";
     if (isManagement && !currentAdminPass) {
         setTimeout(() => document.getElementById("setAdminPassword")?.focus(), 0);
+    }
+    if (isResearch) {
+        if (currentAdminPass) {
+            document.getElementById("researchKifuAuthArea").style.display = "none";
+            document.getElementById("researchKifuLibrary").style.display = "block";
+            loadResearchKifuList();
+        } else {
+            setTimeout(() => document.getElementById("researchKifuAdminPassword")?.focus(), 0);
+        }
     }
 }
 
@@ -6320,6 +6445,17 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     document.getElementById("matchSettingsTab").style.display =
         (targetGid === gid && isCurrentClientHost()) ? "block" : "none";
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
+    document.getElementById("researchKifuTab").style.display = PRIVATE_ROOM_IDS.has(targetGid) ? "block" : "none";
+    document.getElementById("researchKifuAdminPassword").value = "";
+    document.getElementById("researchKifuAuthStatus").textContent = "";
+    document.getElementById("researchKifuAuthArea").style.display = "block";
+    document.getElementById("researchKifuLibrary").style.display = "none";
+    document.getElementById("researchKifuStatus").textContent = "";
+    document.getElementById("researchKifuTitle").value = "";
+    document.getElementById("researchKifuMemo").value = "";
+    closeResearchKifuDetail();
+    researchKifuRecords = [];
+    selectedResearchKifu = null;
     document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
     document.getElementById("boardViewSettingRow").style.display =
         supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
@@ -6335,6 +6471,8 @@ function closeSettings() {
     document.getElementById("settingsModal").style.display = "none";
     currentAdminPass = "";
     settingTargetGid = null;
+    researchKifuRecords = [];
+    selectedResearchKifu = null;
 }
 
 function clearRoomBackground() {
@@ -6454,6 +6592,249 @@ async function unlockRoomManagement() {
         status.textContent = "通信エラーが発生しました。";
     } finally {
         passInput.disabled = false;
+    }
+}
+
+async function researchKifuApi(path, body = {}) {
+    const response = await fetch(`${API}/games/${settingTargetGid}/research_kifu${path}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({admin_password: currentAdminPass, ...body}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.detail || "棋譜の処理に失敗しました。");
+    return data;
+}
+
+async function unlockResearchKifuLibrary() {
+    const input = document.getElementById("researchKifuAdminPassword");
+    const status = document.getElementById("researchKifuAuthStatus");
+    const password = String(input?.value || "");
+    if (!password) {
+        status.textContent = uiText("管理用パスワードを入力してください。");
+        return;
+    }
+    input.disabled = true;
+    status.textContent = "";
+    try {
+        const response = await fetch(`${API}/games/${settingTargetGid}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password}),
+        });
+        if (!response.ok) throw new Error("管理用パスワードが正しくありません。");
+        currentAdminPass = password;
+        document.getElementById("researchKifuAuthArea").style.display = "none";
+        document.getElementById("researchKifuLibrary").style.display = "block";
+        await loadResearchKifuList();
+    } catch (error) {
+        status.textContent = uiText(error?.message || "通信エラーが発生しました。");
+    } finally {
+        input.disabled = false;
+    }
+}
+
+function researchKifuDateLabel(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return date.toLocaleString([], {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+    });
+}
+
+function researchKifuSummaryLabel(record) {
+    const language = currentUiLanguage();
+    const date = researchKifuDateLabel(record.created_at);
+    const winner = String(record.winner || "");
+    if (language === "zh") {
+        return `${date} / 第${record.round_index}局${winner ? ` / ${winner}获胜 ${record.gained_score}分` : ""}`;
+    }
+    if (language === "en") {
+        return `${date} / Round ${record.round_index}${winner ? ` / ${winner} won ${record.gained_score} points` : ""}`;
+    }
+    return `${date} / 第${record.round_index}局${winner ? ` / ${winner} ${record.gained_score}点` : ""}`;
+}
+
+function renderResearchKifuList() {
+    const container = document.getElementById("researchKifuList");
+    container.replaceChildren();
+    if (!researchKifuRecords.length) {
+        const empty = document.createElement("div");
+        empty.className = "research-kifu-empty";
+        empty.textContent = uiText("保存した棋譜はまだありません。");
+        container.appendChild(empty);
+        return;
+    }
+    researchKifuRecords.forEach(record => {
+        const item = document.createElement("div");
+        item.className = "research-kifu-item";
+        const text = document.createElement("div");
+        const title = document.createElement("div");
+        title.className = "research-kifu-item-title";
+        title.textContent = record.title || record.id;
+        const meta = document.createElement("div");
+        meta.className = "research-kifu-item-meta";
+        meta.textContent = researchKifuSummaryLabel(record);
+        text.append(title, meta);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = uiText("棋譜を見る");
+        button.onclick = () => openResearchKifu(record.id);
+        item.append(text, button);
+        container.appendChild(item);
+    });
+}
+
+async function loadResearchKifuList() {
+    const status = document.getElementById("researchKifuStatus");
+    status.textContent = uiText("棋譜を読み込んでいます。");
+    try {
+        const data = await researchKifuApi("/list");
+        researchKifuRecords = Array.isArray(data.records) ? data.records : [];
+        renderResearchKifuList();
+        status.textContent = data.persistent === false
+            ? uiText("ローカル保存です。本番では永続ディスクの設定を確認してください。")
+            : "";
+    } catch (error) {
+        status.textContent = uiText(error?.message || "棋譜データの読み込みに失敗しました。");
+    }
+}
+
+async function saveCurrentResearchKifu() {
+    const status = document.getElementById("researchKifuStatus");
+    status.textContent = uiText("保存しています...");
+    try {
+        const data = await researchKifuApi("/save", {
+            title: document.getElementById("researchKifuTitle").value,
+            memo: document.getElementById("researchKifuMemo").value,
+        });
+        document.getElementById("researchKifuTitle").value = "";
+        document.getElementById("researchKifuMemo").value = "";
+        await loadResearchKifuList();
+        status.textContent = `${uiText("保存しました。")} ${data.record?.id || ""}`.trim();
+    } catch (error) {
+        status.textContent = uiText(error?.message || "保存できませんでした。");
+    }
+}
+
+function researchKifuMoveLabel(row) {
+    const seat = ["A", "B", "C", "D"][Number(row?.[0])] || String(row?.[0] || "?");
+    const block = String(row?.[1] || "");
+    const attack = String(row?.[2] || "");
+    const language = currentUiLanguage();
+    if (block === "パス") return `${seat}: ${uiText("パス")}`;
+    if (language === "zh") {
+        if (block && attack) return `${seat}: 用${block}接 → 用${attack}攻`;
+        if (block) return `${seat}: 用${block}接`;
+        if (attack) return `${seat}: 用${attack}攻`;
+    } else if (language === "en") {
+        if (block && attack) return `${seat}: defend with ${block} → attack with ${attack}`;
+        if (block) return `${seat}: defend with ${block}`;
+        if (attack) return `${seat}: attack with ${attack}`;
+    } else {
+        if (block && attack) return `${seat}: ${block}で受ける → ${attack}で攻める`;
+        if (block) return `${seat}: ${block}で受ける`;
+        if (attack) return `${seat}: ${attack}で攻める`;
+    }
+    return `${seat}: -`;
+}
+
+function researchKifuDetailMetaLabel(record, payload) {
+    const language = currentUiLanguage();
+    const base = `${record.id} / ${researchKifuDateLabel(record.created_at)}`;
+    if (language === "zh") return `${base} / 庄家${payload.dealer || "-"}`;
+    if (language === "en") return `${base} / Dealer ${payload.dealer || "-"}`;
+    return `${base} / 親${payload.dealer || "-"}`;
+}
+
+function renderResearchKifuDetail(record) {
+    const payload = record?.payload || {};
+    selectedResearchKifu = record;
+    document.getElementById("researchKifuListView").style.display = "none";
+    document.getElementById("researchKifuDetailView").style.display = "block";
+    document.getElementById("researchKifuDetailTitle").textContent = record.title || record.id;
+    document.getElementById("researchKifuDetailMeta").textContent =
+        researchKifuDetailMetaLabel(record, payload);
+    const memo = document.getElementById("researchKifuDetailMemo");
+    memo.textContent = record.memo || "";
+    memo.style.display = record.memo ? "block" : "none";
+
+    const hands = document.getElementById("researchKifuDetailHands");
+    hands.replaceChildren();
+    const keys = {A: "p0", B: "p1", C: "p2", D: "p3"};
+    Object.entries(keys).forEach(([seat, key]) => {
+        const line = document.createElement("div");
+        line.textContent = `${seat}: ${payload.hand?.[key] || "-"}`;
+        hands.appendChild(line);
+    });
+
+    const moves = document.getElementById("researchKifuDetailMoves");
+    moves.replaceChildren();
+    const rows = Array.isArray(payload.moves) ? payload.moves : [];
+    rows.forEach(row => {
+        const item = document.createElement("li");
+        item.textContent = researchKifuMoveLabel(row);
+        moves.appendChild(item);
+    });
+    document.getElementById("researchKifuDetailStatus").textContent = "";
+}
+
+async function openResearchKifu(recordId) {
+    const status = document.getElementById("researchKifuStatus");
+    status.textContent = uiText("棋譜を読み込んでいます。");
+    try {
+        const data = await researchKifuApi(`/${encodeURIComponent(recordId)}`);
+        renderResearchKifuDetail(data.record);
+        status.textContent = "";
+    } catch (error) {
+        status.textContent = uiText(error?.message || "棋譜データの読み込みに失敗しました。");
+    }
+}
+
+function closeResearchKifuDetail() {
+    const list = document.getElementById("researchKifuListView");
+    const detail = document.getElementById("researchKifuDetailView");
+    if (list) list.style.display = "block";
+    if (detail) detail.style.display = "none";
+    selectedResearchKifu = null;
+}
+
+function applySelectedResearchKifu() {
+    const status = document.getElementById("researchKifuDetailStatus");
+    if (settingTargetGid !== gid || !isCurrentClientHost() || isMainRoomId(gid)) {
+        status.textContent = uiText("この配牌は、対象のプライベートルームでホストになっているときに反映できます。");
+        return;
+    }
+    const payload = selectedResearchKifu?.payload;
+    if (!payload) {
+        status.textContent = uiText("棋譜の手札データを読み取れませんでした。");
+        return;
+    }
+    const dealerSelect = document.getElementById("dealerSelect");
+    if (dealerSelect && ["A", "B", "C", "D"].includes(payload.dealer)) {
+        dealerSelect.value = payload.dealer;
+    }
+    if (!applyKifuHandsToPreset({hand: payload.hand})) {
+        status.textContent = uiText("棋譜の手札データを読み取れませんでした。");
+        return;
+    }
+    const details = document.getElementById("presetHandsDetails");
+    if (details) details.open = true;
+    setKifuPresetStatus("研究用棋譜の配牌と親を反映しました。", "success");
+    showSettingsTab("match");
+}
+
+async function deleteSelectedResearchKifu() {
+    if (!selectedResearchKifu) return;
+    if (!confirm(uiText("この棋譜を削除しますか？"))) return;
+    const status = document.getElementById("researchKifuDetailStatus");
+    try {
+        await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/delete`);
+        closeResearchKifuDetail();
+        await loadResearchKifuList();
+    } catch (error) {
+        status.textContent = uiText(error?.message || "削除できませんでした。");
     }
 }
 
