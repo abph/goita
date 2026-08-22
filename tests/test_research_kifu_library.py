@@ -138,7 +138,8 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "buildResearchKifuFinalState(payload)" in HTML
     assert "renderResearchKifuBoard(payload)" in HTML
     assert "research-kifu-move-number" in HTML
-    assert "薄い駒：伏せた駒・残った駒" in HTML
+    assert "薄い駒：伏せた駒・残った駒" not in HTML
+    assert "初期手駒・手順" not in HTML
 
 
 if __name__ == "__main__":

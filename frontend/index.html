@@ -2245,7 +2245,7 @@
     .settings-modal-content {
       position: relative;
       max-width: 440px;
-      max-height: min(680px, calc(100vh - 32px));
+      max-height: min(760px, calc(100vh - 24px));
       overflow-y: auto;
     }
     .settings-modal-content.research-kifu-detail-open {
@@ -2271,7 +2271,7 @@
     @media (max-width: 701px) {
       .settings-modal-content {
         width: calc(100% - 24px);
-        max-height: min(520px, calc(100dvh - 28px));
+        max-height: calc(100dvh - 12px);
         padding: 16px;
         box-sizing: border-box;
       }
@@ -2365,6 +2365,27 @@
       overscroll-behavior: contain;
     }
     .research-kifu-detail h4 { margin: 8px 0; color: #5f3517; }
+    .research-kifu-detail-heading {
+      display: flex;
+      min-width: 0;
+      gap: 9px;
+      align-items: center;
+      margin: 4px 0 2px;
+    }
+    .research-kifu-detail-heading button {
+      flex: 0 0 auto;
+      min-height: 32px;
+      padding: 5px 8px;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+      font-weight: 800;
+    }
+    .research-kifu-detail-heading h4 {
+      min-width: 0;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
     .research-kifu-board-wrap {
       width: fit-content;
       max-width: 100%;
@@ -2486,40 +2507,6 @@
       text-align: center;
     }
     .research-kifu-center-score strong { display: block; }
-    .research-kifu-board-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 14px;
-      margin: -4px 0 10px;
-      color: #6f6256;
-      font-size: 11px;
-      justify-content: center;
-    }
-    .research-kifu-board-legend span::before {
-      display: inline-block;
-      width: 9px;
-      height: 9px;
-      margin-right: 4px;
-      border: 1px solid #9b754e;
-      background: #f6f2e8;
-      content: "";
-      vertical-align: -1px;
-    }
-    .research-kifu-board-legend .final::before {
-      border: 2px solid #b74a18;
-      background: #f1c40f;
-    }
-    .research-kifu-record-data {
-      margin: 10px 0;
-      border: 1px solid #d7c2a4;
-      background: rgba(255,255,255,0.48);
-    }
-    .research-kifu-record-data summary {
-      padding: 8px 10px;
-      color: #69411e;
-      font-weight: 900;
-      cursor: pointer;
-    }
     .research-kifu-hands {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2540,10 +2527,10 @@
     @media (max-width: 701px) {
       .settings-modal-content .settings-tab { padding-inline: 4px; font-size: 11px; }
       .research-kifu-list { max-height: 210px; }
-      .research-kifu-detail { max-height: min(430px, calc(100dvh - 118px)); }
+      .research-kifu-detail { max-height: calc(100dvh - 118px); }
       .research-kifu-hands { grid-template-columns: 1fr; }
       .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
-      .research-kifu-board { --research-gap: 3px; --research-cell: min(40px, calc((100vw - 82px) / 8)); }
+      .research-kifu-board { --research-gap: 3px; --research-cell: min(40px, calc((100vw - 96px) / 8)); }
       .research-kifu-move-number { min-width: 14px; height: 14px; font-size: 8px; }
     }
     .lobby-admin-modal-content {
@@ -4422,22 +4409,15 @@
           <div id="researchKifuList" class="research-kifu-list"></div>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
-          <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
-          <h4 id="researchKifuDetailTitle"></h4>
+          <div class="research-kifu-detail-heading">
+            <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
+            <h4 id="researchKifuDetailTitle"></h4>
+          </div>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
           <div class="research-kifu-board-wrap">
             <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
           </div>
-          <div class="research-kifu-board-legend">
-            <span>薄い駒：伏せた駒・残った駒</span>
-            <span class="final">枠付き：最後の攻め</span>
-          </div>
-          <details class="research-kifu-record-data">
-            <summary>初期手駒・手順</summary>
-            <div id="researchKifuDetailHands" class="research-kifu-hands"></div>
-            <ol id="researchKifuDetailMoves" class="research-kifu-moves"></ol>
-          </details>
           <div class="research-kifu-actions">
             <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
             <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
@@ -7117,23 +7097,6 @@ function renderResearchKifuDetail(record) {
     memo.style.display = record.memo ? "block" : "none";
     renderResearchKifuBoard(payload);
 
-    const hands = document.getElementById("researchKifuDetailHands");
-    hands.replaceChildren();
-    const keys = {A: "p0", B: "p1", C: "p2", D: "p3"};
-    Object.entries(keys).forEach(([seat, key]) => {
-        const line = document.createElement("div");
-        line.textContent = `${seat}: ${payload.hand?.[key] || "-"}`;
-        hands.appendChild(line);
-    });
-
-    const moves = document.getElementById("researchKifuDetailMoves");
-    moves.replaceChildren();
-    const rows = Array.isArray(payload.moves) ? payload.moves : [];
-    rows.forEach(row => {
-        const item = document.createElement("li");
-        item.textContent = researchKifuMoveLabel(row);
-        moves.appendChild(item);
-    });
     document.getElementById("researchKifuDetailStatus").textContent = "";
 }
 
