@@ -2247,12 +2247,25 @@
       max-width: 440px;
       max-height: min(760px, calc(100vh - 24px));
       overflow-y: auto;
+      font-size: 13px;
     }
-    .settings-modal-content.research-kifu-detail-open {
-      width: min(680px, calc(100% - 32px));
-      max-width: 680px;
+    .settings-modal-content > h3 {
+      padding-right: 36px;
+      font-size: 18px;
     }
-    .settings-modal-content > h3 { padding-right: 36px; }
+    .settings-modal-content button,
+    .settings-modal-content select,
+    .settings-modal-content textarea {
+      font-size: 13px;
+    }
+    .settings-modal-content .settings-row label,
+    .settings-modal-content .settings-disclosure summary {
+      font-size: 13px;
+    }
+    .settings-modal-content .settings-row input[type="text"],
+    .settings-modal-content .settings-row input[type="password"] {
+      font-size: 14px;
+    }
     .settings-modal-close {
       position: absolute;
       top: 10px;
@@ -2396,7 +2409,7 @@
       background: #d1ab75;
     }
     .research-kifu-board {
-      --research-cell: min(52px, calc((100vw - 112px) / 8));
+      --research-cell: min(47px, calc((100vw - 112px) / 8));
       --research-gap: 5px;
       display: grid;
       grid-template-columns: repeat(8, var(--research-cell));
@@ -6477,9 +6490,6 @@ function showSettingsTab(tabName) {
     if (isResearch && !PRIVATE_ROOM_IDS.has(settingTargetGid)) return;
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
     const isPersonal = !isMatch && !isManagement && !isResearch;
-    if (!isResearch) {
-        document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
-    }
     document.getElementById("personalSettingsTab").classList.toggle("active", isPersonal);
     document.getElementById("matchSettingsTab").classList.toggle("active", isMatch);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
@@ -6624,7 +6634,6 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
 
 function closeSettings() {
     document.getElementById("settingsModal").style.display = "none";
-    document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
     currentAdminPass = "";
     settingTargetGid = null;
     researchKifuRecords = [];
@@ -7091,7 +7100,6 @@ function renderResearchKifuDetail(record) {
     document.getElementById("researchKifuDetailTitle").textContent = record.title || record.id;
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
-    document.querySelector("#settingsModal .settings-modal-content")?.classList.add("research-kifu-detail-open");
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
     memo.style.display = record.memo ? "block" : "none";
@@ -7117,7 +7125,6 @@ function closeResearchKifuDetail() {
     const detail = document.getElementById("researchKifuDetailView");
     if (list) list.style.display = "block";
     if (detail) detail.style.display = "none";
-    document.querySelector("#settingsModal .settings-modal-content")?.classList.remove("research-kifu-detail-open");
     selectedResearchKifu = null;
 }
 
