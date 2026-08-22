@@ -57,14 +57,14 @@ def test_store_keeps_room_libraries_isolated_and_supports_crud():
             "private-a",
             title="終盤研究",
             memo="王受け",
-            tags=["王玉", "3香", "王玉"],
+            tags=["王玉", "2香", "2中駒", "王玉"],
             payload=_payload(),
         )
         record_id = saved["id"]
 
         assert record_id.startswith("K-")
         assert store.list("private-a")[0]["title"] == "終盤研究"
-        assert store.list("private-a")[0]["tags"] == ["王玉", "3香"]
+        assert store.list("private-a")[0]["tags"] == ["王玉", "2香", "2中駒"]
         assert store.list("private-b") == []
         assert store.get("private-a", record_id)["payload"]["dealer"] == "C"
         assert store.get("private-b", record_id) is None
@@ -243,6 +243,10 @@ def test_settings_popup_contains_the_research_library_workflow():
     for tag in RESEARCH_KIFU_TAGS:
         assert f'"{tag}"' in HTML
     assert "← 棋譜一覧へ" in HTML
+    assert "この配牌で対局</button>" in HTML
+    assert "この配牌で対局する" not in HTML
+    assert 'class="research-kifu-detail-title-line"' in HTML
+    assert 'className = "research-kifu-item-title-line"' in HTML
     assert ">編集</button>" in HTML
     assert "deleteSelectedResearchKifu()" in HTML
     assert 'id="researchKifuBoard"' in HTML

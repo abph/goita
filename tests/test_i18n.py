@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260822j"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260822j"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260822k"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260822k"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
@@ -128,8 +128,10 @@ def test_research_kifu_tags_are_translated() -> None:
         "王玉",
         "3し",
         "4し",
+        "2香",
         "3香",
         "4香",
+        "2中駒",
         "3中駒",
         "4中駒",
         "大駒ペア",

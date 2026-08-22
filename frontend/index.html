@@ -2415,7 +2415,17 @@
       border-bottom: 1px solid #eee3d5;
     }
     .research-kifu-item:last-child { border-bottom: 0; }
+    .research-kifu-item-title-line,
+    .research-kifu-detail-title-line {
+      display: flex;
+      min-width: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px 8px;
+    }
     .research-kifu-item-title { color: #5f3517; font-weight: 900; overflow-wrap: anywhere; }
+    .research-kifu-item-title-line .research-kifu-tags,
+    .research-kifu-detail-title-line .research-kifu-tags { margin-top: 0; }
     .research-kifu-item-meta { margin-top: 2px; color: #80746a; font-size: 11px; }
     .research-kifu-item button,
     .research-kifu-actions button {
@@ -2445,7 +2455,9 @@
       border: 1px solid #9d754e;
       background: #fffdf5;
       color: #69411e;
+      font-size: 12px;
       font-weight: 800;
+      line-height: 1.25;
     }
     .research-kifu-detail-heading button.danger {
       color: #a62424;
@@ -2463,7 +2475,11 @@
       font-size: 12px;
       line-height: 1.25;
     }
-    .research-kifu-detail > h4 {
+    .research-kifu-detail-title-line {
+      margin: 8px 0;
+    }
+    .research-kifu-detail-title-line > h4 {
+      margin: 0;
       overflow-wrap: anywhere;
     }
     .research-kifu-memo-editor {
@@ -2647,6 +2663,7 @@
       .research-kifu-hands { grid-template-columns: 1fr; }
       .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
       .research-kifu-board { --research-gap: 3px; --research-cell: min(36px, calc((100vw - 96px) / 8)); }
+      .research-kifu-piece span { font-size: clamp(14px, 2.8vw, 21px); }
       .research-kifu-move-number { min-width: 14px; height: 14px; font-size: 8px; }
     }
     .lobby-admin-modal-content {
@@ -4587,13 +4604,15 @@
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
           <div class="research-kifu-detail-heading">
             <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
-            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
+            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
             <button type="button" onclick="startResearchKifuEdit()">編集</button>
             <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
           </div>
-          <h4 id="researchKifuDetailTitle"></h4>
+          <div class="research-kifu-detail-title-line">
+            <h4 id="researchKifuDetailTitle"></h4>
+            <div id="researchKifuDetailTags" class="research-kifu-tags"></div>
+          </div>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
-          <div id="researchKifuDetailTags" class="research-kifu-tags"></div>
           <p id="researchKifuDetailMemo"></p>
           <div id="researchKifuMemoEditor" class="research-kifu-memo-editor">
             <label for="researchKifuTitleEditInput">棋譜の名前</label>
@@ -4625,8 +4644,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822j"></script>
-<script src="/static/i18n.js?v=20260822j"></script>
+<script src="/static/i18n-en.js?v=20260822k"></script>
+<script src="/static/i18n.js?v=20260822k"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -5400,7 +5419,7 @@ let lastSettingsTab = "personal";
 let researchKifuRecords = [];
 let selectedResearchKifu = null;
 const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
-    "王玉", "3し", "4し", "3香", "4香", "3中駒", "4中駒",
+    "王玉", "3し", "4し", "2香", "3香", "4香", "2中駒", "3中駒", "4中駒",
     "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
 ]);
 let lobbyAdminPasswordValue = "";
@@ -7228,7 +7247,10 @@ function renderResearchKifuList() {
         const tags = document.createElement("div");
         tags.className = "research-kifu-tags";
         renderResearchKifuTags(tags, record.tags);
-        text.append(title, meta, tags);
+        const titleLine = document.createElement("div");
+        titleLine.className = "research-kifu-item-title-line";
+        titleLine.append(title, tags);
+        text.append(titleLine, meta);
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = uiText("棋譜を見る");
