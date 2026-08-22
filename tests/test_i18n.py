@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260822a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260822a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260822c"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260822c"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
@@ -29,8 +29,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert '"そろうごいた": "Solo Goita"' in i18n
     assert '"支援について": "关于支持"' in i18n
     assert '"请选择公开房间或私人房间进入。' in i18n
-    assert '"支援していただいた人のための専用の部屋です。": "这是为支持本项目的人准备的专用房间。"' in i18n
-    assert '"プライベートAは、どなたでも自由に使えます。": "任何人都可以自由使用私人房间A。"' in i18n
+    assert '"支援していただいた方のための専用ルームです。": "这是为支持本项目的朋友准备的专用房间。"' in i18n
+    assert '"プライベートA・Bは、どなたでも自由に使えます。": "任何人都可以自由使用私人房间A和B。"' in i18n
     assert "凑齐Goita" not in i18n
 
 
@@ -59,8 +59,8 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert '"支援について": "Support"' in english
     assert '"Choose a public or private room to enter.' in english
     assert '"支援ページを開く": "Open Support Page"' in english
-    assert '"支援していただいた人のための専用の部屋です。": "Dedicated rooms for people who support the project."' in english
-    assert '"プライベートAは、どなたでも自由に使えます。": "Private A is open for everyone to use."' in english
+    assert '"支援していただいた方のための専用ルームです。": "These rooms are reserved for supporters."' in english
+    assert '"プライベートA・Bは、どなたでも自由に使えます。": "Private A and B are open for everyone to use."' in english
     assert '"空席": "Open"' in english
     assert '"現在: 空席": "Current: Open"' in english
     assert '["空席", "Open"]' in english
