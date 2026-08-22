@@ -2394,9 +2394,19 @@
       color: #69411e;
       font-weight: 800;
     }
-    .research-kifu-detail-heading h4 {
+    .research-kifu-detail-heading .research-kifu-actions {
+      display: flex;
       min-width: 0;
-      margin: 0;
+      margin-left: auto;
+      gap: 5px;
+    }
+    .research-kifu-detail-heading .research-kifu-actions button {
+      min-height: 32px;
+      padding: 4px 7px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .research-kifu-detail > h4 {
       overflow-wrap: anywhere;
     }
     .research-kifu-board-wrap {
@@ -4424,16 +4434,16 @@
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
           <div class="research-kifu-detail-heading">
             <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
-            <h4 id="researchKifuDetailTitle"></h4>
+            <div class="research-kifu-actions">
+              <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
+              <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
+            </div>
           </div>
+          <h4 id="researchKifuDetailTitle"></h4>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
           <div class="research-kifu-board-wrap">
             <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
-          </div>
-          <div class="research-kifu-actions">
-            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
-            <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
           </div>
           <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
         </div>
