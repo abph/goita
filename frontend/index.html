@@ -2304,10 +2304,11 @@
     .settings-tab {
       border: 0;
       border-radius: 6px 6px 0 0;
-      padding: 9px 8px;
+      padding: 6px 6px;
       background: rgba(255,255,255,0.42);
       color: #6d461f;
       font-weight: 900;
+      line-height: 1.2;
       flex: 1 1 0;
     }
     .settings-tab.active { background: #8b5a2b; color: #fff; }
@@ -2419,7 +2420,7 @@
       background: #d1ab75;
     }
     .research-kifu-board {
-      --research-cell: min(42px, calc((100vw - 112px) / 8));
+      --research-cell: min(39px, calc((100vw - 112px) / 8));
       --research-gap: 5px;
       display: grid;
       grid-template-columns: repeat(8, var(--research-cell));
@@ -2449,7 +2450,7 @@
     .research-kifu-piece span {
       color: #1f2b9c;
       font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif;
-      font-size: clamp(14px, 3.2vw, 25px);
+      font-size: clamp(12px, 2.5vw, 20px);
       font-weight: 900;
       line-height: 1;
       transform: translateY(3px);
@@ -2553,7 +2554,7 @@
       .research-kifu-detail { max-height: calc(100dvh - 118px); }
       .research-kifu-hands { grid-template-columns: 1fr; }
       .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
-      .research-kifu-board { --research-gap: 3px; --research-cell: min(40px, calc((100vw - 96px) / 8)); }
+      .research-kifu-board { --research-gap: 3px; --research-cell: min(36px, calc((100vw - 96px) / 8)); }
       .research-kifu-move-number { min-width: 14px; height: 14px; font-size: 8px; }
     }
     .lobby-admin-modal-content {
