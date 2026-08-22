@@ -6762,6 +6762,64 @@ function setPieceValue(element, piece, label = pieceToLabel(piece)){
 }
 function sortHandNumeric(a){ if(!Array.isArray(a)) return a; return [...a].sort((x,y)=>parseInt(x,10)-parseInt(y,10)); }
 
+function arrangeHandInGroupedRows(hand){
+  const sorted = sortHandNumeric(hand).map(String);
+  if(sorted.length !== 8) return sorted;
+
+  const groups = [];
+  sorted.forEach(piece => {
+    const last = groups[groups.length - 1];
+    if(last?.piece === piece) last.pieces.push(piece);
+    else groups.push({ piece, pieces: [piece] });
+  });
+
+  let best = null;
+  const limit = 1 << groups.length;
+  for(let mask = 1; mask < limit - 1; mask += 1){
+    const topCount = groups.reduce(
+      (sum, group, index) => sum + ((mask & (1 << index)) ? group.pieces.length : 0),
+      0
+    );
+    if(topCount !== 4) continue;
+
+    let inversions = 0;
+    for(let earlier = 0; earlier < groups.length; earlier += 1){
+      if(mask & (1 << earlier)) continue;
+      for(let later = earlier + 1; later < groups.length; later += 1){
+        if(mask & (1 << later)) inversions += 1;
+      }
+    }
+    const groupedPiecesOnTop = groups.reduce((sum, group, index) => (
+      sum + ((mask & (1 << index)) && group.pieces.length > 1 ? group.pieces.length : 0)
+    ), 0);
+    const candidate = { mask, inversions, groupedPiecesOnTop };
+    if(
+      !best ||
+      candidate.inversions < best.inversions ||
+      (
+        candidate.inversions === best.inversions &&
+        candidate.groupedPiecesOnTop > best.groupedPiecesOnTop
+      )
+    ) best = candidate;
+  }
+
+  if(best){
+    const top = [];
+    const bottom = [];
+    groups.forEach((group, index) => {
+      const row = best.mask & (1 << index) ? top : bottom;
+      row.push(...group.pieces);
+    });
+    return [...top, ...bottom];
+  }
+
+  // 3・3・2枚型など4枚ずつに分けられない場合は、右端を折り返す蛇行配置にする。
+  return [
+    sorted[0], sorted[1], sorted[2], sorted[3],
+    sorted[7], sorted[6], sorted[5], sorted[4],
+  ];
+}
+
 function countPieces(arr){
   const counts = {};
   if(!Array.isArray(arr)) return counts;
@@ -6774,9 +6832,9 @@ function countPieces(arr){
 
 function fixedHandBase(state, seat){
   const init = state.init_hands?.[seat];
-  if(Array.isArray(init) && init.length > 0) return sortHandNumeric(init).map(String);
+  if(Array.isArray(init) && init.length > 0) return arrangeHandInGroupedRows(init);
   const raw = state.hands?.[seat];
-  if(Array.isArray(raw)) return sortHandNumeric(raw).map(String);
+  if(Array.isArray(raw)) return arrangeHandInGroupedRows(raw);
   return [];
 }
 
