@@ -1094,6 +1094,92 @@
         justify-content: center;
         gap: 20px;
     }
+    .private-room-compact-section {
+        width: min(100%, 560px);
+        margin: 22px auto 0;
+    }
+    .private-room-compact-section[hidden] {
+        display: none !important;
+    }
+    .private-room-compact-title {
+        margin: 0 0 8px;
+        color: #6d3d16;
+        font-size: 15px;
+        text-align: left;
+    }
+    .private-room-compact-list {
+        border: 1px solid #c9ac85;
+        background: #fff;
+    }
+    .private-room-compact-row {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 48px;
+        padding: 7px 10px;
+        border-bottom: 1px solid #e4d5c1;
+        cursor: pointer;
+    }
+    .private-room-compact-row:last-child {
+        border-bottom: 0;
+    }
+    .private-room-compact-row:hover {
+        background: #fff8e8;
+    }
+    .private-room-compact-settings {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #6d3d16;
+        font-size: 18px;
+        cursor: pointer;
+    }
+    .private-room-compact-name {
+        min-width: 0;
+        color: #7e1717;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+    }
+    .private-room-compact-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: #5f554b;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .private-room-compact-enter {
+        min-width: 58px;
+        min-height: 34px;
+        padding: 6px 10px;
+        border: 1px solid #8b5a2b;
+        border-radius: 5px;
+        background: #8b5a2b;
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    @media (max-width: 520px) {
+        .private-room-compact-row {
+            grid-template-columns: 30px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            padding: 6px;
+        }
+        .private-room-compact-settings {
+            width: 28px;
+            height: 30px;
+        }
+        .private-room-compact-name { font-size: 13px; }
+        .private-room-compact-status { font-size: 11px; }
+        .private-room-compact-enter {
+            min-width: 50px;
+            padding-inline: 7px;
+            font-size: 13px;
+        }
+    }
     .lobby-whisper {
         position: relative;
         box-sizing: border-box;
@@ -3442,6 +3528,10 @@
     </p>
     <div id="lobbyRoomList" class="room-card-container">
       </div>
+    <section id="lobbyPrivateRoomCompactSection" class="private-room-compact-section" hidden>
+      <h3 class="private-room-compact-title">その他のプライベートルーム</h3>
+      <div id="lobbyPrivateRoomCompactList" class="private-room-compact-list"></div>
+    </section>
   </div>
 
   <footer class="lobby-footer">
@@ -4176,8 +4266,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260821e"></script>
-<script src="/static/i18n.js?v=20260821e"></script>
+<script src="/static/i18n-en.js?v=20260822a"></script>
+<script src="/static/i18n.js?v=20260822a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -4208,6 +4298,7 @@ const MEETING_ROOM_GID = "main-d";
 const DEBUG_GID = "debug";
 const VOICE_CHAT_UI_ENABLED = false;
 const PRIVATE_A_GID = "room-gold-01";
+const FEATURED_PRIVATE_ROOM_IDS = new Set([PRIVATE_A_GID, "room-silver-02"]);
 const PRIVATE_ROOM_IDS = new Set([
     PRIVATE_A_GID,
     "room-silver-02",
@@ -6099,10 +6190,14 @@ async function fetchRoomList() {
         
         const mainContainer = document.getElementById("lobbyMainRoom");
         const privateContainer = document.getElementById("lobbyRoomList");
-        if (!mainContainer || !privateContainer) return;
+        const compactPrivateSection = document.getElementById("lobbyPrivateRoomCompactSection");
+        const compactPrivateContainer = document.getElementById("lobbyPrivateRoomCompactList");
+        if (!mainContainer || !privateContainer || !compactPrivateSection || !compactPrivateContainer) return;
         
         mainContainer.innerHTML = ""; 
         privateContainer.innerHTML = ""; 
+        compactPrivateContainer.innerHTML = "";
+        compactPrivateSection.hidden = true;
         updateLobbyAdminPeopleCounts(data.room_totals);
         
         if (!data.rooms || data.rooms.length === 0) {
@@ -6169,6 +6264,39 @@ async function fetchRoomList() {
             if (isMainRoom) {
                 card.onclick = () => joinMainRoom(room.game_id, room.owner_name);
                 mainContainer.appendChild(card);
+            } else if (!FEATURED_PRIVATE_ROOM_IDS.has(room.game_id)) {
+                const row = document.createElement("div");
+                row.className = "private-room-compact-row";
+                row.setAttribute("role", "group");
+
+                const settingsButton = document.createElement("button");
+                settingsButton.type = "button";
+                settingsButton.className = "private-room-compact-settings";
+                settingsButton.textContent = "⚙";
+                settingsButton.setAttribute("aria-label", uiText("ルーム設定"));
+                settingsButton.onclick = event => openSettingsModal(room.game_id, event, "management");
+
+                const roomName = document.createElement("span");
+                roomName.className = "private-room-compact-name";
+                setRoomNameText(roomName, room.owner_name);
+
+                const status = document.createElement("span");
+                status.className = "private-room-compact-status";
+                status.textContent = `${requiresPassword ? "🔒 " : ""}(${room.player_count}/4人)`;
+
+                const enterButton = document.createElement("button");
+                enterButton.type = "button";
+                enterButton.className = "private-room-compact-enter";
+                enterButton.textContent = uiText("入室");
+                enterButton.onclick = event => {
+                    event.stopPropagation();
+                    tryJoinRoom(room.game_id, requiresPassword);
+                };
+
+                row.onclick = () => tryJoinRoom(room.game_id, requiresPassword);
+                row.append(settingsButton, roomName, status, enterButton);
+                compactPrivateContainer.appendChild(row);
+                compactPrivateSection.hidden = false;
             } else {
                 card.onclick = () => tryJoinRoom(room.game_id, requiresPassword);
                 privateContainer.appendChild(card);

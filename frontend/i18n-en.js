@@ -28,6 +28,7 @@
     "支援していただいた人のための専用の部屋です。": "Dedicated rooms for people who support the project.",
     "「配牌の指定」「親の指定」など、ペアでの練習や研究向けの機能があります。": "They include tools for practice and study, such as preset hands and dealer selection.",
     "プライベートAは、どなたでも自由に使えます。": "Private A is open for everyone to use.",
+    "その他のプライベートルーム": "Other private rooms",
     "そろうごいたの案内": "Solo Goita Guide",
     "そろうごいたとは": "About Solo Goita",
     "ごいたを知る": "Learn About Goita",
