@@ -116,6 +116,16 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
             )["record"]
             assert detail["payload"]["round_index"] == 7
+            updated = app_module.update_research_kifu_memo(
+                room_id,
+                saved["id"],
+                app_module.ResearchKifuMemoUpdateRequest(
+                    admin_password="research-secret",
+                    memo="王を残す形も比較する",
+                ),
+            )["record"]
+            assert updated["memo"] == "王を残す形も比較する"
+            assert updated["payload"]["round_index"] == 7
             assert app_module.delete_research_kifu(
                 room_id,
                 saved["id"],
@@ -133,6 +143,8 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "saveCurrentResearchKifu()" in HTML
     assert "openResearchKifu(record.id)" in HTML
     assert "applySelectedResearchKifu()" in HTML
+    assert "startResearchKifuMemoEdit()" in HTML
+    assert "saveResearchKifuMemoEdit()" in HTML
     assert "deleteSelectedResearchKifu()" in HTML
     assert 'id="researchKifuBoard"' in HTML
     assert "buildResearchKifuFinalState(payload)" in HTML

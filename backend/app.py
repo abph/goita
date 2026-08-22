@@ -1602,6 +1602,10 @@ class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
     memo: str = Field(default="", max_length=2000)
 
 
+class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
+    memo: str = Field(default="", max_length=2000)
+
+
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
     image_path = str(value or "").strip()
     if not image_path:
@@ -3823,6 +3827,25 @@ def delete_research_kifu(
     if not RESEARCH_KIFU_STORE.delete(game_id, record_id):
         raise HTTPException(status_code=404, detail="棋譜が見つかりません")
     return {"ok": True}
+
+
+@app.post("/games/{game_id}/research_kifu/{record_id}/memo")
+def update_research_kifu_memo(
+    game_id: str,
+    record_id: str,
+    req: ResearchKifuMemoUpdateRequest,
+):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    record = RESEARCH_KIFU_STORE.update_memo(
+        game_id,
+        record_id,
+        str(req.memo or "").strip(),
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
+    return {"ok": True, "record": record}
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)

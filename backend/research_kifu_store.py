@@ -185,6 +185,23 @@ class ResearchKifuStore:
         record["payload"] = json.loads(str(row["payload_json"]))
         return record
 
+    def update_memo(
+        self,
+        room_id: str,
+        record_id: str,
+        memo: str,
+    ) -> Optional[dict[str, Any]]:
+        self._ensure_schema()
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                "UPDATE research_kifu SET memo = ? WHERE room_id = ? AND id = ?",
+                (memo, room_id, record_id),
+            )
+            connection.commit()
+        if cursor.rowcount <= 0:
+            return None
+        return self.get(room_id, record_id)
+
     def delete(self, room_id: str, record_id: str) -> bool:
         self._ensure_schema()
         with closing(self._connect()) as connection:

@@ -2382,6 +2382,7 @@
     .research-kifu-detail-heading {
       display: flex;
       min-width: 0;
+      flex-wrap: wrap;
       gap: 9px;
       align-items: center;
       margin: 4px 0 2px;
@@ -2409,6 +2410,31 @@
     }
     .research-kifu-detail > h4 {
       overflow-wrap: anywhere;
+    }
+    .research-kifu-memo-editor {
+      display: none;
+      margin: 8px 0 10px;
+    }
+    .research-kifu-memo-editor textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 82px;
+      padding: 7px;
+      resize: vertical;
+    }
+    .research-kifu-memo-editor-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .research-kifu-memo-editor-actions button {
+      min-height: 32px;
+      padding: 5px 10px;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+      font-weight: 800;
     }
     .research-kifu-board-wrap {
       width: fit-content;
@@ -4437,12 +4463,20 @@
             <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
             <div class="research-kifu-actions">
               <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局する</button>
+              <button type="button" onclick="startResearchKifuMemoEdit()">メモ編集</button>
               <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
             </div>
           </div>
           <h4 id="researchKifuDetailTitle"></h4>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
+          <div id="researchKifuMemoEditor" class="research-kifu-memo-editor">
+            <textarea id="researchKifuMemoEditInput" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <div class="research-kifu-memo-editor-actions">
+              <button type="button" onclick="cancelResearchKifuMemoEdit()">キャンセル</button>
+              <button type="button" onclick="saveResearchKifuMemoEdit()">メモを保存</button>
+            </div>
+          </div>
           <div class="research-kifu-board-wrap">
             <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
           </div>
@@ -4461,8 +4495,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260822e"></script>
-<script src="/static/i18n.js?v=20260822e"></script>
+<script src="/static/i18n-en.js?v=20260822f"></script>
+<script src="/static/i18n.js?v=20260822f"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -7114,9 +7148,55 @@ function renderResearchKifuDetail(record) {
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
     memo.style.display = record.memo ? "block" : "none";
+    const memoEditor = document.getElementById("researchKifuMemoEditor");
+    const memoInput = document.getElementById("researchKifuMemoEditInput");
+    if (memoEditor) memoEditor.style.display = "none";
+    if (memoInput) memoInput.value = record.memo || "";
     renderResearchKifuBoard(payload);
 
     document.getElementById("researchKifuDetailStatus").textContent = "";
+}
+
+function startResearchKifuMemoEdit() {
+    if (!selectedResearchKifu) return;
+    const memo = document.getElementById("researchKifuDetailMemo");
+    const editor = document.getElementById("researchKifuMemoEditor");
+    const input = document.getElementById("researchKifuMemoEditInput");
+    if (memo) memo.style.display = "none";
+    if (input) input.value = selectedResearchKifu.memo || "";
+    if (editor) editor.style.display = "block";
+    document.getElementById("researchKifuDetailStatus").textContent = "";
+    setTimeout(() => input?.focus(), 0);
+}
+
+function cancelResearchKifuMemoEdit() {
+    const memo = document.getElementById("researchKifuDetailMemo");
+    const editor = document.getElementById("researchKifuMemoEditor");
+    if (memo) {
+        memo.textContent = selectedResearchKifu?.memo || "";
+        memo.style.display = selectedResearchKifu?.memo ? "block" : "none";
+    }
+    if (editor) editor.style.display = "none";
+}
+
+async function saveResearchKifuMemoEdit() {
+    if (!selectedResearchKifu) return;
+    const status = document.getElementById("researchKifuDetailStatus");
+    const input = document.getElementById("researchKifuMemoEditInput");
+    status.textContent = uiText("保存しています...");
+    try {
+        const data = await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/memo`, {
+            memo: input?.value || "",
+        });
+        selectedResearchKifu = data.record;
+        researchKifuRecords = researchKifuRecords.map(record =>
+            record.id === data.record.id ? {...record, memo: data.record.memo} : record
+        );
+        cancelResearchKifuMemoEdit();
+        status.textContent = uiText("メモを更新しました。");
+    } catch (error) {
+        status.textContent = uiText(error?.message || "メモを更新できませんでした。");
+    }
 }
 
 async function openResearchKifu(recordId) {
