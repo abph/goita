@@ -78,6 +78,36 @@ class TimedSearchResult:
 class TimedSearchMixin:
     """Adds public-information sampling and time-limited coalition search."""
 
+    def _timed_search_weak_first_receive_is_decisive(
+        self,
+        *,
+        baseline_action: Action,
+        best_action: Action,
+        completed_depth: int,
+        agreement: float,
+        margin: float,
+        information_enabled: bool,
+        information_confidence: float,
+    ) -> bool:
+        """Allow a robust receive result to replace a weak-hand pass."""
+        if (
+            getattr(self, "_time_search_profile", "default")
+            != "weak_first_receive"
+            or baseline_action[0] != "pass"
+            or best_action[0] != "receive"
+            or not information_enabled
+        ):
+            return False
+        return (
+            completed_depth
+            >= int(self.WEAK_FIRST_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH)
+            and agreement
+            >= float(self.WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_AGREEMENT)
+            and margin >= float(self.WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_MARGIN)
+            and information_confidence
+            >= float(self.WEAK_FIRST_RECEIVE_SEARCH_MIN_CONFIDENCE)
+        )
+
     def _timed_search_enemy_third_attack_wait_is_safe(
         self,
         state,
@@ -1221,7 +1251,16 @@ class TimedSearchMixin:
             )
         )
         minimum_override_depth = 5
-        if len(state.hands[player]) >= 7:
+        weak_first_receive_profile = (
+            getattr(self, "_time_search_profile", "default")
+            == "weak_first_receive"
+        )
+        if weak_first_receive_profile:
+            minimum_override_depth = min(
+                maximum_depth,
+                int(self.WEAK_FIRST_RECEIVE_SEARCH_TARGET_DEPTH),
+            )
+        elif len(state.hands[player]) >= 7:
             maximum_depth = min(maximum_depth, 7)
             minimum_override_depth = min(
                 maximum_depth,
@@ -1421,6 +1460,17 @@ class TimedSearchMixin:
             baseline_minimum=baseline_minimum,
             margin=margin,
         )
+        weak_first_receive_decisive = self._timed_search_weak_first_receive_is_decisive(
+            baseline_action=baseline_action,
+            best_action=best_action,
+            completed_depth=completed_depth,
+            agreement=agreement,
+            margin=margin,
+            information_enabled=information_enabled,
+            information_confidence=(
+                float(information_set.confidence) if information_enabled else 0.0
+            ),
+        )
         decisive = (
             best_action != baseline_action
             and best_minimum >= 50000.0
@@ -1430,7 +1480,7 @@ class TimedSearchMixin:
             and completed_depth >= minimum_override_depth
             and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
             and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
-        ) or enemy_third_attack_wait
+        ) or enemy_third_attack_wait or weak_first_receive_decisive
         return TimedSearchResult(
             action=best_action,
             depth=completed_depth,

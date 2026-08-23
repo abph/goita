@@ -164,6 +164,94 @@ def test_enemy_second_attack_wait_requires_a_robust_inferred_win() -> None:
     )
 
 
+def test_weak_first_receive_search_accepts_only_a_clear_robust_result() -> None:
+    agent = RuleBasedAgent()
+    agent._time_search_profile = "weak_first_receive"
+    common = dict(
+        baseline_action=("pass", None, None),
+        best_action=("receive", "5", None),
+        completed_depth=9,
+        agreement=0.43,
+        margin=38000.0,
+        information_enabled=True,
+        information_confidence=0.55,
+    )
+
+    assert agent._timed_search_weak_first_receive_is_decisive(**common)
+
+    narrow = dict(common)
+    narrow["margin"] = 1000.0
+    assert not agent._timed_search_weak_first_receive_is_decisive(**narrow)
+
+    uncertain = dict(common)
+    uncertain["information_confidence"] = 0.30
+    assert not agent._timed_search_weak_first_receive_is_decisive(**uncertain)
+
+
+def test_weak_rank_search_receives_gold_to_continue_ally_shi_attack() -> None:
+    clear_prediction_sample_cache()
+    reset_time_search_budget_model()
+    state = GoitaState(
+        hands={
+            "A": list("19731141"),
+            "B": list("52315436"),
+            "C": list("51711262"),
+            "D": list("51124843"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(action_player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    opening = (
+        ("A", ("attack_after_block", "1", "1")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "1", None)),
+        ("D", ("attack", None, "4")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("attack_after_block", "3", "4")),
+        ("A", ("receive", "4", None)),
+        ("A", ("attack", None, "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "5")),
+    )
+    for action_player, action in opening:
+        apply_public(action_player, action)
+
+    c_agent = agents["C"]
+    receive = c_agent.select_action(state, "C", state.legal_actions("C"))
+    search = c_agent._track[id(state)]["last_time_limited_search"]
+
+    assert receive == ("receive", "5", None)
+    assert c_agent.last_decision_reason == "time_search"
+    assert c_agent.last_score_fallback_detail.startswith("weak_first_receive_")
+    assert search["decisive"] is True
+    assert search["budget"]["effective_seconds"] == 5.0
+
+    apply_public("C", receive)
+    attack = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert attack == ("attack", None, "1")
+
+
 def test_one_second_search_keeps_ally_gold_pass_after_broader_sampling() -> None:
     clear_prediction_sample_cache()
     reset_time_search_budget_model()

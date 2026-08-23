@@ -123,6 +123,29 @@ def test_agent_effective_budget_does_not_mutate_configured_limits() -> None:
     ) == configured
 
 
+def test_agent_can_prepare_a_fixed_deep_receive_budget() -> None:
+    state = GoitaState(HANDS, dealer="A")
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+
+    plan = agent._prepare_time_search_budget(
+        state,
+        "A",
+        state.legal_actions("A"),
+        configured_seconds=5.0,
+        configured_samples=64,
+        configured_depth=11,
+        configured_nodes=500_000,
+        adaptive_enabled=False,
+    )
+
+    assert plan.reason == "adaptive_disabled"
+    assert plan.effective_seconds == 5.0
+    assert plan.effective_samples == 64
+    assert plan.effective_depth == 11
+    assert plan.effective_nodes == 500_000
+
+
 if __name__ == "__main__":
     test_search_budget_keeps_configured_limits_during_warmup()
     test_search_budget_reduces_work_after_repeated_overruns()

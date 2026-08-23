@@ -459,9 +459,36 @@ class DecisionMixin:
             or baseline_detail.startswith("receive_no_shi_royal_")
         )
 
+        deep_receive_search = (
+            not protected
+            and self._should_deep_search_weak_first_receive(
+                state,
+                player,
+                actions,
+            )
+        )
+
         search_result = None
         if not protected:
-            budget_plan = self._prepare_time_search_budget(state, player, actions)
+            previous_profile = str(
+                getattr(self, "_time_search_profile", "default")
+            )
+            self._time_search_profile = (
+                "weak_first_receive" if deep_receive_search else "default"
+            )
+            if deep_receive_search:
+                budget_plan = self._prepare_time_search_budget(
+                    state,
+                    player,
+                    actions,
+                    configured_seconds=self.WEAK_FIRST_RECEIVE_SEARCH_MAX_SECONDS,
+                    configured_samples=self.WEAK_FIRST_RECEIVE_SEARCH_SAMPLE_COUNT,
+                    configured_depth=self.WEAK_FIRST_RECEIVE_SEARCH_MAX_DEPTH,
+                    configured_nodes=self.WEAK_FIRST_RECEIVE_SEARCH_MAX_NODES,
+                    adaptive_enabled=False,
+                )
+            else:
+                budget_plan = self._prepare_time_search_budget(state, player, actions)
             try:
                 search_result = self._time_limited_search_action(
                     state,
@@ -472,6 +499,7 @@ class DecisionMixin:
                 )
             finally:
                 self._finish_time_search_budget(budget_plan, search_result)
+                self._time_search_profile = previous_profile
 
         if search_result is not None:
             search_snapshot = search_result.as_dict()
@@ -517,6 +545,7 @@ class DecisionMixin:
                 )
             else:
                 self._set_score_fallback_detail(
+                    f"{'weak_first_receive_' if deep_receive_search else ''}"
                     f"{'cache_' if self.last_time_search_cache_hit else ''}"
                     f"depth_{search_result.depth}_samples_{search_result.samples}_"
                     f"agreement_{int(round(search_result.agreement * 100))}"
@@ -525,6 +554,42 @@ class DecisionMixin:
 
         self._adopt_rule_preview(preview)
         return baseline_action
+
+    def _should_deep_search_weak_first_receive(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> bool:
+        """Use a deeper pass-vs-receive comparison for weak first responses."""
+        if (
+            state.phase != "receive"
+            or state.current_attack in (None, "1", "2")
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+        ):
+            return False
+
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return False
+        if int(tracker.get("enemy_attack_counts", {}).get(state.attacker, 1)) != 1:
+            return False
+        if player != state.next_player(state.attacker):
+            return False
+
+        current_attack = str(state.current_attack)
+        has_pass = any(action[0] == "pass" for action in actions)
+        has_same_receive = any(
+            action[0] == "receive" and action[1] == current_attack
+            for action in actions
+        )
+        if not (has_pass and has_same_receive):
+            return False
+
+        axes = self._initial_hand_axes_for_state(state, player)
+        absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+        return absolute_rank in ("D", "E", "F", "X")
 
     def _select_rule_based_action(self, state, player: str, actions: List[Action]) -> Action:
         self._set_decision_reason("")

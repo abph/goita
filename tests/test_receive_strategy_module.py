@@ -27,6 +27,65 @@ def test_receive_strategy_methods_are_owned_by_mixin() -> None:
         assert method_name not in RuleBasedAgent.__dict__
 
 
+def test_weak_first_middle_attack_is_left_for_receive_search() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("19731141"),
+            "B": list("52315436"),
+            "C": list("51711262"),
+            "D": list("51124843"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(action_player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    opening = (
+        ("A", ("attack_after_block", "1", "1")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "1", None)),
+        ("D", ("attack", None, "4")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("attack_after_block", "3", "4")),
+        ("A", ("receive", "4", None)),
+        ("A", ("attack", None, "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "5")),
+    )
+    for action_player, action in opening:
+        apply_public(action_player, action)
+
+    c_agent = agents["C"]
+    legal = state.legal_actions("C")
+    rank_policy = c_agent._enemy_first_same_piece_rank_policy_action(
+        state,
+        "C",
+        legal,
+    )
+
+    assert c_agent._initial_hand_axes_for_state(state, "C")["absolute_rank"] == "D"
+    assert rank_policy is None
+    assert c_agent._should_deep_search_weak_first_receive(state, "C", legal)
+
+
 def test_enemy_second_big_attack_is_passed_with_royal_reserve() -> None:
     state = GoitaState(
         hands={

@@ -90,6 +90,24 @@ def test_position_key_changes_with_public_inference_and_policy() -> None:
     assert original.digest != _key(agent, state).digest
 
 
+def test_position_key_separates_default_and_deep_receive_profiles() -> None:
+    state = GoitaState(HANDS_ONE, dealer="A")
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    default = _key(agent, state)
+
+    agent._time_search_profile = "weak_first_receive"
+    agent._time_search_effective_budget = {
+        "effective_seconds": 5.0,
+        "effective_samples": 64,
+        "effective_depth": 11,
+        "effective_nodes": 500_000,
+    }
+    deep_receive = _key(agent, state)
+
+    assert default.digest != deep_receive.digest
+
+
 def test_cache_enforces_lru_capacity_ttl_and_quality() -> None:
     now = [10.0]
     cache = TimedSearchCache(

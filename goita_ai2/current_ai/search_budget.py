@@ -318,13 +318,29 @@ class SearchBudgetMixin:
     def _initialize_time_search_budget(self) -> None:
         self._time_search_effective_budget: Optional[Dict[str, Any]] = None
         self.last_time_search_budget: Optional[Dict[str, Any]] = None
+        self._time_search_profile = "default"
 
-    def _prepare_time_search_budget(self, state, player: str, actions) -> SearchBudgetPlan:
+    def _prepare_time_search_budget(
+        self,
+        state,
+        player: str,
+        actions,
+        *,
+        configured_seconds: Optional[float] = None,
+        configured_samples: Optional[int] = None,
+        configured_depth: Optional[int] = None,
+        configured_nodes: Optional[int] = None,
+        adaptive_enabled: Optional[bool] = None,
+    ) -> SearchBudgetPlan:
         plan = _SEARCH_BUDGET_CONTROLLER.plan(
             state,
             player,
             actions,
-            enabled=bool(getattr(self, "TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED", True)),
+            enabled=(
+                bool(getattr(self, "TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED", True))
+                if adaptive_enabled is None
+                else bool(adaptive_enabled)
+            ),
             warmup_observations=int(
                 getattr(self, "TIME_SEARCH_ADAPTIVE_BUDGET_WARMUP", 4)
             ),
@@ -334,10 +350,26 @@ class SearchBudgetMixin:
             minimum_samples=int(
                 getattr(self, "TIME_SEARCH_ADAPTIVE_MIN_SAMPLES", 8)
             ),
-            configured_seconds=float(self.TIME_SEARCH_MAX_SECONDS),
-            configured_samples=int(self.TIME_SEARCH_SAMPLE_COUNT),
-            configured_depth=int(self.TIME_SEARCH_MAX_DEPTH),
-            configured_nodes=int(self.TIME_SEARCH_MAX_NODES),
+            configured_seconds=float(
+                self.TIME_SEARCH_MAX_SECONDS
+                if configured_seconds is None
+                else configured_seconds
+            ),
+            configured_samples=int(
+                self.TIME_SEARCH_SAMPLE_COUNT
+                if configured_samples is None
+                else configured_samples
+            ),
+            configured_depth=int(
+                self.TIME_SEARCH_MAX_DEPTH
+                if configured_depth is None
+                else configured_depth
+            ),
+            configured_nodes=int(
+                self.TIME_SEARCH_MAX_NODES
+                if configured_nodes is None
+                else configured_nodes
+            ),
         )
         self._time_search_effective_budget = plan.as_dict()
         self.last_time_search_budget = plan.as_dict()

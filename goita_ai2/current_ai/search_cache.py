@@ -28,6 +28,7 @@ _TRACKER_CACHE_EXCLUSIONS = frozenset(
     }
 )
 _SEARCH_POLICY_ATTRIBUTES = (
+    "TIME_SEARCH_MAX_SECONDS",
     "TIME_SEARCH_SAMPLE_COUNT",
     "TIME_SEARCH_ROOT_BEAM",
     "TIME_SEARCH_BRANCH_BEAM",
@@ -48,6 +49,15 @@ _SEARCH_POLICY_ATTRIBUTES = (
     "TIME_SEARCH_INFORMATION_SET_ENABLED",
     "TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_WEIGHT",
     "TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_CAP",
+    "WEAK_FIRST_RECEIVE_SEARCH_MAX_SECONDS",
+    "WEAK_FIRST_RECEIVE_SEARCH_SAMPLE_COUNT",
+    "WEAK_FIRST_RECEIVE_SEARCH_MAX_DEPTH",
+    "WEAK_FIRST_RECEIVE_SEARCH_MAX_NODES",
+    "WEAK_FIRST_RECEIVE_SEARCH_TARGET_DEPTH",
+    "WEAK_FIRST_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH",
+    "WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_AGREEMENT",
+    "WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_MARGIN",
+    "WEAK_FIRST_RECEIVE_SEARCH_MIN_CONFIDENCE",
 )
 
 
@@ -389,6 +399,7 @@ class SearchCacheMixin:
             "legal_actions": sorted(tuple(action) for action in actions_list),
             "baseline_action": tuple(baseline_action),
             "policy": self._search_policy_fingerprint(),
+            "search_profile": str(getattr(self, "_time_search_profile", "default")),
         }
         return SearchPositionKey(
             digest=_digest_payload(payload),

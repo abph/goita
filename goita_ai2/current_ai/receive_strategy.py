@@ -282,12 +282,11 @@ class ReceiveStrategyMixin:
                 else:
                     self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_one_shi_pass")
                 return pass_action
-            self._set_decision_reason("score_fallback")
-            if dealer is not None and attacker == dealer:
-                self._set_score_fallback_detail(f"enemy_dealer_first_next_abs{absolute_rank}_same_piece_pass")
-            else:
-                self._set_score_fallback_detail(f"enemy_first_next_abs{absolute_rank}_same_piece_pass")
-            return pass_action
+
+            # A weak initial hand is not enough reason to end the decision at
+            # pass. Non-shi/kyosha attacks are compared by the dedicated
+            # receive search, including the attack available after receiving.
+            return None
 
         return None
 
