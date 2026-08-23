@@ -2398,6 +2398,15 @@
       font-weight: 800;
     }
     .research-kifu-tag-option input { width: auto; margin: 0; }
+    #researchKifuEditTags {
+      gap: 3px 5px;
+    }
+    #researchKifuEditTags .research-kifu-tag-option {
+      min-height: 22px;
+      gap: 2px;
+      padding: 1px 4px;
+      font-size: 10px;
+    }
     .research-kifu-tags {
       display: flex;
       flex-wrap: wrap;
@@ -2475,40 +2484,30 @@
       overflow: visible;
     }
     .research-kifu-detail h4 { margin: 8px 0; color: #5f3517; }
-    .research-kifu-detail-heading {
-      display: flex;
-      min-width: 0;
-      flex-wrap: wrap;
-      gap: 9px;
-      align-items: center;
-      margin: 4px 0 2px;
-    }
-    .research-kifu-detail-heading button {
+    .research-kifu-detail-title-line button {
       flex: 0 0 auto;
-      min-height: 32px;
-      padding: 5px 8px;
+      min-height: 29px;
+      padding: 4px 7px;
       border: 1px solid #9d754e;
       background: #fffdf5;
       color: #69411e;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       line-height: 1.25;
     }
-    .research-kifu-detail-heading button.danger {
-      color: #a62424;
-      border-color: #c78888;
+    .research-kifu-detail-title-line .research-kifu-back-button {
+      display: grid;
+      width: 31px;
+      height: 31px;
+      min-height: 31px;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 23px;
     }
-    .research-kifu-detail-heading .research-kifu-actions {
-      display: flex;
-      min-width: 0;
+    .research-kifu-detail-title-line .research-kifu-edit-button {
       margin-left: auto;
-      gap: 5px;
-    }
-    .research-kifu-detail-heading .research-kifu-actions button {
-      min-height: 32px;
-      padding: 4px 7px;
-      font-size: 12px;
-      line-height: 1.25;
     }
     .research-kifu-detail-title-line {
       margin: 8px 0;
@@ -2548,6 +2547,33 @@
     .research-kifu-memo-editor-actions button {
       min-height: 32px;
       padding: 5px 10px;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+      font-weight: 800;
+    }
+    .research-kifu-memo-editor-actions .danger {
+      border-color: #c78888;
+      color: #a62424;
+    }
+    .research-kifu-save-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 7px;
+    }
+    .research-kifu-save-actions .settings-save-button {
+      min-width: 0;
+      padding-inline: 6px;
+    }
+    .research-kifu-save-actions .anonymous {
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+    }
+    .research-kifu-play-button {
+      width: 100%;
+      margin-top: 2px;
+      padding: 7px 10px;
       border: 1px solid #9d754e;
       background: #fffdf5;
       color: #69411e;
@@ -2746,6 +2772,10 @@
     }
     .settings-modal-content > .settings-footer .settings-save-button {
       margin-bottom: 0;
+    }
+    .settings-modal-content > .settings-footer button {
+      padding: 6px 8px;
+      font-size: 11px;
     }
     @media (max-width: 701px) {
       .lobby-admin-modal-content {
@@ -4638,7 +4668,10 @@
             <textarea id="researchKifuMemo" maxlength="2000" aria-label="研究メモ" placeholder="気になった点をメモできます"></textarea>
             <label>タグ</label>
             <div id="researchKifuSaveTags" class="research-kifu-tag-options"></div>
-            <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu()">終局した一局を保存</button>
+            <div class="research-kifu-save-actions">
+              <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu(false)">終局した一局を保存</button>
+              <button class="settings-save-button anonymous" type="button" onclick="saveCurrentResearchKifu(true)">匿名で保存</button>
+            </div>
           </div>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
           <div class="research-kifu-filter">
@@ -4648,15 +4681,11 @@
           <div id="researchKifuList" class="research-kifu-list"></div>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
-          <div class="research-kifu-detail-heading">
-            <button type="button" onclick="closeResearchKifuDetail()">← 棋譜一覧へ</button>
-            <button type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
-            <button type="button" onclick="startResearchKifuEdit()">編集</button>
-            <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
-          </div>
           <div class="research-kifu-detail-title-line">
+            <button class="research-kifu-back-button" type="button" onclick="closeResearchKifuDetail()" aria-label="棋譜一覧へ" title="棋譜一覧へ">←</button>
             <h4 id="researchKifuDetailTitle"></h4>
             <div id="researchKifuDetailTags" class="research-kifu-tags"></div>
+            <button id="researchKifuEditButton" class="research-kifu-edit-button" type="button" onclick="startResearchKifuEdit()">編集</button>
           </div>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
@@ -4669,12 +4698,14 @@
             <div id="researchKifuEditTags" class="research-kifu-tag-options"></div>
             <div class="research-kifu-memo-editor-actions">
               <button type="button" onclick="cancelResearchKifuEdit()">キャンセル</button>
+              <button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>
               <button type="button" onclick="saveResearchKifuEdit()">保存</button>
             </div>
           </div>
           <div class="research-kifu-board-wrap">
             <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
           </div>
+          <button class="research-kifu-play-button" type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
           <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </div>
@@ -4690,8 +4721,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260823a"></script>
-<script src="/static/i18n.js?v=20260823a"></script>
+<script src="/static/i18n-en.js?v=20260823b"></script>
+<script src="/static/i18n.js?v=20260823b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260731f"></script>
 <script type="module">
@@ -7322,7 +7353,7 @@ async function loadResearchKifuList() {
     }
 }
 
-async function saveCurrentResearchKifu() {
+async function saveCurrentResearchKifu(anonymous = false) {
     const status = document.getElementById("researchKifuStatus");
     status.textContent = uiText("保存しています...");
     try {
@@ -7330,12 +7361,14 @@ async function saveCurrentResearchKifu() {
             title: document.getElementById("researchKifuTitle").value,
             memo: document.getElementById("researchKifuMemo").value,
             tags: selectedResearchKifuTags("researchKifuSaveTags"),
+            anonymous: anonymous === true,
         });
         document.getElementById("researchKifuTitle").value = "";
         document.getElementById("researchKifuMemo").value = "";
         renderResearchKifuTagOptions("researchKifuSaveTags", []);
         await loadResearchKifuList();
-        status.textContent = `${uiText("保存しました。")} ${data.record?.id || ""}`.trim();
+        const savedMessage = anonymous ? "匿名で保存しました。" : "保存しました。";
+        status.textContent = `${uiText(savedMessage)} ${data.record?.id || ""}`.trim();
     } catch (error) {
         status.textContent = uiText(error?.message || "保存できませんでした。");
     }
@@ -7558,6 +7591,8 @@ function renderResearchKifuDetail(record) {
     const title = document.getElementById("researchKifuDetailTitle");
     title.textContent = record.title || record.id;
     title.style.display = "block";
+    const editButton = document.getElementById("researchKifuEditButton");
+    if (editButton) editButton.style.display = "block";
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
     renderResearchKifuTags(document.getElementById("researchKifuDetailTags"), record.tags);
@@ -7580,11 +7615,15 @@ function startResearchKifuEdit() {
     if (!selectedResearchKifu) return;
     const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
+    const tags = document.getElementById("researchKifuDetailTags");
+    const editButton = document.getElementById("researchKifuEditButton");
     const editor = document.getElementById("researchKifuMemoEditor");
     const titleInput = document.getElementById("researchKifuTitleEditInput");
     const memoInput = document.getElementById("researchKifuMemoEditInput");
     if (title) title.style.display = "none";
     if (memo) memo.style.display = "none";
+    if (tags) tags.style.display = "none";
+    if (editButton) editButton.style.display = "none";
     if (titleInput) titleInput.value = selectedResearchKifu.title || "";
     if (memoInput) memoInput.value = selectedResearchKifu.memo || "";
     renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu.tags);
@@ -7596,6 +7635,7 @@ function startResearchKifuEdit() {
 function cancelResearchKifuEdit() {
     const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
+    const editButton = document.getElementById("researchKifuEditButton");
     const editor = document.getElementById("researchKifuMemoEditor");
     if (title) {
         title.textContent = selectedResearchKifu?.title || selectedResearchKifu?.id || "";
@@ -7605,6 +7645,11 @@ function cancelResearchKifuEdit() {
         memo.textContent = selectedResearchKifu?.memo || "";
         memo.style.display = selectedResearchKifu?.memo ? "block" : "none";
     }
+    renderResearchKifuTags(
+        document.getElementById("researchKifuDetailTags"),
+        selectedResearchKifu?.tags,
+    );
+    if (editButton) editButton.style.display = "block";
     renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu?.tags);
     if (editor) editor.style.display = "none";
 }

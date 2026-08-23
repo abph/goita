@@ -117,6 +117,8 @@ def test_room_settings_header_and_footer_use_compact_actions() -> None:
     assert 'id="personalSettingsFooterActions"' in html
     assert "font-size: 31px;" in html
     assert "font-size: 15px;" in html
+    assert ".settings-modal-content > .settings-footer button {" in html
+    assert "padding: 6px 8px;" in html
     assert '.settings-inline-action input[type="password"]:focus' in html
     assert "outline: none;" in html
 

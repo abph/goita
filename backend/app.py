@@ -1409,6 +1409,13 @@ def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str
         for row in game.get("kifu_moves", [])
         if isinstance(row, list) and len(row) >= 3
     ]
+    configured_names = game.get("player_names", {})
+    player_names = {
+        seat: _sanitize_player_name(
+            configured_names.get(seat, "") if isinstance(configured_names, dict) else ""
+        ) or f"プレイヤー{seat}"
+        for seat in ALL_SEATS
+    }
     return {
         "version": 1,
         "round_index": int(game.get("round_count", 1)),
@@ -1432,6 +1439,8 @@ def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str
         "game": _compress_kifu_moves(raw_moves),
         "ai_seats": sorted(_ai_seat_set(game)),
         "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+        "player_names": player_names,
+        "anonymous": False,
     }
 
 
@@ -1635,6 +1644,7 @@ class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
     title: str = Field(default="", max_length=80)
     memo: str = Field(default="", max_length=2000)
     tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
+    anonymous: bool = False
 
 
 class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
@@ -3963,6 +3973,19 @@ def save_research_kifu(game_id: str, req: ResearchKifuSaveRequest):
             status_code=409,
             detail="保存できる終局済みの棋譜がありません",
         )
+    if req.anonymous:
+        snapshot["player_names"] = {
+            seat: f"プレイヤー{seat}" for seat in ALL_SEATS
+        }
+    elif not isinstance(snapshot.get("player_names"), dict):
+        configured_names = game.get("player_names", {})
+        snapshot["player_names"] = {
+            seat: _sanitize_player_name(
+                configured_names.get(seat, "") if isinstance(configured_names, dict) else ""
+            ) or f"プレイヤー{seat}"
+            for seat in ALL_SEATS
+        }
+    snapshot["anonymous"] = bool(req.anonymous)
     title = str(req.title or "").strip() or (
         f"第{int(snapshot.get('round_index', 1))}局"
     )

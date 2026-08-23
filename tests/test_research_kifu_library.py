@@ -160,6 +160,12 @@ def test_private_room_api_requires_admin_and_round_trips_records():
         )
         game = app_module._create_game_obj(dealer="B")
         game["admin_password"] = "research-secret"
+        game["player_names"] = {
+            "A": "山田",
+            "B": "鈴木",
+            "C": "佐藤",
+            "D": "高橋",
+        }
         game["last_completed_kifu"] = _payload(round_index=7)
         app_module.GAMES[room_id] = game
         try:
@@ -193,6 +199,20 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
             )["record"]
             assert detail["payload"]["round_index"] == 7
+            assert detail["payload"]["player_names"] == game["player_names"]
+            assert detail["payload"]["anonymous"] is False
+            anonymous = app_module.save_research_kifu(
+                room_id,
+                app_module.ResearchKifuSaveRequest(
+                    admin_password="research-secret",
+                    title="匿名の終盤研究",
+                    anonymous=True,
+                ),
+            )["record"]
+            assert anonymous["payload"]["player_names"] == {
+                seat: f"プレイヤー{seat}" for seat in ("A", "B", "C", "D")
+            }
+            assert anonymous["payload"]["anonymous"] is True
             updated = app_module.update_research_kifu_memo(
                 room_id,
                 saved["id"],
@@ -222,6 +242,11 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 saved["id"],
                 app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
             ) == {"ok": True}
+            assert app_module.delete_research_kifu(
+                room_id,
+                anonymous["id"],
+                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
+            ) == {"ok": True}
         finally:
             app_module.GAMES[room_id] = original_game
             app_module.RESEARCH_KIFU_STORE = original_store
@@ -231,7 +256,9 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'id="researchKifuTab"' in HTML
     assert 'id="researchKifuPanel"' in HTML
     assert "unlockResearchKifuLibrary()" in HTML
-    assert "saveCurrentResearchKifu()" in HTML
+    assert "saveCurrentResearchKifu(false)" in HTML
+    assert "saveCurrentResearchKifu(true)" in HTML
+    assert "async function saveCurrentResearchKifu(anonymous = false)" in HTML
     assert "openResearchKifu(record.id)" in HTML
     assert "applySelectedResearchKifu()" in HTML
     assert "startResearchKifuEdit()" in HTML
@@ -249,7 +276,12 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert '<h4 style="margin:0 0 10px; color:#6d461f;">研究用棋譜ライブラリ</h4>' not in HTML
     for tag in RESEARCH_KIFU_TAGS:
         assert f'"{tag}"' in HTML
-    assert "← 棋譜一覧へ" in HTML
+    assert 'class="research-kifu-back-button"' in HTML
+    assert '>←</button>' in HTML
+    assert 'class="research-kifu-play-button"' in HTML
+    assert 'id="researchKifuEditButton"' in HTML
+    assert '<button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>' in HTML
+    assert "research-kifu-detail-heading" not in HTML
     assert "この配牌で対局</button>" in HTML
     assert "この配牌で対局する" not in HTML
     assert 'class="research-kifu-detail-title-line"' in HTML
