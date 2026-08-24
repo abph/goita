@@ -21,6 +21,7 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     send_stamp_body = HTML.split("function sendChatStamp(kind, stampId)", 1)[1].split("}", 1)[0]
     assert "closeChatStampPickers();" in send_stamp_body
     assert "function buildChatStampVisual(definition, owner, decorative = false)" in HTML
+    assert 'owner?.classList.add("has-image");' in HTML
     assert "/static/stamps/${encodeURIComponent(definition.id)}.png" in HTML
     assert 'pickerLabel: "よろしく"' in HTML
     assert 'pickerLabel: "ありがとう"' in HTML
@@ -33,6 +34,9 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert "gid = targetGid;\n    initializeChatStampPickers();" in HTML
     assert '? `${uiText(stamp.label)}${stamp.emoji}`' in HTML
     assert '? `${stamp.emoji} ${uiText(stamp.label)}`' not in HTML
+    assert "function scrollChatToLatest(kind)" in HTML
+    assert 'if(stamp) scrollChatToLatest("room");' in HTML
+    assert 'if(stamp) scrollChatToLatest("lobby");' in HTML
     assert (ROOT / "frontend" / "stamps" / "greeting.png").is_file()
     assert 'message_type === "stamp"' in HTML
 
