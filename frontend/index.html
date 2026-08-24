@@ -1513,6 +1513,67 @@
       text-decoration: underline;
       text-underline-offset: 2px;
     }
+    .chat-message.stamp .chat-meta {
+      margin-bottom: 5px;
+    }
+    .chat-stamp-card {
+      display: inline-grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      max-width: 100%;
+      padding: 7px 9px;
+      border: 2px solid #b9874d;
+      border-radius: 6px;
+      background: #fffaf0;
+      color: #553717;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.3;
+    }
+    .chat-stamp-visual {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      overflow: hidden;
+    }
+    .chat-stamp-image {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .chat-stamp-image[hidden] {
+      display: none;
+    }
+    .chat-stamp-emoji {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      font-size: 25px;
+      line-height: 1;
+    }
+    .chat-stamp-label {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .chat-stamp-card.has-image {
+      grid-template-columns: minmax(0, 1fr);
+      width: min(124px, 100%);
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+    .chat-stamp-card.has-image .chat-stamp-visual {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+    }
+    .chat-stamp-card.has-image .chat-stamp-label {
+      display: none;
+    }
     .chat-form {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -1543,7 +1604,7 @@
     }
     .chat-compose-entry {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
       gap: 0;
     }
     .chat-compose-entry.ai-mode {
@@ -1567,8 +1628,69 @@
       display: flex;
     }
     .chat-scope-picker[hidden],
-    .chat-scope-menu[hidden] {
+    .chat-scope-menu[hidden],
+    .chat-stamp-picker[hidden] {
       display: none;
+    }
+    .chat-stamp-picker {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      max-height: 184px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 5px;
+      border: 2px solid #8b5a2b;
+      border-radius: 6px;
+      background: #fffdf5;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+    }
+    .chat-form .chat-stamp-choice {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      align-items: center;
+      gap: 4px;
+      min-height: 48px;
+      padding: 4px 5px;
+      border: 1px solid #c8a77a;
+      border-radius: 4px;
+      background: #fff;
+      color: #553717;
+      box-shadow: none;
+      text-align: left;
+      white-space: normal;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+    .chat-form .chat-stamp-choice:hover,
+    .chat-form .chat-stamp-choice:focus-visible {
+      background: #f4efdf;
+      border-color: #8b5a2b;
+    }
+    .chat-stamp-choice .chat-stamp-emoji {
+      width: 28px;
+      height: 28px;
+      font-size: 20px;
+    }
+    .chat-stamp-choice .chat-stamp-visual {
+      width: 28px;
+      height: 28px;
+    }
+    .chat-form .chat-stamp-button {
+      width: 38px;
+      margin-left: -2px;
+      padding: 6px;
+      border: 2px solid #8b5a2b;
+      border-radius: 0;
+      background: #fff;
+      color: #6d461f;
+      box-shadow: none;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .chat-form .chat-stamp-button.active {
+      background: #8b5a2b;
+      color: #fff;
     }
     .chat-form .chat-scope-button {
       width: 38px;
@@ -2042,6 +2164,14 @@
         width: 34px;
         padding: 5px;
         font-size: 16px;
+      }
+      .chat-form .chat-stamp-button {
+        width: 34px;
+        padding: 5px;
+        font-size: 16px;
+      }
+      .chat-stamp-picker {
+        max-height: 164px;
       }
       .chat-form .chat-submit-button {
         min-width: 48px;
@@ -3291,6 +3421,15 @@
       border-radius: 0;
       box-shadow: none;
     }
+    body.board-view-pixel .chat-stamp-picker,
+    body.board-view-pixel .chat-form .chat-stamp-choice,
+    body.board-view-pixel .chat-stamp-card {
+      border-radius: 0;
+      border-color: #263d35;
+      background: #fff0bc;
+      color: #231a13;
+      box-shadow: none;
+    }
     body.board-view-pixel .chat-form button,
     body.board-view-pixel .chat-form .chat-mode-button {
       border: 2px solid #61391f;
@@ -3635,6 +3774,13 @@
       background: #ffffff !important;
       border-color: #000000;
     }
+    body.board-view-pixel-mono .chat-stamp-picker,
+    body.board-view-pixel-mono .chat-form .chat-stamp-choice,
+    body.board-view-pixel-mono .chat-stamp-card {
+      background: #ffffff !important;
+      color: #000000;
+      border-color: #000000;
+    }
     body.board-view-pixel-mono .chat-form .chat-scope-option {
       background: #ffffff !important;
       color: #000000;
@@ -3652,6 +3798,7 @@
     body.board-view-pixel-mono .chat-form .chat-mode-button.chat.active,
     body.board-view-pixel-mono .chat-form .chat-mode-button.ai.active,
     body.board-view-pixel-mono .chat-form .chat-scope-button.active,
+    body.board-view-pixel-mono .chat-form .chat-stamp-button.active,
     body.board-view-pixel-mono .chat-form .chat-submit-button,
     body.board-view-pixel-mono .chat-form .chat-submit-button.ai-mode {
       background: #000000 !important;
@@ -3948,9 +4095,11 @@
             <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="everyone" onclick="selectChatMentionScope('lobby', 'everyone')">全員</button>
           </div>
         </div>
+        <button id="lobbyChatStampButton" class="chat-stamp-button" type="button" aria-expanded="false" aria-controls="lobbyChatStampPicker" aria-label="スタンプ" title="スタンプ" onclick="toggleChatStampPicker('lobby')">☺</button>
         <input id="lobbyChatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力">
         <button id="lobbyChatSendButton" class="chat-submit-button" type="submit">送信</button>
       </div>
+      <div id="lobbyChatStampPicker" class="chat-stamp-picker" aria-label="スタンプ一覧" hidden></div>
       <div id="lobbyChatStatus" class="lobby-chat-status" aria-live="polite"></div>
     </form>
   </aside>
@@ -4042,9 +4191,11 @@
                   <button class="chat-scope-option" type="button" role="menuitemradio" aria-checked="false" data-chat-scope="everyone" onclick="selectChatMentionScope('room', 'everyone')">全員</button>
                 </div>
               </div>
+              <button id="chatStampButton" class="chat-stamp-button" type="button" aria-expanded="false" aria-controls="chatStampPicker" aria-label="スタンプ" title="スタンプ" onclick="toggleChatStampPicker('room')">☺</button>
               <input id="chatInput" type="text" maxlength="200" autocomplete="off" placeholder="チャットを入力" />
               <button id="chatSendButton" class="chat-submit-button" type="submit">送信</button>
             </div>
+            <div id="chatStampPicker" class="chat-stamp-picker" aria-label="スタンプ一覧" hidden></div>
           </form>
         </div>
       </div>
@@ -5814,6 +5965,19 @@ let chatAiAsking = false;
 let chatComposeMode = "chat";
 let chatMentionScope = "";
 let chatToastTimer = null;
+const CHAT_STAMP_DEFINITIONS = Object.freeze([
+  { id: "greeting", label: "よろしくおねがいします！", emoji: "🤝" },
+  { id: "thanks", label: "ありがとうございました！", emoji: "🙇" },
+  { id: "thinking", label: "考え中です", emoji: "…" },
+  { id: "nice", label: "ナイス！", emoji: "👍" },
+  { id: "sorry", label: "ごめん！", emoji: "💦" },
+  { id: "surprised", label: "えっ！？", emoji: "!?" },
+  { id: "happy", label: "やった！", emoji: "✨" },
+  { id: "leave_it", label: "あとはまかせた！", emoji: "🫡" },
+  { id: "got_me", label: "やられた！", emoji: "😅" },
+  { id: "goita_fun", label: "ごいたのしい！", emoji: "王" },
+]);
+const CHAT_STAMP_ASSET_VERSION = "20260824a";
 let desktopRoomChatHeightObserver = null;
 let desktopRoomLogHeightObserver = null;
 let localChatNotices = [];
@@ -9082,9 +9246,14 @@ function showChatToast(item){
 
   sender.setAttribute("data-i18n-ignore", "");
   sender.textContent = localizedChatSenderWithTag(item);
+  const stamp = item?.message_type === "stamp"
+    ? chatStampDefinition(item?.stamp_id)
+    : null;
   const shouldTranslateMessage = shouldTranslateChatItem(item);
-  text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage);
-  text.textContent = shouldTranslateMessage
+  text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage && !stamp);
+  text.textContent = stamp
+    ? `${stamp.emoji} ${uiText(stamp.label)}`
+    : shouldTranslateMessage
     ? uiText(String(item?.message || ""))
     : String(item?.message || "");
   toast.classList.toggle("notice", item?.local_notice === true);
@@ -9168,6 +9337,56 @@ function setChatMessageText(element, message, translateMessage = false){
   }
 }
 
+function chatStampDefinition(stampId){
+  const normalized = String(stampId || "").trim().toLowerCase();
+  return CHAT_STAMP_DEFINITIONS.find((stamp) => stamp.id === normalized) || null;
+}
+
+function buildChatStampVisual(definition, owner, decorative = false){
+  const visual = document.createElement("span");
+  visual.className = "chat-stamp-visual";
+
+  const image = document.createElement("img");
+  image.className = "chat-stamp-image";
+  image.alt = decorative ? "" : uiText(definition.label);
+  image.hidden = true;
+
+  const fallback = document.createElement("span");
+  fallback.className = "chat-stamp-emoji";
+  fallback.setAttribute("aria-hidden", "true");
+  fallback.textContent = definition.emoji;
+
+  image.addEventListener("load", () => {
+    image.hidden = false;
+    fallback.hidden = true;
+    owner?.classList.add("has-image");
+  }, { once: true });
+  image.addEventListener("error", () => {
+    image.remove();
+    fallback.hidden = false;
+    owner?.classList.remove("has-image");
+  }, { once: true });
+  image.src = `/static/stamps/${encodeURIComponent(definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
+
+  visual.append(image, fallback);
+  return visual;
+}
+
+function buildChatStampCard(stampId){
+  const definition = chatStampDefinition(stampId);
+  if(!definition) return null;
+  const card = document.createElement("div");
+  card.className = "chat-stamp-card";
+  card.setAttribute("data-stamp-id", definition.id);
+
+  const label = document.createElement("span");
+  label.className = "chat-stamp-label";
+  label.textContent = uiText(definition.label);
+
+  card.append(buildChatStampVisual(definition, card), label);
+  return card;
+}
+
 function mergedChatMessages(serverMessages){
   return [
     ...serverMessages.filter(shouldDisplayChatNotice),
@@ -9205,12 +9424,19 @@ function renderChatItems(box, messages, isMine = null){
     const tagBadge = buildPlayerTagBadge(item?.tag, "chat-player-tag");
     if(tagBadge) meta.appendChild(tagBadge);
 
-    const text = document.createElement("div");
-    text.className = "chat-text";
-    setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
-
     row.appendChild(meta);
-    row.appendChild(text);
+    const stampCard = item?.message_type === "stamp"
+      ? buildChatStampCard(item?.stamp_id)
+      : null;
+    if(stampCard){
+      row.classList.add("stamp");
+      row.appendChild(stampCard);
+    }else{
+      const text = document.createElement("div");
+      text.className = "chat-text";
+      setChatMessageText(text, item?.message, shouldTranslateChatItem(item));
+      row.appendChild(text);
+    }
     frag.appendChild(row);
   }
   box.appendChild(frag);
@@ -9435,11 +9661,72 @@ function selectChatMentionScope(kind, scope){
   document.getElementById(kind === "lobby" ? "lobbyChatInput" : "chatInput")?.focus();
 }
 
+function closeChatStampPickers(){
+  for(const kind of ["room", "lobby"]){
+    const prefix = kind === "lobby" ? "lobbyChatStamp" : "chatStamp";
+    const picker = document.getElementById(`${prefix}Picker`);
+    const button = document.getElementById(`${prefix}Button`);
+    if(picker) picker.hidden = true;
+    if(button){
+      button.classList.remove("active");
+      button.setAttribute("aria-expanded", "false");
+    }
+  }
+}
+
+function toggleChatStampPicker(kind){
+  const prefix = kind === "lobby" ? "lobbyChatStamp" : "chatStamp";
+  const picker = document.getElementById(`${prefix}Picker`);
+  const button = document.getElementById(`${prefix}Button`);
+  if(!picker || !button || button.disabled) return;
+  const shouldOpen = picker.hidden;
+  closeChatStampPickers();
+  picker.hidden = !shouldOpen;
+  button.classList.toggle("active", shouldOpen);
+  button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  if(shouldOpen) picker.querySelector("button")?.focus();
+}
+
+function initializeChatStampPickers(){
+  for(const kind of ["room", "lobby"]){
+    const prefix = kind === "lobby" ? "lobbyChatStamp" : "chatStamp";
+    const picker = document.getElementById(`${prefix}Picker`);
+    if(!picker) continue;
+    picker.replaceChildren();
+    for(const definition of CHAT_STAMP_DEFINITIONS){
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chat-stamp-choice";
+      button.setAttribute("data-stamp-id", definition.id);
+      button.setAttribute("aria-label", definition.label);
+
+      const label = document.createElement("span");
+      label.className = "chat-stamp-label";
+      label.textContent = uiText(definition.label);
+      button.append(buildChatStampVisual(definition, button, true), label);
+      button.addEventListener("click", () => sendChatStamp(kind, definition.id));
+      picker.appendChild(button);
+    }
+  }
+}
+
+function sendChatStamp(kind, stampId){
+  if(!chatStampDefinition(stampId)) return;
+  if(kind === "lobby") sendLobbyChatPayload(null, stampId);
+  else sendRoomChatPayload(null, stampId);
+}
+
 document.addEventListener("click", (event) => {
   if(!event.target.closest?.(".chat-scope-picker")) closeChatScopeMenus();
+  if(!event.target.closest?.(".chat-stamp-picker, .chat-stamp-button")){
+    closeChatStampPickers();
+  }
 });
 document.addEventListener("keydown", (event) => {
-  if(event.key === "Escape") closeChatScopeMenus();
+  if(event.key === "Escape"){
+    closeChatScopeMenus();
+    closeChatStampPickers();
+  }
 });
 
 function updateChatComposerUi(){
@@ -9447,6 +9734,7 @@ function updateChatComposerUi(){
   const input = document.getElementById("chatInput");
   const composeEntry = input?.closest(".chat-compose-entry");
   const scopePicker = document.getElementById("chatScopePicker");
+  const stampButton = document.getElementById("chatStampButton");
   const chatButton = document.getElementById("chatModeChatButton");
   const aiButton = document.getElementById("chatModeAiButton");
   const sendButton = document.getElementById("chatSendButton");
@@ -9456,7 +9744,11 @@ function updateChatComposerUi(){
   }
   composeEntry?.classList.toggle("ai-mode", isAiMode);
   if(scopePicker) scopePicker.hidden = isAiMode;
-  if(isAiMode) closeChatScopeMenus();
+  if(stampButton) stampButton.hidden = isAiMode;
+  if(isAiMode){
+    closeChatScopeMenus();
+    closeChatStampPickers();
+  }
   updateChatScopePicker("room");
   if(chatButton){
     chatButton.classList.toggle("active", !isAiMode);
@@ -9483,12 +9775,16 @@ function setChatComposerDisabled(disabled){
   const input = document.getElementById("chatInput");
   const scopeButton = document.getElementById("chatScopeButton");
   const scopeOptions = document.querySelectorAll("#chatScopeMenu .chat-scope-option");
+  const stampButton = document.getElementById("chatStampButton");
+  const stampOptions = document.querySelectorAll("#chatStampPicker .chat-stamp-choice");
   const chatButton = document.getElementById("chatModeChatButton");
   const aiButton = document.getElementById("chatModeAiButton");
   const sendButton = document.getElementById("chatSendButton");
   if(input) input.disabled = disabled;
   if(scopeButton) scopeButton.disabled = disabled;
   scopeOptions.forEach((option) => { option.disabled = disabled; });
+  if(stampButton) stampButton.disabled = disabled;
+  stampOptions.forEach((option) => { option.disabled = disabled; });
   if(chatButton) chatButton.disabled = disabled;
   if(aiButton) aiButton.disabled = disabled;
   if(sendButton) sendButton.disabled = disabled;
@@ -9511,11 +9807,17 @@ function submitChatInput(event){
 }
 
 async function sendChatMessage(event){
+  return sendRoomChatPayload(event, "");
+}
+
+async function sendRoomChatPayload(event, stampId = ""){
   if(event) event.preventDefault();
   if(chatSending || chatAiAsking) return;
   const input = document.getElementById("chatInput");
   if(!input) return;
-  const message = applyChatMentionScope(input.value, chatMentionScope);
+  const stamp = chatStampDefinition(stampId);
+  const sourceMessage = stamp ? stamp.label : input.value;
+  const message = applyChatMentionScope(sourceMessage, chatMentionScope);
   if(!message) return;
 
   chatSending = true;
@@ -9529,13 +9831,15 @@ async function sendChatMessage(event){
         client_id: clientId,
         name: personalSettings.playerName || "",
         tag: normalizePlayerTag(personalSettings.playerTag),
-        message
+        message,
+        stamp_id: stamp?.id || "",
       })
     });
     if(!res.ok){
       setHint("チャットの送信に失敗しました。");
     } else {
       input.value = "";
+      closeChatStampPickers();
       chatMentionScope = "";
       updateChatScopePicker("room");
       await refresh();
@@ -9556,6 +9860,7 @@ function updateLobbyChatComposerUi(){
   const input = document.getElementById("lobbyChatInput");
   const composeEntry = input?.closest(".chat-compose-entry");
   const scopePicker = document.getElementById("lobbyChatScopePicker");
+  const stampButton = document.getElementById("lobbyChatStampButton");
   const chatButton = document.getElementById("lobbyChatModeChatButton");
   const aiButton = document.getElementById("lobbyChatModeAiButton");
   const sendButton = document.getElementById("lobbyChatSendButton");
@@ -9565,7 +9870,11 @@ function updateLobbyChatComposerUi(){
   }
   composeEntry?.classList.toggle("ai-mode", isAiMode);
   if(scopePicker) scopePicker.hidden = isAiMode;
-  if(isAiMode) closeChatScopeMenus();
+  if(stampButton) stampButton.hidden = isAiMode;
+  if(isAiMode){
+    closeChatScopeMenus();
+    closeChatStampPickers();
+  }
   updateChatScopePicker("lobby");
   if(chatButton){
     chatButton.classList.toggle("active", !isAiMode);
@@ -9592,12 +9901,16 @@ function setLobbyChatComposerDisabled(disabled){
   const input = document.getElementById("lobbyChatInput");
   const scopeButton = document.getElementById("lobbyChatScopeButton");
   const scopeOptions = document.querySelectorAll("#lobbyChatScopeMenu .chat-scope-option");
+  const stampButton = document.getElementById("lobbyChatStampButton");
+  const stampOptions = document.querySelectorAll("#lobbyChatStampPicker .chat-stamp-choice");
   const chatButton = document.getElementById("lobbyChatModeChatButton");
   const aiButton = document.getElementById("lobbyChatModeAiButton");
   const sendButton = document.getElementById("lobbyChatSendButton");
   if(input) input.disabled = disabled;
   if(scopeButton) scopeButton.disabled = disabled;
   scopeOptions.forEach((option) => { option.disabled = disabled; });
+  if(stampButton) stampButton.disabled = disabled;
+  stampOptions.forEach((option) => { option.disabled = disabled; });
   if(chatButton) chatButton.disabled = disabled;
   if(aiButton) aiButton.disabled = disabled;
   if(sendButton) sendButton.disabled = disabled;
@@ -9613,12 +9926,18 @@ function submitLobbyChatInput(event){
 }
 
 async function sendLobbyChatMessage(event){
+  return sendLobbyChatPayload(event, "");
+}
+
+async function sendLobbyChatPayload(event, stampId = ""){
   if(event) event.preventDefault();
   if(lobbyChatSending || lobbyChatAiAsking) return;
   const input = document.getElementById("lobbyChatInput");
   const status = document.getElementById("lobbyChatStatus");
   if(!input || !status) return;
-  const message = applyChatMentionScope(input.value, lobbyChatMentionScope);
+  const stamp = chatStampDefinition(stampId);
+  const sourceMessage = stamp ? stamp.label : input.value;
+  const message = applyChatMentionScope(sourceMessage, lobbyChatMentionScope);
   if(!message) return;
 
   lobbyChatSending = true;
@@ -9634,6 +9953,7 @@ async function sendLobbyChatMessage(event){
         name: personalSettings.playerName || "",
         tag: normalizePlayerTag(personalSettings.playerTag),
         message,
+        stamp_id: stamp?.id || "",
       }),
     });
     if(!res.ok){
@@ -9641,6 +9961,7 @@ async function sendLobbyChatMessage(event){
     }else{
       const data = await res.json();
       input.value = "";
+      closeChatStampPickers();
       lobbyChatMentionScope = "";
       updateChatScopePicker("lobby");
       renderLobbyChat(data?.chat_messages || []);
@@ -11670,6 +11991,7 @@ window.addEventListener("goita-voice-chat-ready", () => {
 });
 
 window.addEventListener("goita-language-change", () => {
+  initializeChatStampPickers();
   initializeResearchKifuTagControls();
   renderResearchKifuList();
   if(selectedResearchKifu) {
@@ -11705,6 +12027,7 @@ window.addEventListener("beforeunload", () => {
 
 window.addEventListener("load", async ()=>{
   setupLobbyPieceBackground();
+  initializeChatStampPickers();
   setupDesktopRoomChatHeightSync();
   setupDesktopRoomLogHeightSync();
   renderLinkedKifuNotice();

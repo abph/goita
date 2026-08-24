@@ -129,6 +129,18 @@ NAME_MAX_LEN = 9
 ROOM_NAME_MAX_LEN = 12
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
+CHAT_STAMPS = {
+    "greeting": "よろしくおねがいします！",
+    "thanks": "ありがとうございました！",
+    "thinking": "考え中です",
+    "nice": "ナイス！",
+    "sorry": "ごめん！",
+    "surprised": "えっ！？",
+    "happy": "やった！",
+    "leave_it": "あとはまかせた！",
+    "got_me": "やられた！",
+    "goita_fun": "ごいたのしい！",
+}
 AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
@@ -325,6 +337,23 @@ def _chat_mention_scope(message: str) -> str:
     if first_word == "@here":
         return "here"
     return ""
+
+
+def _validated_chat_stamp(stamp_id: str) -> Tuple[str, str]:
+    normalized = str(stamp_id or "").strip().lower()
+    if not normalized:
+        return "", ""
+    label = CHAT_STAMPS.get(normalized)
+    if label is None:
+        raise HTTPException(status_code=400, detail="使用できないスタンプです")
+    return normalized, label
+
+
+def _stamp_chat_message(message: str, stamp_label: str) -> str:
+    scope = _chat_mention_scope(message)
+    if scope:
+        return f"@{scope} {stamp_label}"
+    return stamp_label
 
 
 def _next_chat_timestamp(span: int = 1) -> int:
@@ -1587,6 +1616,7 @@ class ChatRequest(BaseModel):
     name: str = ""
     tag: str = ""
     message: str
+    stamp_id: str = ""
 
 
 class ChatAiRequest(ChatRequest):
@@ -3498,7 +3528,10 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+    stamp_id, stamp_label = _validated_chat_stamp(req.stamp_id)
     message = _sanitize_chat_message(req.message)
+    if stamp_id:
+        message = _stamp_chat_message(message, stamp_label)
     mention_scope = _chat_mention_scope(message)
     is_public_chat = _is_main_game_id(game_id)
     chat_messages: List[Dict[str, Any]] = game.setdefault("chat_messages", [])
@@ -3520,6 +3553,11 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     }
     if mention_scope:
         chat_item["mention_scope"] = mention_scope
+    if stamp_id:
+        chat_item.update({
+            "message_type": "stamp",
+            "stamp_id": stamp_id,
+        })
     if is_public_chat:
         chat_item.update({
             "origin": "public_room",
@@ -3549,7 +3587,10 @@ async def post_chat_message(game_id: str, req: ChatRequest):
 
 @app.post("/lobby/chat")
 async def post_lobby_chat_message(req: ChatRequest):
+    stamp_id, stamp_label = _validated_chat_stamp(req.stamp_id)
     message = _sanitize_chat_message(req.message)
+    if stamp_id:
+        message = _stamp_chat_message(message, stamp_label)
     if not message:
         return {"ok": False, "chat_messages": _chat_messages_for_lobby()}
 
@@ -3565,6 +3606,11 @@ async def post_lobby_chat_message(req: ChatRequest):
     }
     if mention_scope:
         chat_item["mention_scope"] = mention_scope
+    if stamp_id:
+        chat_item.update({
+            "message_type": "stamp",
+            "stamp_id": stamp_id,
+        })
 
     if mention_scope == "everyone":
         EVERYONE_CHAT_MESSAGES.append(chat_item)
