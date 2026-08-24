@@ -62,6 +62,8 @@ def test_chat_height_setting_is_available_and_persisted():
     assert "--mobile-chat-top-height" in HTML
     assert '["tall", "normal", "short"].includes(document.getElementById("mobileChatHeight").value)' in HTML
     assert '["tall", "normal", "short"].includes(document.getElementById("lobbyMobileChatHeight").value)' in HTML
+    assert 'mobileChatHeight: "tall"' in HTML
+    assert '<option value="tall" selected>高い</option>' in HTML
 
 
 def test_new_labels_are_translated():

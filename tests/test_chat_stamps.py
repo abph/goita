@@ -18,14 +18,21 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert "const CHAT_STAMP_DEFINITIONS" in HTML
     assert "function initializeChatStampPickers()" in HTML
     assert "function sendChatStamp(kind, stampId)" in HTML
+    send_stamp_body = HTML.split("function sendChatStamp(kind, stampId)", 1)[1].split("}", 1)[0]
+    assert "closeChatStampPickers();" in send_stamp_body
     assert "function buildChatStampVisual(definition, owner, decorative = false)" in HTML
     assert "/static/stamps/${encodeURIComponent(definition.id)}.png" in HTML
+    assert 'pickerLabel: "よろしく"' in HTML
+    assert 'pickerLabel: "ありがとう"' in HTML
+    assert 'pickerLabel: "考え中"' in HTML
+    assert 'label.textContent = uiText(definition.pickerLabel || definition.label)' in HTML
+    assert HTML.count('class="chat-content"') >= 2
     assert (ROOT / "frontend" / "stamps" / "greeting.png").is_file()
     assert 'message_type === "stamp"' in HTML
 
 
 def test_initial_stamp_catalog_matches_the_ten_requested_stamps() -> None:
-    assert app_module.CHAT_STAMPS == {
+    expected_stamps = {
         "greeting": "よろしくおねがいします！",
         "thanks": "ありがとうございました！",
         "thinking": "考え中です",
@@ -37,6 +44,9 @@ def test_initial_stamp_catalog_matches_the_ten_requested_stamps() -> None:
         "got_me": "やられた！",
         "goita_fun": "ごいたのしい！",
     }
+    assert app_module.CHAT_STAMPS == expected_stamps
+    for stamp_id in expected_stamps:
+        assert (ROOT / "frontend" / "stamps" / f"{stamp_id}.png").is_file()
 
 
 async def _test_stamp_delivery() -> None:
