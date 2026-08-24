@@ -5991,6 +5991,7 @@ const CHAT_STAMP_DEFINITIONS = Object.freeze([
   { id: "got_me", label: "やられた！", emoji: "😅" },
   { id: "goita_fun", label: "ごいたのしい！", emoji: "王" },
 ]);
+const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice"]);
 const CHAT_STAMP_ASSET_VERSION = "20260824b";
 let desktopRoomChatHeightObserver = null;
 let desktopRoomLogHeightObserver = null;
@@ -6497,6 +6498,7 @@ async function enterRoom(targetGid, roomName) {
     lastHintNoticeKey = "";
     mySeat = WATCH;
     gid = targetGid;
+    initializeChatStampPickers();
     isGameStarted = false; 
     clearRoomBackground();
     applyBoardViewMode();
@@ -9266,7 +9268,7 @@ function showChatToast(item){
   const shouldTranslateMessage = shouldTranslateChatItem(item);
   text.toggleAttribute("data-i18n-ignore", !shouldTranslateMessage && !stamp);
   text.textContent = stamp
-    ? `${stamp.emoji} ${uiText(stamp.label)}`
+    ? `${uiText(stamp.label)}${stamp.emoji}`
     : shouldTranslateMessage
     ? uiText(String(item?.message || ""))
     : String(item?.message || "");
@@ -9707,7 +9709,11 @@ function initializeChatStampPickers(){
     const picker = document.getElementById(`${prefix}Picker`);
     if(!picker) continue;
     picker.replaceChildren();
-    for(const definition of CHAT_STAMP_DEFINITIONS){
+    const showAllStamps = kind === "room" && (PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID);
+    const availableStamps = showAllStamps
+      ? CHAT_STAMP_DEFINITIONS
+      : CHAT_STAMP_DEFINITIONS.filter((definition) => PUBLIC_CHAT_STAMP_IDS.has(definition.id));
+    for(const definition of availableStamps){
       const button = document.createElement("button");
       button.type = "button";
       button.className = "chat-stamp-choice";
