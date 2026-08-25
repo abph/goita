@@ -1295,6 +1295,83 @@
     .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
     .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
 
+    @media (max-width: 701px) {
+      .lobby-room-section {
+        padding: 16px 10px !important;
+      }
+      .room-card-container {
+        display: grid;
+        grid-template-columns: repeat(2, 140px);
+        justify-content: center;
+        gap: 10px;
+      }
+      .room-card {
+        width: 100%;
+        height: auto;
+        min-width: 0;
+        aspect-ratio: 1;
+        border-width: 2px;
+        border-radius: 8px;
+      }
+      .room-card .center-info {
+        width: 54px;
+        max-width: 54px;
+      }
+      .room-card .center-info .title {
+        font-size: 11px;
+        line-height: 1.15;
+        margin-bottom: 2px;
+      }
+      .room-card .center-info .count {
+        font-size: 10px;
+      }
+      .room-card .settings-icon {
+        top: 4px;
+        left: 4px;
+        padding: 2px;
+        font-size: 14px;
+      }
+      .room-card .lock-icon {
+        top: 6px;
+        right: 7px;
+        font-size: 16px;
+      }
+      .room-card .seat-badge {
+        max-width: 48px;
+        padding: 2px 3px;
+        border-width: 1px;
+        font-size: 9px;
+      }
+      .room-card .seat-top { margin-bottom: 2px; }
+      .room-card .seat-bottom { margin-top: 2px; }
+      .room-card .seat-left { margin-right: 2px; }
+      .room-card .seat-right { margin-left: 2px; }
+    }
+
+    @media (max-width: 360px) {
+      .lobby-room-section {
+        padding-inline: 4px !important;
+      }
+      .room-card-container { gap: 6px; }
+      .room-card .center-info {
+        width: 46px;
+        max-width: 46px;
+      }
+      .room-card .center-info .title { font-size: 10px; }
+      .room-card .center-info .count { font-size: 9px; }
+      .room-card .seat-badge {
+        max-width: 39px;
+        padding-inline: 2px;
+        font-size: 8px;
+      }
+    }
+
+    @media (max-width: 330px) {
+      .lobby-room-section {
+        margin-inline: -8px;
+      }
+    }
+
     .hint { 
       background: #fffdf5; border: 2px solid #d35400; padding: 12px 16px; border-radius: 8px; 
       margin: 16px 0; font-weight: bold; color: #b00000; text-align: center; font-size: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
@@ -4048,14 +4125,14 @@
     <button id="dailyMoveOpenButton" class="daily-move-open" type="button">挑戦する</button>
   </section>
 
-  <div class="card" style="margin-bottom: 24px; text-align: center; padding: 30px;">
+  <div class="card lobby-room-section" style="margin-bottom: 24px; text-align: center; padding: 30px;">
     <h2>🌐 公開部屋</h2>
     <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
     <div id="lobbyMainRoom" class="room-card-container">
       </div>
   </div>
 
-  <div class="card" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
+  <div class="card lobby-room-section" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
     <h2 style="color: #8b5a2b; margin-top: 0; text-align: center;">🏯 プライベートルーム</h2>
     <p style="margin-bottom: 15px; color: #555; text-align: center; line-height: 1.6;">
       支援していただいた方のための専用ルームです。<br>
@@ -5979,6 +6056,8 @@ let chatAiAsking = false;
 let chatComposeMode = "chat";
 let chatMentionScope = "";
 let chatToastTimer = null;
+const CHAT_STAMP_SCROLL_FOLLOW_MS = 5000;
+const chatLatestScrollUntil = { room: 0, lobby: 0 };
 const CHAT_STAMP_DEFINITIONS = Object.freeze([
   { id: "greeting", label: "よろしくおねがいします！", pickerLabel: "よろしく", emoji: "🤝" },
   { id: "thanks", label: "ありがとうございました！", pickerLabel: "ありがとう", emoji: "🙇" },
@@ -9500,8 +9579,8 @@ function renderLobbyChat(serverMessages){
   if(lobbyChatOpen){
     lobbyChatLastReadTs = latestTs;
     badge.hidden = true;
-    if(wasNearBottom || unread > 0){
-      setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
+    if(wasNearBottom || unread > 0 || shouldFollowLatestChat("lobby")){
+      scrollChatToLatest("lobby");
     }
   }
 }
@@ -9558,8 +9637,8 @@ function renderChat(state){
 
   if(chatVisible){
     lastChatCount = serverMessages.length;
-    if(wasNearBottom || unread > 0){
-      setTimeout(() => { box.scrollTop = box.scrollHeight; }, 0);
+    if(wasNearBottom || unread > 0 || shouldFollowLatestChat("room")){
+      scrollChatToLatest("room");
     }
   }
   syncDesktopRoomChatHeight();
@@ -9732,9 +9811,21 @@ function initializeChatStampPickers(){
 
 function sendChatStamp(kind, stampId){
   if(!chatStampDefinition(stampId)) return;
+  requestChatLatestScroll(kind);
   closeChatStampPickers();
   if(kind === "lobby") sendLobbyChatPayload(null, stampId);
   else sendRoomChatPayload(null, stampId);
+}
+
+function requestChatLatestScroll(kind){
+  const target = kind === "lobby" ? "lobby" : "room";
+  chatLatestScrollUntil[target] = Date.now() + CHAT_STAMP_SCROLL_FOLLOW_MS;
+  scrollChatToLatest(target);
+}
+
+function shouldFollowLatestChat(kind){
+  const target = kind === "lobby" ? "lobby" : "room";
+  return Date.now() < chatLatestScrollUntil[target];
 }
 
 function scrollChatToLatest(kind){

@@ -35,6 +35,13 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert '? `${uiText(stamp.label)}${stamp.emoji}`' in HTML
     assert '? `${stamp.emoji} ${uiText(stamp.label)}`' not in HTML
     assert "function scrollChatToLatest(kind)" in HTML
+    assert "const CHAT_STAMP_SCROLL_FOLLOW_MS = 5000;" in HTML
+    assert 'const chatLatestScrollUntil = { room: 0, lobby: 0 };' in HTML
+    assert "function requestChatLatestScroll(kind)" in HTML
+    assert "function shouldFollowLatestChat(kind)" in HTML
+    assert "requestChatLatestScroll(kind);" in send_stamp_body
+    assert 'shouldFollowLatestChat("room")' in HTML
+    assert 'shouldFollowLatestChat("lobby")' in HTML
     assert 'if(stamp) scrollChatToLatest("room");' in HTML
     assert 'if(stamp) scrollChatToLatest("lobby");' in HTML
     assert (ROOT / "frontend" / "stamps" / "greeting.png").is_file()
