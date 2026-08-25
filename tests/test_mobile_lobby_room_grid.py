@@ -16,3 +16,9 @@ def test_mobile_room_cards_shrink_without_losing_square_shape():
     assert ".room-card .seat-badge" in HTML
     assert "max-width: 39px;" in HTML
     assert "font-size: 7.5px;" in HTML
+
+
+def test_private_room_password_note_uses_compact_mobile_text():
+    assert 'class="count password-note">※合言葉が必要です</div>' in HTML
+    assert ".room-card .center-info .password-note" in HTML
+    assert "font-size: 7px;" in HTML

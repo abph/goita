@@ -37,7 +37,7 @@ def test_whisper_switches_message_and_can_be_closed() -> None:
     html = INDEX.read_text(encoding="utf-8")
     script = SCRIPT.read_text(encoding="utf-8")
 
-    assert '/static/lobbyWhisper.js?v=20260731f' in html
+    assert '/static/lobbyWhisper.js?v=20260825a' in html
     assert '"こんにちは！"' in script
     assert '"最近の広告は姑息すぎて、ほんと嫌ですね。"' in script
     assert '"その類の広告は絶滅すべきだと思います！"' not in script
@@ -51,13 +51,15 @@ def test_whisper_switches_message_and_can_be_closed() -> None:
     assert "if (surpriseClickCount >= 10)" in script
     assert "なにもありませんよ（笑）${surpriseClickCount}回目" in script
     assert "function showSurpriseMessage()" in script
-    assert 'whisper.addEventListener("click", showSurpriseMessage)' in script
+    assert 'whisper.addEventListener("click", activate)' in script
     assert "event.stopPropagation()" in script
     assert 'message.classList.add("is-entering")' in script
     assert 'message.classList.add("is-leaving")' in script
     assert "function setRoomVisibility(isPublicRoom)" in script
+    assert "function setRoomContext(isPublicRoom, privateAd = null)" in script
     assert "function startSequence()" in script
-    assert "if (!isPublicRoom || dismissed)" in script
+    assert "const privateEnabled = !isPublicRoom" in script
+    assert 'window.open(activeUrl, "_blank", "noopener,noreferrer")' in script
     assert "whisper.hidden = true" in script
 
 

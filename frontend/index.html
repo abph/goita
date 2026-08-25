@@ -1155,7 +1155,7 @@
         color: #3d2b1d;
         padding: 36px 20px 18px;
         overflow: hidden;
-        cursor: pointer;
+        cursor: default;
         -webkit-user-select: none;
         user-select: none;
     }
@@ -1297,6 +1297,15 @@
         color: #555; 
         font-weight: bold;
     }
+    .lobby-whisper.has-link,
+    .lobby-whisper.is-interactive-message {
+        cursor: pointer;
+    }
+    .room-card .center-info .password-note {
+        margin-top: 3px;
+        color: #b00000;
+        font-size: 10px;
+    }
     .room-card .settings-icon { 
         position: absolute; 
         top: 10px; 
@@ -1378,6 +1387,10 @@
       }
       .room-card .center-info .count {
         font-size: 8px;
+      }
+      .room-card .center-info .password-note {
+        margin-top: 2px;
+        font-size: 7px;
       }
       .room-card .settings-icon {
         top: 4px;
@@ -3050,33 +3063,6 @@
         box-sizing: border-box;
       }
     }
-    .lobby-admin-counts {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin: 12px 0 18px;
-    }
-    .lobby-admin-count-item {
-      min-width: 0;
-      padding: 10px 6px;
-      border: 1px solid rgba(139, 90, 43, 0.32);
-      background: rgba(255,255,255,0.46);
-      text-align: center;
-    }
-    .lobby-admin-count-item span {
-      display: block;
-      color: #6d5540;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1.3;
-    }
-    .lobby-admin-count-item strong {
-      display: block;
-      margin-top: 4px;
-      color: #6d461f;
-      font-size: 20px;
-      line-height: 1.2;
-    }
     .lobby-room-count-fields {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3093,6 +3079,40 @@
       color: #665746;
       font-size: 12px;
       line-height: 1.6;
+    }
+    .private-room-ad-settings {
+      margin: 18px 0;
+      padding: 14px 0;
+      border-top: 1px solid rgba(139, 90, 43, 0.28);
+      border-bottom: 1px solid rgba(139, 90, 43, 0.28);
+    }
+    .private-room-ad-settings h4 {
+      margin: 0 0 10px;
+      color: #6d461f;
+      font-size: 15px;
+    }
+    .private-room-ad-settings textarea,
+    .private-room-ad-settings input[type="url"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 8px;
+      font: inherit;
+    }
+    .private-room-ad-settings textarea {
+      min-height: 58px;
+      resize: vertical;
+    }
+    .private-room-ad-room-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px 8px;
+    }
+    .private-room-ad-room-list label {
+      min-width: 0;
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
     }
     .private-room-admin-passwords {
       margin-top: 18px;
@@ -3146,9 +3166,6 @@
       font-weight: 700;
     }
     @media (max-width: 520px) {
-      .lobby-admin-counts { gap: 5px; }
-      .lobby-admin-count-item { padding: 8px 3px; }
-      .lobby-admin-count-item strong { font-size: 17px; }
       .lobby-room-count-fields { grid-template-columns: 1fr; gap: 0; }
       .private-room-password-inputs { grid-template-columns: 1fr; }
     }
@@ -4600,25 +4617,40 @@
         </div>
 
         <div id="lobbyAdminFields" style="display:none;">
-          <div class="settings-row">
-            <label>現在の人数</label>
-            <div class="lobby-admin-counts">
-              <div class="lobby-admin-count-item"><span>公開部屋</span><strong id="lobbyMainPeopleCount" data-i18n-ignore>0人</strong></div>
-              <div class="lobby-admin-count-item"><span>プライベートルーム</span><strong id="lobbyPrivatePeopleCount" data-i18n-ignore>0人</strong></div>
-              <div class="lobby-admin-count-item"><span>全体</span><strong id="lobbyAllPeopleCount" data-i18n-ignore>0人</strong></div>
-            </div>
-          </div>
           <div class="lobby-room-count-fields">
             <div class="settings-row">
               <label for="lobbyMainRoomCount">表示する公開部屋数</label>
               <input type="number" id="lobbyMainRoomCount" min="1" max="6" step="1" inputmode="numeric">
             </div>
             <div class="settings-row">
-              <label for="lobbyPrivateRoomCount">表示するプライベートルーム数</label>
+              <label for="lobbyPrivateRoomCount">表示するプライベート数</label>
               <input type="number" id="lobbyPrivateRoomCount" min="0" max="6" step="1" inputmode="numeric">
             </div>
           </div>
           <p class="lobby-admin-help">部屋を減らすとロビーから非表示になります。進行中の対局は中断されません。</p>
+          <section class="private-room-ad-settings" aria-labelledby="privateRoomAdSettingsTitle">
+            <h4 id="privateRoomAdSettingsTitle">プライベートルームのお知らせ</h4>
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyPrivateAdEnabled" style="width:auto;"> お知らせを表示する</label>
+            </div>
+            <div class="settings-row">
+              <label for="lobbyPrivateAdTitle">見出し</label>
+              <input type="text" id="lobbyPrivateAdTitle" maxlength="40" placeholder="例：大会のお知らせ">
+            </div>
+            <div class="settings-row">
+              <label for="lobbyPrivateAdMessage">表示する文章</label>
+              <textarea id="lobbyPrivateAdMessage" maxlength="200" placeholder="プライベートルームに表示する文章"></textarea>
+            </div>
+            <div class="settings-row">
+              <label for="lobbyPrivateAdUrl">移動先URL（任意）</label>
+              <input type="url" id="lobbyPrivateAdUrl" maxlength="2048" inputmode="url" placeholder="https://example.com/">
+              <p class="settings-help-text" style="margin-left:0;">空欄の場合は、文章だけを表示します。</p>
+            </div>
+            <div class="settings-row">
+              <label>表示するルーム</label>
+              <div id="lobbyPrivateAdRoomList" class="private-room-ad-room-list"></div>
+            </div>
+          </section>
           <button class="settings-save-button" type="button" onclick="saveLobbyAdminSettings()">設定を保存</button>
           <div id="lobbyAdminSaveStatus" class="settings-status" aria-live="polite"></div>
           <section class="private-room-admin-passwords" aria-labelledby="privateRoomAdminPasswordsTitle">
@@ -5013,7 +5045,7 @@
 <script src="/static/i18n-en.js?v=20260823b"></script>
 <script src="/static/i18n.js?v=20260823b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
-<script src="/static/lobbyWhisper.js?v=20260731f"></script>
+<script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260821b").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
@@ -5789,7 +5821,6 @@ const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
     "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
 ]);
 let lobbyAdminPasswordValue = "";
-let latestLobbyRoomTotals = { main_people_count: 0, private_people_count: 0 };
 let seatModeTarget = null;
 let lobbySitePeople = [];
 let roomSitePeople = [];
@@ -6695,33 +6726,6 @@ async function returnToLobby() {
     fetchRoomList();
 }
 
-function formatLobbyPeopleCount(count) {
-    const safeCount = Math.max(0, Number(count) || 0);
-    const language = currentUiLanguage();
-    if (language === "en") return `${safeCount} ${safeCount === 1 ? "person" : "people"}`;
-    return `${safeCount}人`;
-}
-
-function updateLobbyAdminPeopleCounts(roomTotals = null) {
-    if (roomTotals) {
-        latestLobbyRoomTotals = {
-            main_people_count: Math.max(0, Number(roomTotals.main_people_count) || 0),
-            private_people_count: Math.max(0, Number(roomTotals.private_people_count) || 0),
-        };
-    }
-    const mainCount = latestLobbyRoomTotals.main_people_count;
-    const privateCount = latestLobbyRoomTotals.private_people_count;
-    const values = {
-        lobbyMainPeopleCount: mainCount,
-        lobbyPrivatePeopleCount: privateCount,
-        lobbyAllPeopleCount: mainCount + privateCount,
-    };
-    Object.entries(values).forEach(([elementId, count]) => {
-        const element = document.getElementById(elementId);
-        if (element) element.textContent = formatLobbyPeopleCount(count);
-    });
-}
-
 function applyLobbyAdminPayload(data) {
     const mainInput = document.getElementById("lobbyMainRoomCount");
     const privateInput = document.getElementById("lobbyPrivateRoomCount");
@@ -6731,8 +6735,28 @@ function applyLobbyAdminPayload(data) {
     privateInput.min = "0";
     privateInput.max = String(data.private_room_max || 6);
     privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
-    updateLobbyAdminPeopleCounts(data.room_totals);
+    const privateAd = data.private_room_ad || {};
+    document.getElementById("lobbyPrivateAdEnabled").checked = privateAd.enabled === true;
+    document.getElementById("lobbyPrivateAdTitle").value = String(privateAd.title || "お知らせ");
+    document.getElementById("lobbyPrivateAdMessage").value = String(privateAd.message || "");
+    document.getElementById("lobbyPrivateAdUrl").value = String(privateAd.url || "");
     renderPrivateRoomAdminPasswordControls(data.private_rooms || []);
+    renderPrivateRoomAdControls(data.private_rooms || [], privateAd.room_ids || []);
+}
+
+function renderPrivateRoomAdControls(privateRooms, selectedRoomIds) {
+    const container = document.getElementById("lobbyPrivateAdRoomList");
+    if (!container) return;
+    const selected = new Set(Array.isArray(selectedRoomIds) ? selectedRoomIds : []);
+    container.innerHTML = privateRooms.map((room) => {
+        const gameId = escapeLobbyHtml(room.game_id);
+        const roomName = escapeLobbyHtml(room.owner_name || room.game_id);
+        return `
+          <label>
+            <input class="private-room-ad-room" type="checkbox" value="${gameId}"${selected.has(room.game_id) ? " checked" : ""}>
+            <span>${roomName}</span>
+          </label>`;
+    }).join("");
 }
 
 function renderPrivateRoomAdminPasswordControls(privateRooms) {
@@ -6903,6 +6927,14 @@ async function saveLobbyAdminSettings() {
     const status = document.getElementById("lobbyAdminSaveStatus");
     const mainRoomCount = Number(mainInput.value);
     const privateRoomCount = Number(privateInput.value);
+    const privateAdEnabled = document.getElementById("lobbyPrivateAdEnabled").checked;
+    const privateAdTitle = document.getElementById("lobbyPrivateAdTitle").value.trim() || "お知らせ";
+    const privateAdMessage = document.getElementById("lobbyPrivateAdMessage").value.trim();
+    const privateAdUrl = document.getElementById("lobbyPrivateAdUrl").value.trim();
+    const privateAdRoomIds = Array.from(
+        document.querySelectorAll(".private-room-ad-room:checked"),
+        element => element.value,
+    );
     if (
         !Number.isInteger(mainRoomCount)
         || mainRoomCount < Number(mainInput.min)
@@ -6912,6 +6944,14 @@ async function saveLobbyAdminSettings() {
         || privateRoomCount > Number(privateInput.max)
     ) {
         status.textContent = "部屋数を入力範囲内の整数にしてください。";
+        return;
+    }
+    if (privateAdEnabled && !privateAdMessage) {
+        status.textContent = "お知らせに表示する文章を入力してください。";
+        return;
+    }
+    if (privateAdEnabled && privateAdRoomIds.length === 0) {
+        status.textContent = "お知らせを表示するルームを選択してください。";
         return;
     }
 
@@ -6924,12 +6964,18 @@ async function saveLobbyAdminSettings() {
                 admin_password: lobbyAdminPasswordValue,
                 main_room_count: mainRoomCount,
                 private_room_count: privateRoomCount,
+                private_ad_enabled: privateAdEnabled,
+                private_ad_title: privateAdTitle,
+                private_ad_message: privateAdMessage,
+                private_ad_url: privateAdUrl,
+                private_ad_room_ids: privateAdRoomIds,
             }),
         });
         if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
             status.textContent = response.status === 401
                 ? "管理用パスワードが正しくありません。"
-                : "設定の保存に失敗しました。";
+                : String(errorData.detail || "設定の保存に失敗しました。");
             return;
         }
         const data = await response.json();
@@ -6971,7 +7017,6 @@ async function fetchRoomList() {
         
         mainContainer.innerHTML = ""; 
         privateContainer.innerHTML = ""; 
-        updateLobbyAdminPeopleCounts(data.room_totals);
         
         if (!data.rooms || data.rooms.length === 0) {
             return;
@@ -7017,7 +7062,7 @@ async function fetchRoomList() {
                     <div class="lock-icon">🔒</div>
                     <div class="center-info">
                         <div class="title"${roomNameIgnore}>${displayRoomName}</div>
-                        <div class="count" style="color: #b00000; font-size: 12px; margin-top: 4px;">※合言葉が必要です</div>
+                        <div class="count password-note">※合言葉が必要です</div>
                     </div>
                 `;
             } else {
@@ -11843,6 +11888,7 @@ async function refresh(){
     return;
   }
   latestState = state;
+  window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null);
   if(await maybeAutoRevealOwnAndAiHands(state)){
     window.setTimeout(() => refresh(), 0);
     return;
@@ -12179,7 +12225,6 @@ window.addEventListener("goita-language-change", () => {
     );
   }
   renderLinkedKifuNotice();
-  updateLobbyAdminPeopleCounts();
   renderLobbyChat(lobbyChatMessages);
   renderLobbyPeople(lobbySitePeople);
   renderRoomChatPeople(roomSitePeople);
