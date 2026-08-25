@@ -866,6 +866,45 @@
         position: relative;
         isolation: isolate;
     }
+    .lobby-intro {
+        padding: 28px 0;
+        text-align: center;
+    }
+    .lobby-intro h1 {
+        margin-bottom: 8px;
+        font-size: 30px;
+    }
+    .lobby-intro-lead {
+        color: #555;
+        font-size: 15px;
+        font-weight: bold;
+    }
+    .lobby-intro-notes {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 12px 16px;
+        border: 1px dashed #8b5a2b;
+        border-radius: 8px;
+        background: #fffdf5;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        color: #555;
+        font-size: 12px;
+        text-align: left;
+    }
+    .lobby-intro-notes ul {
+        margin: 0;
+        padding-left: 18px;
+        line-height: 1.65;
+    }
+    @media (max-width: 520px) {
+        .lobby-intro { padding: 20px 0; }
+        .lobby-intro h1 { font-size: 24px; }
+        .lobby-intro-lead { font-size: 13px; }
+        .lobby-intro-notes {
+            padding: 10px 12px;
+            font-size: 11px;
+        }
+    }
     .lobby-toolbar {
         position: absolute;
         top: 12px;
@@ -1094,6 +1133,12 @@
         justify-content: center;
         gap: 20px;
     }
+    .lobby-room-section h2 {
+        font-size: 20px;
+    }
+    .lobby-room-section > p {
+        font-size: 13px;
+    }
     .lobby-whisper {
         position: relative;
         box-sizing: border-box;
@@ -1297,13 +1342,22 @@
 
     @media (max-width: 701px) {
       .lobby-room-section {
-        padding: 16px 10px !important;
+        padding: 16px 0 !important;
+      }
+      .lobby-room-section h2 {
+        margin-bottom: 8px;
+        font-size: 17px;
+      }
+      .lobby-room-section > p {
+        margin-bottom: 12px !important;
+        font-size: 11px;
+        line-height: 1.5 !important;
       }
       .room-card-container {
         display: grid;
-        grid-template-columns: repeat(2, 140px);
+        grid-template-columns: repeat(2, 154px);
         justify-content: center;
-        gap: 10px;
+        gap: 4px;
       }
       .room-card {
         width: 100%;
@@ -1318,12 +1372,12 @@
         max-width: 54px;
       }
       .room-card .center-info .title {
-        font-size: 11px;
+        font-size: 9px;
         line-height: 1.15;
         margin-bottom: 2px;
       }
       .room-card .center-info .count {
-        font-size: 10px;
+        font-size: 8px;
       }
       .room-card .settings-icon {
         top: 4px;
@@ -1340,7 +1394,7 @@
         max-width: 48px;
         padding: 2px 3px;
         border-width: 1px;
-        font-size: 9px;
+        font-size: 7.5px;
       }
       .room-card .seat-top { margin-bottom: 2px; }
       .room-card .seat-bottom { margin-top: 2px; }
@@ -1349,26 +1403,19 @@
     }
 
     @media (max-width: 360px) {
-      .lobby-room-section {
-        padding-inline: 4px !important;
-      }
-      .room-card-container { gap: 6px; }
       .room-card .center-info {
         width: 46px;
         max-width: 46px;
       }
-      .room-card .center-info .title { font-size: 10px; }
-      .room-card .center-info .count { font-size: 9px; }
       .room-card .seat-badge {
         max-width: 39px;
         padding-inline: 2px;
-        font-size: 8px;
       }
     }
 
-    @media (max-width: 330px) {
+    @media (max-width: 353px) {
       .lobby-room-section {
-        margin-inline: -8px;
+        margin-inline: -17px;
       }
     }
 
@@ -4094,12 +4141,12 @@
   <div class="lobby-toolbar">
     <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
   </div>
-  <div style="text-align: center; padding: 40px 0;">
-     <h1 style="font-size: 36px; margin-bottom: 10px;">そろうごいた</h1>
-     <p style="font-size: 18px; color: #555; font-weight: bold;">オンライン対局室へようこそ。</p>
+  <div class="lobby-intro">
+     <h1>そろうごいた</h1>
+     <p class="lobby-intro-lead">オンライン対局室へようこそ。</p>
      
-     <div style="font-size: 14px; color: #555; text-align: left; display: inline-block; background: #fffdf5; padding: 15px 20px; border-radius: 8px; border: 1px dashed #8b5a2b; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+     <div class="lobby-intro-notes">
+        <ul>
           <li>不足人数に応じて、<b>ルームで選択したAI</b>が参戦します。1人からでも対局可能です。</li>
           <li>日本ごいた協会に認定されました。</li>
           <li>「5し」以上の配牌はまだ実装していません（必ず「4し」以下になります）。</li>
