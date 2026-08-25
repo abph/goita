@@ -5362,13 +5362,63 @@ function formatGameLogCandidateGap(value) {
     return Math.abs(number).toFixed(1).replace(/\.0$/, "");
 }
 
-function localizeGameLogAttackCandidates(payload, language) {
+function localizeGameLogAttackCandidates(payload, language, candidateKind = "attack") {
     let snapshot;
     try {
         snapshot = JSON.parse(decodeURIComponent(String(payload || "")));
     } catch (_error) {
         return "";
     }
+    const isBlockComparison = candidateKind === "receive"
+        && snapshot?.chosen?.block
+        && Array.isArray(snapshot?.block_alternatives);
+    if(isBlockComparison) {
+        const chosenBlock = gameLogCandidatePieceLabel(snapshot.chosen.block, language);
+        const chosenAttack = gameLogCandidatePieceLabel(snapshot.chosen.attack, language);
+        const blockAlternatives = snapshot.block_alternatives;
+        if(blockAlternatives.length === 0) {
+            if(language === "en") return `[Hidden-piece choice: ${chosenBlock} was the only legal way to keep the ${chosenAttack} attack]`;
+            if(language === "zh") return `【暗置判断：要保持以${chosenAttack}进攻，只能暗置${chosenBlock}】`;
+            return `【伏せ判断：${chosenAttack}で攻める合法手では、${chosenBlock}を伏せる形のみ】`;
+        }
+        const withBlockScores = blockAlternatives.some((item) => (
+            item?.score_gap !== null
+            && item?.score_gap !== undefined
+            && Number.isFinite(Number(item.score_gap))
+        ));
+        if(!withBlockScores) {
+            const otherBlocks = blockAlternatives
+                .map((item) => gameLogCandidatePieceLabel(item?.block, language))
+                .join(language === "en" ? ", " : "・");
+            if(language === "en") return `[Hidden-piece candidates: chose ${chosenBlock} while keeping the ${chosenAttack} attack; others: ${otherBlocks}]`;
+            if(language === "zh") return `【暗置候选：保持以${chosenAttack}进攻，采用${chosenBlock}／其他：${otherBlocks}】`;
+            return `【伏せ判断：${chosenAttack}攻めを維持し、伏せた後の手駒を比較。${chosenBlock}を採用／ほか：${otherBlocks}】`;
+        }
+        const descriptions = blockAlternatives.map((item) => {
+            const piece = gameLogCandidatePieceLabel(item?.block, language);
+            if(item?.score_gap === null || item?.score_gap === undefined) return piece;
+            const gap = Number(item.score_gap);
+            if(!Number.isFinite(gap)) return piece;
+            const amount = formatGameLogCandidateGap(gap);
+            if(language === "en") {
+                if(gap > 0) return `${piece} (${amount} evaluation points lower)`;
+                if(gap < 0) return `${piece} (${amount} higher in normal evaluation; priority plan prevailed)`;
+                return `${piece} (same evaluation)`;
+            }
+            if(language === "zh") {
+                if(gap > 0) return `${piece}（评估值低${amount}）`;
+                if(gap < 0) return `${piece}（常规评估高${amount}，但优先计划胜出）`;
+                return `${piece}（同等评估）`;
+            }
+            if(gap > 0) return `${piece}（評価値が${amount}低い）`;
+            if(gap < 0) return `${piece}（通常評価は${amount}高いが、優先戦略により不採用）`;
+            return `${piece}（同評価）`;
+        });
+        if(language === "en") return `[Hidden-piece candidates: chose ${chosenBlock} while keeping the ${chosenAttack} attack; ${descriptions.join(", ")}]`;
+        if(language === "zh") return `【暗置候选：保持以${chosenAttack}进攻，采用${chosenBlock}／${descriptions.join("／")}】`;
+        return `【伏せ判断：${chosenAttack}攻めを維持し、伏せた後の手駒を比較。${chosenBlock}を採用／${descriptions.join("／")}】`;
+    }
+
     const chosen = gameLogCandidatePieceLabel(snapshot?.chosen?.attack, language);
     const alternatives = Array.isArray(snapshot?.alternatives) ? snapshot.alternatives : [];
     if(!chosen || alternatives.length === 0) return "";
@@ -5412,7 +5462,7 @@ function localizeGameLogAttackCandidates(payload, language) {
     return `【攻め候補：${chosen}を採用／${descriptions.join("／")}】`;
 }
 
-function localizeGameLogSuffix(suffix, language) {
+function localizeGameLogSuffix(suffix, language, candidateKind = "attack") {
     if(language === "en") return suffix;
     const hiddenLabel = language === "zh" ? "（暗置牌不公开）" : "（伏せ駒は非公開）";
     const effectPrefix = language === "zh" ? "效果" : "演出";
@@ -5424,17 +5474,17 @@ function localizeGameLogSuffix(suffix, language) {
             return label ? `[${effectPrefix}:${label}]` : source;
         })
         .replace(/\[AI:([^\]]+)\]/g, (_source, payload) => localizeGameLogAiDecision(payload, language))
-        .replace(/\[AI-CANDIDATES:([^\]]+)\]/g, (source, payload) => localizeGameLogAttackCandidates(payload, language) || source)
+        .replace(/\[AI-CANDIDATES:([^\]]+)\]/g, (source, payload) => localizeGameLogAttackCandidates(payload, language, candidateKind) || source)
         .replace(/\[PERF\(ms\):([^\]]+)\]/g, (_source, payload) => localizeGameLogPerformance(payload, language));
 }
 
-function localizeGameLogLine(entry, language = currentUiLanguage()) {
+function localizeGameLogLine(entry, language = currentUiLanguage(), candidateKind = "attack") {
     const source = String(entry ?? "");
     if(language === "en") {
         return source
             .replace(
                 /\[AI-CANDIDATES:([^\]]+)\]/g,
-                (match, payload) => localizeGameLogAttackCandidates(payload, language) || match
+                (match, payload) => localizeGameLogAttackCandidates(payload, language, candidateKind) || match
             )
             .replace(
                 /\[PERF\(ms\):([^\]]+)\]/g,
@@ -5445,22 +5495,22 @@ function localizeGameLogLine(entry, language = currentUiLanguage()) {
     let match = source.match(/^Game start\. dealer=([ABCD])(.*)$/);
     if(match) {
         return language === "zh"
-            ? `对局开始。庄家=${match[1]}${localizeGameLogSuffix(match[2], language)}`
-            : `対局開始。親=${match[1]}${localizeGameLogSuffix(match[2], language)}`;
+            ? `对局开始。庄家=${match[1]}${localizeGameLogSuffix(match[2], language, candidateKind)}`
+            : `対局開始。親=${match[1]}${localizeGameLogSuffix(match[2], language, candidateKind)}`;
     }
 
     match = source.match(/^Round finished\. winner=([ABCD]), gained=(\d+), total_score=\{'AC':\s*(\d+),\s*'BD':\s*(\d+)\}(.*)$/);
     if(match) {
         return language === "zh"
-            ? `本局结束。胜者=${match[1]}，获得=${match[2]}分，总分 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language)}`
-            : `局終了。勝者=${match[1]}、獲得=${match[2]}点、合計 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language)}`;
+            ? `本局结束。胜者=${match[1]}，获得=${match[2]}分，总分 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language, candidateKind)}`
+            : `局終了。勝者=${match[1]}、獲得=${match[2]}点、合計 AC=${match[3]} / BD=${match[4]}${localizeGameLogSuffix(match[5], language, candidateKind)}`;
     }
 
     match = source.match(/^Match finished! winner=(AC|BD), final_score=\{'AC':\s*(\d+),\s*'BD':\s*(\d+)\}(.*)$/);
     if(match) {
         return language === "zh"
-            ? `比赛结束！胜方=${match[1]}，最终得分 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language)}`
-            : `対戦終了！勝利ペア=${match[1]}、最終得点 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language)}`;
+            ? `比赛结束！胜方=${match[1]}，最终得分 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language, candidateKind)}`
+            : `対戦終了！勝利ペア=${match[1]}、最終得点 AC=${match[2]} / BD=${match[3]}${localizeGameLogSuffix(match[4], language, candidateKind)}`;
     }
 
     match = source.match(/^([ABCD]): block ([1-9]) -> attack ([1-9])(.*)$/);
@@ -5468,32 +5518,32 @@ function localizeGameLogLine(entry, language = currentUiLanguage()) {
         const block = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
         const attack = GAME_LOG_PIECE_LABELS[match[3]] || match[3];
         return language === "zh"
-            ? `${match[1]}: 暗置${block} → 以${attack}进攻${localizeGameLogSuffix(match[4], language)}`
-            : `${match[1]}: ${block}を伏せる → ${attack}で攻める${localizeGameLogSuffix(match[4], language)}`;
+            ? `${match[1]}: 暗置${block} → 以${attack}进攻${localizeGameLogSuffix(match[4], language, candidateKind)}`
+            : `${match[1]}: ${block}を伏せる → ${attack}で攻める${localizeGameLogSuffix(match[4], language, candidateKind)}`;
     }
 
     match = source.match(/^([ABCD]): receive ([1-9])(.*)$/);
     if(match) {
         const piece = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
         return language === "zh"
-            ? `${match[1]}: 以${piece}防守${localizeGameLogSuffix(match[3], language)}`
-            : `${match[1]}: ${piece}で受ける${localizeGameLogSuffix(match[3], language)}`;
+            ? `${match[1]}: 以${piece}防守${localizeGameLogSuffix(match[3], language, candidateKind)}`
+            : `${match[1]}: ${piece}で受ける${localizeGameLogSuffix(match[3], language, candidateKind)}`;
     }
 
     match = source.match(/^([ABCD]): attack ([1-9])(.*)$/);
     if(match) {
         const piece = GAME_LOG_PIECE_LABELS[match[2]] || match[2];
         return language === "zh"
-            ? `${match[1]}: 以${piece}进攻${localizeGameLogSuffix(match[3], language)}`
-            : `${match[1]}: ${piece}で攻める${localizeGameLogSuffix(match[3], language)}`;
+            ? `${match[1]}: 以${piece}进攻${localizeGameLogSuffix(match[3], language, candidateKind)}`
+            : `${match[1]}: ${piece}で攻める${localizeGameLogSuffix(match[3], language, candidateKind)}`;
     }
 
     match = source.match(/^([ABCD]): pass(.*)$/);
     if(match) {
-        return `${match[1]}: ${language === "zh" ? "跳过" : "パス"}${localizeGameLogSuffix(match[2], language)}`;
+        return `${match[1]}: ${language === "zh" ? "跳过" : "パス"}${localizeGameLogSuffix(match[2], language, candidateKind)}`;
     }
 
-    return localizeGameLogSuffix(source, language);
+    return localizeGameLogSuffix(source, language, candidateKind);
 }
 
 function aiBoardExplanationKey(seat, kind, index) {
@@ -5528,7 +5578,7 @@ function showAiBoardThought(keyValue) {
     localAiThoughtMessages.push({
         seat: "ai_thought",
         sender: aiThoughtSender(item.seat, language),
-        message: `${intro}\n${localizeGameLogLine(item.log, language)}`,
+        message: `${intro}\n${localizeGameLogLine(item.log, language, item.kind)}`,
         ts: Date.now(),
         local_ai_thought: true,
     });
@@ -10818,15 +10868,31 @@ async function setName(seat, name){
 }
 
 async function downloadKifu(anonymous = false){
-  const res = await fetch(`${API}/games/${gid}/kifu?anonymous=${anonymous ? "true" : "false"}`);
-  const text = await res.text();
-  const blob = new Blob([text], {type:"text/yaml;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const suffix = anonymous ? "_anonymous" : "";
-  a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}${suffix}.yaml`;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  try{
+    const query = new URLSearchParams({
+      anonymous: anonymous ? "true" : "false",
+      client_id: clientId,
+    });
+    const res = await fetch(`${API}/games/${gid}/kifu?${query.toString()}`);
+    if(!res.ok){
+      let message = "棋譜を保存できませんでした。";
+      try{
+        const error = await res.json();
+        if(error?.detail) message = String(error.detail);
+      }catch(_error){}
+      throw new Error(message);
+    }
+    const text = await res.text();
+    const blob = new Blob([text], {type:"text/yaml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const suffix = anonymous ? "_anonymous" : "";
+    a.href=url; a.download=`goita_kifu_${String(gid).slice(0,8)}${suffix}.yaml`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(error){
+    alert(uiText(error?.message || "棋譜を保存できませんでした。"));
+  }
 }
 
 let handRevealConfirmResolver = null;

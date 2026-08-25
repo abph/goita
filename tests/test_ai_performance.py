@@ -101,11 +101,18 @@ def test_attack_candidate_snapshot_keeps_chosen_and_top_alternatives() -> None:
     snapshot = agent.last_attack_candidate_snapshot
 
     assert action[0] == "attack_after_block"
+    assert snapshot["version"] == 2
+    assert snapshot["chosen"]["block"] == action[1]
     assert snapshot["chosen"]["attack"] == action[2]
     assert 1 <= len(snapshot["alternatives"]) <= 3
     assert all(item["attack"] != action[2] for item in snapshot["alternatives"])
     assert len({item["attack"] for item in snapshot["alternatives"]}) == len(
         snapshot["alternatives"]
+    )
+    assert 1 <= len(snapshot["block_alternatives"]) <= 3
+    assert all(
+        item["block"] != action[1]
+        for item in snapshot["block_alternatives"]
     )
 
     formatted = app_module._format_ai_attack_candidates(agent)

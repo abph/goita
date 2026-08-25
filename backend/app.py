@@ -1852,7 +1852,11 @@ def _format_ai_performance(agent: Any) -> str:
 
 def _format_ai_attack_candidates(agent: Any) -> str:
     snapshot = getattr(agent, "last_attack_candidate_snapshot", None)
-    if not isinstance(snapshot, dict) or not snapshot.get("alternatives"):
+    if not isinstance(snapshot, dict) or not (
+        snapshot.get("alternatives")
+        or snapshot.get("block_alternatives")
+        or (snapshot.get("chosen") or {}).get("block")
+    ):
         return ""
     payload = urllib.parse.quote(
         json.dumps(snapshot, ensure_ascii=True, separators=(",", ":")),
@@ -4245,16 +4249,26 @@ def update_research_kifu(
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
-def get_kifu_yaml(game_id: str, anonymous: bool = True):
+def get_kifu_yaml(game_id: str, anonymous: bool = True, client_id: str = ""):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
+    if not _client_owned_human_seats(game, client_id):
+        raise HTTPException(
+            status_code=403,
+            detail="棋譜は対局に参加した端末だけが保存できます",
+        )
+    state: GoitaState = game["state"]
+    if not state.finished:
+        raise HTTPException(
+            status_code=409,
+            detail="棋譜は終局後に保存できます",
+        )
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
     moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
-    state: GoitaState = game["state"]
     configured_names: Dict[str, str] = game.get("player_names", {})
     
     score = [int(game.get("total_team_score", {}).get("AC", 0)), int(game.get("total_team_score", {}).get("BD", 0))]

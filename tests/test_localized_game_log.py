@@ -88,6 +88,16 @@ def test_attack_candidates_are_localized_from_structured_log_data():
     assert r"/\[AI-CANDIDATES:([^\]]+)\]/g" in suffix
 
 
+def test_hidden_piece_candidates_are_explained_separately_from_attack_candidates():
+    for expected in (
+        'candidateKind === "receive"',
+        "snapshot?.block_alternatives",
+        "【伏せ判断：${chosenAttack}攻めを維持し、伏せた後の手駒を比較。",
+        "localizeGameLogLine(item.log, language, item.kind)",
+    ):
+        assert expected in HTML
+
+
 def test_english_game_log_keeps_debug_reasons_but_displays_time_in_seconds():
     localization_start = HTML.index("function localizeGameLogLine(")
     localization_end = HTML.index("function renderGameLog(", localization_start)

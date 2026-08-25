@@ -391,15 +391,68 @@ class DecisionMixin:
                 "score_gap": score_gap,
             })
 
-        if not compact_alternatives:
+        block_alternatives = []
+        if chosen[0] == "attack_after_block" and chosen[1] is not None:
+            by_block = {}
+            block_order = []
+            for action in actions:
+                action_type, block, attack = action
+                if (
+                    action_type != "attack_after_block"
+                    or block is None
+                    or attack != chosen[2]
+                    or block == chosen[1]
+                ):
+                    continue
+                score = score_by_action.get(tuple(action))
+                candidate = {
+                    "block": str(block),
+                    "score": round(score, 1) if score is not None else None,
+                }
+                if block not in by_block:
+                    by_block[block] = candidate
+                    block_order.append(block)
+                elif score is not None:
+                    previous_score = by_block[block].get("score")
+                    if previous_score is None or score > float(previous_score):
+                        by_block[block] = candidate
+
+            ordered_blocks = [dict(by_block[block]) for block in block_order]
+            if any(item.get("score") is not None for item in ordered_blocks):
+                ordered_blocks.sort(
+                    key=lambda item: (
+                        item.get("score") is not None,
+                        float(item["score"])
+                        if item.get("score") is not None
+                        else -1e18,
+                    ),
+                    reverse=True,
+                )
+            for item in ordered_blocks[:3]:
+                alternative_score = item.get("score")
+                score_gap = None
+                if chosen_score is not None and alternative_score is not None:
+                    score_gap = round(float(chosen_score) - float(alternative_score), 1)
+                block_alternatives.append({
+                    "block": item["block"],
+                    "score": alternative_score,
+                    "score_gap": score_gap,
+                })
+
+        has_hidden_block = (
+            chosen[0] == "attack_after_block" and chosen[1] is not None
+        )
+        if not compact_alternatives and not block_alternatives and not has_hidden_block:
             return
         self.last_attack_candidate_snapshot = {
-            "version": 1,
+            "version": 2,
             "chosen": {
+                "block": str(chosen[1]) if chosen[1] is not None else None,
                 "attack": str(chosen[2]),
                 "score": round(chosen_score, 1) if chosen_score is not None else None,
             },
             "alternatives": compact_alternatives,
+            "block_alternatives": block_alternatives,
             "decision_reason": str(self.last_decision_reason or ""),
             "decision_detail": str(self.last_score_fallback_detail or ""),
         }
