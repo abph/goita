@@ -147,6 +147,15 @@ def test_enemy_second_attack_wait_requires_a_robust_inferred_win() -> None:
         **common,
     )
 
+    preserve_baseline = dict(common)
+    preserve_baseline["baseline_action"] = ("pass", None, None)
+    assert agent._timed_search_enemy_third_attack_wait_is_safe(
+        state,
+        "A",
+        tracker,
+        **preserve_baseline,
+    )
+
     unsafe = dict(common)
     unsafe["best_minimum"] = 1200.0
     assert not agent._timed_search_enemy_third_attack_wait_is_safe(

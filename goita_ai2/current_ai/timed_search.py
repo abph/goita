@@ -165,7 +165,7 @@ class TimedSearchMixin:
             or state.attacker is None
             or self._same_team(state.attacker, player)
             or best_action[0] != "pass"
-            or baseline_action[0] != "receive"
+            or baseline_action[0] not in ("pass", "receive")
             or int(tracker.get("enemy_attack_counts", {}).get(state.attacker, 0)) != 2
         ):
             return False

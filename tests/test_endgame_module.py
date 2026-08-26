@@ -1070,6 +1070,64 @@ def test_safe_third_attack_keeps_silver_for_thirty_point_finish() -> None:
     assert state.team_score["AC"] == 30
 
 
+def test_preserved_gold_is_spent_when_enemy_third_attack_is_not_proven_safe() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11113458"),
+            "B": list("11123459"),
+            "C": list("11223567"),
+            "D": list("12344567"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    actions = (
+        ("A", ("attack_after_block", "1", "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "4")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "4", None)),
+        ("A", ("attack", None, "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "5")),
+        ("C", ("receive", "5", None)),
+        ("C", ("attack", None, "7")),
+        ("D", ("receive", "7", None)),
+        ("D", ("attack", None, "4")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("attack_after_block", "3", "5")),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    a_agent = agents["A"]
+    a_agent.TIME_SEARCH_ENABLED = False
+    chosen = a_agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert sorted(state.hands["A"]) == ["1", "3", "5", "8"]
+    assert chosen == ("receive", "5", None)
+    assert a_agent.last_score_fallback_detail == (
+        "receive_before_unproven_enemy_third_attack"
+    )
+
+
 def test_global_endgame_planner_keeps_king_for_fifty_point_finish() -> None:
     state = GoitaState(
         hands={

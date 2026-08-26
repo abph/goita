@@ -14,6 +14,50 @@ Action = Tuple[str, Optional[str], Optional[str]]
 class DecisionMixin:
     """Combines strategy scores and selects the final legal action."""
 
+    def _receive_before_unproven_enemy_third_attack(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        baseline_detail: str,
+        search_result,
+    ) -> Optional[Action]:
+        """Spend the matching piece unless waiting for attack three is proven safe."""
+        if (
+            baseline_detail != "pass_preserve_win_attack"
+            or state.phase != "receive"
+            or state.current_attack is None
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+        ):
+            return None
+
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return None
+        if int(tracker.get("enemy_attack_counts", {}).get(state.attacker, 0)) != 2:
+            return None
+
+        wait_is_safe = bool(
+            search_result is not None
+            and search_result.action[0] == "pass"
+            and getattr(search_result, "enemy_third_attack_wait", False)
+        )
+        if wait_is_safe:
+            return None
+
+        return next(
+            (
+                action
+                for action in actions
+                if action[0] == "receive"
+                and action[1] == state.current_attack
+                and action[1] not in ("8", "9")
+            ),
+            None,
+        )
+
     def _adopt_rule_preview(self, preview) -> None:
         """Adopt preview mutations without invalidating live tracker references."""
         current_track = self._track
@@ -604,6 +648,37 @@ class DecisionMixin:
                     f"agreement_{int(round(search_result.agreement * 100))}"
                 )
             return search_result.action
+
+        if (
+            search_result is not None
+            and baseline_action[0] == "pass"
+            and getattr(search_result, "enemy_third_attack_wait", False)
+        ):
+            self._adopt_rule_preview(preview)
+            self._set_decision_reason("time_search")
+            self._set_score_fallback_detail(
+                f"wait_enemy_third_guaranteed_win_"
+                f"depth_{search_result.depth}_samples_{search_result.samples}_"
+                f"agreement_{int(round(search_result.agreement * 100))}"
+            )
+            return baseline_action
+
+        receive_before_third = self._receive_before_unproven_enemy_third_attack(
+            state,
+            player,
+            actions,
+            baseline_detail=baseline_detail,
+            search_result=search_result,
+        )
+        if receive_before_third is not None:
+            self.last_attack_candidate_scores = copy.deepcopy(
+                getattr(preview, "last_attack_candidate_scores", [])
+            )
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                "receive_before_unproven_enemy_third_attack"
+            )
+            return receive_before_third
 
         self._adopt_rule_preview(preview)
         return baseline_action

@@ -5230,6 +5230,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_fourth_middle_third: "4枚目の中駒を3枚目の攻めに使う",
         attack_kakari_score: "味方が以前に出した駒に合わせる",
         pass_preserve_win_attack: "上がりに必要な攻め駒を温存するためパス",
+        receive_before_unproven_enemy_third_attack: "敵の3枚目を待つ安全が確認できないため、同じ駒で受ける",
         inferred_endgame_followup_attack: "推定した終盤の上がり筋を継続",
         ally_shi_approval_already_sent_pass: "し攻めへの賛同は伝達済みのためパス",
     },
@@ -5248,9 +5249,11 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_avoid_enemy_piece_count: "选择对手持有概率较低的棋子",
         attack_kakari_score: "配合搭档之前打出的棋子",
         pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
+        receive_before_unproven_enemy_third_attack: "无法确认等待对手第三次进攻是否安全，因此用同种棋子接下",
     },
     en: {
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
+        receive_before_unproven_enemy_third_attack: "Receive with the matching piece because waiting for the opponent's third attack is not proven safe",
     },
 });
 
