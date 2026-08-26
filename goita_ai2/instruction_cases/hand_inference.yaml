@@ -1,0 +1,142 @@
+schema_version: 1
+category: hand_inference
+cases:
+  - id: INF-001
+    status: confirmed
+    title: 32枚の在庫と自分から見える駒を常に一致させる
+    classification: exact_inventory
+    priority: critical
+    conditions:
+      - 自分の手駒と盤面の公開駒が分かる
+    required:
+      - 駒種ごとの全枚数から既知駒を差し引く
+      - 他3人の候補手駒全体が残り在庫と矛盾しないようにする
+    forbidden:
+      - 王玉や角などを欠落させた独立推定
+      - 全体枚数を超える候補
+    reason: 各人を別々に推定すると、32枚全体として存在しない組み合わせになる
+    regression:
+      state: covered
+      tests:
+        - tests/test_public_piece_inference.py
+        - tests/test_information_set_search.py
+
+  - id: INF-002
+    status: confirmed
+    title: 3つ目に王玉を使わなかった事実から所有者を絞る
+    classification: royal_elimination
+    priority: high
+    conditions:
+      - 王または玉で受けたプレイヤーが3つ目の攻めを行った
+      - そのプレイヤーがもう一方の王玉を使えば明確に強い局面
+      - 実際には別駒を出した
+    required: そのプレイヤーが残りの王玉を持つ確率を大きく下げ、未確定の席へ割り当てる
+    reason: 強制力の高い3つ目に王玉を使わない行動は、非保有の強い証拠になる
+    regression:
+      state: partial
+      note: 公開行動推定へ反映済み。専用ケースは追加予定
+
+  - id: INF-003
+    status: confirmed
+    title: 最初の大駒攻めから1枚または2枚を推定する
+    classification: opening_structure
+    priority: normal
+    conditions:
+      - 相手の攻め1が角または飛
+    required: その大駒を初期手駒に1枚から2枚持っていた候補を優先する
+    exceptions:
+      - 既知の特殊攻め順
+      - だましや確定上がり計画
+    reason: 最初の攻めは占有率と継続計画を表しやすい
+    regression:
+      state: covered
+      tests:
+        - tests/test_inference_module.py
+
+  - id: INF-004
+    status: confirmed
+    title: 最初と違う駒を出したら連打計画の崩れを反映する
+    classification: sequence_collapse
+    priority: high
+    conditions:
+      - 最初の攻めから同種連打を推定していた
+      - 敵方のかかりごたえなし、し攻め拒否などの反応がある
+      - 攻め手が次に別の駒を出した
+    required: 最初の駒の残数推定を下げ、連打戦略が崩れた候補へ重みを移す
+    reason: 実際の後続行動は初手だけの構造推定より強い証拠になる
+    regression:
+      state: covered
+      tests:
+        - tests/test_inference_module.py
+
+  - id: INF-005
+    status: confirmed
+    title: しをパスしたらしは0枚から1枚と推定する
+    classification: shi_pass_inference
+    priority: high
+    conditions:
+      - 相手がし攻めをパス
+      - 確定上がり温存など特別な理由が観測されていない
+    required: 相手のし保有範囲を0枚から1枚へ狭める
+    reason: 複数のしがあれば受ける価値が高く、パスは少数保有の強い証拠になる
+    regression:
+      state: covered
+      tests:
+        - tests/test_public_piece_inference.py
+
+  - id: INF-006
+    status: confirmed
+    title: 伏せ駒と公開しから敵のし枯れを推定する
+    classification: hidden_shi_depletion
+    priority: high
+    conditions:
+      - 相手が複数回伏せている
+      - 通常戦略上、その伏せがしである可能性が高い
+      - さらに相手がしを公開で受けに使用
+    required:
+      - 伏せしの確率と公開しを合わせて残り範囲を更新する
+      - 4し配牌の候補だけは残す
+    reason: 伏せと受けの両方でしを消費した相手に、さらにしが残る可能性は低い
+    regression:
+      state: covered
+      tests:
+        - tests/test_probabilistic_hand_inference.py
+
+  - id: INF-007
+    status: confirmed
+    title: 終盤で一意に決まる手駒は推定ではなく確定する
+    classification: exact_endgame_solution
+    priority: critical
+    conditions:
+      - 残り枚数が少ない
+      - 公開駒、伏せ枚数、受け、パスを合わせると候補が一つになる
+    required:
+      - 他家全員の手駒を同時制約で解く
+      - 一意の候補は確定情報として終盤探索に渡す
+    forbidden:
+      - 一意に決まる局面でも大まかなランク推定だけを使う
+    reason: 正確な残り2枚が分かれば、確定上がりや安全なパスを完全に読める
+    regression:
+      state: covered
+      tests:
+        - tests/test_information_set_search.py
+        - tests/test_endgame_module.py
+
+  - id: INF-008
+    status: confirmed
+    title: 候補手駒には確率を付けて行動ごとに更新する
+    classification: probabilistic_update
+    priority: high
+    conditions:
+      - 他家の手駒が一意には決まらない
+    required:
+      - 配牌頻度、手駒ランク、初手、受け、パス、後続攻めを尤度へ反映する
+      - 駒が出るたびに候補と確率を更新する
+      - 4人分の在庫整合性を維持する
+    reason: 単一の推定手駒だけでは外れたときに判断が崩れるため、複数候補を分岐評価へ渡す
+    regression:
+      state: covered
+      tests:
+        - tests/test_probabilistic_hand_inference.py
+        - tests/test_probabilistic_hand_validation.py
+

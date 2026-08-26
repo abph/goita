@@ -1,0 +1,208 @@
+schema_version: 1
+category: endgame
+cases:
+  - id: END-001
+    status: confirmed
+    title: 確定上がりを一般戦略より優先する
+    classification: forced_win_priority
+    priority: critical
+    conditions:
+      - 合法手の中に、自分または味方の確定上がりがある
+    required: 香のパス、かかりごたえ、手駒ランク、通常攻め順より確定上がりを優先する
+    forbidden:
+      - 定型戦略に従って確定上がりを捨てる
+    reason: 一般戦略は不確実な局面の基準であり、証明済みの勝ちを覆さない
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_high_score_tsume_outranks_kakarigotae
+
+  - id: END-002
+    status: confirmed
+    title: 確定上がりの中で最低保証点を最大化する
+    classification: guaranteed_high_score
+    priority: critical
+    conditions:
+      - 複数の確定上がりルートがある
+    required_order:
+      - 勝ちが全分岐で確定している
+      - 最低保証点が高い
+      - 最低保証点が同じなら期待得点が高い
+      - さらに同じなら受け幅と安全性が高い
+    forbidden:
+      - 最初に見つけた確定上がりだけを採用する
+      - 高得点の上がり駒を途中で伏せる
+    reason: 銀30点、角40点、王玉50点以上の終局形をルート全体で比較する
+    regression:
+      state: covered
+      tests:
+        - tests/test_guaranteed_high_score_search.py
+        - tests/test_endgame_module.py::test_global_endgame_planner_keeps_king_for_fifty_point_finish
+
+  - id: END-003
+    status: confirmed
+    title: 3つの攻めを出し切るなら最高点の駒を最後に残す
+    classification: finishing_piece_value
+    priority: critical
+    conditions:
+      - 勝ちが確定
+      - 3つの攻め駒を出し切って上がる計画
+    required: 上がり駒の得点が最大になる伏せ駒と攻め順を選ぶ
+    examples:
+      - 香20点より銀30点を残す
+      - 金30点より角40点を残す
+      - 金30点より王50点を残す
+    reason: 勝敗が同じなら、最後の1枚の価値がそのまま獲得点になる
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_high_score_tsume_keeps_kaku_for_forty_point_finish
+        - tests/test_endgame_module.py::test_safe_third_attack_keeps_silver_for_thirty_point_finish
+
+  - id: END-004
+    status: confirmed
+    title: 確定上がりを4種類に分類する
+    classification: forced_win_category
+    priority: high
+    categories:
+      - id: fixed_initial
+        description: 最初から勝ちが確定し、攻め形と上がり方が固定
+      - id: upside_initial
+        description: 最初から勝ちが確定し、成功時だけ高得点になる上振れ分岐がある
+      - id: fixed_triggered
+        description: 味方のかかりごたえ等の条件成立後に固定ルートで勝てる
+      - id: upside_triggered
+        description: 条件成立後に勝ちが確定し、さらに高得点分岐がある
+    required: 探索結果を分類し、上振れ失敗時の最低保証も記録する
+    regression:
+      state: covered
+      tests:
+        - tests/test_forced_win_planner.py
+
+  - id: END-005
+    status: confirmed
+    title: 条件付き詰めは条件成立後に固定ルートへ切り替える
+    classification: conditional_forced_win
+    priority: critical
+    conditions:
+      - 味方のかかりごたえ、特定駒のパス、王玉の使用などの公開条件が成立
+      - その条件下で全応手に勝てる
+    required: 条件成立を追跡し、成立した時点で確定上がりプランへ切り替える
+    forbidden:
+      - 条件成立前から確定上がりとして扱う
+      - 条件成立後も通常評価へ戻る
+    reason: 条件の有無で勝ちの証明が変わるため、トリガーを明示して維持する必要がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_forced_win_planner.py::test_triggered_routes_cover_branching_and_fixed_categories
+
+  - id: END-006
+    status: confirmed
+    title: 8枚時点でも浅い確定上がり計画を使う
+    classification: early_forced_plan
+    priority: high
+    conditions:
+      - 手駒が8枚または7枚
+      - 代表的な連打と王玉の橋渡しで全分岐を覆える
+    required: 代表分岐を浅く調べ、最低保証と高得点分岐を持つ計画を作る
+    example: 3し・香・馬・銀・玉・王で、しを先に出して王50点分岐を残す
+    forbidden:
+      - 浅い探索で証明できないものを確定と断定する
+    reason: 序盤でも駒構造によっては応手が少なく、固定形を証明できる
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_seven_card_conditional_plan_prefers_shi_for_fifty_point_branches
+        - tests/test_endgame_module.py::test_early_forced_win_search_reports_unknown_instead_of_guessing
+
+  - id: END-007
+    status: confirmed
+    title: 完全受けなら敵のリーチを待って高得点を狙う
+    classification: wait_for_opponent_reach
+    priority: high
+    conditions:
+      - 敵の次の攻め候補をすべて受けられる
+      - パスしても敵の即上がりを許さない
+      - 待つことで王玉上がりなど得点上昇がある
+    required: 現在受ける枝と、敵の3つ目を待つ枝を比較し、高い最低保証点を選ぶ
+    forbidden:
+      - 低い点の確定上がりを見つけた時点で探索を止める
+    reason: 敵の3つ目を受けることで、自分の3つ目と高得点上がりを同時に作れる
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_full_receive_cover_waits_for_enemy_third_attack_and_fifty_points
+
+  - id: END-008
+    status: confirmed
+    title: 味方の上がりを優先し、無理なら敵の得点を最小化する
+    classification: team_outcome
+    priority: critical
+    conditions:
+      - 他家の残り手駒を終盤推定できる
+      - 自分だけでの勝ちが難しい、または複数の勝者分岐がある
+    required_order:
+      - 自分の上がり
+      - 味方の上がり
+      - 敵のうち低得点側の上がり
+    reason: ペア戦では自分以外の勝者と得点も局面評価に含める必要がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_inferred_endgame_prefers_ally_finish_over_enemy_finish
+        - tests/test_endgame_module.py::test_inferred_endgame_prefers_lower_scoring_enemy_finish
+
+  - id: END-009
+    status: confirmed
+    title: 王玉は高得点上がりへの橋として残す
+    classification: royal_bridge
+    priority: high
+    conditions:
+      - 王玉を攻めまたは伏せに使う候補がある
+      - 別駒で攻めをつなげられる
+    required: 王玉を受け幅と最後の高得点上がりに残すルートを比較する
+    forbidden:
+      - 早い段階で王玉を伏せる
+      - 王玉を3つ目に出して、低い駒で上がる
+    reason: 王玉は広い受けと50点以上の上がりを同時に作る
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py::test_royal_preservation_template_never_hides_the_royal_early
+        - tests/test_endgame_module.py::test_third_attack_uses_royal_bridge_for_thirty_point_finish
+
+  - id: END-010
+    status: confirmed
+    title: 王玉はしを受けられない
+    classification: rule_constraint
+    priority: critical
+    conditions:
+      - 現在の攻めがし
+    required: しによる受けだけを合法手として扱う
+    forbidden:
+      - 王または玉でしを受ける分岐を生成する
+    reason: 王玉はしと香を受けられないため、確定上がり探索の合法性に直結する
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_royal_cannot_receive_shi_in_forced_win_search
+
+  - id: END-011
+    status: confirmed
+    title: 高得点候補がなければ自分の確定上がりを実行する
+    classification: endgame_fallback
+    priority: critical
+    conditions:
+      - 自分の確定上がりがある
+      - 味方の高得点上がりを待つ候補もある
+    required:
+      - まず味方を含む高得点確定分岐を探索する
+      - 高得点が証明できなければ自分の確定上がりを選ぶ
+    forbidden:
+      - 証明されていない味方の上振れを待ち、自分の勝ちを失う
+    reason: チーム得点を狙いつつ、最低保証として自分の勝ちを保持する
+    regression:
+      state: partial
+      note: 確定上がり高得点探索へ反映済み。代表棋譜を追加予定
+

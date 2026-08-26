@@ -1,0 +1,223 @@
+schema_version: 1
+category: attack
+cases:
+  - id: ATT-001
+    status: confirmed
+    title: 1枚しかない中駒よりし攻めを優先する
+    classification: singleton_avoidance
+    priority: high
+    conditions:
+      - 攻め1枚目
+      - 馬・銀・金が1枚だけ
+      - しを複数枚持つ
+      - だまし香・だまししではない
+    required: しを第一候補にする
+    forbidden:
+      - 占有率が高いように見せられない単発の中駒を先に出す
+    reason: 1枚目は占有率の情報になるため、単発中駒は味方を誤認させ、連打にもならない
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_three_shi_is_preferred_over_singletons_after_receiving_big_piece
+
+  - id: ATT-002
+    status: confirmed
+    title: 中駒ペアと大駒1枚で王なしの攻め順
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香以外の中駒ペアが1組
+      - 大駒が1枚
+      - 王玉なし
+    preferred:
+      - 攻め1は中駒ペア
+      - 攻め2は同じ中駒
+      - 攻め3は大駒
+    example: 金 → 金 → 飛
+    reason: 王玉の受け幅がないため、先にペアを連打して大駒を決定打として残す
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py
+
+  - id: ATT-003
+    status: confirmed
+    title: 中駒ペアと大駒1枚で王ありの攻め順
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香以外の中駒ペアが1組
+      - 大駒が1枚
+      - 王または玉が1枚
+    preferred:
+      - 攻め1は中駒ペア
+      - 攻め2は大駒
+      - 攻め3は中駒ペア
+    example: 金 → 飛 → 金
+    reason: 王玉の受けを橋渡しに使い、ペアの片方を3つ目の強い攻めとして残す
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py
+
+  - id: ATT-004
+    status: confirmed
+    title: 伏せる前に攻め3枚の計画を作る
+    classification: whole_route_planning
+    priority: critical
+    conditions:
+      - 伏せ駒と攻め駒を同時に選ぶ局面
+    required: 現在の一手だけでなく、攻め1・攻め2・攻め3と最後の待ちを先に計画する
+    forbidden:
+      - その時点で点数の低い駒を機械的に伏せる
+      - 3つ目に予定した駒を途中で伏せる
+    reason: 攻め順を先に決めないと、角などの決定打や王玉の受け幅を自分で失う
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_planning_module.py
+        - tests/test_branched_attack_plan.py
+
+  - id: ATT-005
+    status: confirmed
+    title: ししより、しと別駒を残す
+    classification: block_selection
+    priority: high
+    conditions:
+      - 伏せ候補がしと別の駒
+      - 伏せ後の残り2枚が、ししまたはしと別駒になる
+      - 確定上がり計画が別の待ちを要求していない
+    required: し以外の駒を伏せ、しと別駒の待ちを優先する
+    reason: しは受けに使え、別駒は上がり駒や差し込みの選択肢になる
+    regression:
+      state: partial
+      note: ブロック評価へ反映済み。代表局面の固定テストが必要
+
+  - id: ATT-006
+    status: confirmed
+    title: 同じ中駒4枚では余る1枚を伏せる
+    classification: four_middle_block
+    priority: high
+    conditions:
+      - 馬・銀・金のいずれかを4枚持つ
+      - その駒を3回攻める計画
+    required: 4枚のうち1枚を伏せ駒にする
+    forbidden:
+      - 点数の高い別駒を伏せ、4枚目の中駒を手元に余らせる
+    reason: 攻めに使えるのは通常3枚であり、余る4枚目を伏せた方が最後の上がり点を残せる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_remaining_silver_pair_continues_three_silver_attack
+
+  - id: ATT-007
+    status: confirmed
+    title: 公開された4枚目の中駒は3つ目まで残す
+    classification: fourth_piece_finish
+    priority: high
+    conditions:
+      - 味方が同種を出し切り、自分の駒が公開情報上の4枚目
+      - 自分の攻め1枚目または2枚目
+    required: 4枚目を原則として攻め3まで温存する
+    forbidden:
+      - かかりごたえとして攻め1に使う
+    reason: 4枚目である情報はすでに伝わっており、敵がパスできない3つ目に使う方が強い
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_fourth_kyosha_is_reserved_after_receiving_gold
+        - tests/test_attack_plan_templates.py::test_fourth_middle_template_reserves_the_piece_for_attack_three
+
+  - id: ATT-008
+    status: confirmed
+    title: 多い中駒の連打を少ないペアより優先する
+    classification: multiplicity
+    priority: high
+    conditions:
+      - 3枚以上ある中駒と、2枚の別中駒がある
+      - 特別な確定上がり計画がない
+    required: 3枚以上ある中駒を先に連打候補にする
+    example: 銀3枚と馬2枚なら銀を優先する
+    reason: 占有率が高く、3回の攻めを一貫して作りやすい
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_remaining_silver_pair_continues_three_silver_attack
+
+  - id: ATT-009
+    status: confirmed
+    title: 親の3し・大駒ばらばら2枚・王1枚
+    classification: dealer_fixed_sequence
+    priority: high
+    conditions:
+      - 自分が親
+      - しが3枚
+      - 飛と角が各1枚
+      - 王または玉が1枚
+    required:
+      - 伏せ1はし
+      - 攻め1は飛
+      - 伏せ2はしを基本とする
+      - 攻め2は角
+      - 攻め3は局面で決める
+    forbidden:
+      - 銀などの受け駒を最初に伏せる
+      - 王玉を2つ目の伏せに使う
+    reason: 大駒を連続して王玉を切らせ、しと王玉の受け幅を残す
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_dealer_three_shi_two_single_bigs_and_royal_uses_hisha_then_kaku
+
+  - id: ATT-010
+    status: confirmed
+    title: 飛角のかかりごたえを目的にしない
+    classification: kakarigotae_scope
+    priority: high
+    conditions:
+      - 飛または角が味方の使用と重なっている
+    required: 通常の攻め計画、確定上がり、得点を優先して評価する
+    forbidden:
+      - 飛角であることだけを理由にかかりごたえを優先する
+    reason: 大駒は元から強く、味方への枚数合図より攻め順と上がり点の価値が大きい
+    regression:
+      state: partial
+      note: かかりごたえ判定から大駒を除外済み。専用回帰ケースは追加予定
+
+  - id: ATT-011
+    status: confirmed
+    title: 相手リーチには持っていなさそうな駒を出す
+    classification: anti_reach
+    priority: critical
+    conditions:
+      - 次の敵がリーチ
+      - 自分が3つ目の攻めを選ぶ
+      - 複数の合法な攻め駒がある
+    required: 公開情報と推定手駒から、敵の保有確率が最も低い駒を優先する
+    example: 敵が金を使っており飛の使用情報がない場合でも、全体在庫から飛の方が低確率なら飛を出す
+    forbidden:
+      - 駒の点数だけで攻めを決める
+    reason: 点数より先に、敵に受けられて上がられる確率を下げる必要がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_reach_avoidance_conditional_tsume_prefers_hisha_over_kin
+
+  - id: ATT-012
+    status: confirmed
+    title: 攻め1の占有率メッセージを守る
+    classification: first_attack_signal
+    priority: normal
+    conditions:
+      - 自分の攻め1を選ぶ
+      - 複数の構造候補がある
+    required: 単発駒より、ペア・3枚・4枚の駒や定石上の先頭駒を優先する
+    exceptions:
+      - だまし香
+      - だましし
+      - 確定上がりプラン
+    reason: 味方は最初の攻めから自分の占有率と継続可能性を推定する
+    regression:
+      state: partial
+      note: 攻め評価と代表攻めテンプレートに反映済み
+

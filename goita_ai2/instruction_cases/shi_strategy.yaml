@@ -1,0 +1,182 @@
+schema_version: 1
+category: shi_strategy
+cases:
+  - id: SHI-001
+    status: confirmed
+    title: 親の4しはしを伏せて3回し攻めする
+    classification: four_shi_mode
+    priority: high
+    conditions:
+      - 自分が親
+      - 初期手駒にしが4枚
+    required:
+      - 最初の伏せ駒はし
+      - 攻め1から攻め3までしを基本とする
+    reason: 3回の攻めに必要なしは3枚で足り、伏せたしで4しを示せる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py::test_four_shi_template_generates_three_consecutive_shi_attacks
+
+  - id: SHI-002
+    status: confirmed
+    title: 4しの味方賛同はし受けしで返す
+    classification: shi_approval
+    priority: high
+    conditions:
+      - 味方がし攻めを開始
+      - 自分がしを4枚持つ、または明確にし攻めへ賛同できる
+      - 味方のしをしで受けられる
+    required: しで受けて、しを攻め返す
+    forbidden:
+      - しで受けた後に単発の馬・香・金を出す
+    reason: 4しを持ち、味方のし攻めに賛成であることを明確に伝える
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_four_shi_ally_approval_returns_shi_over_middle_pair_plan
+
+  - id: SHI-003
+    status: confirmed
+    title: 一度し攻め賛同を伝えたら同じ合図を繰り返さない
+    classification: signal_saturation
+    priority: high
+    conditions:
+      - すでに味方のしをしで受け、しを攻め返している
+      - 再び味方からしが出た
+    required: 原則としてパスし、残りのしを温存する
+    exceptions:
+      - 受ければ確定上がり
+      - 敵の即上がりを止める必要がある
+    reason: 4しと賛同の情報は一度で伝わっており、再度しを消費する必要がない
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py
+
+  - id: SHI-004
+    status: confirmed
+    title: 敵の1枚目のしは弱い手でも2し以上なら受ける
+    classification: enemy_first_shi
+    priority: high
+    conditions:
+      - 敵の攻め1がし
+      - 自分の手駒ランクがD以下
+      - しを2枚以上持つ
+    required: しで受ける
+    forbidden:
+      - 弱い手という理由だけでパスする
+    reason: 2し以上なら敵のし攻めに対応でき、受け後の攻めと合図を作れる
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py
+
+  - id: SHI-005
+    status: confirmed
+    title: しを持たない味方はし攻め中止を迅速に伝える
+    classification: stop_shi_signal
+    priority: critical
+    conditions:
+      - 味方がし攻め中
+      - 自分のしが0枚
+      - 敵が出した中駒を同種で受けられる
+      - 受け後にし以外の攻めがある
+    required: 中駒を受け、し以外を攻めて味方へ中止を伝える
+    forbidden:
+      - 手駒ランクを理由にパスする
+      - 味方がし攻めを継続できると誤認する行動
+    reason: 味方が3しなら敵方に7し、4しでも敵方に6しあり、逆し攻めが大きな脅威になる
+    regression:
+      state: pending
+      note: 指摘棋譜を受け後探索の固定ケースとして追加する
+
+  - id: SHI-006
+    status: confirmed
+    title: 多数しの賛同後は別の受けでもし圧力を継続する
+    classification: continue_shi_pressure
+    priority: high
+    conditions:
+      - 味方のし攻めにし受けしで賛同済み
+      - 敵がしを受けて別の中駒を攻めた
+      - その中駒を受けられる
+      - 自分にしが残る
+    required: 中駒を受けた後、しを攻める枝を強く評価する
+    forbidden:
+      - 中駒を受けた後、単発中駒を優先してし圧力を止める
+    reason: 敵方の残りしは少なく、追加のしで敵方を必死にさせられる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_enemy_team_low_shi_pressure_overrides_middle_pair_sequence
+
+  - id: SHI-007
+    status: confirmed
+    title: 差し込みは原則としてしで行う
+    classification: shi_insertion
+    priority: high
+    conditions:
+      - 味方がし攻めを過去に拒否された
+      - 敵のし在庫が少ないと推定できる
+      - 自分が攻め3でしを出せる
+    required: 味方への再提案と敵への圧力を兼ねて、しの差し込みを候補にする
+    forbidden:
+      - 他の駒で同じ差し込み効果があると一般化する
+    reason: しは王玉で受けられず、残数推定と味方の受け直しを同時に利用できる
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_third_attack_inserts_shi_for_inferred_ally_finish
+
+  - id: SHI-008
+    status: confirmed
+    title: 2枚目の香を出すために1枚だけのしを伏せない
+    classification: preserve_single_shi
+    priority: high
+    conditions:
+      - 自分のしが1枚
+      - 香を2枚以上持ち、2つ目の攻めに香を予定
+      - 低い中駒を伏せる選択肢がある
+    required: 低い中駒を伏せ、しを受け駒として残す
+    forbidden:
+      - 2つ目の伏せでしを消費する
+    reason: 敵からし攻めが来たとき、しで受けて香を出し、王玉上がりへつなげられる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_second_kyosha_keeps_single_shi_and_blocks_low_middle
+
+  - id: SHI-009
+    status: confirmed
+    title: 大駒受け後の3し・4しは単発駒よりしを出す
+    classification: shi_first_after_receive
+    priority: high
+    conditions:
+      - 大駒を受けた直後
+      - しが3枚以上残る
+      - 他候補が単発の香・馬・銀・金
+    required: しを第一候補にする
+    reason: 連打と占有率のあるし攻めの方が、単発駒より自然で強い
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_four_shi_is_preferred_after_receiving_big_piece
+        - tests/test_attack_strategy_module.py::test_three_shi_is_preferred_over_singletons_after_receiving_big_piece
+
+  - id: SHI-010
+    status: confirmed
+    title: 敵のしを枯らした後は味方の中駒を受けてしを出せる
+    classification: shi_exhaustion
+    priority: high
+    conditions:
+      - 敵が伏せた駒の多くがしと推定される
+      - さらに敵が公開でしを受けに使った
+      - 敵に4し配牌の可能性が低い
+      - 味方の中駒を受けられる
+    required: 敵の残りし範囲を更新し、味方の中駒を受けてしを出す枝を許容する
+    reason: 敵がしをほぼ使い切ったなら、し攻めの受け手が残らず圧力が高い
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py
+

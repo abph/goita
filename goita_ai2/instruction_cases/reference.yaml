@@ -1,0 +1,52 @@
+schema_version: 1
+category: reference
+cases:
+  - id: REF-001
+    status: reference
+    title: 味方の香を受けて敵の王玉を切らせるか
+    classification: uncertain_team_receive
+    priority: normal
+    situation: 味方が3香の可能性を持ち、自分も香を受けて強い大駒を出せる
+    candidate_a: パスして味方の3香上がりを残す
+    candidate_b: 香を受けて大駒を出し、敵の王玉を使わせる
+    current_view: 両方に合理性があり、味方の香残数と敵の受け幅の確率比較が必要
+    reason: 実例では受けが正解だったが、同型すべてへ一般化しない
+
+  - id: REF-002
+    status: reference
+    title: 3つ目の攻めは2枚持ちとは限らない
+    classification: third_attack_inference
+    priority: normal
+    situation: 他家の3つ目の攻め駒から残り手駒を推定する
+    required: 3つ目の駒をペア保有の証拠として強く扱いすぎない
+    reason: 3つ目は残り形と敵の受けに合わせて選ばれ、単発駒であることも多い
+    next_step: 棋譜データから3つ目の攻めと初期枚数の条件付き頻度を計測する
+
+  - id: REF-003
+    status: reference
+    title: 期待値を使った高得点リスク選択
+    classification: expected_value
+    priority: normal
+    situation: 確定した低得点上がりと、不確実な高得点上がりを比較する
+    current_view: 導入は保留
+    reason: 勝率、最低保証点、チーム総得点の重みを決めないと、AIの性格が大きく変わる
+    do_not_apply: 確定上がり高得点探索の外側で、未調整の期待値を使わない
+
+  - id: REF-004
+    status: reference
+    title: かかりごたえのない味方香を3つ目に使う判断
+    classification: unsupported_kyosha_finish
+    priority: normal
+    situation: 味方が香攻めをしたが、相方のかかりごたえが観測されていない
+    question: 3つ目にも香を出すべきか、別の待ちを作るべきか
+    current_view: 他家の香在庫、王玉使用、残り2枚の推定に依存するため個別検証が必要
+
+  - id: REF-005
+    status: reference
+    title: 味方の攻めを受けるかパスするかの確率比較
+    classification: partner_route_probability
+    priority: high
+    situation: 自分が受ければ強い攻めを引き継げるが、パスすれば味方が上がる可能性もある
+    required: 味方の残り攻め、敵の受け、両ルートの最低保証点を比較する
+    current_view: 単純な「味方はパス」「強いなら受ける」だけでは足りず、分岐評価対象とする
+

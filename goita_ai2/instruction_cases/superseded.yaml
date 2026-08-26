@@ -1,0 +1,63 @@
+schema_version: 1
+category: superseded
+cases:
+  - id: SUP-001
+    status: superseded
+    title: 味方の強い駒なら広く受けてよい
+    old_rule: 味方の馬や飛を受けて自分がリーチできるなら受ける
+    problem: 3つ目が弱く、味方の連打を切ってリーチだけを作る局面があった
+    replaced_by:
+      - REC-001
+      - REC-002
+
+  - id: SUP-002
+    status: superseded
+    title: 4枚目の中駒でかかりごたえをする
+    old_rule: 味方が使った中駒と同種なら、4枚目でも早く出してかかりごたえを示す
+    problem: 4枚目の情報はすでに明らかで、敵がパスできる1枚目に使う価値が低い
+    replaced_by:
+      - ATT-007
+      - KYO-010
+
+  - id: SUP-003
+    status: superseded
+    title: 飛角でもかかりごたえを優先する
+    old_rule: 味方の大駒と同種ならかかりごたえとして高評価する
+    problem: 大駒は情報伝達より攻め順と上がり点を優先すべき
+    replaced_by:
+      - ATT-010
+
+  - id: SUP-004
+    status: superseded
+    title: 王玉でしを受ける分岐
+    old_rule: 王玉を万能受けとしてしにも使える前提で確定上がりを判定する
+    problem: 王玉はしを受けられず、ルール上不正な勝ちを証明していた
+    replaced_by:
+      - END-010
+
+  - id: SUP-005
+    status: superseded
+    title: ランクD以下なら受け後を見ずにパスする
+    old_rule: 弱い手駒ランクではパスを規則で即決する
+    problem: 受け後にし攻め合図や確定上がりがある局面を見落とした
+    replaced_by:
+      - REC-008
+      - REC-009
+
+  - id: SUP-006
+    status: superseded
+    title: し攻め賛同を何度もし受けで示す
+    old_rule: 味方のしが来るたび、しで受けてしを返す
+    problem: 一度示した4しと賛同の情報を繰り返すため、必要なしを失う
+    replaced_by:
+      - SHI-003
+
+  - id: SUP-007
+    status: superseded
+    title: 現在の受け駒だけで受けとパスを評価する
+    old_rule: 受け駒の価値、手駒ランク、攻めの回数だけで判断する
+    problem: 受けた直後の攻めや、パス後の敵の3つ目を見ていなかった
+    replaced_by:
+      - REC-008
+      - REC-010
+

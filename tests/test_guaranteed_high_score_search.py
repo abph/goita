@@ -11,6 +11,7 @@ from typing import Dict, Tuple
 from goita_ai2.current_ai.endgame import ForcedWinResult, ForcedWinStatus
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
+from goita_ai2.instruction_case_audit import load_cases, reconstruct_case
 
 Action = Tuple[str, str | None, str | None]
 
@@ -161,8 +162,33 @@ def test_receive_routes_compare_minimum_expected_then_maximum_score() -> None:
     assert chosen == ("receive", "8", None)
 
 
+def test_kifu008_shi_or_kyosha_block_both_preserve_silver_thirty_points() -> None:
+    case = next(case for case in load_cases() if case["id"] == "KIFU-008")
+    agent = RuleBasedAgent(name="kifu-008-score-comparison")
+    agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+    state = reconstruct_case(case, agent)
+
+    shi_block = ("attack_after_block", "1", "5")
+    kyosha_block = ("attack_after_block", "2", "5")
+    silver_block = ("attack_after_block", "4", "5")
+
+    shi_result = agent._forced_win_result_after_attack_action(state, "A", shi_block)
+    kyosha_result = agent._forced_win_result_after_attack_action(state, "A", kyosha_block)
+    silver_result = agent._forced_win_result_after_attack_action(state, "A", silver_block)
+
+    assert shi_result.status == ForcedWinStatus.PROVEN
+    assert kyosha_result.status == ForcedWinStatus.PROVEN
+    assert shi_result.minimum_score == 30.0
+    assert kyosha_result.minimum_score == 30.0
+    assert silver_result.minimum_score == 20.0
+
+    chosen = agent.select_action(state, "A", state.legal_actions("A"))
+    assert chosen in (shi_block, kyosha_block)
+
+
 if __name__ == "__main__":
     test_proven_high_score_receive_outranks_first_attack_pass_policy()
     test_proven_route_continues_with_a_publicly_unreceivable_attack()
     test_receive_routes_compare_minimum_expected_then_maximum_score()
+    test_kifu008_shi_or_kyosha_block_both_preserve_silver_thirty_points()
     print("GUARANTEED_HIGH_SCORE_SEARCH_TEST_OK")

@@ -1,0 +1,192 @@
+schema_version: 1
+category: receive
+cases:
+  - id: REC-001
+    status: confirmed
+    title: 味方の攻めは大きな理由がなければ受けない
+    classification: team_coordination
+    priority: high
+    conditions:
+      - 場の攻め駒を出したのが味方
+      - 受けても攻め筋が明確には強くならない
+    required: パスを基本候補にする
+    exceptions:
+      - 3香など、受けることで確定級の連打になる
+      - 3つ目の攻めが強い
+      - 王または玉を1枚持ち、受け幅と上がり筋を維持できる
+      - 味方が上がるために受けが必要
+    forbidden:
+      - リーチを作ることだけを目的に味方の駒を受ける
+      - 受けた後が単発の弱い中駒になる受け
+    reason: 味方の攻めを切ると、本来の連打や上がり筋を壊すことがある
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_ally_big_pair_receive_waits_without_strong_third_attack_or_royal
+
+  - id: REC-002
+    status: confirmed
+    title: 味方の大駒ペアを受ける追加条件
+    classification: team_coordination
+    priority: high
+    conditions:
+      - 味方が馬・角・飛などの強い連打をしている
+      - 自分が同じ駒で受けられる
+    required: 受けた後の3つ目の攻めまで比較する
+    preferred:
+      - 3つ目の攻めも強いなら受ける
+      - 王または玉を1枚持つなら受けを許容する
+    forbidden:
+      - 2つ目の攻めまでしか見ずに受けてリーチだけを作る
+    reason: 味方の連打を残した方が強い場合と、自分が引き継いだ方が強い場合を分ける必要がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_ally_big_pair_receive_is_allowed_with_one_royal
+        - tests/test_receive_strategy_module.py::test_ally_big_pair_receive_is_allowed_when_third_attack_stays_strong
+
+  - id: REC-003
+    status: confirmed
+    title: 味方の2つ目を受けて4枚目の中駒を3つ目に出す
+    classification: fourth_piece_finish
+    priority: high
+    conditions:
+      - 味方の2つ目の攻めを同種で受けられる
+      - 自分が公開情報上の4枚目の馬・銀・金を持つ
+      - 受けた後が自分の3つ目の攻めになる
+    required: 受けて、4枚目の中駒を3つ目の攻めに出す手を強く評価する
+    forbidden:
+      - 通常の味方攻めパス規則だけで終了する
+    reason: 敵方にパスの余地が少ない3つ目に4枚目を出すと、王玉受けを強制しやすい
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_receive_ally_second_attack_to_play_fourth_silver_third
+        - tests/test_receive_strategy_module.py::test_receive_ally_angle_to_play_fourth_horse_third_without_extra_pair
+
+  - id: REC-004
+    status: confirmed
+    title: 弱い手で親の中駒初手を受けてしを合図する
+    classification: weak_hand_signal
+    priority: high
+    conditions:
+      - 敵の親による1枚目の馬・銀・金
+      - 同種で受けられる
+      - 自分の受け幅が狭く手駒が弱い
+      - しを3枚以上持つ
+    required: 同種で受けた後、しを攻めて弱い手と多数のしを味方へ伝える
+    forbidden:
+      - 次の同種攻めを待つだけで、最初の受け機会を失う
+    reason: 次に別の駒を出されると動けなくなるため、最初の受けで意思表示する
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_weak_next_player_receives_dealer_silver_and_signals_with_shi
+
+  - id: REC-005
+    status: confirmed
+    title: 敵の2つ目を自動的に受けず3つ目まで比較する
+    classification: wait_for_third_attack
+    priority: high
+    conditions:
+      - 敵の2つ目の攻めを受けられる
+      - パスしても直ちに敵が上がるとは限らない
+    required: 受ける枝と、パスして敵の3つ目を待つ枝を比較する
+    preferred:
+      - 3つ目を受ければ高得点で上がれる場合は待つ
+      - 2つ目を受けないと守備範囲を失う場合は受ける
+    forbidden:
+      - 敵の2つ目という理由だけでほぼ常に受ける
+    reason: 3つ目を受けた方が上がり点や残り形が良くなる局面がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_full_receive_cover_waits_for_enemy_third_attack_and_fifty_points
+
+  - id: REC-006
+    status: confirmed
+    title: しがない終盤では欲張ってパスしない
+    classification: no_shi_safety
+    priority: critical
+    conditions:
+      - 自分の残り手駒にしがない
+      - 現在の攻めを受ければ決定打または安全な上がりに進める
+      - パス後に敵からしが出ると受けられない
+    required: 現在の攻めを受け、確定または安全な上がりを優先する
+    forbidden:
+      - より高い点を狙うためだけのパス
+    reason: し攻め一枚で上がり筋を失うため、得点上振れより確定性を優先する
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_no_shi_endgame_uses_royal_instead_of_passing_enemy_first_attack
+
+  - id: REC-007
+    status: confirmed
+    title: 同種受けを王玉受けより優先して比較する
+    classification: preserve_royal
+    priority: high
+    conditions:
+      - 同種駒と王玉の両方で受けられる
+      - 同種受け後にも有効な攻めがある
+    required: 同種受けを第一比較対象にし、王玉は受け幅と上がりのために残す
+    exceptions:
+      - 王玉受けによってのみ確定上がりまたは明確な高得点が成立する
+    forbidden:
+      - 攻め駒の評価だけを見て早い王玉受けを選ぶ
+    reason: 王玉は複数種類を受けられ、終盤の橋渡しと高得点上がりに価値がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_no_shi_endgame_uses_same_gold_and_preserves_gyoku
+
+  - id: REC-008
+    status: confirmed
+    title: 受けと次の攻めを一組として評価する
+    classification: joint_receive_attack
+    priority: critical
+    conditions:
+      - 受けるかパスするかを選ぶ局面
+    required: 全ての合法な受けについて、その直後の攻め候補まで生成して比較する
+    preferred:
+      - 受け後に味方への合図、リーチ、確定上がり、敵の上がり阻止がある枝
+    forbidden:
+      - 手駒ランクだけでパスを確定し、受け後の一手を見ない
+    reason: 受け自体の価値は、その後に何を攻められるかで大きく変わる
+    regression:
+      state: partial
+      note: 時間制限付き探索と受け後探索に接続済み。指導局面の追加テストが必要
+
+  - id: REC-009
+    status: confirmed
+    title: 弱い手のパス規則を探索より先に確定しない
+    classification: search_override
+    priority: critical
+    conditions:
+      - 手駒ランクがD以下
+      - 同種受けまたは王玉受けが合法
+    required: 最大5秒の受け探索で、パスと受け後攻めを比較する
+    forbidden:
+      - ランクD以下という条件だけでパスを返す
+    reason: 弱い手でも、合図や確定上がりにつながる受けが存在する
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py::test_weak_first_middle_attack_is_left_for_receive_search
+
+  - id: REC-010
+    status: confirmed
+    title: 相手の次の攻めまで読んで現在の受けを決める
+    classification: opponent_followup
+    priority: high
+    conditions:
+      - 敵の2つ目の攻めに対して受けとパスが合法
+      - パスすれば同じ敵に3つ目の攻めが回る可能性が高い
+    required: 敵の推定手駒から3つ目の攻め候補を生成し、その後の受けまで比較する
+    forbidden:
+      - 現在の駒を温存できるという理由だけでパスする
+    reason: 温存の価値は、次に出される駒を実際に受けられる場合にだけ成立する
+    regression:
+      state: partial
+      note: 分岐付き攻め計画と時間制限付き探索へ接続。代表棋譜テストは追加予定
+

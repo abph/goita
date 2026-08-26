@@ -267,7 +267,16 @@ class TrackingMixin:
 
             if player == self.me:
                 tr["my_past_attacks"].add(attack)
-                tr.setdefault("my_attack_history", []).append(attack)
+                my_attack_history = tr.setdefault("my_attack_history", [])
+                my_attack_history.append(attack)
+                # Normally select_action increments this before the public
+                # notification arrives. A restored game or kifu replay only
+                # receives public actions, so recover the same count from the
+                # authoritative attack history without double-counting live play.
+                tr["my_attack_count"] = max(
+                    int(tr.get("my_attack_count", 0)),
+                    len(my_attack_history),
+                )
                 tr["my_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = False
                 if attack == "1":

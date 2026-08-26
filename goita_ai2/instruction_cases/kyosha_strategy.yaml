@@ -1,0 +1,194 @@
+schema_version: 1
+category: kyosha_strategy
+cases:
+  - id: KYO-001
+    status: confirmed
+    title: 敵の1枚目の香は慎重に受ける
+    classification: enemy_first_kyosha
+    priority: high
+    conditions:
+      - 敵の攻め1が香
+      - 自分が最初に判断する位置
+    required:
+      - 香を持ち、手駒ランクB以上なら香で受ける
+      - それ以外は一度パスする
+    forbidden:
+      - 後ろの味方が香を持つ可能性だけで先に受ける
+    reason: 香は連打とだましの両方があり、味方の反応を見る価値が高い
+    regression:
+      state: covered
+      tests:
+        - tests/test_receive_strategy_module.py
+
+  - id: KYO-002
+    status: confirmed
+    title: 確定上がりは香の一度パスより優先する
+    classification: forced_win_override
+    priority: critical
+    conditions:
+      - 香への通常方針ならパス
+      - 現在受ければ確定上がりできる
+    required: パスせず、受けて確定上がりを進める
+    forbidden:
+      - 香の定型パスを確定上がりより優先する
+    reason: 一般的な香対応は、確定上がりを捨てる理由にならない
+    regression:
+      state: covered
+      tests:
+        - tests/test_endgame_module.py::test_high_score_tsume_outranks_kakarigotae
+
+  - id: KYO-003
+    status: confirmed
+    title: 2香・大駒1枚・王玉なし
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 大駒が1枚
+      - 香以外の中駒ペアなし
+      - 王玉なし
+    preferred:
+      - 攻め1は大駒
+      - 攻め2は香
+      - 攻め3は香
+    override: 有効なかかりごたえがあれば、そちらを先に比較する
+    reason: 大駒で受けを使わせ、香2枚を後続の圧力にする
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py::test_two_kyosha_single_big_becomes_big_kyosha_kyosha_template
+
+  - id: KYO-004
+    status: confirmed
+    title: 2香・大駒1枚・王玉1枚
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 大駒が1枚
+      - 香以外の中駒ペアなし
+      - 王または玉が1枚
+    preferred:
+      - 攻め1は香
+      - 攻め2は大駒
+      - 攻め3は香
+    override: 有効なかかりごたえがあれば、そちらを先に比較する
+    reason: 王玉を受けの橋渡しに使えるため、香を先に試して大駒を中継する
+    regression:
+      state: covered
+      tests:
+        - tests/test_two_kyosha_big_plan.py
+
+  - id: KYO-005
+    status: confirmed
+    title: 2香・中駒ペア・王玉なし
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 香以外の中駒ペアが1組
+      - 王玉なし
+    preferred:
+      - 攻め1は中駒ペア
+      - 攻め2は香
+      - 攻め3は香または中駒ペアを局面で選ぶ
+    reason: 中駒ペアを見せてから香を使い、最後は敵の受け残りに合わせる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py
+
+  - id: KYO-006
+    status: confirmed
+    title: 2香・中駒ペア・王玉1枚
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 香以外の中駒ペアが1組
+      - 王または玉が1枚
+    preferred:
+      - 攻め1は香
+      - 攻め2は中駒ペア
+      - 攻め3は香または中駒ペアを局面で選ぶ
+    reason: 王玉の受け幅を使って香を先に試し、ペアを中継にする
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_plan_templates.py::test_two_kyosha_middle_pair_with_royal_keeps_kyosha_then_pair
+
+  - id: KYO-007
+    status: confirmed
+    title: 2香・大駒ペア・王玉なし
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 同じ大駒が2枚
+      - 王玉なし
+    preferred:
+      - 攻め1は香
+      - 攻め2は大駒ペア
+      - 攻め3は香または大駒ペアを局面で選ぶ
+    reason: 香を先に試し、強い大駒ペアを中継と決定打に使う
+    regression:
+      state: covered
+      tests:
+        - tests/test_two_kyosha_big_plan.py
+
+  - id: KYO-008
+    status: confirmed
+    title: 2香・大駒ペア・王玉1枚
+    classification: fixed_sequence
+    priority: high
+    conditions:
+      - 香が2枚
+      - 同じ大駒が2枚
+      - 王または玉が1枚
+    preferred:
+      - 攻め1は大駒ペア
+      - 攻め2は香
+      - 攻め3は香または大駒ペアを局面で選ぶ
+    reason: 王玉を橋渡しにできるため、大駒から受けを使わせて香を残す
+    regression:
+      state: covered
+      tests:
+        - tests/test_two_kyosha_big_plan.py
+
+  - id: KYO-009
+    status: confirmed
+    title: 2金・2香は金から香を連打する
+    classification: fixed_sequence
+    priority: normal
+    conditions:
+      - 金が2枚
+      - 香が2枚
+    preferred:
+      - 攻め1は金
+      - 攻め2は香
+      - 攻め3は香
+    applies_with:
+      - 王玉なし
+      - 王または玉が1枚
+    reason: 金を中継にして香2枚を後半の圧力へ回す
+    regression:
+      state: partial
+      note: 特殊攻め順へ反映済み
+
+  - id: KYO-010
+    status: confirmed
+    title: 4枚目の香は3つ目の攻めに残す
+    classification: fourth_kyosha_finish
+    priority: high
+    conditions:
+      - 公開情報から自分の香が4枚目と分かる
+      - 味方へのかかりごたえ情報はすでに十分
+    required: 攻め1では温存し、攻め3の決定打として優先する
+    forbidden:
+      - 情報を伝える目的で攻め1に出す
+    reason: 敵がパスできる1枚目より、王玉受けを迫る3枚目の方が強い
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_fourth_kyosha_is_reserved_after_receiving_gold
+

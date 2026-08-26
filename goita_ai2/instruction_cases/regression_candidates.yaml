@@ -1,0 +1,383 @@
+schema_version: 1
+category: regression_candidates
+notation: "prefixの各行は [席, 伏せまたは受け, 攻め]。省略された席はパス。"
+cases:
+  - id: KIFU-001
+    status: confirmed
+    linked_policy: SHI-005
+    title: し0枚の味方が銀を受けてし攻め中止を伝える
+    dealer: A
+    hands:
+      A: 金角しし飛銀馬し
+      B: 銀しし銀し馬し王
+      C: 銀金馬馬飛金角香
+      D: 金玉し香し香香し
+    prefix:
+      - [A, 馬, し]
+      - [B, し, 銀]
+    actor: C
+    actual:
+      type: pass
+    expected:
+      required_type: receive
+      block: 銀
+      followup: し以外を攻める
+    forbidden:
+      - pass
+    reason: 自分がし0枚であることを味方へ早く伝え、逆し攻めを防ぐ
+    regression: pending
+
+  - id: KIFU-002
+    status: confirmed
+    linked_policy: ATT-001
+    title: 4しから単発馬ではなくしを出す
+    dealer: C
+    hands:
+      A: しししし香馬銀玉
+      B: 香金角馬金馬香王
+      C: しししし馬飛金角
+      D: しし銀銀金香飛銀
+    prefix:
+      - [C, し, 角]
+      - [B, 角, 香]
+      - [D, 香, 銀]
+      - [D, し, 銀]
+    actor: A
+    current_attack: 銀
+    actual:
+      type: receive_and_attack
+      block: 銀
+      attack: 馬
+    expected:
+      required_type: receive_and_attack
+      block: 銀
+      attack: し
+    reason: 1枚しかない馬より、4しの継続と占有率を優先する
+    regression: covered
+
+  - id: KIFU-003
+    status: confirmed
+    linked_policy: END-011
+    title: 銀を受ければ自分で確定上がりできる
+    dealer: C
+    hands:
+      A: 金しし角金馬香玉
+      B: 銀金し香馬し香銀
+      C: 香馬銀し金しし角
+      D: し銀飛馬し飛し王
+    prefix:
+      - [C, 馬, し]
+      - [D, し, 飛]
+      - [D, 馬, 飛]
+      - [A, 玉, 金]
+      - [A, 馬, 角]
+      - [D, 王, し]
+      - [A, し, 金]
+      - [B, 金, 銀]
+    actor: C
+    current_attack: 銀
+    actual:
+      type: pass
+    expected:
+      required_type: receive_and_attack
+      block: 銀
+      preferred_attacks: [金, 角]
+      route: 攻め2に金、攻め3に角
+    reason: パスするとDがしで上がるが、銀受けならCの確定上がりになる
+    regression: pending
+
+  - id: KIFU-004
+    status: confirmed
+    linked_policy: REC-003
+    title: 味方の金を受けて4枚目の銀を3つ目に出す
+    dealer: D
+    hands:
+      A: し銀銀銀香香し金
+      B: し金し馬玉し角馬
+      C: 角飛馬香金金馬し
+      D: 飛し銀しし香王し
+    prefix:
+      - [D, し, し]
+      - [A, し, 銀]
+      - [D, 銀, し]
+      - [A, し, 銀]
+      - [B, 玉, 馬]
+      - [B, し, 角]
+      - [C, 角, 金]
+      - [B, 金, 馬]
+      - [C, 馬, 金]
+    actor: A
+    current_attack: 金
+    actual:
+      type: pass
+    expected:
+      required_type: receive_and_attack
+      block: 金
+      attack: 銀
+    reason: 味方の2つ目を受け、公開情報上の4枚目の銀を3つ目に使う
+    regression: covered
+
+  - id: KIFU-005
+    status: confirmed
+    linked_policy: SHI-008
+    title: 2枚目の香の前に1枚だけのしを伏せない
+    dealer: D
+    hands:
+      A: 角馬王香し銀香香
+      B: 金馬飛銀し玉しし
+      C: し角銀しし馬馬金
+      D: 金しし香金銀し飛
+    prefix:
+      - [D, し, 金]
+      - [C, 金, 馬]
+      - [A, 馬, 香]
+    actor: A
+    actual:
+      type: attack_after_block
+      block: し
+      attack: 香
+    expected:
+      required_type: attack_after_block
+      block: 銀
+      attack: 香
+      protected: [し, 王]
+    reason: 敵のし攻めを受けて香を返せるよう、1枚だけのしを残す
+    regression: covered
+
+  - id: KIFU-006
+    status: confirmed
+    linked_policy: ATT-009
+    title: 親の大駒連打では銀と王を伏せない
+    dealer: C
+    hands:
+      A: しし香馬金金角飛
+      B: ししし香馬銀銀金
+      C: ししし香銀角飛王
+      D: 馬馬し金銀玉し香
+    prefix: []
+    actor: C
+    actual:
+      type: attack_after_block
+      block: 銀
+      attack: 飛
+    expected:
+      required_type: attack_after_block
+      block: し
+      attack: 飛
+      next_plan:
+        block: し
+        attack: 角
+      protected: [銀, 王]
+    reason: しを伏せ、大駒を飛から角へ連打し、銀と王の受け幅を残す
+    regression: covered
+
+  - id: KIFU-007
+    status: confirmed
+    linked_policy: END-002
+    title: 金を3つ目に出して王50点を残す
+    dealer: C
+    hands:
+      A: 馬香し飛し角銀飛
+      B: 銀し金銀馬香香し
+      C: 金金香馬金し王し
+      D: 玉馬銀ししし角し
+    prefix:
+      - [C, し, 金]
+      - [B, 金, 銀]
+      - [A, 銀, 飛]
+      - [A, し, 角]
+      - [D, 角, 銀]
+      - [D, 馬, し]
+      - [A, し, 飛]
+      - [D, 玉, し]
+      - [B, し, 香]
+      - [C, 香, 金]
+    actor: C
+    actual:
+      type: attack_after_block
+      block: 馬
+      attack: 王
+      final_score: 30
+    expected:
+      required_attack: 金
+      protected: [王]
+      target_final_score: 50
+    reason: 勝ちは確定しており、王を上がり駒に残す方が高得点
+    regression: covered
+
+  - id: KIFU-008
+    status: confirmed
+    linked_policy: END-003
+    title: 銀を伏せず30点上がりを残す
+    dealer: C
+    hands:
+      A: 玉金香し飛し王銀
+      B: 馬馬角香飛し金し
+      C: 馬し銀角しし金金
+      D: 銀し香馬銀しし香
+    prefix:
+      - [C, し, 金]
+      - [B, 金, 馬]
+      - [B, し, 馬]
+      - [C, 馬, 金]
+      - [C, し, 角]
+      - [B, 角, 飛]
+      - [A, 飛, 玉]
+      - [A, し, 王]
+    actor: A
+    actual:
+      type: attack_after_block
+      block: 銀
+      attack: 金
+      final_piece: 香
+      final_score: 20
+    expected:
+      allowed_blocks: [し, 香]
+      attack: 金
+      protected: [銀]
+      target_final_score: 30
+    reason: 金は誰にも受けられず、し・香のどちらを伏せても銀30点が確定するため、銀を最後に残す
+    regression: covered
+
+  - id: KIFU-009
+    status: confirmed
+    linked_policy: ATT-011
+    title: 相手リーチには金より飛を攻める
+    dealer: B
+    hands:
+      A: 角王角し金飛金し
+      B: 馬馬金銀馬飛し香
+      C: し玉香し金し銀銀
+      D: し香銀しし香馬し
+    prefix:
+      - [B, し, 馬]
+      - [B, 飛, 馬]
+      - [C, 玉, 銀]
+      - [B, 銀, 馬]
+      - [A, 王, 角]
+      - [A, し, 角]
+    actor: A
+    actual:
+      type: attack_after_block
+      block: 飛
+      attack: 金
+    expected:
+      required_attack: 飛
+      block: 金を優先して比較
+    reason: リーチ中のBは、公開情報上、金より飛を持つ可能性が低い
+    regression: covered
+
+  - id: KIFU-010
+    status: confirmed
+    linked_policy: REC-007
+    title: 金を玉で受けず同じ金で受ける
+    dealer: B
+    hands:
+      A: 香ししし銀馬し王
+      B: 馬し香銀角し金玉
+      C: 金飛金馬銀香馬し
+      D: し銀金し角香し飛
+    prefix:
+      - [B, し, 角]
+      - [B, し, 銀]
+      - [C, 銀, 金]
+    actor: B
+    current_attack: 金
+    actual:
+      type: receive_and_attack
+      block: 玉
+      attack: 香
+    expected:
+      required_block: 金
+      protected: [玉]
+      followup: 合法な攻めを探索
+    reason: 金受けが可能であり、玉を終盤の受けと上がりへ残せる
+    regression: covered
+
+  - id: KIFU-011
+    status: confirmed
+    linked_policy: SHI-007
+    title: 3つ目の攻めにしを差し込む
+    dealer: D
+    hands:
+      A: 馬角香金飛銀馬し
+      B: 金銀馬金し香し玉
+      C: し香し飛しし銀金
+      D: 王香角し銀馬しし
+    prefix:
+      - [D, 馬, し]
+      - [A, し, 馬]
+      - [B, 馬, 金]
+      - [A, 金, 馬]
+      - [B, 玉, 金]
+      - [C, 金, 飛]
+      - [C, し, 香]
+      - [D, 香, し]
+      - [B, し, 香]
+      - [A, 香, 飛]
+    actor: D
+    current_attack: 飛
+    actual:
+      type: receive_and_attack
+      block: 王
+      attack: 角
+    expected:
+      required_block: 王
+      attack: し
+    reason: Aの残りしを利用でき、敵方のし在庫が少ない3つ目の差し込みになる
+    regression: covered
+
+  - id: KIFU-012
+    status: confirmed
+    linked_policy: KYO-010
+    title: 4枚目の香を攻め1に使わない
+    dealer: B
+    hands:
+      A: 馬香角飛金しし銀
+      B: し金玉し銀馬しし
+      C: 香角しし飛銀香馬
+      D: し王香金銀金し馬
+    prefix:
+      - [B, し, し]
+      - [C, し, 香]
+      - [C, 馬, 香]
+      - [D, 香, 金]
+    actor: A
+    current_attack: 金
+    actual:
+      type: receive_and_attack
+      block: 金
+      attack: 香
+    expected:
+      required_block: 金
+      forbidden_attack: 香
+      protected: [香]
+      use_at: 攻め3
+    reason: 4枚目の香であることは明らかで、敵がパスしにくい3つ目に残す
+    regression: covered
+
+  - id: KIFU-013
+    status: confirmed
+    linked_policy: REC-002
+    title: 味方の馬を受けてリーチだけを作らない
+    dealer: A
+    hands:
+      A: し玉香馬馬し金し
+      B: 角香銀ししし角金
+      C: し馬香飛銀し飛金
+      D: し馬銀王香銀し金
+    prefix:
+      - [A, し, 馬]
+    actor: C
+    current_attack: 馬
+    actual:
+      type: receive_and_attack
+      block: 馬
+      attack: 飛
+    expected:
+      preferred_type: pass
+      receive_only_if:
+        - 3つ目の攻めも強い
+        - 王または玉を1枚持つ
+    reason: 現状は飛を2回出してリーチするだけで、味方の馬連打を切る価値が不足
+    regression: covered

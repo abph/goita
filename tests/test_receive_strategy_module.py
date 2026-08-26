@@ -193,9 +193,9 @@ def test_receive_ally_second_attack_to_play_fourth_silver_third() -> None:
 
     a_agent = agents["A"]
     tracker = a_agent._track[id(state)]
-    tracker["my_attack_count"] = 2
     receive = a_agent.select_action(state, "A", state.legal_actions("A"))
 
+    assert tracker["my_attack_count"] == 2
     assert tracker["public_seen_counts"]["4"] == 3
     assert state.hands["A"].count("4") == 1
     assert receive == ("receive", "5", None)

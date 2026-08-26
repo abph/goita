@@ -1,0 +1,41 @@
+schema_version: 1
+description: "これまでの棋譜指導から整理した、ごいたAIの判断基準"
+runtime_connected: false
+summary:
+  confirmed_policies: 61
+  regression_candidates: 13
+  reference_cases: 5
+  superseded_cases: 7
+  total_records: 86
+status_order:
+  - confirmed
+  - reference
+  - superseded
+categories:
+  - file: receive.yaml
+    category: receive
+    label: 受けとパス
+  - file: attack.yaml
+    category: attack
+    label: 攻め順と伏せ駒
+  - file: shi_strategy.yaml
+    category: shi_strategy
+    label: し攻めと合図
+  - file: kyosha_strategy.yaml
+    category: kyosha_strategy
+    label: 香の扱い
+  - file: endgame.yaml
+    category: endgame
+    label: 確定上がりと得点
+  - file: hand_inference.yaml
+    category: hand_inference
+    label: 他家の手駒推定
+  - file: regression_candidates.yaml
+    category: regression_candidates
+    label: 棋譜付き回帰候補
+  - file: reference.yaml
+    category: reference
+    label: 保留中の事例
+  - file: superseded.yaml
+    category: superseded
+    label: 訂正済みの旧方針
