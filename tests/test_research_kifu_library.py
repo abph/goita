@@ -354,7 +354,12 @@ def test_settings_popup_contains_the_research_library_workflow():
         assert f'"{tag}"' in HTML
     assert 'class="research-kifu-back-button"' in HTML
     assert '>←</button>' in HTML
-    assert 'class="research-kifu-play-button"' in HTML
+    assert 'class="research-kifu-play-actions"' in HTML
+    assert 'id="researchKifuReplayButton"' in HTML
+    assert ">棋譜再生</button>" in HTML
+    assert "toggleResearchKifuReplay()" in HTML
+    assert "researchKifuReplayFrames(payload)" in HTML
+    assert 'id="researchKifuApplyButton"' in HTML
     assert 'id="researchKifuEditButton"' in HTML
     assert 'id="researchKifuDownloadButton"' in HTML
     assert ">棋譜DL</button>" in HTML
@@ -370,7 +375,7 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert ">編集</button>" in HTML
     assert "deleteSelectedResearchKifu()" in HTML
     assert 'id="researchKifuBoard"' in HTML
-    assert "buildResearchKifuFinalState(payload)" in HTML
+    assert "buildResearchKifuFinalState(payload, rows)" in HTML
     assert "renderResearchKifuBoard(payload)" in HTML
     assert "research-kifu-move-number" in HTML
     assert "薄い駒：伏せた駒・残った駒" not in HTML

@@ -2862,14 +2862,27 @@
       background: #fffdf5;
       color: #69411e;
     }
-    .research-kifu-play-button {
-      width: 100%;
+    .research-kifu-play-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 7px;
       margin-top: 2px;
+    }
+    .research-kifu-play-actions button {
+      min-width: 0;
       padding: 7px 10px;
       border: 1px solid #9d754e;
       background: #fffdf5;
       color: #69411e;
       font-weight: 800;
+    }
+    .research-kifu-play-actions button:disabled {
+      cursor: default;
+      opacity: 0.48;
+    }
+    .research-kifu-replay-button.is-playing {
+      border-color: #a94132;
+      color: #9a2c20;
     }
     .research-kifu-board-wrap {
       width: fit-content;
@@ -2921,6 +2934,27 @@
     .research-kifu-piece.seat-B { transform: rotate(-90deg); }
     .research-kifu-piece.seat-C { transform: rotate(180deg); }
     .research-kifu-piece.seat-D { transform: rotate(90deg); }
+    .research-kifu-piece.is-replay-new {
+      --replay-end-opacity: 1;
+      animation: research-kifu-piece-arrive 360ms ease-out both;
+    }
+    .research-kifu-piece.is-replay-new.is-face-down { --replay-end-opacity: 0.42; }
+    .research-kifu-piece.is-replay-new.seat-A { --replay-x: 0%; --replay-y: 70%; }
+    .research-kifu-piece.is-replay-new.seat-B { --replay-x: 70%; --replay-y: 0%; }
+    .research-kifu-piece.is-replay-new.seat-C { --replay-x: 0%; --replay-y: -70%; }
+    .research-kifu-piece.is-replay-new.seat-D { --replay-x: -70%; --replay-y: 0%; }
+    @keyframes research-kifu-piece-arrive {
+      from {
+        opacity: 0.2;
+        translate: var(--replay-x) var(--replay-y);
+        scale: 0.72;
+      }
+      to {
+        opacity: var(--replay-end-opacity);
+        translate: 0 0;
+        scale: 1;
+      }
+    }
     .research-kifu-piece.is-hidden,
     .research-kifu-piece.is-face-down {
       opacity: 0.42;
@@ -5046,7 +5080,10 @@
           <div class="research-kifu-board-wrap">
             <div id="researchKifuBoard" class="research-kifu-board" aria-label="棋譜の最終盤面"></div>
           </div>
-          <button class="research-kifu-play-button" type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
+          <div class="research-kifu-play-actions">
+            <button id="researchKifuReplayButton" class="research-kifu-replay-button" type="button" onclick="toggleResearchKifuReplay()">棋譜再生</button>
+            <button id="researchKifuApplyButton" type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
+          </div>
           <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </div>
@@ -5889,6 +5926,8 @@ let settingTargetGid = null;
 let lastSettingsTab = "personal";
 let researchKifuRecords = [];
 let selectedResearchKifu = null;
+let researchKifuReplayToken = 0;
+let researchKifuReplayRunning = false;
 const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
     "王玉", "3し", "4し", "2香", "3香", "4香", "2中駒", "3中駒", "4中駒",
     "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
@@ -7494,6 +7533,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
 }
 
 function closeSettings() {
+    stopResearchKifuReplay({restoreFinal: false, clearStatus: true});
     document.getElementById("settingsModal").style.display = "none";
 }
 
@@ -7942,7 +7982,7 @@ function removeResearchKifuPiece(pieces, target) {
     }
 }
 
-function buildResearchKifuFinalState(payload) {
+function buildResearchKifuFinalState(payload, rowsOverride = null) {
     const board = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [seat, {receive: [], attack: []}]));
     const remaining = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
         seat,
@@ -7952,7 +7992,10 @@ function buildResearchKifuFinalState(payload) {
     const attackNumbers = new Map();
     const receiveCounts = {A: 0, B: 0, C: 0, D: 0};
     const attackCounts = {A: 0, B: 0, C: 0, D: 0};
-    const rows = Array.isArray(payload.game) ? payload.game : [];
+    let lastAttackSeat = null;
+    const rows = Array.isArray(rowsOverride)
+        ? rowsOverride
+        : (Array.isArray(payload.game) ? payload.game : []);
 
     rows.forEach((row, rowIndex) => {
         const seat = RESEARCH_KIFU_SEATS[Number(row?.[0])];
@@ -7961,8 +8004,7 @@ function buildResearchKifuFinalState(payload) {
         const attack = String(row?.[2] || "");
         if (receive && receive !== "パス") {
             const receiveIndex = receiveCounts[seat];
-            const previousSeat = RESEARCH_KIFU_SEATS[Number(rows[rowIndex - 1]?.[0])];
-            if (rowIndex === 0 || previousSeat === seat) {
+            if (lastAttackSeat === null || lastAttackSeat === seat) {
                 faceDownReceives.add(`${seat}:${receiveIndex}`);
             }
             board[seat].receive.push(receive);
@@ -7975,6 +8017,7 @@ function buildResearchKifuFinalState(payload) {
             attackNumbers.set(`${seat}:${attackIndex}`, rowIndex + 1);
             attackCounts[seat] += 1;
             removeResearchKifuPiece(remaining[seat], attack);
+            lastAttackSeat = seat;
         }
     });
 
@@ -7994,20 +8037,24 @@ function createResearchKifuPiece(piece, seat, options = {}) {
     if (options.hidden) element.classList.add("is-hidden");
     if (options.faceDown) element.classList.add("is-face-down");
     if (options.finalAttack) element.classList.add("is-final-attack");
+    if (options.replayNew) element.classList.add("is-replay-new");
     const value = document.createElement("span");
     value.textContent = piece;
     element.appendChild(value);
     return element;
 }
 
-function renderResearchKifuBoard(payload) {
+function renderResearchKifuBoard(payload, options = {}) {
     const container = document.getElementById("researchKifuBoard");
     if (!container) return;
     container.replaceChildren();
-    const finalState = buildResearchKifuFinalState(payload);
+    const rows = Array.isArray(options.rows) ? options.rows : null;
+    const finalState = buildResearchKifuFinalState(payload, rows);
     const slotMap = new Map();
     const hiddenMap = new Map();
-    const winner = String(payload.winner || "");
+    const isFinished = options.finished !== false;
+    const winner = isFinished ? String(payload.winner || "") : "";
+    const latestAction = options.latestAction || null;
 
     RESEARCH_KIFU_SEATS.forEach(seat => {
         ["receive", "attack"].forEach(kind => {
@@ -8059,9 +8106,14 @@ function renderResearchKifuBoard(payload) {
                     && winner === slot.seat
                     && slot.index === finalState.board[slot.seat].attack.length - 1;
                 if (piece) {
+                    const isReplayNew = latestAction
+                        && latestAction.seat === slot.seat
+                        && latestAction.kind === slot.kind
+                        && latestAction.index === slot.index;
                     cell.appendChild(createResearchKifuPiece(piece, slot.seat, {
                         faceDown: slot.kind === "receive" && finalState.faceDownReceives.has(`${slot.seat}:${slot.index}`),
                         finalAttack: isFinalAttack,
+                        replayNew: isReplayNew,
                     }));
                     if (slot.kind === "attack") {
                         const moveNumber = finalState.attackNumbers.get(`${slot.seat}:${slot.index}`);
@@ -8085,7 +8137,9 @@ function renderResearchKifuBoard(payload) {
     score.className = "research-kifu-center-score";
     const round = document.createElement("strong");
     round.textContent = researchKifuBoardCenterLabel(payload);
-    const scoreAfter = payload.score_after || {};
+    const scoreAfter = isFinished
+        ? (payload.score_after || {})
+        : (payload.score_before || payload.score_after || {});
     const ac = document.createElement("span");
     ac.textContent = `AC ${Number(scoreAfter.AC || 0)}`;
     const bd = document.createElement("span");
@@ -8094,7 +8148,135 @@ function renderResearchKifuBoard(payload) {
     container.appendChild(score);
 }
 
+function researchKifuReplayFrames(payload) {
+    const sourceRows = Array.isArray(payload.moves) && payload.moves.length
+        ? payload.moves
+        : (Array.isArray(payload.game) ? payload.game : []);
+    const completedRows = [];
+    const frames = [];
+    const counts = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
+        seat,
+        {receive: 0, attack: 0},
+    ]));
+
+    sourceRows.forEach(sourceRow => {
+        if (!Array.isArray(sourceRow) || sourceRow.length < 3) return;
+        const row = [String(sourceRow[0]), String(sourceRow[1] || ""), String(sourceRow[2] || "")];
+        const seat = RESEARCH_KIFU_SEATS[Number(row[0])];
+        if (!seat) return;
+        const receive = row[1];
+        const attack = row[2];
+
+        if (receive === "パス") {
+            completedRows.push(row);
+            frames.push({
+                rows: completedRows.map(item => [...item]),
+                latestAction: null,
+                label: researchKifuMoveLabel(row),
+                delay: 520,
+            });
+            return;
+        }
+
+        let rowIndex = -1;
+        if (receive) {
+            rowIndex = completedRows.length;
+            completedRows.push([row[0], receive, ""]);
+            const receiveIndex = counts[seat].receive;
+            counts[seat].receive += 1;
+            frames.push({
+                rows: completedRows.map(item => [...item]),
+                latestAction: {seat, kind: "receive", index: receiveIndex},
+                label: researchKifuMoveLabel([row[0], receive, ""]),
+                delay: 620,
+            });
+        }
+
+        if (attack) {
+            if (rowIndex >= 0) {
+                completedRows[rowIndex] = [row[0], receive, attack];
+            } else {
+                completedRows.push([row[0], "", attack]);
+            }
+            const attackIndex = counts[seat].attack;
+            counts[seat].attack += 1;
+            frames.push({
+                rows: completedRows.map(item => [...item]),
+                latestAction: {seat, kind: "attack", index: attackIndex},
+                label: researchKifuMoveLabel([row[0], "", attack]),
+                delay: 760,
+            });
+        }
+    });
+    return frames;
+}
+
+function updateResearchKifuReplayControls(label = "棋譜再生") {
+    const replayButton = document.getElementById("researchKifuReplayButton");
+    const applyButton = document.getElementById("researchKifuApplyButton");
+    if (replayButton) {
+        replayButton.textContent = uiText(label);
+        replayButton.classList.toggle("is-playing", researchKifuReplayRunning);
+    }
+    if (applyButton) applyButton.disabled = researchKifuReplayRunning;
+}
+
+function stopResearchKifuReplay({restoreFinal = true, clearStatus = false} = {}) {
+    researchKifuReplayToken += 1;
+    researchKifuReplayRunning = false;
+    updateResearchKifuReplayControls("棋譜再生");
+    if (restoreFinal && selectedResearchKifu?.payload) {
+        renderResearchKifuBoard(selectedResearchKifu.payload);
+    }
+    if (clearStatus) {
+        const status = document.getElementById("researchKifuDetailStatus");
+        if (status) status.textContent = "";
+    }
+}
+
+async function toggleResearchKifuReplay() {
+    if (researchKifuReplayRunning) {
+        stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
+        return;
+    }
+    const payload = selectedResearchKifu?.payload;
+    const status = document.getElementById("researchKifuDetailStatus");
+    if (!payload) {
+        if (status) status.textContent = uiText("棋譜データの読み込みに失敗しました。");
+        return;
+    }
+    const frames = researchKifuReplayFrames(payload);
+    if (!frames.length) {
+        if (status) status.textContent = uiText("再生できる手順がありません。");
+        return;
+    }
+
+    const token = ++researchKifuReplayToken;
+    researchKifuReplayRunning = true;
+    updateResearchKifuReplayControls("停止");
+    renderResearchKifuBoard(payload, {rows: [], finished: false});
+    if (status) status.textContent = uiText("棋譜を再生しています。");
+    await new Promise(resolve => setTimeout(resolve, 620));
+
+    for (const frame of frames) {
+        if (token !== researchKifuReplayToken || !researchKifuReplayRunning) return;
+        renderResearchKifuBoard(payload, {
+            rows: frame.rows,
+            finished: false,
+            latestAction: frame.latestAction,
+        });
+        if (status) status.textContent = frame.label;
+        await new Promise(resolve => setTimeout(resolve, frame.delay));
+    }
+    if (token !== researchKifuReplayToken || !researchKifuReplayRunning) return;
+    researchKifuReplayRunning = false;
+    renderResearchKifuBoard(payload);
+    updateResearchKifuReplayControls("もう一度再生");
+    if (status) status.textContent = uiText("再生が終了しました。");
+}
+
 function renderResearchKifuDetail(record) {
+    stopResearchKifuReplay({restoreFinal: false, clearStatus: true});
     const payload = record?.payload || {};
     selectedResearchKifu = record;
     document.getElementById("researchKifuListView").style.display = "none";
@@ -8118,12 +8300,14 @@ function renderResearchKifuDetail(record) {
     if (memoInput) memoInput.value = record.memo || "";
     renderResearchKifuTagOptions("researchKifuEditTags", record.tags);
     renderResearchKifuBoard(payload);
+    updateResearchKifuReplayControls("棋譜再生");
 
     document.getElementById("researchKifuDetailStatus").textContent = "";
 }
 
 function startResearchKifuEdit() {
     if (!selectedResearchKifu) return;
+    stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
     const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
     const tags = document.getElementById("researchKifuDetailTags");
@@ -8271,6 +8455,7 @@ function downloadSelectedResearchKifu() {
 }
 
 function closeResearchKifuDetail() {
+    stopResearchKifuReplay({restoreFinal: false, clearStatus: true});
     const list = document.getElementById("researchKifuListView");
     const detail = document.getElementById("researchKifuDetailView");
     if (list) list.style.display = "block";
