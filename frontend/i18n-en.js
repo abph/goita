@@ -328,6 +328,7 @@
     "棋譜を見る": "View Record",
     "← 棋譜一覧へ": "← Back to Records",
     "編集": "Edit",
+    "棋譜DL": "Download",
     "棋譜の名前": "Record Name",
     "メモ": "Notes",
     "保存": "Save",

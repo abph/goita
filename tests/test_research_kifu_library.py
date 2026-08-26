@@ -280,6 +280,11 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert '>←</button>' in HTML
     assert 'class="research-kifu-play-button"' in HTML
     assert 'id="researchKifuEditButton"' in HTML
+    assert 'id="researchKifuDownloadButton"' in HTML
+    assert ">棋譜DL</button>" in HTML
+    assert "downloadSelectedResearchKifu()" in HTML
+    assert "researchKifuDownloadText(record)" in HTML
+    assert "researchKifuDownloadFilename(record)" in HTML
     assert '<button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>' in HTML
     assert "research-kifu-detail-heading" not in HTML
     assert "この配牌で対局</button>" in HTML

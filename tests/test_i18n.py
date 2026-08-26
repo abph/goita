@@ -132,6 +132,7 @@ def test_research_kifu_tags_are_translated() -> None:
         "匿名で保存",
         "匿名で保存しました。",
         "棋譜一覧へ",
+        "棋譜DL",
         "王玉",
         "3し",
         "4し",

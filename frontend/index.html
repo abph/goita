@@ -2783,8 +2783,12 @@
       background: transparent;
       font-size: 23px;
     }
-    .research-kifu-detail-title-line .research-kifu-edit-button {
+    .research-kifu-detail-title-actions {
       margin-left: auto;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 6px;
     }
     .research-kifu-detail-title-line {
       margin: 8px 0;
@@ -5006,7 +5010,10 @@
             <button class="research-kifu-back-button" type="button" onclick="closeResearchKifuDetail()" aria-label="棋譜一覧へ" title="棋譜一覧へ">←</button>
             <h4 id="researchKifuDetailTitle"></h4>
             <div id="researchKifuDetailTags" class="research-kifu-tags"></div>
-            <button id="researchKifuEditButton" class="research-kifu-edit-button" type="button" onclick="startResearchKifuEdit()">編集</button>
+            <div id="researchKifuDetailTitleActions" class="research-kifu-detail-title-actions">
+              <button id="researchKifuDownloadButton" type="button" onclick="downloadSelectedResearchKifu()">棋譜DL</button>
+              <button id="researchKifuEditButton" class="research-kifu-edit-button" type="button" onclick="startResearchKifuEdit()">編集</button>
+            </div>
           </div>
           <div id="researchKifuDetailMeta" class="research-kifu-item-meta"></div>
           <p id="researchKifuDetailMemo"></p>
@@ -8036,8 +8043,8 @@ function renderResearchKifuDetail(record) {
     const title = document.getElementById("researchKifuDetailTitle");
     title.textContent = record.title || record.id;
     title.style.display = "block";
-    const editButton = document.getElementById("researchKifuEditButton");
-    if (editButton) editButton.style.display = "block";
+    const titleActions = document.getElementById("researchKifuDetailTitleActions");
+    if (titleActions) titleActions.style.display = "flex";
     document.getElementById("researchKifuDetailMeta").textContent =
         researchKifuDetailMetaLabel(record, payload);
     renderResearchKifuTags(document.getElementById("researchKifuDetailTags"), record.tags);
@@ -8061,14 +8068,14 @@ function startResearchKifuEdit() {
     const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
     const tags = document.getElementById("researchKifuDetailTags");
-    const editButton = document.getElementById("researchKifuEditButton");
+    const titleActions = document.getElementById("researchKifuDetailTitleActions");
     const editor = document.getElementById("researchKifuMemoEditor");
     const titleInput = document.getElementById("researchKifuTitleEditInput");
     const memoInput = document.getElementById("researchKifuMemoEditInput");
     if (title) title.style.display = "none";
     if (memo) memo.style.display = "none";
     if (tags) tags.style.display = "none";
-    if (editButton) editButton.style.display = "none";
+    if (titleActions) titleActions.style.display = "none";
     if (titleInput) titleInput.value = selectedResearchKifu.title || "";
     if (memoInput) memoInput.value = selectedResearchKifu.memo || "";
     renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu.tags);
@@ -8080,7 +8087,7 @@ function startResearchKifuEdit() {
 function cancelResearchKifuEdit() {
     const title = document.getElementById("researchKifuDetailTitle");
     const memo = document.getElementById("researchKifuDetailMemo");
-    const editButton = document.getElementById("researchKifuEditButton");
+    const titleActions = document.getElementById("researchKifuDetailTitleActions");
     const editor = document.getElementById("researchKifuMemoEditor");
     if (title) {
         title.textContent = selectedResearchKifu?.title || selectedResearchKifu?.id || "";
@@ -8094,7 +8101,7 @@ function cancelResearchKifuEdit() {
         document.getElementById("researchKifuDetailTags"),
         selectedResearchKifu?.tags,
     );
-    if (editButton) editButton.style.display = "block";
+    if (titleActions) titleActions.style.display = "flex";
     renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu?.tags);
     if (editor) editor.style.display = "none";
 }
@@ -8135,6 +8142,73 @@ async function openResearchKifu(recordId) {
     } catch (error) {
         status.textContent = uiText(error?.message || "棋譜データの読み込みに失敗しました。");
     }
+}
+
+function researchKifuYamlValue(value) {
+    return JSON.stringify(String(value ?? ""));
+}
+
+function researchKifuDownloadText(record) {
+    const payload = record?.payload || {};
+    const names = payload.player_names || {};
+    const hands = payload.hand || {};
+    const score = payload.score_after || {};
+    const moves = Array.isArray(payload.game)
+        ? payload.game
+        : (Array.isArray(payload.moves) ? payload.moves : []);
+    const seats = ["A", "B", "C", "D"];
+    const lines = ["version: 1.0"];
+    seats.forEach((seat, index) => {
+        lines.push(`p${index}: ${researchKifuYamlValue(names[seat] || `プレイヤー${seat}`)}`);
+    });
+    lines.push(
+        "log:",
+        " - hand:",
+        `     p0: ${researchKifuYamlValue(hands.p0 || "")}`,
+        `     p1: ${researchKifuYamlValue(hands.p1 || "")}`,
+        `     p2: ${researchKifuYamlValue(hands.p2 || "")}`,
+        `     p3: ${researchKifuYamlValue(hands.p3 || "")}`,
+        `   uchidashi: ${Number(payload.uchidashi || 0)}`,
+        `   score: [${Number(score.AC || 0)},${Number(score.BD || 0)}]`,
+        "   game:",
+    );
+    moves.forEach(row => {
+        if (!Array.isArray(row) || row.length < 3) return;
+        lines.push(
+            `    - [${researchKifuYamlValue(row[0])},${researchKifuYamlValue(row[1])},${researchKifuYamlValue(row[2])}]`,
+        );
+    });
+    return `${lines.join("\n")}\n`;
+}
+
+function researchKifuDownloadFilename(record) {
+    const fallback = String(record?.id || "research_kifu");
+    const title = String(record?.title || fallback)
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .replace(/[. ]+$/g, "")
+        .trim()
+        .slice(0, 60);
+    return `${title || fallback}.yaml`;
+}
+
+function downloadSelectedResearchKifu() {
+    const status = document.getElementById("researchKifuDetailStatus");
+    if (!selectedResearchKifu?.payload) {
+        if (status) status.textContent = uiText("棋譜データの読み込みに失敗しました。");
+        return;
+    }
+    const blob = new Blob(
+        [researchKifuDownloadText(selectedResearchKifu)],
+        {type: "text/yaml;charset=utf-8"},
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = researchKifuDownloadFilename(selectedResearchKifu);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function closeResearchKifuDetail() {
