@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set
 
@@ -1426,6 +1427,203 @@ def _compress_kifu_moves(moves: List[List[str]]) -> List[List[str]]:
     return out
 
 
+def _research_kifu_scalar(raw: str) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    if value.startswith('"'):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise ValueError("引用符の形式が正しくありません") from error
+        if not isinstance(parsed, str):
+            raise ValueError("文字列として読み取れない項目があります")
+        return parsed
+    return value
+
+
+def _parse_research_kifu_text(kifu_text: str) -> Dict[str, Any]:
+    """Parse and validate the restricted version 1.0 game-record format."""
+    normalized = (
+        str(kifu_text or "")
+        .lstrip("\ufeff")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    )
+    lines = normalized.split("\n")
+    if not any(
+        re.fullmatch(r"\s*version:\s*1(?:\.0)?\s*", line)
+        for line in lines
+    ):
+        raise ValueError("version: 1.0形式の棋譜を選んでください")
+
+    hand_start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"\s*-?\s*hand:\s*", line)
+        ),
+        None,
+    )
+    game_start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"\s*game:\s*", line)
+        ),
+        None,
+    )
+    if hand_start is None or game_start is None or hand_start >= game_start:
+        raise ValueError("手駒または手順を読み取れません")
+
+    names: Dict[str, str] = {}
+    hand_text: Dict[str, str] = {}
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"\s*p([0-3]):\s*(.*?)\s*", line)
+        if match is None:
+            continue
+        key = f"p{match.group(1)}"
+        value = _research_kifu_scalar(match.group(2))
+        if index < hand_start:
+            names[key] = value
+        elif hand_start < index < game_start:
+            hand_text[key] = value
+
+    if set(hand_text) != {"p0", "p1", "p2", "p3"}:
+        raise ValueError("4人分の手駒を読み取れません")
+
+    piece_codes = {kanji: code for code, kanji in PIECE_KANJI.items()}
+    hands: Dict[str, List[str]] = {}
+    for index, seat in enumerate(ALL_SEATS):
+        pieces = list(hand_text[f"p{index}"])
+        if len(pieces) != 8 or any(piece not in piece_codes for piece in pieces):
+            raise ValueError(f"{seat}の手駒は、ごいたの駒8枚で指定してください")
+        hands[seat] = [piece_codes[piece] for piece in pieces]
+
+    actual_totals = Counter(piece for hand in hands.values() for piece in hand)
+    if actual_totals != Counter(PIECE_TOTALS):
+        raise ValueError("32枚の駒構成に矛盾があります")
+
+    dealer_index: Optional[int] = None
+    score_after = {"AC": 0, "BD": 0}
+    for line in lines[hand_start:game_start]:
+        dealer_match = re.fullmatch(r"\s*uchidashi:\s*([0-3])\s*", line)
+        if dealer_match is not None:
+            dealer_index = int(dealer_match.group(1))
+        score_match = re.fullmatch(
+            r"\s*score:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]\s*",
+            line,
+        )
+        if score_match is not None:
+            score_after = {
+                "AC": int(score_match.group(1)),
+                "BD": int(score_match.group(2)),
+            }
+    if dealer_index is None:
+        raise ValueError("親を読み取れません")
+    dealer = ALL_SEATS[dealer_index]
+
+    raw_moves: List[List[str]] = []
+    known_blocks = {"", "パス", *piece_codes}
+    known_attacks = {"", *piece_codes}
+    for line in lines[game_start + 1:]:
+        match = re.fullmatch(r"\s*-\s*(\[.*\])\s*", line)
+        if match is None:
+            if line.strip():
+                raise ValueError("手順の形式が正しくありません")
+            continue
+        try:
+            row = json.loads(match.group(1))
+        except json.JSONDecodeError as error:
+            raise ValueError("手順の形式が正しくありません") from error
+        if not isinstance(row, list) or len(row) != 3:
+            raise ValueError("手順は3項目で指定してください")
+        pid, block, attack = [str(value or "") for value in row]
+        if pid not in ("0", "1", "2", "3"):
+            raise ValueError("手順に不明な席があります")
+        if block not in known_blocks or attack not in known_attacks:
+            raise ValueError("手順に不明な駒があります")
+        raw_moves.append([pid, block, attack])
+    if not raw_moves:
+        raise ValueError("手順がありません")
+
+    state = GoitaState(hands=hands, dealer=dealer)
+    try:
+        for pid, block_label, attack_label in raw_moves:
+            if state.finished:
+                raise ValueError("終局後の手順があります")
+            actor = ALL_SEATS[int(pid)]
+            if block_label == "パス":
+                if attack_label or state.phase != "receive" or state.turn != actor:
+                    raise ValueError("パスの位置が正しくありません")
+                state.apply_pass(actor)
+                continue
+
+            for _ in range(3):
+                if state.turn == actor or state.phase != "receive":
+                    break
+                state.apply_pass(state.turn)
+            if state.turn != actor:
+                raise ValueError("手番の順序が正しくありません")
+
+            block = piece_codes.get(block_label) if block_label else None
+            attack = piece_codes.get(attack_label) if attack_label else None
+            if state.phase == "receive":
+                if block is None:
+                    raise ValueError("受け駒がありません")
+                state.apply_receive(actor, block)
+                if attack is not None:
+                    state.apply_attack(actor, attack)
+            elif block is not None and attack is not None:
+                state.apply_attack_after_block(actor, block, attack)
+            elif block is None and attack is not None:
+                if state.attacker is None:
+                    raise ValueError("親の最初の伏せ駒がありません")
+                state.apply_attack(actor, attack)
+            else:
+                raise ValueError("伏せ駒または攻め駒がありません")
+    except ValueError as error:
+        raise ValueError(f"合法手として再現できません: {error}") from error
+
+    if not state.finished or state.winner not in ALL_SEATS:
+        raise ValueError("終局している棋譜を選んでください")
+
+    winning_team = "AC" if state.winner in ("A", "C") else "BD"
+    gained_score = int(state.team_score[winning_team])
+    score_after[winning_team] = max(score_after[winning_team], gained_score)
+    score_before = dict(score_after)
+    score_before[winning_team] = max(0, score_before[winning_team] - gained_score)
+    player_names = {
+        seat: _sanitize_player_name(names.get(f"p{index}", ""))
+        or f"プレイヤー{seat}"
+        for index, seat in enumerate(ALL_SEATS)
+    }
+    canonical_hand = {
+        f"p{index}": _hand_to_kifu_string(hands[seat])
+        for index, seat in enumerate(ALL_SEATS)
+    }
+    return {
+        "version": 1,
+        "round_index": 1,
+        "dealer": dealer,
+        "winner": state.winner,
+        "gained_score": gained_score,
+        "score_before": score_before,
+        "score_after": score_after,
+        "hand": canonical_hand,
+        "hands": hands,
+        "uchidashi": dealer_index,
+        "moves": raw_moves,
+        "game": _compress_kifu_moves(raw_moves),
+        "ai_seats": [],
+        "ai_profile": DEFAULT_AI_PROFILE,
+        "player_names": player_names,
+        "anonymous": all(
+            player_names[seat] == f"プレイヤー{seat}" for seat in ALL_SEATS
+        ),
+    }
+
+
 def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str, Any]:
     """Capture one completed round before a subsequent round replaces it."""
 
@@ -1691,6 +1889,13 @@ class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
     memo: str = Field(default="", max_length=2000)
     tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
     anonymous: bool = False
+
+
+class ResearchKifuImportRequest(ResearchKifuAuthRequest):
+    title: str = Field(default="", max_length=80)
+    memo: str = Field(default="", max_length=2000)
+    tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
+    kifu_text: str = Field(min_length=1, max_length=200_000)
 
 
 class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
@@ -4165,6 +4370,28 @@ def save_research_kifu(game_id: str, req: ResearchKifuSaveRequest):
         memo=str(req.memo or "").strip(),
         tags=_validated_research_kifu_tags(req.tags),
         payload=snapshot,
+    )
+    return {
+        "ok": True,
+        "record": record,
+        "persistent": RESEARCH_KIFU_PERSISTENT,
+    }
+
+
+@app.post("/games/{game_id}/research_kifu/import")
+def import_research_kifu(game_id: str, req: ResearchKifuImportRequest):
+    _require_research_kifu_admin(game_id, req.admin_password)
+    try:
+        payload = _parse_research_kifu_text(req.kifu_text)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    record = RESEARCH_KIFU_STORE.save(
+        game_id,
+        title=str(req.title or "").strip() or "読込棋譜",
+        memo=str(req.memo or "").strip(),
+        tags=_validated_research_kifu_tags(req.tags),
+        payload=payload,
     )
     return {
         "ok": True,

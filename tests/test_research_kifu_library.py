@@ -37,6 +37,58 @@ def _payload(round_index: int = 3):
     }
 
 
+def _valid_kifu_text():
+    return '''version: 1.0
+p0: "プレイヤーA"
+p1: "プレイヤーB"
+p2: "プレイヤーC"
+p3: "プレイヤーD"
+log:
+- hand:
+  p0: "しししし馬銀金玉"
+  p1: "ししし香馬銀金王"
+  p2: "しし香香馬金角飛"
+  p3: "し香馬銀銀金角飛"
+  uchidashi: 0
+  score: [0,80]
+  game:
+  - ["0","し","し"]
+  - ["1","し","銀"]
+  - ["0","銀","し"]
+  - ["1","し","金"]
+  - ["2","金","飛"]
+  - ["3","飛","銀"]
+  - ["3","馬","金"]
+  - ["3","角","銀"]
+  - ["0","玉","し"]
+  - ["1","し","王"]
+  - ["1","馬","香"]
+'''
+
+
+def test_import_parser_replays_a_completed_downloaded_record():
+    payload = app_module._parse_research_kifu_text(_valid_kifu_text())
+
+    assert payload["dealer"] == "A"
+    assert payload["winner"] == "B"
+    assert payload["score_after"] == {"AC": 0, "BD": 80}
+    assert payload["hand"]["p0"] == "しししし馬銀金玉"
+    assert payload["game"][-1] == ["1", "馬", "香"]
+    assert payload["player_names"]["A"] == "プレイヤーA"
+
+
+def test_import_parser_rejects_an_impossible_piece_inventory():
+    invalid = _valid_kifu_text().replace(
+        'p3: "し香馬銀銀金角飛"',
+        'p3: "しし馬銀銀金角飛"',
+    )
+    try:
+        app_module._parse_research_kifu_text(invalid)
+        raise AssertionError("an impossible piece inventory should be rejected")
+    except ValueError as error:
+        assert "32枚の駒構成" in str(error)
+
+
 def test_path_prefers_explicit_then_persistent_then_local_fallback():
     fallback = Path("results/local.sqlite3")
     assert resolve_research_kifu_path(
@@ -213,6 +265,19 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 seat: f"プレイヤー{seat}" for seat in ("A", "B", "C", "D")
             }
             assert anonymous["payload"]["anonymous"] is True
+            imported = app_module.import_research_kifu(
+                room_id,
+                app_module.ResearchKifuImportRequest(
+                    admin_password="research-secret",
+                    title="読み込んだ終盤",
+                    memo="外部ファイルから追加",
+                    tags=["4し", "し攻め"],
+                    kifu_text=_valid_kifu_text(),
+                ),
+            )["record"]
+            assert imported["title"] == "読み込んだ終盤"
+            assert imported["tags"] == ["4し", "し攻め"]
+            assert imported["payload"]["winner"] == "B"
             updated = app_module.update_research_kifu_memo(
                 room_id,
                 saved["id"],
@@ -247,6 +312,11 @@ def test_private_room_api_requires_admin_and_round_trips_records():
                 anonymous["id"],
                 app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
             ) == {"ok": True}
+            assert app_module.delete_research_kifu(
+                room_id,
+                imported["id"],
+                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
+            ) == {"ok": True}
         finally:
             app_module.GAMES[room_id] = original_game
             app_module.RESEARCH_KIFU_STORE = original_store
@@ -267,6 +337,12 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'id="researchKifuSaveTags"' in HTML
     assert 'id="researchKifuEditTags"' in HTML
     assert 'id="researchKifuTagFilter"' in HTML
+    assert 'id="researchKifuImportButton"' in HTML
+    assert 'id="researchKifuImportInput"' in HTML
+    assert ">棋譜読込</button>" in HTML
+    assert "openResearchKifuImport()" in HTML
+    assert "importResearchKifuFile(event)" in HTML
+    assert 'researchKifuApi("/import"' in HTML
     assert '<h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>' in HTML
     assert 'placeholder="タイトル　例：終盤の王受け"' in HTML
     assert 'placeholder="気になった点をメモできます"' in HTML

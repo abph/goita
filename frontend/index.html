@@ -2701,6 +2701,7 @@
     }
     .research-kifu-filter {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 7px;
       margin-top: 11px;
@@ -2717,6 +2718,16 @@
       max-width: 52%;
       min-width: 0;
       padding: 6px;
+    }
+    .research-kifu-import-button {
+      flex: 0 0 auto;
+      min-height: 30px;
+      padding: 5px 8px;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+      color: #69411e;
+      font-size: 11px;
+      font-weight: 800;
     }
     .research-kifu-list {
       max-height: 250px;
@@ -5001,6 +5012,8 @@
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
           <div class="research-kifu-filter">
             <strong class="research-kifu-list-heading">棋譜一覧</strong>
+            <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
+            <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
           </div>
           <div id="researchKifuList" class="research-kifu-list"></div>
@@ -7823,6 +7836,52 @@ async function saveCurrentResearchKifu(anonymous = false) {
         status.textContent = `${uiText(savedMessage)} ${data.record?.id || ""}`.trim();
     } catch (error) {
         status.textContent = uiText(error?.message || "保存できませんでした。");
+    }
+}
+
+function openResearchKifuImport() {
+    const input = document.getElementById("researchKifuImportInput");
+    if (!input) return;
+    input.value = "";
+    input.click();
+}
+
+function researchKifuImportTitle(file) {
+    const filename = String(file?.name || "")
+        .replace(/\.(?:ya?ml|txt)$/i, "")
+        .trim();
+    return filename.slice(0, 80) || "読込棋譜";
+}
+
+async function importResearchKifuFile(event) {
+    const input = event?.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const status = document.getElementById("researchKifuStatus");
+    if (file.size > 200000) {
+        status.textContent = uiText("棋譜ファイルは200KB以下にしてください。");
+        input.value = "";
+        return;
+    }
+
+    status.textContent = uiText("棋譜を読み込んでいます。");
+    try {
+        const enteredTitle = document.getElementById("researchKifuTitle").value.trim();
+        const data = await researchKifuApi("/import", {
+            title: enteredTitle || researchKifuImportTitle(file),
+            memo: document.getElementById("researchKifuMemo").value,
+            tags: selectedResearchKifuTags("researchKifuSaveTags"),
+            kifu_text: await file.text(),
+        });
+        document.getElementById("researchKifuTitle").value = "";
+        document.getElementById("researchKifuMemo").value = "";
+        renderResearchKifuTagOptions("researchKifuSaveTags", []);
+        await loadResearchKifuList();
+        status.textContent = `${uiText("棋譜を読み込みました。")} ${data.record?.id || ""}`.trim();
+    } catch (error) {
+        status.textContent = uiText(error?.message || "棋譜を読み込めませんでした。");
+    } finally {
+        input.value = "";
     }
 }
 
