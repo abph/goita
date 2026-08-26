@@ -7,6 +7,7 @@ Posterior probability and inference confidence combine their resulting values.
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, Tuple
 
@@ -49,6 +50,125 @@ class InformationSetSearchOutcome:
 
 class InformationSetSearchMixin:
     """Runs a bounded policy search over weighted candidate deals."""
+
+    def _information_set_project_tracker(
+        self,
+        tracker: Optional[dict],
+        root_player: str,
+        public_history: Sequence[PublicAction],
+        sampled_state=None,
+    ) -> Optional[dict]:
+        """Rebuild strategy counters for one hypothetical public branch.
+
+        The live tracker describes the position before the root candidate is
+        played. Search descendants must not keep treating future attacks as if
+        they happened in that original position.
+        """
+        if tracker is None or not public_history:
+            return tracker
+
+        projected = dict(tracker)
+        projected["my_past_attacks"] = set(tracker.get("my_past_attacks", set()))
+        projected["ally_past_attacks"] = set(tracker.get("ally_past_attacks", set()))
+        projected["enemy_past_attacks"] = set(tracker.get("enemy_past_attacks", set()))
+        projected["my_attack_history"] = list(tracker.get("my_attack_history", []))
+        projected["enemy_attack_counts"] = dict(
+            tracker.get("enemy_attack_counts", {})
+        )
+        projected["public_seen_counts"] = dict(
+            tracker.get("public_seen_counts", {})
+        )
+        projected["hidden_block_counts"] = dict(
+            tracker.get("hidden_block_counts", {})
+        )
+
+        public_models = {}
+        for seat, model in tracker.get("public_hand_models", {}).items():
+            copied_model = dict(model)
+            copied_model["attacks"] = Counter(model.get("attacks", Counter()))
+            copied_model["blocks"] = Counter(model.get("blocks", Counter()))
+            public_models[seat] = copied_model
+        projected["public_hand_models"] = public_models
+
+        ally = tracker.get("ally")
+        for actor, action_type, visible_block, attack in public_history:
+            model = public_models.setdefault(
+                actor,
+                {
+                    "attack_count": 0,
+                    "receive_count": 0,
+                    "pass_count": 0,
+                    "attacks": Counter(),
+                    "blocks": Counter(),
+                },
+            )
+            if action_type == "pass":
+                model["pass_count"] = int(model.get("pass_count", 0)) + 1
+                continue
+
+            if action_type == "receive" and visible_block is not None:
+                model["receive_count"] = int(model.get("receive_count", 0)) + 1
+                model.setdefault("blocks", Counter())[visible_block] += 1
+                if visible_block in projected["public_seen_counts"]:
+                    projected["public_seen_counts"][visible_block] += 1
+
+            if action_type == "attack_after_block":
+                projected["hidden_block_counts"][actor] = int(
+                    projected["hidden_block_counts"].get(actor, 0)
+                ) + 1
+
+            if action_type not in ("attack", "attack_after_block") or attack is None:
+                continue
+
+            model["attack_count"] = int(model.get("attack_count", 0)) + 1
+            model.setdefault("attacks", Counter())[attack] += 1
+            if model.get("first_attack") is None:
+                model["first_attack"] = attack
+            if attack in projected["public_seen_counts"]:
+                projected["public_seen_counts"][attack] += 1
+
+            if actor == root_player:
+                projected["my_attack_count"] = int(
+                    projected.get("my_attack_count", 0)
+                ) + 1
+                projected["my_past_attacks"].add(attack)
+                projected["my_attack_history"].append(attack)
+                projected["my_last_attack"] = attack
+            elif actor == ally:
+                projected["ally_past_attacks"].add(attack)
+                projected["ally_last_attack"] = attack
+            elif not self._same_team(actor, root_player):
+                projected["enemy_past_attacks"].add(attack)
+                projected["enemy_attack_counts"][actor] = int(
+                    projected["enemy_attack_counts"].get(actor, 0)
+                ) + 1
+
+        projected["branch_attack_counts"] = {
+            seat: int(model.get("attack_count", 0))
+            for seat, model in public_models.items()
+        }
+        if sampled_state is not None:
+            projected["branch_reach_players"] = tuple(
+                seat
+                for seat, attack_count in projected["branch_attack_counts"].items()
+                if attack_count >= 3
+                and len(sampled_state.hands.get(seat, ())) == 2
+            )
+        projected["branch_public_history_length"] = len(public_history)
+        return projected
+
+    @staticmethod
+    def _information_set_expand_all_endgame_actions(
+        worlds: Sequence[InformationSetSearchWorld],
+    ) -> bool:
+        """Keep every move when the acting hand is small enough to finish soon."""
+        return bool(
+            worlds
+            and all(
+                len(world.state.hands.get(world.state.turn, ())) <= 4
+                for world in worlds
+            )
+        )
 
     def _information_set_search_worlds(
         self,
@@ -218,6 +338,12 @@ class InformationSetSearchMixin:
                 raise InformationSetSearchCancelled()
             actor = str(group[0].state.turn)
             key = decision_keys[digest]
+            branch_tracker = self._information_set_project_tracker(
+                tracker,
+                root_player,
+                public_history,
+                group[0].state,
+            )
             legal_sets = [set(world.state.legal_actions(actor)) for world in group]
             common_actions = set.intersection(*legal_sets) if legal_sets else set()
             if not common_actions:
@@ -240,21 +366,24 @@ class InformationSetSearchMixin:
                     root_player,
                     actor,
                     action,
-                    tracker,
+                    branch_tracker,
                 )
                 action_models[action] = model_score
                 action_reasons[action] = reasons
 
             enemy_third_attack_node = (
-                tracker is not None
+                branch_tracker is not None
                 and root_state.phase == "receive"
                 and root_state.attacker is not None
                 and actor == root_state.attacker
                 and not self._same_team(actor, root_player)
                 and group[0].state.phase == "attack"
                 and int(
-                    tracker.get("enemy_attack_counts", {}).get(actor, 0)
+                    branch_tracker.get("enemy_attack_counts", {}).get(actor, 0)
                 ) == 2
+            )
+            compact_endgame_node = self._information_set_expand_all_endgame_actions(
+                group
             )
             if reused and not enemy_third_attack_node:
                 candidates = [existing.action]
@@ -266,7 +395,7 @@ class InformationSetSearchMixin:
                 )
                 candidates = (
                     ordered_candidates
-                    if enemy_third_attack_node
+                    if enemy_third_attack_node or compact_endgame_node
                     else ordered_candidates[: max(1, int(self.TIME_SEARCH_BRANCH_BEAM))]
                 )
 

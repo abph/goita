@@ -855,7 +855,8 @@ class TimedSearchMixin:
     def _timed_search_ordered_actions(self, state, beam_width: int) -> List[Action]:
         actor = state.turn
         actions = state.legal_actions(actor)
-        if len(actions) <= beam_width or state.phase == "receive":
+        compact_endgame = len(state.hands.get(actor, ())) <= 4
+        if len(actions) <= beam_width or state.phase == "receive" or compact_endgame:
             return sorted(
                 actions,
                 key=lambda action: self._timed_search_action_priority(state, actor, action),

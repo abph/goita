@@ -380,7 +380,7 @@ class SearchCacheMixin:
             if key not in _TRACKER_CACHE_EXCLUSIONS
         }
         payload = {
-            "version": 1,
+            "version": 2,
             "player": player,
             "state": {
                 "dealer": state.dealer,

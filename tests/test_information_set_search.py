@@ -277,6 +277,63 @@ def test_probability_and_confidence_control_world_value_aggregation() -> None:
     assert uncertain_value < positive_value
 
 
+def test_hypothetical_branch_rebuilds_attack_counts_without_mutating_live_tracker() -> None:
+    state = _state()
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    tracker = agent._track[id(state)]
+    original_models = copy.deepcopy(tracker["public_hand_models"])
+    original_my_count = int(tracker["my_attack_count"])
+    state.hands["A"] = list("18")
+
+    history = (
+        ("A", "attack_after_block", "3", "1"),
+        ("B", "pass", None, None),
+        ("C", "receive", "1", None),
+        ("C", "attack", None, "4"),
+        ("A", "receive", "4", None),
+        ("A", "attack", None, "5"),
+        ("A", "attack_after_block", "2", "6"),
+    )
+    projected = agent._information_set_project_tracker(
+        tracker,
+        "A",
+        history,
+        state,
+    )
+
+    assert projected is not tracker
+    assert projected["my_attack_count"] == original_my_count + 3
+    assert projected["public_hand_models"]["A"]["attack_count"] == 3
+    assert projected["public_hand_models"]["C"]["attack_count"] == 1
+    assert projected["public_hand_models"]["B"]["pass_count"] == 1
+    assert projected["branch_reach_players"] == ("A",)
+    assert tracker["my_attack_count"] == original_my_count
+    assert tracker["public_hand_models"] == original_models
+
+
+def test_compact_endgame_keeps_every_attack_candidate_outside_beam() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("1234"),
+            "B": list("1111"),
+            "C": list("5555"),
+            "D": list("6666"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    legal = state.legal_actions("A")
+
+    ordered = agent._timed_search_ordered_actions(state, beam_width=1)
+    worlds = (InformationSetSearchWorld(0, state, 1.0, 1.0),)
+
+    assert len(legal) > 1
+    assert set(ordered) == set(legal)
+    assert agent._information_set_expand_all_endgame_actions(worlds) is True
+
+
 if __name__ == "__main__":
     test_current_public_search_baseline_is_recorded()
     test_public_search_ignores_the_real_opponent_hand_assignment()
@@ -285,4 +342,6 @@ if __name__ == "__main__":
     test_production_search_builds_and_uses_an_information_set()
     test_shared_policy_removes_sample_order_and_live_deal_dependence()
     test_probability_and_confidence_control_world_value_aggregation()
+    test_hypothetical_branch_rebuilds_attack_counts_without_mutating_live_tracker()
+    test_compact_endgame_keeps_every_attack_candidate_outside_beam()
     print("INFORMATION_SET_SEARCH_BASELINE_TEST_OK")

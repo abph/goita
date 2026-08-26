@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 
 from goita_ai2.current_ai.prediction_cache import clear_prediction_sample_cache
 from goita_ai2.current_ai.search_budget import reset_time_search_budget_model
@@ -363,6 +364,53 @@ def test_one_second_search_keeps_ally_gold_pass_after_broader_sampling() -> None
     assert a_agent.last_score_fallback_detail == "pass_base"
 
 
+def test_receive_branch_compares_followup_attacks_through_the_final_score() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("1145"),
+            "B": list("9281"),
+            "C": list("3366"),
+            "D": list("5577"),
+        },
+        dealer="A",
+    )
+    state.phase = "receive"
+    state.turn = "B"
+    state.attacker = "A"
+    state.current_attack = "4"
+
+    agent = RuleBasedAgent()
+    agent.bind_player("B")
+    agent._ensure_trackers(state)
+    after_receive = agent._timed_search_apply(
+        state,
+        "B",
+        ("receive", "8", None),
+    )
+    baseline_scores = dict(state.team_score)
+    deadline = time.perf_counter() + 2.0
+    stats = {"nodes": 0, "max_nodes": 100_000}
+    followup_values = {}
+    for action in after_receive.legal_actions("B"):
+        child = agent._timed_search_apply(after_receive, "B", action)
+        followup_values[action] = agent._timed_search_minimax(
+            child,
+            "B",
+            baseline_scores,
+            8,
+            -float("inf"),
+            float("inf"),
+            deadline,
+            stats,
+            {},
+        )
+
+    lance = ("attack", None, "2")
+    assert max(followup_values, key=followup_values.get) == lance
+    assert followup_values[lance] >= 125_000.0
+    assert followup_values[lance] > followup_values[("attack", None, "9")]
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
     test_hidden_hand_sampling_does_not_read_actual_opponent_hands()
@@ -370,4 +418,5 @@ if __name__ == "__main__":
     test_select_action_records_search_without_changing_public_state()
     test_enemy_second_attack_wait_requires_a_robust_inferred_win()
     test_one_second_search_keeps_ally_gold_pass_after_broader_sampling()
+    test_receive_branch_compares_followup_attacks_through_the_final_score()
     print("TIMED_SEARCH_MODULE_TEST_OK")
