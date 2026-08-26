@@ -7993,6 +7993,7 @@ function buildResearchKifuFinalState(payload, rowsOverride = null) {
     const receiveCounts = {A: 0, B: 0, C: 0, D: 0};
     const attackCounts = {A: 0, B: 0, C: 0, D: 0};
     let lastAttackSeat = null;
+    let attackSequenceNumber = 0;
     const rows = Array.isArray(rowsOverride)
         ? rowsOverride
         : (Array.isArray(payload.game) ? payload.game : []);
@@ -8014,7 +8015,8 @@ function buildResearchKifuFinalState(payload, rowsOverride = null) {
         if (attack) {
             const attackIndex = attackCounts[seat];
             board[seat].attack.push(attack);
-            attackNumbers.set(`${seat}:${attackIndex}`, rowIndex + 1);
+            attackSequenceNumber += 1;
+            attackNumbers.set(`${seat}:${attackIndex}`, attackSequenceNumber);
             attackCounts[seat] += 1;
             removeResearchKifuPiece(remaining[seat], attack);
             lastAttackSeat = seat;
@@ -8154,6 +8156,7 @@ function researchKifuReplayFrames(payload) {
         : (Array.isArray(payload.game) ? payload.game : []);
     const completedRows = [];
     const frames = [];
+    let lastAttackSeat = null;
     const counts = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
         seat,
         {receive: 0, attack: 0},
@@ -8180,6 +8183,7 @@ function researchKifuReplayFrames(payload) {
 
         let rowIndex = -1;
         if (receive) {
+            const isFaceDown = lastAttackSeat === null || lastAttackSeat === seat;
             rowIndex = completedRows.length;
             completedRows.push([row[0], receive, ""]);
             const receiveIndex = counts[seat].receive;
@@ -8187,7 +8191,9 @@ function researchKifuReplayFrames(payload) {
             frames.push({
                 rows: completedRows.map(item => [...item]),
                 latestAction: {seat, kind: "receive", index: receiveIndex},
-                label: researchKifuMoveLabel([row[0], receive, ""]),
+                label: isFaceDown
+                    ? researchKifuFaceDownLabel(seat, receive)
+                    : researchKifuMoveLabel([row[0], receive, ""]),
                 delay: 620,
             });
         }
@@ -8200,6 +8206,7 @@ function researchKifuReplayFrames(payload) {
             }
             const attackIndex = counts[seat].attack;
             counts[seat].attack += 1;
+            lastAttackSeat = seat;
             frames.push({
                 rows: completedRows.map(item => [...item]),
                 latestAction: {seat, kind: "attack", index: attackIndex},
@@ -8209,6 +8216,13 @@ function researchKifuReplayFrames(payload) {
         }
     });
     return frames;
+}
+
+function researchKifuFaceDownLabel(seat, piece) {
+    const language = currentUiLanguage();
+    if (language === "zh") return `${seat}: 伏下${piece}`;
+    if (language === "en") return `${seat}: place ${piece} face down`;
+    return `${seat}: ${piece}を伏せる`;
 }
 
 function updateResearchKifuReplayControls(label = "棋譜再生") {

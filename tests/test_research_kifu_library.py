@@ -359,6 +359,9 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert ">棋譜再生</button>" in HTML
     assert "toggleResearchKifuReplay()" in HTML
     assert "researchKifuReplayFrames(payload)" in HTML
+    assert "researchKifuFaceDownLabel(seat, receive)" in HTML
+    assert "attackNumbers.set(`${seat}:${attackIndex}`, attackSequenceNumber)" in HTML
+    assert "attackNumbers.set(`${seat}:${attackIndex}`, rowIndex + 1)" not in HTML
     assert 'id="researchKifuApplyButton"' in HTML
     assert 'id="researchKifuEditButton"' in HTML
     assert 'id="researchKifuDownloadButton"' in HTML
