@@ -88,6 +88,7 @@ class TimedSearchMixin:
         margin: float,
         information_enabled: bool,
         information_confidence: float,
+        zero_shi_stop_signal: bool = False,
     ) -> bool:
         """Allow a robust receive result to replace a weak-hand pass."""
         if (
@@ -98,6 +99,16 @@ class TimedSearchMixin:
             or not information_enabled
         ):
             return False
+        if zero_shi_stop_signal:
+            return (
+                completed_depth
+                >= int(self.WEAK_FIRST_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH)
+                and agreement
+                >= float(self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_AGREEMENT)
+                and margin >= float(self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_MARGIN)
+                and information_confidence
+                >= float(self.ZERO_SHI_STOP_SIGNAL_MIN_CONFIDENCE)
+            )
         return (
             completed_depth
             >= int(self.WEAK_FIRST_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH)
@@ -106,6 +117,29 @@ class TimedSearchMixin:
             and margin >= float(self.WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_MARGIN)
             and information_confidence
             >= float(self.WEAK_FIRST_RECEIVE_SEARCH_MIN_CONFIDENCE)
+        )
+
+    def _timed_search_zero_shi_stop_signal_context(
+        self,
+        state,
+        player: str,
+        tracker: dict,
+        *,
+        baseline_action: Action,
+        best_action: Action,
+    ) -> bool:
+        """Detect a zero-shi partner response that asks the ally to stop shi pressure."""
+        return bool(
+            state.phase == "receive"
+            and state.current_attack not in (None, "1")
+            and state.attacker is not None
+            and not self._same_team(state.attacker, player)
+            and baseline_action[0] == "pass"
+            and best_action[0] == "receive"
+            and best_action[1] == state.current_attack
+            and state.hands[player].count("1") == 0
+            and tracker.get("ally_open_shi_attack_pending")
+            and tracker.get("enemy_team_rejected_shi_attack")
         )
 
     def _timed_search_enemy_third_attack_wait_is_safe(
@@ -1469,6 +1503,13 @@ class TimedSearchMixin:
             information_enabled=information_enabled,
             information_confidence=(
                 float(information_set.confidence) if information_enabled else 0.0
+            ),
+            zero_shi_stop_signal=self._timed_search_zero_shi_stop_signal_context(
+                state,
+                player,
+                information_tracker,
+                baseline_action=baseline_action,
+                best_action=best_action,
             ),
         )
         decisive = (

@@ -22,6 +22,9 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert "closeChatStampPickers();" in send_stamp_body
     assert "function buildChatStampVisual(definition, owner, decorative = false)" in HTML
     assert 'owner?.classList.add("has-image");' in HTML
+    assert "fallback.hidden = true;" in HTML
+    assert "if(box._chatRenderKey === renderKey) return;" in HTML
+    assert "box._chatRenderKey = renderKey;" in HTML
     assert "/static/stamps/${encodeURIComponent(definition.id)}.png" in HTML
     assert 'pickerLabel: "よろしく"' in HTML
     assert 'pickerLabel: "ありがとう"' in HTML

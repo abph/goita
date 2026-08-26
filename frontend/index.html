@@ -6226,6 +6226,7 @@ let autoRevealHandsRoundKey = "";
 let autoPlayEnabled = false;
 let keepScoreForPendingSetup = false;
 let audioUnlocked = false;
+const earlyPieceSoundLogKeys = new Set();
 const voiceSeat = "C";
 const effectSound = new Audio("/static/sounds/effect.mp3");
 const winSound = new Audio("/static/sounds/win.mp3");
@@ -6410,6 +6411,46 @@ function resetLogAudioSync(currentLogCount = 0){
     lastLogCount = currentLogCount;
     logAudioPrimed = false;
     suppressLogAudioUntil = Date.now() + 1200;
+    earlyPieceSoundLogKeys.clear();
+}
+
+function pieceSoundLogKey(state, index, entry){
+    return `${gid}:${state?.round_count || 1}:${index}:${String(entry || "")}`;
+}
+
+function playNewPieceSoundsAfterBoardRender(state, currentLogCount){
+    const logDelta = currentLogCount - lastLogCount;
+    if(
+      !logAudioPrimed ||
+      logDelta <= 0 ||
+      logDelta > MAX_LOG_AUDIO_CATCHUP ||
+      !audioUnlocked ||
+      Date.now() < suppressLogAudioUntil ||
+      personalSettings.enableSoundEffects === false
+    ) return;
+
+    let delay = 0;
+    for(let i = lastLogCount; i < currentLogCount; i += 1){
+      const entry = String(state.log?.[i] || "");
+      const nextEntry = String(state.log?.[i + 1] || "");
+      const isPieceAction = /^([ABCD]): (?:receive \d|attack \d|block \d+ -> attack \d)/.test(entry);
+      const hasVisibleEffect = personalSettings.enableEffects !== false && (
+        entry.includes("[EFFECT:kakarigotae]") ||
+        entry.includes("[EFFECT:damadama]") ||
+        entry.includes("[EFFECT:reach]") ||
+        entry.includes("[EFFECT:baizuke]") ||
+        entry.includes("[EFFECT:damadama_agari]") ||
+        entry.includes("[EFFECT:ou_agari]")
+      );
+      const nextEntryIsRoundFinished = /^Round finished\.|^Match finished!/.test(nextEntry);
+      if(!isPieceAction || hasVisibleEffect || nextEntryIsRoundFinished) continue;
+
+      const key = pieceSoundLogKey(state, i, entry);
+      if(earlyPieceSoundLogKeys.has(key)) continue;
+      earlyPieceSoundLogKeys.add(key);
+      setTimeout(playPieceSound, delay);
+      delay += 160;
+    }
 }
 
 function playGameSound(audio){
@@ -9586,16 +9627,15 @@ function buildChatStampVisual(definition, owner, decorative = false){
 
   const image = document.createElement("img");
   image.className = "chat-stamp-image";
-  image.alt = decorative ? "" : uiText(definition.label);
-  image.hidden = true;
+  image.alt = "";
 
   const fallback = document.createElement("span");
   fallback.className = "chat-stamp-emoji";
   fallback.setAttribute("aria-hidden", "true");
   fallback.textContent = definition.emoji;
+  fallback.hidden = true;
 
   image.addEventListener("load", () => {
-    image.hidden = false;
     fallback.hidden = true;
   }, { once: true });
   image.addEventListener("error", () => {
@@ -9633,6 +9673,23 @@ function mergedChatMessages(serverMessages){
 }
 
 function renderChatItems(box, messages, isMine = null){
+  const renderKey = JSON.stringify([
+    currentUiLanguage(),
+    messages.map((item) => [
+      chatItemTimeValue(item),
+      localizedChatSender(item),
+      item?.tag || "",
+      item?.message || "",
+      item?.message_type || "",
+      item?.stamp_id || "",
+      item?.local_notice === true,
+      item?.ai_answer === true,
+      item?.local_ai_thought === true,
+      typeof isMine === "function" && isMine(item),
+    ]),
+  ]);
+  if(box._chatRenderKey === renderKey) return;
+  box._chatRenderKey = renderKey;
   box.replaceChildren();
   if(messages.length === 0){
     const empty = document.createElement("div");
@@ -11985,6 +12042,26 @@ async function refresh(){
   const dn = document.getElementById("dealerNow");
   if(dn){ dn.textContent = state.dealer || _extractDealerFromLog(state.log||[]) || "-"; }
 
+  const currentLogCount = state.log ? state.log.length : 0;
+  if (activeRoomId !== gid) {
+    resetLogAudioSync(currentLogCount);
+    activeRoomId = gid;
+    isGameStarted = false;
+    fixedHandMemory = {};
+  }
+  if (currentLogCount < lastLogCount) {
+    isGameStarted = false;
+    resetLogAudioSync(currentLogCount);
+    fixedHandMemory = {};
+    autoRevealHandsRoundKey = "";
+  }
+  if (currentLogCount > 1) {
+    isGameStarted = true;
+  }
+
+  renderBoard(state);
+  playNewPieceSoundsAfterBoardRender(state, currentLogCount);
+
   const localFollowupActions = localFollowupAttackActions(state);
   if(localFollowupActions.length > 0){
     latestLegal = localFollowupActions;
@@ -12012,26 +12089,6 @@ async function refresh(){
   await fetchBeginnerRecommendation(state);
   if(requestSequence !== refreshRequestSequence) return;
 
-  const currentLogCount = state.log ? state.log.length : 0;
-
-  if (activeRoomId !== gid) {
-    resetLogAudioSync(currentLogCount);
-    activeRoomId = gid;
-    isGameStarted = false; 
-    fixedHandMemory = {};
-  }
-
-  if (currentLogCount < lastLogCount) {
-      isGameStarted = false;
-      resetLogAudioSync(currentLogCount);
-      fixedHandMemory = {};
-      autoRevealHandsRoundKey = "";
-  }
-  
-  if (currentLogCount > 1) {
-      isGameStarted = true; 
-  }
-  
   const btnNewGame = document.getElementById("btnNewGame");
   const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
   const isHost = isCurrentClientHost();
@@ -12175,7 +12232,10 @@ async function refresh(){
         scheduleLogAnimation(() => playCVoice(cAttackVoiceKind), animDelay + 100);
       }
 
-      if (shouldPlayLogAudio && isPieceAction && !hasVisibleEffect && !nextEntryIsRoundFinished) {
+      const pieceSoundWasPlayedEarly = earlyPieceSoundLogKeys.has(
+        pieceSoundLogKey(state, i, entry)
+      );
+      if (shouldPlayLogAudio && isPieceAction && !hasVisibleEffect && !nextEntryIsRoundFinished && !pieceSoundWasPlayedEarly) {
         scheduleLogAnimation(playPieceSound, animDelay);
         animDelay += 160;
       }

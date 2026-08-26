@@ -188,6 +188,64 @@ def test_weak_first_receive_search_accepts_only_a_clear_robust_result() -> None:
     assert not agent._timed_search_weak_first_receive_is_decisive(**uncertain)
 
 
+def test_zero_shi_stop_signal_uses_context_limited_search_thresholds() -> None:
+    agent = RuleBasedAgent()
+    agent._time_search_profile = "weak_first_receive"
+    result = dict(
+        baseline_action=("pass", None, None),
+        best_action=("receive", "4", None),
+        completed_depth=7,
+        agreement=0.582,
+        margin=87.32,
+        information_enabled=True,
+        information_confidence=0.593,
+    )
+
+    assert not agent._timed_search_weak_first_receive_is_decisive(**result)
+    assert agent._timed_search_weak_first_receive_is_decisive(
+        **result,
+        zero_shi_stop_signal=True,
+    )
+
+
+def test_zero_shi_stop_signal_context_matches_enemy_reply_to_ally_shi() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("56117431"),
+            "B": list("41141319"),
+            "C": list("45337562"),
+            "D": list("58121221"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent._ensure_trackers(state)
+
+    actions = (
+        ("A", ("attack_after_block", "3", "1")),
+        ("B", ("receive", "1", None)),
+        ("B", ("attack", None, "4")),
+    )
+    for player, action in actions:
+        action_type, block, attack = action
+        if action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        agent.on_public_action(state, player, action)
+
+    assert agent._timed_search_zero_shi_stop_signal_context(
+        state,
+        "C",
+        agent._track[id(state)],
+        baseline_action=("pass", None, None),
+        best_action=("receive", "4", None),
+    )
+
+
 def test_weak_rank_search_receives_gold_to_continue_ally_shi_attack() -> None:
     clear_prediction_sample_cache()
     reset_time_search_budget_model()

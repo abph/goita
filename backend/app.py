@@ -4255,11 +4255,6 @@ def get_kifu_yaml(game_id: str, anonymous: bool = True, client_id: str = ""):
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
-    if not _client_owned_human_seats(game, client_id):
-        raise HTTPException(
-            status_code=403,
-            detail="棋譜は対局に参加した端末だけが保存できます",
-        )
     state: GoitaState = game["state"]
     if not state.finished:
         raise HTTPException(
