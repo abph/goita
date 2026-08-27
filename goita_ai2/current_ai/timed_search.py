@@ -78,6 +78,33 @@ class TimedSearchResult:
 class TimedSearchMixin:
     """Adds public-information sampling and time-limited coalition search."""
 
+    def _timed_search_kyosha_pass_compare_is_decisive(
+        self,
+        *,
+        baseline_action: Action,
+        best_action: Action,
+        completed_depth: int,
+        agreement: float,
+        margin: float,
+        information_enabled: bool,
+        information_confidence: float,
+    ) -> bool:
+        """Adopt the better depth-seven branch in a lance pass comparison."""
+        return bool(
+            getattr(self, "_time_search_profile", "default")
+            == "kyosha_pass_compare"
+            and baseline_action[0] == "pass"
+            and best_action[0] == "receive"
+            and best_action[1] == "2"
+            and information_enabled
+            and completed_depth
+            >= int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH)
+            and agreement >= float(self.KYOSHA_PASS_COMPARE_MIN_AGREEMENT)
+            and margin > float(self.KYOSHA_PASS_COMPARE_MIN_MARGIN)
+            and information_confidence
+            >= float(self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE)
+        )
+
     def _timed_search_weak_first_receive_is_decisive(
         self,
         *,
@@ -1285,10 +1312,12 @@ class TimedSearchMixin:
             / max(1, len(ranked_rules))
             for index, action in enumerate(ranked_rules)
         }
-        rule_rank_bonus[baseline_action] = (
-            rule_rank_bonus.get(baseline_action, 0.0)
-            + self.TIME_SEARCH_BASELINE_PRIOR
-        )
+        search_profile = getattr(self, "_time_search_profile", "default")
+        if search_profile != "kyosha_pass_compare":
+            rule_rank_bonus[baseline_action] = (
+                rule_rank_bonus.get(baseline_action, 0.0)
+                + self.TIME_SEARCH_BASELINE_PRIOR
+            )
 
         maximum_depth = int(
             self._effective_time_search_setting(
@@ -1297,12 +1326,20 @@ class TimedSearchMixin:
             )
         )
         minimum_override_depth = 5
-        weak_first_receive_profile = getattr(
-            self,
-            "_time_search_profile",
-            "default",
-        ) in ("weak_first_receive", "low_reentry_receive")
-        if weak_first_receive_profile:
+        weak_first_receive_profile = search_profile in (
+            "weak_first_receive",
+            "low_reentry_receive",
+        )
+        if search_profile == "kyosha_pass_compare":
+            maximum_depth = min(
+                maximum_depth,
+                int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH),
+            )
+            minimum_override_depth = min(
+                maximum_depth,
+                int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH),
+            )
+        elif weak_first_receive_profile:
             minimum_override_depth = min(
                 maximum_depth,
                 int(self.WEAK_FIRST_RECEIVE_SEARCH_TARGET_DEPTH),
@@ -1525,16 +1562,34 @@ class TimedSearchMixin:
                 best_action=best_action,
             ),
         )
-        decisive = (
-            best_action != baseline_action
-            and best_minimum >= 50000.0
-            and baseline_minimum < 50000.0
-        ) or (
-            best_action != baseline_action
-            and completed_depth >= minimum_override_depth
-            and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
-            and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
-        ) or enemy_third_attack_wait or weak_first_receive_decisive
+        kyosha_pass_compare_decisive = (
+            self._timed_search_kyosha_pass_compare_is_decisive(
+                baseline_action=baseline_action,
+                best_action=best_action,
+                completed_depth=completed_depth,
+                agreement=agreement,
+                margin=margin,
+                information_enabled=information_enabled,
+                information_confidence=(
+                    float(information_set.confidence)
+                    if information_enabled
+                    else 0.0
+                ),
+            )
+        )
+        if search_profile == "kyosha_pass_compare":
+            decisive = kyosha_pass_compare_decisive
+        else:
+            decisive = (
+                best_action != baseline_action
+                and best_minimum >= 50000.0
+                and baseline_minimum < 50000.0
+            ) or (
+                best_action != baseline_action
+                and completed_depth >= minimum_override_depth
+                and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
+                and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
+            ) or enemy_third_attack_wait or weak_first_receive_decisive
         return TimedSearchResult(
             action=best_action,
             depth=completed_depth,

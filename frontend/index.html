@@ -5387,6 +5387,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_public_safe: "公開情報から安全と判断した攻め",
         attack_piece_value: "駒の得点価値を優先",
         attack_high_point_after_weak_shi: "弱いし攻めを避け、得点の高い駒を選択",
+        attack_avoid_two_shi_second_signal: "2しを多く見せる誤信号を避け、別の攻めを比較",
         attack_four_shi_receive_return: "4しを示すため、しで攻め返す",
         attack_three_shi_after_big_receive: "3しを生かして、しで攻める",
         attack_four_shi_over_single_middle: "1枚だけの中駒より4しを優先",
@@ -5411,6 +5412,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_tatewari: "迫使对手用王接牌的进攻",
         attack_occupancy: "选择对手较难接住的棋子",
         attack_avoid_enemy_piece_count: "选择对手持有概率较低的棋子",
+        attack_avoid_two_shi_second_signal: "避免让搭档误以为自己有较多的“し”，并比较其他进攻",
         attack_kakari_score: "配合搭档之前打出的棋子",
         pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
         receive_before_unproven_enemy_third_attack: "无法确认等待对手第三次进攻是否安全，因此用同种棋子接下",
@@ -5418,6 +5420,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
     },
     en: {
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
+        attack_avoid_two_shi_second_signal: "Compare other attacks instead of overstating two shi to the ally",
         receive_before_unproven_enemy_third_attack: "Receive with the matching piece because waiting for the opponent's third attack is not proven safe",
         low_reentry_followup_attack: "Continue with a publicly safe attack after receiving to preserve re-entry",
     },

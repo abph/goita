@@ -178,6 +178,9 @@ class BranchedAttackRuntimeMixin:
                 "enemy_attacks": tr.get("enemy_past_attacks", set()),
                 "shi_attack_mode": bool(tr.get("shi_attack_mode")),
                 "ally_shi_signal": tr.get("ally_shi_signal"),
+                "two_shi_second_signal_risk": bool(
+                    self._two_shi_second_attack_signal_risk(state, player)
+                ),
                 "special_attack_plan": tr.get("special_attack_plan"),
                 "ranks": {
                     seat: {
@@ -319,11 +322,32 @@ class BranchedAttackRuntimeMixin:
     def _branched_plan_is_production_eligible(
         self,
         item: EvaluatedBranchedAttackPlan,
+        state=None,
+        player: Optional[str] = None,
     ) -> bool:
         evaluation = item.plan.evaluation
         if evaluation.guaranteed_win:
             return True
         if self._branched_root_has_critical_danger(item):
+            return False
+        root_action = item.plan.node(item.plan.root_node_id).action
+        if (
+            state is not None
+            and player is not None
+            and root_action is not None
+            and root_action[2] == "1"
+            and self._two_shi_second_attack_signal_penalty(
+                state,
+                player,
+                root_action[2],
+            ) > 0
+            and evaluation.minimum_score <= 0.0
+            and evaluation.expected_score <= 0.0
+            and evaluation.failure_risk
+            > float(self.BRANCHED_ATTACK_GENERIC_MAX_FAILURE_RISK)
+        ):
+            # Let the normal all-action comparison decide. This keeps shi legal
+            # when another bonus or a later proof makes the bluff worthwhile.
             return False
         if item.plan.source.startswith("representative:"):
             # Royal preservation is an advisory constraint, not a fixed attack
@@ -408,10 +432,24 @@ class BranchedAttackRuntimeMixin:
         continued_action = self._branched_planned_action(state, player, actions)
         tr = self._track.get(id(state)) or {}
         current_revision = int(tr.get("piece_inference_revision", 0))
+        continued_signal_review = bool(
+            continued_action is not None
+            and active is not None
+            and not active.plan.evaluation.guaranteed_win
+            and continued_action[2] == "1"
+            and self._two_shi_second_attack_signal_penalty(
+                state,
+                player,
+                continued_action[2],
+            ) > 0
+        )
         requires_revalidation = bool(
             continued_action is not None
             and active is not None
-            and current_revision > int(active.installed_revision)
+            and (
+                current_revision > int(active.installed_revision)
+                or continued_signal_review
+            )
         )
         previous_plan_id = active.plan.plan_id if requires_revalidation and active else None
         previous_action = continued_action if requires_revalidation else None
@@ -483,7 +521,7 @@ class BranchedAttackRuntimeMixin:
         eligible = [
             item
             for item in evaluated
-            if self._branched_plan_is_production_eligible(item)
+            if self._branched_plan_is_production_eligible(item, state, player)
             and item.plan.node(item.plan.root_node_id).action in actions
         ]
         selected = self._choose_production_branched_plan(eligible)

@@ -226,6 +226,11 @@ class DecisionMixin:
             )
             if conditional_finish_score is not None:
                 return f"attack_conditional_shi_royal_finish_{int(conditional_finish_score)}"
+            if (
+                attack != "1"
+                and self._two_shi_second_attack_signal_risk(state, player)
+            ):
+                return "attack_avoid_two_shi_second_signal"
             if self._fourth_middle_early_attack_delay_penalty(state, player, action_type, attack) > 0:
                 return "attack_delay_fourth_middle"
             if self._fourth_middle_third_attack_bonus(state, player, action_type, attack) > 0:
@@ -559,8 +564,18 @@ class DecisionMixin:
             or baseline_detail.startswith("receive_no_shi_royal_")
         )
 
+        kyosha_pass_compare_search = (
+            not protected
+            and baseline_action[0] == "pass"
+            and self._should_compare_kyosha_pass_and_receive(
+                state,
+                player,
+                actions,
+            )
+        )
         low_reentry_receive_search = (
             not protected
+            and not kyosha_pass_compare_search
             and baseline_action[0] == "pass"
             and self._should_deep_search_low_reentry_receive(
                 state,
@@ -570,6 +585,7 @@ class DecisionMixin:
         )
         weak_first_receive_search = (
             not protected
+            and not kyosha_pass_compare_search
             and not low_reentry_receive_search
             and self._should_deep_search_weak_first_receive(
                 state,
@@ -578,7 +594,9 @@ class DecisionMixin:
             )
         )
         deep_receive_search = (
-            low_reentry_receive_search or weak_first_receive_search
+            kyosha_pass_compare_search
+            or low_reentry_receive_search
+            or weak_first_receive_search
         )
 
         search_result = None
@@ -586,14 +604,27 @@ class DecisionMixin:
             previous_profile = str(
                 getattr(self, "_time_search_profile", "default")
             )
-            if low_reentry_receive_search:
+            if kyosha_pass_compare_search:
+                search_profile = "kyosha_pass_compare"
+            elif low_reentry_receive_search:
                 search_profile = "low_reentry_receive"
             elif weak_first_receive_search:
                 search_profile = "weak_first_receive"
             else:
                 search_profile = "default"
             self._time_search_profile = search_profile
-            if deep_receive_search:
+            if kyosha_pass_compare_search:
+                budget_plan = self._prepare_time_search_budget(
+                    state,
+                    player,
+                    actions,
+                    configured_seconds=self.KYOSHA_PASS_COMPARE_MAX_SECONDS,
+                    configured_samples=self.KYOSHA_PASS_COMPARE_SAMPLE_COUNT,
+                    configured_depth=self.KYOSHA_PASS_COMPARE_MAX_DEPTH,
+                    configured_nodes=self.KYOSHA_PASS_COMPARE_MAX_NODES,
+                    adaptive_enabled=False,
+                )
+            elif deep_receive_search:
                 budget_plan = self._prepare_time_search_budget(
                     state,
                     player,
@@ -677,6 +708,7 @@ class DecisionMixin:
                 self._set_score_fallback_detail(
                     f"{'low_reentry_receive_' if low_reentry_receive_search else ''}"
                     f"{'weak_first_receive_' if weak_first_receive_search else ''}"
+                    f"{'kyosha_pass_compare_' if kyosha_pass_compare_search else ''}"
                     f"{'cache_' if self.last_time_search_cache_hit else ''}"
                     f"depth_{search_result.depth}_samples_{search_result.samples}_"
                     f"agreement_{int(round(search_result.agreement * 100))}"
@@ -716,6 +748,28 @@ class DecisionMixin:
 
         self._adopt_rule_preview(preview)
         return baseline_action
+
+    def _should_compare_kyosha_pass_and_receive(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> bool:
+        """Deeply compare passing an enemy lance with receiving it."""
+        if (
+            state.phase != "receive"
+            or state.current_attack != "2"
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+        ):
+            return False
+        return bool(
+            any(action[0] == "pass" for action in actions)
+            and any(
+                action[0] == "receive" and action[1] == "2"
+                for action in actions
+            )
+        )
 
     def _low_reentry_followup_piece(
         self,

@@ -238,6 +238,101 @@ def test_low_reentry_receive_uses_five_second_search_thresholds() -> None:
     assert not agent._timed_search_weak_first_receive_is_decisive(**narrow)
 
 
+def test_kyosha_pass_compare_requires_a_completed_depth_seven_result() -> None:
+    agent = RuleBasedAgent()
+    agent._time_search_profile = "kyosha_pass_compare"
+    result = dict(
+        baseline_action=("pass", None, None),
+        best_action=("receive", "2", None),
+        completed_depth=7,
+        agreement=0.75,
+        margin=1.0,
+        information_enabled=True,
+        information_confidence=0.60,
+    )
+
+    assert agent._timed_search_kyosha_pass_compare_is_decisive(**result)
+
+    shallow = dict(result)
+    shallow["completed_depth"] = 5
+    assert not agent._timed_search_kyosha_pass_compare_is_decisive(**shallow)
+
+    pass_best = dict(result)
+    pass_best["best_action"] = ("pass", None, None)
+    assert not agent._timed_search_kyosha_pass_compare_is_decisive(**pass_best)
+
+
+def test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse() -> None:
+    clear_prediction_sample_cache()
+    reset_time_search_budget_model()
+    state = GoitaState(
+        hands={
+            "A": list("11244678"),
+            "B": list("11133457"),
+            "C": list("11233456"),
+            "D": list("11122559"),
+        },
+        dealer="B",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    opening = (
+        ("B", ("attack_after_block", "1", "3")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "1", "3")),
+        ("C", ("receive", "3", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("receive", "9", None)),
+        ("D", ("attack", None, "2")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+    )
+    for player, action in opening:
+        apply_public(player, action)
+
+    c_agent = agents["C"]
+    legal = state.legal_actions("C")
+    preview = copy.deepcopy(c_agent)
+    baseline = preview._select_rule_based_action(state, "C", legal)
+    receive = c_agent.select_action(state, "C", legal)
+    search = c_agent._track[id(state)]["last_time_limited_search"]
+
+    assert baseline == ("pass", None, None)
+    assert receive == ("receive", "2", None)
+    assert c_agent.last_decision_reason == "time_search"
+    assert c_agent.last_score_fallback_detail.startswith("kyosha_pass_compare_")
+    assert search["depth"] == 7
+    assert search["decisive"] is True
+    assert search["budget"]["effective_seconds"] == 10.0
+
+    apply_public("C", receive)
+    attack = c_agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert attack == ("attack", None, "3")
+
+
 def test_zero_shi_stop_signal_context_matches_enemy_reply_to_ally_shi() -> None:
     state = GoitaState(
         hands={

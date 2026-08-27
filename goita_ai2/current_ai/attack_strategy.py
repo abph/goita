@@ -293,6 +293,49 @@ class AttackStrategyMixin:
             penalty += 80.0
         return -penalty
 
+    def _two_shi_second_attack_signal_risk(self, state, player: str) -> bool:
+        """Detect a weak second-attack shi that may overstate support to the ally."""
+        tr = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            tr is None
+            or int(tr.get("my_attack_count", 0)) != 1
+            or int(tr.get("my_init_count", Counter()).get("1", 0)) != 2
+            or hand.count("1") <= 0
+            or hand.count("8") + hand.count("9") > 0
+        ):
+            return False
+
+        history = tuple(str(piece) for piece in tr.get("my_attack_history", ()))
+        if not history or history[0] == "1":
+            return False
+        if (
+            tr.get("shi_attack_mode")
+            or tr.get("inherit_ally_shi_attack")
+            or tr.get("ally_first_attack") == "1"
+            or "1" in tr.get("ally_past_attacks", set())
+            or str(tr.get("ally_shi_signal", "unknown")) in ("returned_shi", "sashikomi")
+        ):
+            return False
+        if self._shi_exhaust_attack_bonus(state, player) > 0:
+            return False
+        return True
+
+    def _two_shi_second_attack_signal_penalty(
+        self,
+        state,
+        player: str,
+        attack: Optional[str],
+    ) -> float:
+        """Softly lower, rather than ban, a misleading second shi attack."""
+        if attack != "1" or not self._two_shi_second_attack_signal_risk(state, player):
+            return 0.0
+
+        penalty = float(self.TWO_SHI_SECOND_ATTACK_SIGNAL_PENALTY)
+        if self._has_strong_repeat_attack(Counter(state.hands[player])):
+            penalty *= 0.4
+        return penalty
+
     def _inferred_enemy_team_shi_pressure(
         self,
         state,
@@ -484,6 +527,11 @@ class AttackStrategyMixin:
             or not self._is_fourth_middle_attack(state, player, attack)
         ):
             return 0.0
+        if (
+            int(tr.get("my_attack_count", 0)) == 1
+            and self._two_shi_second_attack_signal_risk(state, player)
+        ):
+            return self.FOURTH_MIDDLE_WEAK_SECOND_BRIDGE_PENALTY
         return self.FOURTH_MIDDLE_EARLY_ATTACK_DELAY_PENALTY
 
     def _fourth_middle_third_attack_bonus(
@@ -1036,6 +1084,11 @@ class AttackStrategyMixin:
         # ★ 修正箇所：初期手札「し」が3枚以上の場合はペナルティを0点とし、空回りを恐れずに攻められるように緩和
         if action_type in ("attack", "attack_after_block") and attack == "1":
             score += self._shi_attack_score_adjustment(state, player, block)
+            score -= self._two_shi_second_attack_signal_penalty(
+                state,
+                player,
+                attack,
+            )
 
         if attack in ("9", "8") and has_non_king_attack_option:
             score -= self.KING_ATTACK_PENALTY

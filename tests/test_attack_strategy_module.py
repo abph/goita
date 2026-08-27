@@ -19,6 +19,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_fourth_middle_third_attack_bonus",
         "_second_kyosha_single_shi_block_adjustment",
         "_shi_attack_score_adjustment",
+        "_two_shi_second_attack_signal_risk",
+        "_two_shi_second_attack_signal_penalty",
         "_inferred_enemy_team_shi_pressure",
         "_inferred_enemy_team_shi_attack_action",
         "_fuse_strategy_hidden_block_adjustment",
@@ -599,6 +601,57 @@ def test_enemy_team_low_shi_pressure_overrides_middle_pair_sequence() -> None:
     assert search is not None
     assert search["action"] == ("attack", None, "1")
 
+
+def test_second_attack_avoids_weak_two_shi_signal_and_compares_other_attacks() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("25134466"),
+            "B": list("71313451"),
+            "C": list("46132531"),
+            "D": list("11251295"),
+        },
+        dealer="B",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent.TIME_SEARCH_ENABLED = False
+
+    actions = (
+        ("B", ("attack_after_block", "1", "3")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("attack_after_block", "1", "3")),
+        ("C", ("receive", "3", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        agent.on_public_action(state, action_player, action)
+
+    tracker = agent._track[id(state)]
+    assert agent._two_shi_second_attack_signal_risk(state, "C") is True
+    tracker["shi_attack_mode"] = True
+    assert agent._two_shi_second_attack_signal_risk(state, "C") is False
+    tracker["shi_attack_mode"] = False
+
+    chosen = agent.select_action(state, "C", state.legal_actions("C"))
+
+    assert chosen == ("attack_after_block", "1", "4")
+    assert agent.last_score_fallback_detail == "attack_avoid_two_shi_second_signal"
+    assert agent.last_branched_attack_metrics["status"] == "fallback"
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_attack_strategy_mixin()
     test_attack_strategy_methods_are_owned_by_mixin()
@@ -612,4 +665,5 @@ if __name__ == "__main__":
     test_second_kyosha_keeps_single_shi_and_blocks_low_middle()
     test_third_kyosha_compares_shi_royal_and_big_royal_waits()
     test_enemy_team_low_shi_pressure_overrides_middle_pair_sequence()
+    test_second_attack_avoids_weak_two_shi_signal_and_compares_other_attacks()
     print("ATTACK_STRATEGY_MODULE_TEST_OK")
