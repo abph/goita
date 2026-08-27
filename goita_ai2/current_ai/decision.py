@@ -625,6 +625,17 @@ class DecisionMixin:
                     configured_nodes=self.KYOSHA_PASS_COMPARE_MAX_NODES,
                     adaptive_enabled=False,
                 )
+            elif low_reentry_receive_search:
+                budget_plan = self._prepare_time_search_budget(
+                    state,
+                    player,
+                    actions,
+                    configured_seconds=self.LOW_REENTRY_RECEIVE_SEARCH_MAX_SECONDS,
+                    configured_samples=self.LOW_REENTRY_RECEIVE_SEARCH_SAMPLE_COUNT,
+                    configured_depth=self.LOW_REENTRY_RECEIVE_SEARCH_MAX_DEPTH,
+                    configured_nodes=self.LOW_REENTRY_RECEIVE_SEARCH_MAX_NODES,
+                    adaptive_enabled=False,
+                )
             elif deep_receive_search:
                 budget_plan = self._prepare_time_search_budget(
                     state,

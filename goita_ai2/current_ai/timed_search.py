@@ -1250,7 +1250,10 @@ class TimedSearchMixin:
                 self.TIME_SEARCH_MAX_SECONDS,
             )
         )
-        deadline = start + min(10.0, max(0.01, effective_seconds))
+        deadline = start + min(
+            float(getattr(self, "TIME_SEARCH_HARD_MAX_SECONDS", 20.0)),
+            max(0.01, effective_seconds),
+        )
         baseline_scores = {
             "AC": int(state.team_score.get("AC", 0)),
             "BD": int(state.team_score.get("BD", 0)),
@@ -1326,10 +1329,7 @@ class TimedSearchMixin:
             )
         )
         minimum_override_depth = 5
-        weak_first_receive_profile = search_profile in (
-            "weak_first_receive",
-            "low_reentry_receive",
-        )
+        weak_first_receive_profile = search_profile == "weak_first_receive"
         if search_profile == "kyosha_pass_compare":
             maximum_depth = min(
                 maximum_depth,
@@ -1338,6 +1338,11 @@ class TimedSearchMixin:
             minimum_override_depth = min(
                 maximum_depth,
                 int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH),
+            )
+        elif search_profile == "low_reentry_receive":
+            minimum_override_depth = min(
+                maximum_depth,
+                int(self.LOW_REENTRY_RECEIVE_SEARCH_TARGET_DEPTH),
             )
         elif weak_first_receive_profile:
             minimum_override_depth = min(

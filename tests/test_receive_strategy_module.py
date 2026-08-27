@@ -206,6 +206,9 @@ def test_low_reentry_search_receives_silver_and_keeps_bishop_followup() -> None:
     assert receive == ("receive", "4", None)
     assert agent.last_decision_reason == "time_search"
     assert agent.last_score_fallback_detail.startswith("low_reentry_receive_")
+    search = agent._track[id(state)]["last_time_limited_search"]
+    assert search["depth"] == 7
+    assert search["budget"]["effective_seconds"] == 20.0
 
     state.apply_receive("D", "4")
     agent.on_public_action(state, "D", receive)

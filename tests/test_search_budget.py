@@ -146,6 +146,30 @@ def test_agent_can_prepare_a_fixed_deep_receive_budget() -> None:
     assert plan.effective_nodes == 500_000
 
 
+def test_search_budget_caps_configured_time_at_twenty_seconds() -> None:
+    state = GoitaState(HANDS, dealer="A")
+    actions = state.legal_actions("A")
+    controller = AdaptiveSearchBudgetController()
+
+    plan = controller.plan(
+        state,
+        "A",
+        actions,
+        enabled=False,
+        warmup_observations=0,
+        minimum_seconds=0.15,
+        minimum_samples=8,
+        configured_seconds=30.0,
+        configured_samples=80,
+        configured_depth=11,
+        configured_nodes=250_000,
+        hard_max_seconds=20.0,
+    )
+
+    assert plan.configured_seconds == 20.0
+    assert plan.effective_seconds == 20.0
+
+
 if __name__ == "__main__":
     test_search_budget_keeps_configured_limits_during_warmup()
     test_search_budget_reduces_work_after_repeated_overruns()

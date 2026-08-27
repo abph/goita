@@ -130,11 +130,16 @@ class AdaptiveSearchBudgetController:
         configured_samples: int,
         configured_depth: int,
         configured_nodes: int,
+        hard_max_seconds: float = 20.0,
     ) -> SearchBudgetPlan:
         legal_action_count = len(actions)
         context = self._context(state, player, legal_action_count)
         complexity = self._complexity(state, player, legal_action_count)
-        configured_seconds = min(10.0, max(0.01, float(configured_seconds)))
+        hard_max_seconds = max(0.01, float(hard_max_seconds))
+        configured_seconds = min(
+            hard_max_seconds,
+            max(0.01, float(configured_seconds)),
+        )
         configured_samples = max(1, int(configured_samples))
         configured_depth = max(1, int(configured_depth))
         configured_nodes = max(1, int(configured_nodes))
@@ -369,6 +374,9 @@ class SearchBudgetMixin:
                 self.TIME_SEARCH_MAX_NODES
                 if configured_nodes is None
                 else configured_nodes
+            ),
+            hard_max_seconds=float(
+                getattr(self, "TIME_SEARCH_HARD_MAX_SECONDS", 20.0)
             ),
         )
         self._time_search_effective_budget = plan.as_dict()
