@@ -218,6 +218,26 @@ def test_zero_shi_stop_signal_uses_context_limited_search_thresholds() -> None:
     )
 
 
+def test_low_reentry_receive_uses_five_second_search_thresholds() -> None:
+    agent = RuleBasedAgent()
+    agent._time_search_profile = "low_reentry_receive"
+    result = dict(
+        baseline_action=("pass", None, None),
+        best_action=("receive", "2", None),
+        completed_depth=7,
+        agreement=0.745,
+        margin=336.51,
+        information_enabled=True,
+        information_confidence=0.640,
+    )
+
+    assert agent._timed_search_weak_first_receive_is_decisive(**result)
+
+    narrow = dict(result)
+    narrow["margin"] = 249.0
+    assert not agent._timed_search_weak_first_receive_is_decisive(**narrow)
+
+
 def test_zero_shi_stop_signal_context_matches_enemy_reply_to_ally_shi() -> None:
     state = GoitaState(
         hands={

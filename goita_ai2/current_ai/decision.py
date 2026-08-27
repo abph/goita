@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from typing import List, Optional, Tuple
+
+from goita_ai2.constants import PIECE_TOTALS, POINTS
 
 Action = Tuple[str, Optional[str], Optional[str]]
 
@@ -556,13 +559,26 @@ class DecisionMixin:
             or baseline_detail.startswith("receive_no_shi_royal_")
         )
 
-        deep_receive_search = (
+        low_reentry_receive_search = (
             not protected
+            and baseline_action[0] == "pass"
+            and self._should_deep_search_low_reentry_receive(
+                state,
+                player,
+                actions,
+            )
+        )
+        weak_first_receive_search = (
+            not protected
+            and not low_reentry_receive_search
             and self._should_deep_search_weak_first_receive(
                 state,
                 player,
                 actions,
             )
+        )
+        deep_receive_search = (
+            low_reentry_receive_search or weak_first_receive_search
         )
 
         search_result = None
@@ -570,9 +586,13 @@ class DecisionMixin:
             previous_profile = str(
                 getattr(self, "_time_search_profile", "default")
             )
-            self._time_search_profile = (
-                "weak_first_receive" if deep_receive_search else "default"
-            )
+            if low_reentry_receive_search:
+                search_profile = "low_reentry_receive"
+            elif weak_first_receive_search:
+                search_profile = "weak_first_receive"
+            else:
+                search_profile = "default"
+            self._time_search_profile = search_profile
             if deep_receive_search:
                 budget_plan = self._prepare_time_search_budget(
                     state,
@@ -633,6 +653,19 @@ class DecisionMixin:
                 getattr(preview, "last_attack_candidate_scores", [])
             )
             self._commit_timed_search_action(state, player, search_result.action)
+            if (
+                low_reentry_receive_search
+                and search_result.action[0] == "receive"
+            ):
+                tracker = self._track.get(id(state))
+                if tracker is not None:
+                    tracker["pending_low_reentry_attack_piece"] = (
+                        self._low_reentry_followup_piece(
+                            state,
+                            player,
+                            str(search_result.action[1]),
+                        )
+                    )
             self._set_decision_reason("time_search")
             if getattr(search_result, "enemy_third_attack_wait", False):
                 self._set_score_fallback_detail(
@@ -642,7 +675,8 @@ class DecisionMixin:
                 )
             else:
                 self._set_score_fallback_detail(
-                    f"{'weak_first_receive_' if deep_receive_search else ''}"
+                    f"{'low_reentry_receive_' if low_reentry_receive_search else ''}"
+                    f"{'weak_first_receive_' if weak_first_receive_search else ''}"
                     f"{'cache_' if self.last_time_search_cache_hit else ''}"
                     f"depth_{search_result.depth}_samples_{search_result.samples}_"
                     f"agreement_{int(round(search_result.agreement * 100))}"
@@ -682,6 +716,110 @@ class DecisionMixin:
 
         self._adopt_rule_preview(preview)
         return baseline_action
+
+    def _low_reentry_followup_piece(
+        self,
+        state,
+        player: str,
+        receive_piece: str,
+    ) -> Optional[str]:
+        """Choose the strongest public-information attack after receiving."""
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return None
+
+        remaining = Counter(state.hands[player])
+        if remaining.get(receive_piece, 0) <= 0:
+            return None
+        remaining[receive_piece] -= 1
+        public_seen = tracker.get("public_seen_counts", {})
+
+        ranked = []
+        for piece, count in remaining.items():
+            if count <= 0 or piece in ("8", "9"):
+                continue
+            outside = max(
+                0,
+                int(PIECE_TOTALS[piece])
+                - int(public_seen.get(piece, 0))
+                - int(count),
+            )
+            is_strong = outside <= 1 or count >= 3
+            if not is_strong:
+                continue
+            ranked.append(
+                (
+                    1 if outside == 0 else 0,
+                    -outside,
+                    int(POINTS[piece]),
+                    int(count),
+                    piece,
+                )
+            )
+
+        if not ranked:
+            return None
+        ranked.sort(reverse=True)
+        return str(ranked[0][-1])
+
+    def _should_deep_search_low_reentry_receive(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> bool:
+        """Search when passing as the last responder may end participation."""
+        if (
+            state.phase != "receive"
+            or state.current_attack is None
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or state.next_player(player) != state.attacker
+        ):
+            return False
+
+        current_attack = str(state.current_attack)
+        if not any(action[0] == "pass" for action in actions):
+            return False
+        if not any(
+            action[0] == "receive" and action[1] == current_attack
+            for action in actions
+        ):
+            return False
+
+        hand = state.hands[player]
+        if "1" in hand or "8" in hand or "9" in hand:
+            return False
+
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return False
+        public_seen = tracker.get("public_seen_counts", {})
+        remaining = Counter(hand)
+        remaining[current_attack] -= 1
+
+        future_receive_types = 0
+        for piece, count in remaining.items():
+            if count <= 0 or piece in (current_attack, "8", "9"):
+                continue
+            outside = max(
+                0,
+                int(PIECE_TOTALS[piece])
+                - int(public_seen.get(piece, 0))
+                - int(count),
+            )
+            if outside > 0:
+                future_receive_types += 1
+
+        return (
+            future_receive_types <= 2
+            and self._low_reentry_followup_piece(
+                state,
+                player,
+                current_attack,
+            )
+            is not None
+        )
 
     def _should_deep_search_weak_first_receive(
         self,
@@ -792,6 +930,24 @@ class DecisionMixin:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 self._set_decision_reason("inferred_endgame")
                 self._set_score_fallback_detail("inferred_endgame_followup_attack")
+                return planned_attack
+
+        if tr is not None and tr.get("pending_low_reentry_attack_piece") is not None:
+            planned_piece = str(tr.get("pending_low_reentry_attack_piece"))
+            tr["pending_low_reentry_attack_piece"] = None
+            planned_attack = next(
+                (
+                    action
+                    for action in actions
+                    if action[0] in ("attack", "attack_after_block")
+                    and action[2] == planned_piece
+                ),
+                None,
+            )
+            if planned_attack is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("time_search")
+                self._set_score_fallback_detail("low_reentry_followup_attack")
                 return planned_attack
 
         if tr is not None and tr.get("pending_weak_hand_shi_signal"):

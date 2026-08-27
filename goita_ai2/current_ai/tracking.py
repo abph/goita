@@ -89,6 +89,7 @@ class TrackingMixin:
             pending_ally_force_king_attack_piece=None,
             pending_weak_hand_shi_signal=False,
             pending_inferred_endgame_attack=None,
+            pending_low_reentry_attack_piece=None,
             last_forced_win_score_plan=None,
             active_forced_win_plan=None,
             last_time_limited_search=None,

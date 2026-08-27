@@ -13,6 +13,55 @@ def test_game_log_is_localized_at_render_time_without_changing_server_logs():
     assert '(state.log||[]).join("\\n")' not in HTML
 
 
+def test_game_log_has_normal_thinking_and_raw_views():
+    for expected in (
+        'id="gameLogModeNormal"',
+        'id="gameLogModeThinking"',
+        'id="gameLogModeRaw"',
+        "通常ログ",
+        "AI思考",
+        "生ログ",
+        "function setGameLogViewMode(",
+        'const GAME_LOG_VIEW_MODE_KEY = "goita_game_log_view_mode";',
+        'if(gameLogViewMode === "raw")',
+        'raw.textContent = lines.join("\\n");',
+    ):
+        assert expected in HTML
+
+
+def test_readable_log_groups_receive_and_followup_attack_by_turn():
+    for expected in (
+        "function groupGameLogEntries(",
+        'meta.action === "receive" && nextMeta.action === "attack"',
+        'meta.seat === nextMeta.seat',
+        'groups.push({seat: meta.seat, action: "turn", entries: [source, nextSource]});',
+        "function stripGameLogTechnicalDetails(",
+        'gameLogViewMode === "thinking"',
+        'className = "game-log-entry"',
+        'className = "game-log-thoughts"',
+    ):
+        assert expected in HTML
+
+
+def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
+    strip_start = HTML.index("function stripGameLogTechnicalDetails(")
+    strip_end = HTML.index("function gameLogEntryMeta(", strip_start)
+    strip_source = HTML[strip_start:strip_end]
+    assert r"/\s*\[AI:[^\]]+\]/g" in strip_source
+    assert r"/\s*\[AI-CANDIDATES:[^\]]+\]/g" in strip_source
+    assert r"/\s*\[PERF\(ms\):[^\]]+\]/g" in strip_source
+
+    thought_start = HTML.index("function gameLogThoughtRows(")
+    thought_end = HTML.index("function renderGameLogGroup(", thought_start)
+    thought_source = HTML[thought_start:thought_end]
+    assert "localizeGameLogAiDecision" in thought_source
+    assert "localizeGameLogAttackCandidates" in thought_source
+    assert "localizeGameLogPerformance" in thought_source
+    assert 'receiveDecision: "受け判断"' in HTML
+    assert 'attackDecision: "攻め判断"' in HTML
+    assert 'blockDecision: "伏せ判断"' in HTML
+
+
 def test_japanese_game_log_covers_actions_results_and_effects():
     for expected in (
         "対局開始。親=",
@@ -33,6 +82,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'shi_signal: "し攻めに賛同する意思表示"',
         'kakari: "味方の攻めに合わせる判断"',
         'attack_tatewari: "王を切らせる攻め"',
+        'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
+        'startsWith("low_reentry_receive_")',
         'return "敵の3枚目を待っても上がれると判断してパス";',
         "function localizeGameLogAiDetail(",
         "function localizeGameLogAiDecision(",
@@ -100,7 +151,7 @@ def test_hidden_piece_candidates_are_explained_separately_from_attack_candidates
 
 def test_english_game_log_keeps_debug_reasons_but_displays_time_in_seconds():
     localization_start = HTML.index("function localizeGameLogLine(")
-    localization_end = HTML.index("function renderGameLog(", localization_start)
+    localization_end = HTML.index("function aiBoardExplanationKey(", localization_start)
     localization = HTML[localization_start:localization_end]
 
     assert 'if(language === "en") {' in localization

@@ -68,7 +68,7 @@ def test_desktop_log_matches_the_full_control_column_height():
     assert "align-items: start;" in log_layout_css
     assert "overflow: hidden;" in log_card_css
     assert "position: absolute;" in HTML
-    assert "inset: 31px 0 0;" in HTML
+    assert "inset: 68px 0 0;" in HTML
     assert "overflow-y: scroll;" in HTML
     assert "scrollbar-gutter: stable;" in HTML
     assert "scrollbar-color: #9b744d #eee4d2;" in HTML

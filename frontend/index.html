@@ -1447,13 +1447,114 @@
     .game-content-layout { min-width: 0; }
     .game-content-main { min-width: 0; }
     #logCard { margin-top: 10px; }
+    .game-log-toolbar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      margin: 8px 0;
+      border: 1px solid #9d754e;
+      background: #fffdf5;
+    }
+    .game-log-mode-button {
+      min-width: 0;
+      min-height: 30px;
+      padding: 4px 6px;
+      border: 0;
+      border-right: 1px solid #9d754e;
+      border-radius: 0;
+      background: #fffdf5;
+      color: #5f3517;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .game-log-mode-button:last-child { border-right: 0; }
+    .game-log-mode-button.active {
+      background: #7c4a22;
+      color: #fff;
+    }
     #log {
       font-size: 11px;
       line-height: 1.4;
-      white-space: pre-wrap;
       overflow-wrap: anywhere;
       word-break: break-word;
       overflow-x: hidden;
+      background: #f4efdf;
+      border: 1px solid #c8a77a;
+      border-radius: 6px;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .game-log-empty {
+      padding: 14px 10px;
+      color: #6f6255;
+      text-align: center;
+    }
+    .game-log-entry {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(157, 117, 78, 0.28);
+    }
+    .game-log-entry:last-child { border-bottom: 0; }
+    .game-log-entry.event { background: rgba(255, 253, 245, 0.72); }
+    .game-log-entry.result {
+      border-left: 4px solid #a33a2b;
+      background: rgba(255, 248, 224, 0.9);
+    }
+    .game-log-entry-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 3px;
+      color: #6d431e;
+      font-weight: 900;
+    }
+    .game-log-seat {
+      display: inline-grid;
+      width: 21px;
+      height: 21px;
+      flex: 0 0 21px;
+      place-items: center;
+      border: 1px solid #8b5a2b;
+      background: #fffdf5;
+      font-size: 11px;
+    }
+    .game-log-action {
+      color: #25211d;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .game-log-thoughts {
+      display: grid;
+      gap: 5px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px dashed rgba(139, 90, 43, 0.42);
+    }
+    .game-log-thought-row {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr);
+      gap: 7px;
+      align-items: start;
+    }
+    .game-log-thought-label {
+      color: #8a3b2c;
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .game-log-thought-value { color: #3f352b; }
+    .game-log-raw {
+      min-height: 100%;
+      margin: 0;
+      padding: 10px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      font: inherit;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .chat-toggle {
@@ -2103,9 +2204,9 @@
         min-height: 0;
         overflow: hidden;
       }
-      .game-content-layout.log-visible #logCard > details > pre {
+      .game-content-layout.log-visible #logCard > details > #log {
         position: absolute;
-        inset: 31px 0 0;
+        inset: 68px 0 0;
         height: auto;
         min-height: 0;
         max-height: none;
@@ -2115,14 +2216,14 @@
         scrollbar-color: #9b744d #eee4d2;
         scrollbar-width: auto;
       }
-      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar {
+      .game-content-layout.log-visible #logCard > details > #log::-webkit-scrollbar {
         width: 10px;
       }
-      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar-track {
+      .game-content-layout.log-visible #logCard > details > #log::-webkit-scrollbar-track {
         background: #eee4d2;
         border-radius: 5px;
       }
-      .game-content-layout.log-visible #logCard > details > pre::-webkit-scrollbar-thumb {
+      .game-content-layout.log-visible #logCard > details > #log::-webkit-scrollbar-thumb {
         background: #9b744d;
         border: 2px solid #eee4d2;
         border-radius: 5px;
@@ -4429,7 +4530,12 @@
     <div class="card" id="logCard" style="display:none;">
       <details>
         <summary><b>ログ</b></summary>
-        <pre id="log" style="margin-top:8px;"></pre>
+        <div class="game-log-toolbar" role="tablist" aria-label="ログ表示">
+          <button id="gameLogModeNormal" class="game-log-mode-button active" type="button" role="tab" aria-selected="true" onclick="setGameLogViewMode('normal')">通常ログ</button>
+          <button id="gameLogModeThinking" class="game-log-mode-button" type="button" role="tab" aria-selected="false" onclick="setGameLogViewMode('thinking')">AI思考</button>
+          <button id="gameLogModeRaw" class="game-log-mode-button" type="button" role="tab" aria-selected="false" onclick="setGameLogViewMode('raw')">生ログ</button>
+        </div>
+        <div id="log" role="tabpanel" aria-live="polite"></div>
       </details>
     </div>
   </div>
@@ -5288,6 +5394,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_kakari_score: "味方が以前に出した駒に合わせる",
         pass_preserve_win_attack: "上がりに必要な攻め駒を温存するためパス",
         receive_before_unproven_enemy_third_attack: "敵の3枚目を待つ安全が確認できないため、同じ駒で受ける",
+        low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続",
         inferred_endgame_followup_attack: "推定した終盤の上がり筋を継続",
         ally_shi_approval_already_sent_pass: "し攻めへの賛同は伝達済みのためパス",
     },
@@ -5307,10 +5414,12 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         attack_kakari_score: "配合搭档之前打出的棋子",
         pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
         receive_before_unproven_enemy_third_attack: "无法确认等待对手第三次进攻是否安全，因此用同种棋子接下",
+        low_reentry_followup_attack: "为保留再次参与的机会，接牌后继续选择公开信息下安全的进攻",
     },
     en: {
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
         receive_before_unproven_enemy_third_attack: "Receive with the matching piece because waiting for the opponent's third attack is not proven safe",
+        low_reentry_followup_attack: "Continue with a publicly safe attack after receiving to preserve re-entry",
     },
 });
 
@@ -5333,6 +5442,11 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return "确认等待对手第三次进攻仍可获胜，因此暂时跳过";
         if(language === "en") return "Pass now because waiting for the opponent's third attack still preserves a forced win";
         return "敵の3枚目を待っても上がれると判断してパス";
+    }
+    if(String(detail || "").startsWith("low_reentry_receive_")) {
+        if(language === "zh") return "如果跳过，之后很难再次参与，因此比较后选择接牌";
+        if(language === "en") return "Receive after comparing the lines because passing would make re-entry unlikely";
+        return "パスすると再び参加しにくいため、探索で比較して同じ駒で受ける";
     }
     if(/^enemy_first_(pass|receive)_hand_strength_/.test(String(detail || ""))) {
         const receives = String(detail).includes("_receive_");
@@ -5677,12 +5791,228 @@ window.addEventListener("goita-ai-piece-thought", (event) => {
     showAiBoardThought(event?.detail?.thoughtKey);
 });
 
+const GAME_LOG_VIEW_MODE_KEY = "goita_game_log_view_mode";
+let gameLogViewMode = (() => {
+    try {
+        const saved = localStorage.getItem(GAME_LOG_VIEW_MODE_KEY);
+        return ["normal", "thinking", "raw"].includes(saved) ? saved : "normal";
+    } catch (_error) {
+        return "normal";
+    }
+})();
+
+function gameLogUiLabels(language) {
+    if(language === "en") {
+        return {
+            normal: "Game log", thinking: "AI reasoning", raw: "Raw log",
+            turn: "Turn", event: "Game", decision: "Decision",
+            receiveDecision: "Receive", attackDecision: "Attack",
+            blockDecision: "Hidden piece", passDecision: "Pass",
+            candidates: "Candidates", time: "Thinking time", empty: "No log entries yet.",
+        };
+    }
+    if(language === "zh") {
+        return {
+            normal: "普通日志", thinking: "AI思考", raw: "原始日志",
+            turn: "回合", event: "对局", decision: "判断",
+            receiveDecision: "防守判断", attackDecision: "进攻判断",
+            blockDecision: "暗置判断", passDecision: "跳过判断",
+            candidates: "候选比较", time: "思考时间", empty: "暂无日志。",
+        };
+    }
+    return {
+        normal: "通常ログ", thinking: "AI思考", raw: "生ログ",
+        turn: "手番", event: "対局", decision: "判断",
+        receiveDecision: "受け判断", attackDecision: "攻め判断",
+        blockDecision: "伏せ判断", passDecision: "パス判断",
+        candidates: "候補比較", time: "思考時間", empty: "ログはまだありません。",
+    };
+}
+
+function setGameLogViewMode(mode) {
+    if(!["normal", "thinking", "raw"].includes(mode)) return;
+    gameLogViewMode = mode;
+    try {
+        localStorage.setItem(GAME_LOG_VIEW_MODE_KEY, mode);
+    } catch (_error) {
+        // The selected view still works when browser storage is unavailable.
+    }
+    renderGameLog(latestState?.log || []);
+}
+
+function stripGameLogTechnicalDetails(entry) {
+    return String(entry ?? "")
+        .replace(/\s*\[AI:[^\]]+\]/g, "")
+        .replace(/\s*\[AI-CANDIDATES:[^\]]+\]/g, "")
+        .replace(/\s*\[PERF\(ms\):[^\]]+\]/g, "")
+        .trimEnd();
+}
+
+function gameLogEntryMeta(entry) {
+    const source = String(entry ?? "");
+    let match = source.match(/^([ABCD]): receive ([1-9])/);
+    if(match) return {seat: match[1], action: "receive", candidateKind: "receive"};
+    match = source.match(/^([ABCD]): attack ([1-9])/);
+    if(match) return {seat: match[1], action: "attack", candidateKind: "attack"};
+    match = source.match(/^([ABCD]): block ([1-9]) -> attack ([1-9])/);
+    if(match) return {seat: match[1], action: "block", candidateKind: "receive"};
+    match = source.match(/^([ABCD]): pass/);
+    if(match) return {seat: match[1], action: "pass", candidateKind: "receive"};
+    const result = /^(Round finished\.|Match finished!)/.test(source);
+    return {seat: "", action: result ? "result" : "event", candidateKind: "attack"};
+}
+
+function groupGameLogEntries(entries) {
+    const groups = [];
+    for(let index = 0; index < entries.length; index += 1) {
+        const source = String(entries[index] ?? "");
+        const meta = gameLogEntryMeta(source);
+        const nextSource = index + 1 < entries.length ? String(entries[index + 1] ?? "") : "";
+        const nextMeta = gameLogEntryMeta(nextSource);
+        if(meta.action === "receive" && nextMeta.action === "attack" && meta.seat === nextMeta.seat) {
+            groups.push({seat: meta.seat, action: "turn", entries: [source, nextSource]});
+            index += 1;
+            continue;
+        }
+        groups.push({seat: meta.seat, action: meta.action, entries: [source]});
+    }
+    return groups;
+}
+
+function removeGameLogSeatPrefix(value, seat) {
+    const prefix = seat ? `${seat}: ` : "";
+    return prefix && String(value).startsWith(prefix) ? String(value).slice(prefix.length) : String(value);
+}
+
+function trimGameLogDecoration(value) {
+    return String(value || "")
+        .replace(/^[\[【]/, "")
+        .replace(/[\]】]$/, "")
+        .trim();
+}
+
+function gameLogThoughtRows(entry, language) {
+    const source = String(entry ?? "");
+    const meta = gameLogEntryMeta(source);
+    const labels = gameLogUiLabels(language);
+    const rows = [];
+    const decisionLabel = {
+        receive: labels.receiveDecision,
+        attack: labels.attackDecision,
+        block: labels.blockDecision,
+        pass: labels.passDecision,
+    }[meta.action] || labels.decision;
+
+    for(const match of source.matchAll(/\[AI:([^\]]+)\]/g)) {
+        rows.push({label: decisionLabel, value: trimGameLogDecoration(localizeGameLogAiDecision(match[1], language))});
+    }
+    for(const match of source.matchAll(/\[AI-CANDIDATES:([^\]]+)\]/g)) {
+        const value = localizeGameLogAttackCandidates(match[1], language, meta.candidateKind);
+        if(value) rows.push({label: labels.candidates, value: trimGameLogDecoration(value)});
+    }
+    for(const match of source.matchAll(/\[PERF\(ms\):([^\]]+)\]/g)) {
+        rows.push({label: labels.time, value: trimGameLogDecoration(localizeGameLogPerformance(match[1], language))});
+    }
+    return rows;
+}
+
+function renderGameLogGroup(group, language, includeThinking) {
+    const labels = gameLogUiLabels(language);
+    const row = document.createElement("section");
+    row.className = "game-log-entry";
+    if(!group.seat) row.classList.add("event");
+    if(group.action === "result") row.classList.add("result");
+
+    if(group.seat) {
+        const header = document.createElement("div");
+        header.className = "game-log-entry-header";
+        const seat = document.createElement("span");
+        seat.className = "game-log-seat";
+        seat.textContent = group.seat;
+        const title = document.createElement("span");
+        title.textContent = labels.turn;
+        header.append(seat, title);
+        row.appendChild(header);
+    }
+
+    const action = document.createElement("div");
+    action.className = "game-log-action";
+    const actionParts = group.entries.map((entry) => {
+        const normalEntry = stripGameLogTechnicalDetails(entry);
+        return removeGameLogSeatPrefix(localizeGameLogLine(normalEntry, language), group.seat);
+    });
+    action.textContent = actionParts.join(group.entries.length > 1 ? " → " : "");
+    row.appendChild(action);
+
+    if(includeThinking) {
+        const thoughtRows = group.entries.flatMap((entry) => gameLogThoughtRows(entry, language));
+        if(thoughtRows.length > 0) {
+            const thoughts = document.createElement("div");
+            thoughts.className = "game-log-thoughts";
+            thoughtRows.forEach((item) => {
+                const thought = document.createElement("div");
+                thought.className = "game-log-thought-row";
+                const label = document.createElement("div");
+                label.className = "game-log-thought-label";
+                label.textContent = item.label;
+                const value = document.createElement("div");
+                value.className = "game-log-thought-value";
+                value.textContent = item.value;
+                thought.append(label, value);
+                thoughts.appendChild(thought);
+            });
+            row.appendChild(thoughts);
+        }
+    }
+    return row;
+}
+
+function syncGameLogModeButtons(language) {
+    const labels = gameLogUiLabels(language);
+    const modes = {
+        normal: document.getElementById("gameLogModeNormal"),
+        thinking: document.getElementById("gameLogModeThinking"),
+        raw: document.getElementById("gameLogModeRaw"),
+    };
+    Object.entries(modes).forEach(([mode, button]) => {
+        if(!button) return;
+        const active = gameLogViewMode === mode;
+        button.textContent = labels[mode];
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
+    });
+}
+
 function renderGameLog(entries) {
     const logElement = document.getElementById("log");
     if(!logElement) return;
     const lines = isCurrentClientHost() && Array.isArray(entries) ? entries : [];
     const language = currentUiLanguage();
-    logElement.textContent = lines.map((entry) => localizeGameLogLine(entry, language)).join("\n");
+    syncGameLogModeButtons(language);
+    logElement.replaceChildren();
+
+    if(lines.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "game-log-empty";
+        empty.textContent = gameLogUiLabels(language).empty;
+        logElement.appendChild(empty);
+        return;
+    }
+
+    if(gameLogViewMode === "raw") {
+        const raw = document.createElement("pre");
+        raw.className = "game-log-raw";
+        raw.textContent = lines.join("\n");
+        logElement.appendChild(raw);
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    groupGameLogEntries(lines).forEach((group) => {
+        fragment.appendChild(renderGameLogGroup(group, language, gameLogViewMode === "thinking"));
+    });
+    logElement.appendChild(fragment);
 }
 
 function linkedKifuSeatText(preset, language) {

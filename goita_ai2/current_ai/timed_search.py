@@ -91,14 +91,25 @@ class TimedSearchMixin:
         zero_shi_stop_signal: bool = False,
     ) -> bool:
         """Allow a robust receive result to replace a weak-hand pass."""
+        profile = getattr(self, "_time_search_profile", "default")
         if (
-            getattr(self, "_time_search_profile", "default")
-            != "weak_first_receive"
+            profile not in ("weak_first_receive", "low_reentry_receive")
             or baseline_action[0] != "pass"
             or best_action[0] != "receive"
             or not information_enabled
         ):
             return False
+        if profile == "low_reentry_receive":
+            return (
+                completed_depth
+                >= int(self.LOW_REENTRY_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH)
+                and agreement
+                >= float(self.LOW_REENTRY_RECEIVE_SEARCH_OVERRIDE_AGREEMENT)
+                and margin
+                >= float(self.LOW_REENTRY_RECEIVE_SEARCH_OVERRIDE_MARGIN)
+                and information_confidence
+                >= float(self.LOW_REENTRY_RECEIVE_SEARCH_MIN_CONFIDENCE)
+            )
         if zero_shi_stop_signal:
             return (
                 completed_depth
@@ -1286,10 +1297,11 @@ class TimedSearchMixin:
             )
         )
         minimum_override_depth = 5
-        weak_first_receive_profile = (
-            getattr(self, "_time_search_profile", "default")
-            == "weak_first_receive"
-        )
+        weak_first_receive_profile = getattr(
+            self,
+            "_time_search_profile",
+            "default",
+        ) in ("weak_first_receive", "low_reentry_receive")
         if weak_first_receive_profile:
             minimum_override_depth = min(
                 maximum_depth,

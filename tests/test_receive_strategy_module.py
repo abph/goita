@@ -86,6 +86,75 @@ def test_weak_first_middle_attack_is_left_for_receive_search() -> None:
     assert c_agent._should_deep_search_weak_first_receive(state, "C", legal)
 
 
+def _low_reentry_lance_state() -> tuple[GoitaState, RuleBasedAgent]:
+    state = GoitaState(
+        hands={
+            "A": list("14111554"),
+            "B": list("36346322"),
+            "C": list("14721528"),
+            "D": list("19537111"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("B")
+    agent._ensure_trackers(state)
+
+    opening = (
+        ("A", ("attack_after_block", "1", "1")),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "1", None)),
+        ("C", ("attack", None, "2")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+    )
+    for action_player, action in opening:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        agent.on_public_action(state, action_player, action)
+    return state, agent
+
+
+def test_last_responder_with_low_reentry_uses_deep_receive_search() -> None:
+    state, agent = _low_reentry_lance_state()
+    legal = state.legal_actions("B")
+
+    assert state.turn == "B"
+    assert agent._should_deep_search_low_reentry_receive(state, "B", legal)
+    assert agent._low_reentry_followup_piece(state, "B", "2") == "6"
+
+    state.hands["B"].append("1")
+    assert not agent._should_deep_search_low_reentry_receive(
+        state,
+        "B",
+        state.legal_actions("B"),
+    )
+
+
+def test_low_reentry_receive_keeps_its_public_safe_followup() -> None:
+    state, agent = _low_reentry_lance_state()
+    tracker = agent._track[id(state)]
+    tracker["pending_low_reentry_attack_piece"] = "6"
+
+    state.apply_receive("B", "2")
+    attack = agent._select_rule_based_action(
+        state,
+        "B",
+        state.legal_actions("B"),
+    )
+
+    assert attack == ("attack", None, "6")
+    assert agent.last_decision_reason == "time_search"
+    assert agent.last_score_fallback_detail == "low_reentry_followup_attack"
+
+
 def test_enemy_second_big_attack_is_passed_with_royal_reserve() -> None:
     state = GoitaState(
         hands={
