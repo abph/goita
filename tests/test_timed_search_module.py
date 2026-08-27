@@ -239,8 +239,9 @@ def test_low_reentry_receive_uses_five_second_search_thresholds() -> None:
 
     observed_silver_receive = dict(result)
     observed_silver_receive.update(
+        completed_depth=5,
         agreement=0.658,
-        margin=244.4,
+        margin=202.33,
         information_confidence=0.628,
     )
     assert agent._timed_search_weak_first_receive_is_decisive(
