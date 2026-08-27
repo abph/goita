@@ -130,7 +130,7 @@ def test_last_responder_with_low_reentry_uses_deep_receive_search() -> None:
     assert agent._should_deep_search_low_reentry_receive(state, "B", legal)
     assert agent._low_reentry_followup_piece(state, "B", "2") == "6"
 
-    state.hands["B"].append("1")
+    state.hands["B"].append("8")
     assert not agent._should_deep_search_low_reentry_receive(
         state,
         "B",
@@ -152,6 +152,66 @@ def test_low_reentry_receive_keeps_its_public_safe_followup() -> None:
 
     assert attack == ("attack", None, "6")
     assert agent.last_decision_reason == "time_search"
+    assert agent.last_score_fallback_detail == "low_reentry_followup_attack"
+
+
+def _silver_receive_bishop_followup_state() -> tuple[GoitaState, RuleBasedAgent]:
+    state = GoitaState(
+        hands={
+            "A": list("51515711"),
+            "B": list("13152117"),
+            "C": list("14832349"),
+            "D": list("23144662"),
+        },
+        dealer="D",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("D")
+    agent._ensure_trackers(state)
+
+    opening = (
+        ("D", ("attack_after_block", "4", "2")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "2", None)),
+        ("C", ("attack", None, "4")),
+    )
+    for action_player, action in opening:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        agent.on_public_action(state, action_player, action)
+    return state, agent
+
+
+def test_scarce_shi_and_lance_do_not_hide_low_reentry_bishop_followup() -> None:
+    state, agent = _silver_receive_bishop_followup_state()
+    legal = state.legal_actions("D")
+
+    assert agent._effective_future_reentry_score(state, "D", "4") == 1.575
+    assert agent._low_reentry_followup_piece(state, "D", "4") == "6"
+    assert agent._should_deep_search_low_reentry_receive(state, "D", legal)
+
+
+def test_low_reentry_search_receives_silver_and_keeps_bishop_followup() -> None:
+    state, agent = _silver_receive_bishop_followup_state()
+
+    receive = agent.select_action(state, "D", state.legal_actions("D"))
+    assert receive == ("receive", "4", None)
+    assert agent.last_decision_reason == "time_search"
+    assert agent.last_score_fallback_detail.startswith("low_reentry_receive_")
+
+    state.apply_receive("D", "4")
+    agent.on_public_action(state, "D", receive)
+    attack = agent.select_action(state, "D", state.legal_actions("D"))
+
+    assert attack == ("attack", None, "6")
     assert agent.last_score_fallback_detail == "low_reentry_followup_attack"
 
 

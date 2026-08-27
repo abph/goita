@@ -823,13 +823,12 @@ class DecisionMixin:
         player: str,
         actions: List[Action],
     ) -> bool:
-        """Search when passing as the last responder may end participation."""
+        """Search when passing may sharply reduce useful participation."""
         if (
             state.phase != "receive"
             or state.current_attack is None
             or state.attacker is None
             or self._same_team(state.attacker, player)
-            or state.next_player(player) != state.attacker
         ):
             return False
 
@@ -843,17 +842,39 @@ class DecisionMixin:
             return False
 
         hand = state.hands[player]
-        if "1" in hand or "8" in hand or "9" in hand:
+        if "8" in hand or "9" in hand:
             return False
 
+        return (
+            self._effective_future_reentry_score(
+                state,
+                player,
+                current_attack,
+            )
+            <= float(self.LOW_REENTRY_RECEIVE_MAX_EFFECTIVE_SCORE)
+            and self._low_reentry_followup_piece(
+                state,
+                player,
+                current_attack,
+            )
+            is not None
+        )
+
+    def _effective_future_reentry_score(
+        self,
+        state,
+        player: str,
+        current_attack: str,
+    ) -> float:
+        """Estimate useful ways to rejoin after declining the current receive."""
         tracker = self._track.get(id(state))
         if tracker is None:
-            return False
-        public_seen = tracker.get("public_seen_counts", {})
-        remaining = Counter(hand)
-        remaining[current_attack] -= 1
+            return float("inf")
 
-        future_receive_types = 0
+        public_seen = tracker.get("public_seen_counts", {})
+        remaining = Counter(state.hands[player])
+        score = 0.0
+
         for piece, count in remaining.items():
             if count <= 0 or piece in (current_attack, "8", "9"):
                 continue
@@ -863,18 +884,21 @@ class DecisionMixin:
                 - int(public_seen.get(piece, 0))
                 - int(count),
             )
-            if outside > 0:
-                future_receive_types += 1
+            if outside <= 0:
+                continue
 
-        return (
-            future_receive_types <= 2
-            and self._low_reentry_followup_piece(
-                state,
-                player,
-                current_attack,
-            )
-            is not None
-        )
+            availability = min(1.0, float(outside) / 2.0)
+            if piece == "1":
+                # Shi may exist outside, but it is not a reliable next attack.
+                weight = float(self.LOW_REENTRY_RECEIVE_SHI_WEIGHT)
+            elif piece == "2":
+                # A scarce lance may be an ally's kakari signal, so discount it.
+                weight = float(self.LOW_REENTRY_RECEIVE_KYOSHA_WEIGHT)
+            else:
+                weight = 1.0
+            score += availability * weight
+
+        return score
 
     def _should_deep_search_weak_first_receive(
         self,

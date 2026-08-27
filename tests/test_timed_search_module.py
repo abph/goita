@@ -234,8 +234,18 @@ def test_low_reentry_receive_uses_five_second_search_thresholds() -> None:
     assert agent._timed_search_weak_first_receive_is_decisive(**result)
 
     narrow = dict(result)
-    narrow["margin"] = 249.0
+    narrow["margin"] = 199.0
     assert not agent._timed_search_weak_first_receive_is_decisive(**narrow)
+
+    observed_silver_receive = dict(result)
+    observed_silver_receive.update(
+        agreement=0.658,
+        margin=244.4,
+        information_confidence=0.628,
+    )
+    assert agent._timed_search_weak_first_receive_is_decisive(
+        **observed_silver_receive
+    )
 
 
 def test_kyosha_pass_compare_requires_a_completed_depth_seven_result() -> None:
