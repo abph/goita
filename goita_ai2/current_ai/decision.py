@@ -554,6 +554,7 @@ class DecisionMixin:
                 "forced_king_third",
                 "king_order",
                 "safe_nonking_third",
+                "upside_finish",
             )
             or baseline_detail in ("receive_win_after", "receive_tsume_after")
             or baseline_detail.startswith("attack_sequence_")
@@ -945,6 +946,17 @@ class DecisionMixin:
         )
         if high_score_tsume is not None:
             chosen, route_score, immediate = high_score_tsume
+            upside = None
+            if not immediate:
+                upside = self._upside_finish_action(
+                    state,
+                    player,
+                    actions,
+                    chosen,
+                    float(route_score),
+                )
+                if upside is not None:
+                    chosen = upside.action
             if tr is not None and chosen[0] in ("attack", "attack_after_block"):
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 tr["pending_weak_hand_shi_signal"] = False
@@ -959,8 +971,17 @@ class DecisionMixin:
                     tr["kg_second"] = chosen[2]
                 if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                     tr["kg_plan_active"] = False
-            self._set_decision_reason("win_now" if immediate else "tsume")
-            self._set_score_fallback_detail(f"high_score_{int(route_score)}")
+            if upside is not None:
+                self._set_decision_reason("upside_finish")
+                self._set_score_fallback_detail(
+                    f"safe_{int(route_score)}_"
+                    f"target_{int(upside.maximum_score)}_"
+                    f"chance_{int(round(upside.high_score_probability * 100))}_"
+                    f"risk_{int(round(upside.adjusted_failure_risk * 100))}"
+                )
+            else:
+                self._set_decision_reason("win_now" if immediate else "tsume")
+                self._set_score_fallback_detail(f"high_score_{int(route_score)}")
             return chosen
 
         royal_bridge = self._royal_bridge_finish_action(state, player, actions)

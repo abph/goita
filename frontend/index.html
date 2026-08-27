@@ -5334,6 +5334,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         tsume: "上がり筋を優先",
         conditional_tsume: "条件付きの上がり筋を優先",
         inferred_endgame: "手駒推定に基づく終盤判断",
+        upside_finish: "確定上がりを基準に高得点を狙う",
         responded: "味方の反応に合わせる判断",
         branched_plan: "分岐付き攻め計画",
         time_search: "時間制限付き探索",
@@ -5349,12 +5350,29 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         tsume: "优先获胜路线",
         conditional_tsume: "优先有条件的获胜路线",
         inferred_endgame: "根据手牌推测作出的残局判断",
+        upside_finish: "以确定获胜路线为基准争取更高分",
         responded: "根据搭档的反应行动",
         branched_plan: "分支进攻计划",
         time_search: "限时搜索",
         forced_king_third: "第三次进攻迫使对手使用王或玉",
         king_order: "调整王与玉的使用顺序",
         safe_nonking_third: "保留王或玉的安全第三次进攻",
+    },
+    en: {
+        score_fallback: "Overall position evaluation",
+        shi_signal: "Signal support for a shi attack",
+        kakari: "Coordinate with the ally's attack",
+        win_now: "Win with this move",
+        tsume: "Prioritize a winning line",
+        conditional_tsume: "Prioritize a conditional winning line",
+        inferred_endgame: "Endgame decision based on inferred hands",
+        upside_finish: "Pursue a higher score against a guaranteed-win baseline",
+        responded: "Respond to the ally's signal",
+        branched_plan: "Branched attack plan",
+        time_search: "Time-limited search",
+        forced_king_third: "Third attack intended to force a King",
+        king_order: "Adjust the King play order",
+        safe_nonking_third: "Safe third attack that preserves the King",
     },
 });
 
@@ -5438,6 +5456,12 @@ function localizeGameLogAiDetail(detail, language) {
     if(match) return language === "zh"
         ? `以“し”和王玉组合争取${match[1]}分`
         : `しと王・玉を使って${match[1]}点の上がりを狙う`;
+    match = String(detail || "").match(/^safe_(\d+)_target_(\d+)_chance_(\d+)_risk_(\d+)$/);
+    if(match) {
+        if(language === "zh") return `与确定获得${match[1]}分的走法比较后，选择争取${match[2]}分（成功机会${match[3]}%，推测失败风险${match[4]}%）`;
+        if(language === "en") return `After comparing with the guaranteed ${match[1]}-point finish, pursue ${match[2]} points (chance: ${match[3]}%, estimated failure risk: ${match[4]}%)`;
+        return `確定${match[1]}点の手と比較し、${match[2]}点を狙う（上振れ確率${match[3]}%、推定失敗率${match[4]}%）`;
+    }
     if(String(detail || "").startsWith("attack_sequence_")) {
         return language === "zh" ? "按照手牌结构选择进攻顺序" : "手駒構成に合う攻め順を選択";
     }

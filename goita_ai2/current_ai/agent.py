@@ -36,6 +36,7 @@ from goita_ai2.current_ai.search_cache import SearchCacheMixin
 from goita_ai2.current_ai.search_budget import SearchBudgetMixin
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.current_ai.tracking import TrackingMixin
+from goita_ai2.current_ai.upside_finish import UpsideFinishMixin
 
 class RuleBasedAgent(
     DecisionMixin,
@@ -60,6 +61,7 @@ class RuleBasedAgent(
     SearchBudgetMixin,
     BackgroundSearchMixin,
     TimedSearchMixin,
+    UpsideFinishMixin,
     EndgameMixin,
     AttackPlanningMixin,
     AttackStrategyMixin,
@@ -75,6 +77,7 @@ class RuleBasedAgent(
         self._relative_hand_rank_table: Optional[Dict[str, Dict[str, str]]] = None
         self._initialize_performance_metrics()
         self._initialize_branched_attack_lifecycle()
+        self.last_upside_finish_metrics: Dict[str, object] = {}
 
         self.WIN_NOW_BONUS = 10_000.0
         self.WIN_AFTER_RECEIVE_BONUS = 9_000.0
@@ -276,6 +279,31 @@ class RuleBasedAgent(
         self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_MARGIN = 50.0
         self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_AGREEMENT = 0.55
         self.ZERO_SHI_STOP_SIGNAL_MIN_CONFIDENCE = 0.50
+        self.UPSIDE_FINISH_ENABLED = True
+        self.UPSIDE_FINISH_MAX_HAND_SIZE = 4
+        self.UPSIDE_FINISH_MAX_SECONDS = 10.0
+        self.UPSIDE_FINISH_SAMPLE_COUNT = 80
+        self.UPSIDE_FINISH_MAX_DEPTH = 15
+        self.UPSIDE_FINISH_MAX_NODES = 500_000
+        self.UPSIDE_FINISH_MATCH_TARGET = 150
+        self.UPSIDE_FINISH_BASE_RISK = 0.08
+        self.UPSIDE_FINISH_TRAILING_50_RISK = 0.14
+        self.UPSIDE_FINISH_TRAILING_80_RISK = 0.20
+        self.UPSIDE_FINISH_LEADING_RISK = 0.05
+        self.UPSIDE_FINISH_STRONG_VALUE_RISK = 0.20
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_HIGH = 0.40
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_SAFE = 0.80
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_EXPECTED_GAIN = 5.0
+        self.UPSIDE_FINISH_STRONG_VALUE_MAX_SCORE_LEAD = 49
+        self.UPSIDE_FINISH_MIN_CONFIDENCE = 0.55
+        self.UPSIDE_FINISH_CONFIDENCE_REFERENCE = 0.60
+        self.UPSIDE_FINISH_CONFIDENCE_RISK_WEIGHT = 0.10
+        self.UPSIDE_FINISH_UNKNOWN_RISK_WEIGHT = 0.50
+        self.UPSIDE_FINISH_MIN_HIGH_SCORE_PROBABILITY = 0.25
+        self.UPSIDE_FINISH_MIN_SAFE_RETENTION_PROBABILITY = 0.70
+        self.UPSIDE_FINISH_MAX_UNKNOWN_PROBABILITY = 0.15
+        self.UPSIDE_FINISH_MAX_MATCH_LOSS_PROBABILITY = 0.05
+        self.UPSIDE_FINISH_MIN_EXPECTED_GAIN = 3.0
         self.TIME_SEARCH_CACHE_ENABLED = True
         self.TIME_SEARCH_CACHE_MAX_ENTRIES = 128
         self.TIME_SEARCH_CACHE_TTL_SECONDS = 600.0

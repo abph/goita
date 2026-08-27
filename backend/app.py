@@ -2177,6 +2177,8 @@ def _beginner_support_explanation(
         return f"{message} この手で上がると{projected_score}点です。"
     if reason == "win_now":
         return f"{message} この手で上がれます。"
+    if reason == "upside_finish":
+        return f"{message} 確定上がりの手と比較し、許容できるリスクの範囲で高い点数を狙います。"
     if reason in ("tsume", "conditional_tsume", "inferred_endgame"):
         return f"{message} 上がりにつながる攻め筋を優先します。"
     if reason == "kakari" or "kakari" in detail:

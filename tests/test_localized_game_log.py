@@ -81,6 +81,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
     for expected in (
         'shi_signal: "し攻めに賛同する意思表示"',
         'kakari: "味方の攻めに合わせる判断"',
+        'upside_finish: "確定上がりを基準に高得点を狙う"',
         'attack_tatewari: "王を切らせる攻め"',
         'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
         'startsWith("low_reentry_receive_")',
@@ -93,6 +94,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'cache: "先読みキャッシュ"',
         'sample: "候補生成"',
         'search: "探索"',
+        'match(/^safe_(\\d+)_target_(\\d+)_chance_(\\d+)_risk_(\\d+)$/)',
+        '確定${match[1]}点の手と比較し、${match[2]}点を狙う（上振れ確率${match[3]}%、推定失敗率${match[4]}%）',
         "【AI判断：",
         "【思考時間：${total}】",
         "【思考時間：合計",
