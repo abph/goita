@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
+import hashlib
 import hmac
 import json
 import logging
 import os
 import random
 import re
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -18,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple, Set
 
 from fastapi import FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -57,6 +60,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
+from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -108,6 +112,23 @@ RESEARCH_KIFU_PATH = resolve_research_kifu_path(
 )
 RESEARCH_KIFU_STORE = ResearchKifuStore(RESEARCH_KIFU_PATH)
 RESEARCH_KIFU_PERSISTENT = is_persistent_research_kifu_configured(os.environ)
+ANALYTICS_PATH = resolve_analytics_path(
+    os.environ,
+    local_fallback=Path(__file__).resolve().parents[1]
+    / "results"
+    / "goita-analytics.sqlite3",
+)
+ANALYTICS_STORE = AnalyticsStore(ANALYTICS_PATH)
+ANALYTICS_PERSISTENT = bool(
+    str(os.environ.get("GOITA_ANALYTICS_DB_PATH", "") or "").strip()
+    or str(os.environ.get("GOITA_PERSISTENT_DATA_DIR", "") or "").strip()
+)
+ADMIN_SESSION_COOKIE = "goita_site_admin"
+ADMIN_SESSION_SECONDS = 12 * 60 * 60
+ADMIN_SESSION_SECRET = (
+    str(os.environ.get("GOITA_ADMIN_SESSION_SECRET", "") or "").encode("utf-8")
+    or secrets.token_bytes(32)
+)
 
 
 def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
@@ -1248,6 +1269,55 @@ def serve_index():
     return FileResponse(index_path)
 
 
+@app.get("/admin/")
+def serve_admin():
+    admin_path = FRONTEND_DIR / "admin.html"
+    if not admin_path.exists():
+        raise HTTPException(status_code=500, detail="frontend/admin.html not found")
+    return FileResponse(
+        admin_path,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
+        },
+    )
+
+
+def _admin_session_token(expires_at: int) -> str:
+    payload = f"{expires_at}.{secrets.token_urlsafe(16)}"
+    signature = hmac.new(
+        ADMIN_SESSION_SECRET,
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    encoded_signature = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+    return f"{payload}.{encoded_signature}"
+
+
+def _valid_admin_session(token: str) -> bool:
+    try:
+        expires_text, nonce, signature = str(token or "").split(".", 2)
+        expires_at = int(expires_text)
+    except (TypeError, ValueError):
+        return False
+    if expires_at < int(time.time()) or not nonce:
+        return False
+    payload = f"{expires_text}.{nonce}"
+    expected = base64.urlsafe_b64encode(
+        hmac.new(
+            ADMIN_SESSION_SECRET,
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+    ).decode("ascii").rstrip("=")
+    return hmac.compare_digest(signature, expected)
+
+
+def _require_site_admin(request: Request) -> None:
+    if not _valid_admin_session(request.cookies.get(ADMIN_SESSION_COOKIE, "")):
+        raise HTTPException(status_code=401, detail="管理者認証が必要です")
+
+
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -1873,11 +1943,61 @@ class LobbySettingsUpdateRequest(BaseModel):
     )
 
 
+class AdminLobbySettingsUpdateRequest(BaseModel):
+    main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
+    private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
+    private_ad_enabled: bool = False
+    private_ad_title: str = Field(default="お知らせ", max_length=40)
+    private_ad_message: str = Field(default="", max_length=200)
+    private_ad_url: str = Field(default="", max_length=2048)
+    private_ad_room_ids: List[str] = Field(
+        default_factory=list,
+        max_length=len(PRIVATE_ROOM_DEFINITIONS),
+    )
+
+
 class PrivateRoomAdminPasswordUpdateRequest(BaseModel):
     admin_password: str
     game_id: str
     new_password: str = Field(default="", max_length=128)
     reset_to_default: bool = False
+
+
+class AdminPrivateRoomPasswordUpdateRequest(BaseModel):
+    game_id: str
+    new_password: str = Field(default="", max_length=128)
+    reset_to_default: bool = False
+
+
+class AnalyticsEventRequest(BaseModel):
+    analytics_id: str = Field(min_length=16, max_length=80)
+    session_id: str = Field(min_length=16, max_length=80)
+    event: str = Field(min_length=1, max_length=50)
+    room_type: str = Field(default="none", max_length=24)
+    source: str = Field(default="", max_length=80)
+    medium: str = Field(default="", max_length=80)
+    campaign: str = Field(default="", max_length=80)
+    device: str = Field(default="unknown", max_length=16)
+    language: str = Field(default="other", max_length=8)
+    properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AnalyticsDeleteRequest(BaseModel):
+    analytics_id: str = Field(min_length=16, max_length=80)
+
+
+@app.post("/analytics/event")
+def record_analytics_event(req: AnalyticsEventRequest):
+    if not ANALYTICS_STORE.record_event(req.model_dump()):
+        raise HTTPException(status_code=400, detail="記録できない利用イベントです")
+    return {"ok": True}
+
+
+@app.post("/analytics/delete")
+def delete_analytics_history(req: AnalyticsDeleteRequest):
+    if not ANALYTICS_STORE.delete_visitor(req.analytics_id):
+        raise HTTPException(status_code=400, detail="分析用IDが正しくありません")
+    return {"ok": True}
 
 
 class ResearchKifuAuthRequest(BaseModel):
@@ -3270,6 +3390,79 @@ def update_private_room_admin_password(req: PrivateRoomAdminPasswordUpdateReques
         "reset_to_default": bool(req.reset_to_default),
         "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
     }
+
+
+@app.post("/admin/api/login")
+def admin_login(
+    request: Request,
+    response: Response,
+    password: str = Body(..., embed=True),
+):
+    if password != LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+    expires_at = int(time.time()) + ADMIN_SESSION_SECONDS
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE,
+        _admin_session_token(expires_at),
+        max_age=ADMIN_SESSION_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/",
+    )
+    return {"ok": True, "settings": _lobby_admin_payload()}
+
+
+@app.post("/admin/api/logout")
+def admin_logout(response: Response):
+    response.delete_cookie(ADMIN_SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/admin/api/settings")
+def admin_settings(request: Request):
+    _require_site_admin(request)
+    return _lobby_admin_payload()
+
+
+@app.put("/admin/api/settings")
+async def admin_update_settings(
+    request: Request,
+    req: AdminLobbySettingsUpdateRequest,
+):
+    _require_site_admin(request)
+    return await update_lobby_admin_settings(
+        LobbySettingsUpdateRequest(
+            admin_password=LOBBY_ADMIN_PASSWORD,
+            **req.model_dump(),
+        )
+    )
+
+
+@app.post("/admin/api/private-room-password")
+def admin_update_private_room_password(
+    request: Request,
+    req: AdminPrivateRoomPasswordUpdateRequest,
+):
+    _require_site_admin(request)
+    return update_private_room_admin_password(
+        PrivateRoomAdminPasswordUpdateRequest(
+            admin_password=LOBBY_ADMIN_PASSWORD,
+            **req.model_dump(),
+        )
+    )
+
+
+@app.get("/admin/api/analytics")
+def admin_analytics(
+    request: Request,
+    days: int = 30,
+    recent_limit: int = 80,
+):
+    _require_site_admin(request)
+    payload = ANALYTICS_STORE.snapshot(days=days, recent_limit=recent_limit)
+    payload["persistent"] = ANALYTICS_PERSISTENT
+    return payload
 
 
 @app.post("/games/{game_id}/verify_password")

@@ -7,11 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_lobby_exposes_shared_personal_settings() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
-    assert 'id="lobbyPersonalSettingsTab"' in html
-    assert 'id="lobbyAdminSettingsTab"' in html
     assert 'id="lobbyPersonalSettingsPanel"' in html
-    assert 'id="lobbyAdminSettingsPanel"' in html
-    assert "function showLobbySettingsTab(tabName)" in html
+    assert 'id="lobbyAdminSettingsPanel"' not in html
+    assert 'id="lobbyAdminSettingsTab"' not in html
     assert 'id="lobbyPersonalPlayerName"' in html
     assert 'id="lobbyMobileChatPlacement"' in html
     assert 'id="lobbyMobileChatWidth"' in html
@@ -22,6 +20,7 @@ def test_lobby_exposes_shared_personal_settings() -> None:
     assert 'id="lobbyCheckEnableSoundEffects"' in html
     assert 'id="lobbyPieceSoundChoice"' in html
     assert 'id="lobbyCheckEnableCVoice"' in html
+    assert 'id="lobbyCheckEnableAnalytics"' in html
     assert 'onclick="saveLobbyPersonalSettings()"' in html
     assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings))' in html
     assert '.settings-disclosure[open] > summary .when-open' in html
@@ -33,7 +32,7 @@ def test_lobby_language_switcher_is_inside_personal_settings() -> None:
     toolbar_end = html.index("</div>", toolbar_start)
     toolbar = html[toolbar_start:toolbar_end]
     personal_start = html.index('id="lobbyPersonalSettingsPanel"')
-    personal_end = html.index('id="lobbyAdminSettingsPanel"', personal_start)
+    personal_end = html.index('<div class="settings-footer">', personal_start)
     personal = html[personal_start:personal_end]
 
     assert "language-switcher" not in toolbar
@@ -47,7 +46,7 @@ def test_lobby_language_switcher_is_inside_personal_settings() -> None:
 def test_lobby_does_not_expose_kifu_save_actions_in_personal_settings() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     start = html.index('id="lobbyPersonalSettingsPanel"')
-    end = html.index('id="lobbyAdminSettingsPanel"', start)
+    end = html.index('<div class="settings-footer">', start)
     lobby_personal_settings = html[start:end]
 
     assert "downloadKifu" not in lobby_personal_settings

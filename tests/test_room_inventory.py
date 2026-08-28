@@ -384,26 +384,24 @@ def test_frontend_recognizes_all_main_room_ids() -> None:
     assert 'id="mainRoomPeopleCount"' not in html
     assert 'id="privateRoomPeopleCount"' not in html
     assert 'id="lobbySettingsModal"' in html
-    assert 'id="lobbyAdminFields"' in html
+    assert 'id="lobbyAdminFields"' not in html
     assert 'id="lobbyMainPeopleCount"' not in html
     assert 'id="lobbyPrivatePeopleCount"' not in html
     assert 'id="lobbyAllPeopleCount"' not in html
-    assert 'id="lobbyMainRoomCount"' in html
-    assert 'id="lobbyPrivateRoomCount"' in html
-    assert 'max="6"' in html
-    assert 'id="lobbyPrivateRoomPasswordList"' in html
-    assert "async function changePrivateRoomAdminPassword(gameId, resetToDefault)" in html
-    assert "`${API}/lobby/admin/private-room-password`" in html
+    admin_html = (app_module.FRONTEND_DIR / "admin.html").read_text(encoding="utf-8")
+    assert 'id="mainRoomCount"' in admin_html
+    assert 'id="privateRoomCount"' in admin_html
+    assert 'id="privateRoomPasswords"' in admin_html
+    assert '"/admin/api/private-room-password"' in admin_html
     assert "function updateLobbyAdminPeopleCounts(roomTotals = null)" not in html
     assert 'id="handRevealConfirmModal"' in html
     assert "if(!await confirmHandReveal(target)) return;" in html
     assert "if(!window.confirm(message)) return;" not in html
     assert "data.room_totals" not in html
     assert "function openLobbySettings()" in html
-    assert "async function unlockLobbyAdminSettings()" in html
-    assert "async function saveLobbyAdminSettings()" in html
-    assert "`${API}/lobby/admin/verify`" in html
-    assert "`${API}/lobby/admin/settings`" in html
+    assert 'id="lobbyAdminSettingsPanel"' not in html
+    assert '"/admin/api/login"' in admin_html
+    assert '"/admin/api/settings"' in admin_html
     assert 'safeCount === 1 ? "person" : "people"' not in html
     assert 'id="handRevealPanel"' in html
     assert "function renderHandRevealControls(state)" in html

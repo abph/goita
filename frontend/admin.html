@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>そろうごいた 管理者ページ</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #20242a;
+      --muted: #67717d;
+      --line: #d8dde3;
+      --panel: #fff;
+      --surface: #f4f6f8;
+      --accent: #176b57;
+      --danger: #a13232;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+    button, input, textarea, select { font: inherit; letter-spacing: 0; }
+    button { cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .6; }
+    .topbar {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 20px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    .topbar h1 { margin: 0; font-size: 18px; }
+    .topbar-actions { display: flex; align-items: center; gap: 8px; }
+    .text-link { color: var(--accent); text-decoration: none; font-weight: 700; }
+    .shell { width: min(1180px, calc(100% - 28px)); margin: 24px auto 48px; }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 18px;
+      border-radius: 6px;
+    }
+    .auth-panel { width: min(420px, 100%); margin: 80px auto; }
+    .auth-panel h2 { margin: 0 0 8px; font-size: 20px; }
+    .muted { color: var(--muted); }
+    .field { display: grid; gap: 6px; margin: 12px 0; }
+    .field label { font-weight: 700; }
+    input, textarea, select {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #aeb7c0;
+      border-radius: 4px;
+      background: #fff;
+      color: var(--ink);
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    .button {
+      min-height: 36px;
+      padding: 7px 13px;
+      border: 1px solid #9ca6af;
+      border-radius: 4px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .button.danger { color: var(--danger); }
+    .status { min-height: 20px; margin-top: 8px; color: var(--muted); }
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tab {
+      padding: 11px 18px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .tab.active { border-bottom-color: var(--accent); color: var(--ink); }
+    .view { display: none; }
+    .view.active { display: block; }
+    .section-heading { margin: 0 0 14px; font-size: 18px; }
+    .subheading { margin: 22px 0 10px; font-size: 15px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .room-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+    .room-options label { display: flex; align-items: center; gap: 7px; }
+    .room-options input { width: auto; }
+    .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .password-row {
+      display: grid;
+      grid-template-columns: minmax(130px, .7fr) 1fr 1fr auto;
+      gap: 8px;
+      align-items: end;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .password-row:first-child { border-top: 0; }
+    .password-name { align-self: center; font-weight: 800; }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      min-height: 92px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 5px;
+    }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { margin-top: 8px; font-size: 24px; font-weight: 850; }
+    .analytics-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .analytics-toolbar select { width: auto; }
+    .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; }
+    .session-list { display: grid; gap: 8px; max-height: 620px; overflow: auto; }
+    .session {
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fff;
+    }
+    .session summary { padding: 10px 12px; cursor: pointer; font-weight: 750; }
+    .session-events { padding: 0 12px 12px; }
+    .event-row { display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 5px 0; border-top: 1px solid #edf0f2; }
+    .event-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .persistence-warning { color: var(--danger); font-weight: 750; }
+    [hidden] { display: none !important; }
+    @media (max-width: 900px) {
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .analytics-grid, .form-grid { grid-template-columns: 1fr; }
+      .password-row { grid-template-columns: 1fr; }
+      .room-options { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>そろうごいた 管理者ページ</h1>
+    <div class="topbar-actions">
+      <a class="text-link" href="/">トップページへ</a>
+      <button id="logoutButton" class="button" type="button" hidden>ログアウト</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section id="authView" class="panel auth-panel">
+      <h2>管理者認証</h2>
+      <p class="muted">サイト管理用パスワードを入力してください。</p>
+      <form id="loginForm">
+        <div class="field">
+          <label for="adminPassword">サイト管理用パスワード</label>
+          <input id="adminPassword" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="button primary" type="submit">確認</button>
+        <div id="loginStatus" class="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section id="adminView" hidden>
+      <nav class="tabs" aria-label="管理項目">
+        <button class="tab active" type="button" data-tab="settings">サイト設定</button>
+        <button class="tab" type="button" data-tab="analytics">利用状況</button>
+      </nav>
+
+      <section id="settingsView" class="view active">
+        <form id="settingsForm" class="panel">
+          <h2 class="section-heading">サイト設定</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label for="mainRoomCount">表示する公開部屋数</label>
+              <input id="mainRoomCount" type="number" min="1" max="6" step="1" required>
+            </div>
+            <div class="field">
+              <label for="privateRoomCount">表示するプライベート数</label>
+              <input id="privateRoomCount" type="number" min="0" max="6" step="1" required>
+            </div>
+          </div>
+          <p class="muted">部屋を減らしても、進行中の対局は中断されません。</p>
+
+          <h3 class="subheading">プライベートルームのお知らせ</h3>
+          <div class="field">
+            <label><input id="privateAdEnabled" type="checkbox" style="width:auto"> お知らせを表示する</label>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label for="privateAdTitle">見出し</label>
+              <input id="privateAdTitle" type="text" maxlength="40" placeholder="例：大会のお知らせ">
+            </div>
+            <div class="field">
+              <label for="privateAdUrl">移動先URL（任意）</label>
+              <input id="privateAdUrl" type="url" maxlength="2048" placeholder="https://example.com/">
+            </div>
+          </div>
+          <div class="field">
+            <label for="privateAdMessage">表示する文章</label>
+            <textarea id="privateAdMessage" maxlength="200"></textarea>
+          </div>
+          <div class="field">
+            <label>表示するルーム</label>
+            <div id="privateAdRooms" class="room-options"></div>
+          </div>
+          <div class="actions">
+            <button class="button primary" type="submit">設定を保存</button>
+          </div>
+          <div id="settingsStatus" class="status" aria-live="polite"></div>
+        </form>
+
+        <section class="panel" style="margin-top:16px">
+          <h2 class="section-heading">プライベートルームの管理用パスワード</h2>
+          <p class="muted">現在のパスワードは表示しません。変更する部屋だけ入力してください。</p>
+          <div id="privateRoomPasswords"></div>
+        </section>
+      </section>
+
+      <section id="analyticsView" class="view">
+        <div class="analytics-toolbar">
+          <label for="analyticsDays">集計期間</label>
+          <select id="analyticsDays">
+            <option value="1">今日</option>
+            <option value="7">7日間</option>
+            <option value="30" selected>30日間</option>
+            <option value="90">90日間</option>
+            <option value="365">1年間</option>
+          </select>
+          <button id="analyticsRefresh" class="button" type="button">更新</button>
+        </div>
+        <div id="analyticsStatus" class="status" aria-live="polite"></div>
+        <div id="metricGrid" class="metric-grid"></div>
+        <div class="analytics-grid">
+          <section class="panel">
+            <h2 class="section-heading">流入元</h2>
+            <table>
+              <thead><tr><th>流入元</th><th>利用者</th><th>訪問</th></tr></thead>
+              <tbody id="sourceRows"></tbody>
+            </table>
+            <h2 class="subheading">入室先</h2>
+            <table>
+              <thead><tr><th>ルーム種別</th><th>入室</th></tr></thead>
+              <tbody id="roomEntryRows"></tbody>
+            </table>
+            <h2 class="subheading">記録状態</h2>
+            <div id="analyticsStorage"></div>
+          </section>
+          <section class="panel">
+            <h2 class="section-heading">最近のセッション</h2>
+            <div id="sessionList" class="session-list"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const EVENT_LABELS = {
+      site_visit: "サイトを訪問",
+      room_enter: "部屋へ入室",
+      room_leave: "部屋から退出",
+      seat_taken: "着席",
+      seat_left: "離席",
+      game_started: "対局を開始",
+      game_completed: "対局を完了",
+      beginner_support_enabled: "初心者サポートを有効化",
+      beginner_support_disabled: "初心者サポートを無効化",
+      ai_question_used: "AIに質問",
+      chat_opened: "チャットを開く",
+      kifu_library_opened: "棋譜ライブラリを開く",
+      kifu_saved: "棋譜を保存",
+      kifu_loaded: "棋譜を読み込み",
+    };
+    const ROOM_LABELS = {
+      lobby: "トップページ",
+      public_human: "対人公開部屋",
+      public_ai: "AI公開部屋",
+      private: "プライベートルーム",
+      none: "",
+    };
+    let settingsPayload = null;
+
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[character]);
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers: {"Content-Type": "application/json", ...(options.headers || {})},
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(data.detail || "通信に失敗しました");
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    }
+
+    function showAuthenticated(payload) {
+      settingsPayload = payload;
+      document.getElementById("authView").hidden = true;
+      document.getElementById("adminView").hidden = false;
+      document.getElementById("logoutButton").hidden = false;
+      applySettings(payload);
+    }
+
+    function showLogin() {
+      document.getElementById("authView").hidden = false;
+      document.getElementById("adminView").hidden = true;
+      document.getElementById("logoutButton").hidden = true;
+    }
+
+    function applySettings(data) {
+      document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
+      document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
+      document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
+      document.getElementById("privateRoomCount").max = data.private_room_max ?? 6;
+      const ad = data.private_room_ad || {};
+      document.getElementById("privateAdEnabled").checked = ad.enabled === true;
+      document.getElementById("privateAdTitle").value = ad.title || "お知らせ";
+      document.getElementById("privateAdMessage").value = ad.message || "";
+      document.getElementById("privateAdUrl").value = ad.url || "";
+      const selected = new Set(Array.isArray(ad.room_ids) ? ad.room_ids : []);
+      const rooms = Array.isArray(data.private_rooms) ? data.private_rooms : [];
+      document.getElementById("privateAdRooms").innerHTML = rooms.map(room => `
+        <label><input class="ad-room" type="checkbox" value="${escapeHtml(room.game_id)}"${selected.has(room.game_id) ? " checked" : ""}> ${escapeHtml(room.owner_name)}</label>
+      `).join("");
+      document.getElementById("privateRoomPasswords").innerHTML = rooms.map(room => `
+        <div class="password-row" data-room="${escapeHtml(room.game_id)}">
+          <div class="password-name">${escapeHtml(room.owner_name)}</div>
+          <div class="field"><label>新しいパスワード</label><input class="new-password" type="password" maxlength="128" autocomplete="new-password"></div>
+          <div class="field"><label>確認</label><input class="confirm-password" type="password" maxlength="128" autocomplete="new-password"></div>
+          <div><button class="button change-password" type="button">変更</button> <button class="button danger reset-password" type="button">初期化</button></div>
+          <div class="status" style="grid-column:1/-1"></div>
+        </div>
+      `).join("");
+      document.querySelectorAll(".change-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, false)));
+      document.querySelectorAll(".reset-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, true)));
+    }
+
+    async function changeRoomPassword(button, reset) {
+      const row = button.closest(".password-row");
+      const status = row.querySelector(".status");
+      const next = row.querySelector(".new-password").value;
+      const confirmation = row.querySelector(".confirm-password").value;
+      if (!reset && (!next || next !== confirmation)) {
+        status.textContent = !next ? "新しいパスワードを入力してください。" : "確認用パスワードが一致しません。";
+        return;
+      }
+      if (!confirm(reset ? "管理用パスワードを初期値に戻しますか？" : "管理用パスワードを変更しますか？")) return;
+      status.textContent = "保存しています...";
+      try {
+        await api("/admin/api/private-room-password", {
+          method: "POST",
+          body: JSON.stringify({game_id: row.dataset.room, new_password: reset ? "" : next, reset_to_default: reset}),
+        });
+        row.querySelector(".new-password").value = "";
+        row.querySelector(".confirm-password").value = "";
+        status.textContent = reset ? "初期値に戻しました。" : "変更しました。";
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    }
+
+    function formatDuration(seconds) {
+      const value = Math.max(0, Number(seconds) || 0);
+      if (value < 60) return `${Math.round(value)}秒`;
+      if (value < 3600) return `${Math.round(value / 60)}分`;
+      return `${(value / 3600).toFixed(1)}時間`;
+    }
+
+    function formatBytes(bytes) {
+      const value = Math.max(0, Number(bytes) || 0);
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    function formatDate(value, timeOnly = false) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      return new Intl.DateTimeFormat("ja-JP", timeOnly
+        ? {hour: "2-digit", minute: "2-digit", second: "2-digit"}
+        : {month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"}
+      ).format(date);
+    }
+
+    function eventDescription(event) {
+      const label = EVENT_LABELS[event.event] || event.event;
+      const room = ROOM_LABELS[event.room_type] || "";
+      const role = event.properties?.role === "host" ? "ホスト" : event.properties?.role === "joined" ? "参加" : "";
+      const people = Number.isFinite(Number(event.properties?.human_count))
+        ? `人間${Number(event.properties.human_count)}人・AI${Number(event.properties.ai_count || 0)}席`
+        : "";
+      const pairPractice = event.properties?.pair_practice === true ? "ペア練習" : "";
+      return [label, room, role, people, pairPractice].filter(Boolean).join(" / ");
+    }
+
+    function renderAnalytics(data) {
+      const metrics = [
+        ["利用者", `${data.visitors}人`],
+        ["訪問", `${data.sessions}回`],
+        ["平均滞在", formatDuration(data.average_duration_seconds)],
+        ["対局開始", `${data.game_started}回`],
+        ["対局完了", `${data.game_completed}回`],
+        ["完了率", `${data.completion_rate}%`],
+        ["自分がホスト", `${data.host_game_starts || 0}回`],
+        ["他の対局へ参加", `${data.joined_game_starts || 0}回`],
+        ["ペア練習", `${data.pair_practice_games || 0}回`],
+      ];
+      document.getElementById("metricGrid").innerHTML = metrics.map(([label, value]) => `
+        <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
+      `).join("");
+      document.getElementById("sourceRows").innerHTML = (data.sources || []).map(source => `
+        <tr><td>${escapeHtml(source.source_name)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
+      `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
+      document.getElementById("roomEntryRows").innerHTML = Object.entries(data.room_entries || {})
+        .sort((left, right) => Number(right[1]) - Number(left[1]))
+        .map(([roomType, count]) => `<tr><td>${escapeHtml(ROOM_LABELS[roomType] || roomType)}</td><td>${count}回</td></tr>`)
+        .join("") || '<tr><td colspan="2" class="muted">まだ記録がありません。</td></tr>';
+      document.getElementById("analyticsStorage").innerHTML = `
+        <div>データベース：${formatBytes(data.database_bytes)}</div>
+        <div class="${data.persistent ? "muted" : "persistence-warning"}">${data.persistent ? "Renderの永続保存が有効です。" : "永続保存が設定されていません。"}</div>
+      `;
+      document.getElementById("sessionList").innerHTML = (data.recent_sessions || []).map(session => {
+        const started = new Date(session.started_at);
+        const ended = new Date(session.last_seen);
+        const duration = Math.max(0, (ended - started) / 1000);
+        const events = (session.events || []).map(event => `
+          <div class="event-row"><span class="event-time">${formatDate(event.occurred_at, true)}</span><span>${escapeHtml(eventDescription(event))}</span></div>
+        `).join("");
+        return `<details class="session">
+          <summary>${formatDate(session.started_at)} / ${escapeHtml(session.analytics_id.slice(0, 8))}… / ${formatDuration(duration)}</summary>
+          <div class="session-events">
+            <div class="muted">${escapeHtml(session.source || "direct")}${session.campaign ? ` / ${escapeHtml(session.campaign)}` : ""} / ${escapeHtml(session.device)} / ${escapeHtml(session.language)}</div>
+            ${events || '<p class="muted">表示できる行動はありません。</p>'}
+          </div>
+        </details>`;
+      }).join("") || '<p class="muted">まだセッション記録がありません。</p>';
+    }
+
+    async function loadAnalytics() {
+      const status = document.getElementById("analyticsStatus");
+      status.textContent = "読み込んでいます...";
+      try {
+        const days = document.getElementById("analyticsDays").value;
+        const data = await api(`/admin/api/analytics?days=${encodeURIComponent(days)}&recent_limit=100`);
+        renderAnalytics(data);
+        status.textContent = "";
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      }
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const status = document.getElementById("loginStatus");
+      status.textContent = "確認しています...";
+      try {
+        const data = await api("/admin/api/login", {
+          method: "POST",
+          body: JSON.stringify({password: document.getElementById("adminPassword").value}),
+        });
+        document.getElementById("adminPassword").value = "";
+        status.textContent = "";
+        showAuthenticated(data.settings);
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+
+    document.getElementById("settingsForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const status = document.getElementById("settingsStatus");
+      const roomIds = Array.from(document.querySelectorAll(".ad-room:checked"), input => input.value);
+      const payload = {
+        main_room_count: Number(document.getElementById("mainRoomCount").value),
+        private_room_count: Number(document.getElementById("privateRoomCount").value),
+        private_ad_enabled: document.getElementById("privateAdEnabled").checked,
+        private_ad_title: document.getElementById("privateAdTitle").value.trim() || "お知らせ",
+        private_ad_message: document.getElementById("privateAdMessage").value.trim(),
+        private_ad_url: document.getElementById("privateAdUrl").value.trim(),
+        private_ad_room_ids: roomIds,
+      };
+      if (payload.private_ad_enabled && (!payload.private_ad_message || !roomIds.length)) {
+        status.textContent = !payload.private_ad_message ? "表示する文章を入力してください。" : "表示するルームを選択してください。";
+        return;
+      }
+      status.textContent = "保存しています...";
+      try {
+        const data = await api("/admin/api/settings", {method: "PUT", body: JSON.stringify(payload)});
+        applySettings(data);
+        status.textContent = "保存しました。";
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
+
+    document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+      const name = tab.dataset.tab;
+      document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
+      document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${name}View`));
+      if (name === "analytics") loadAnalytics();
+    }));
+
+    document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
+    document.getElementById("analyticsDays").addEventListener("change", loadAnalytics);
+    document.getElementById("logoutButton").addEventListener("click", async () => {
+      await api("/admin/api/logout", {method: "POST"}).catch(() => {});
+      showLogin();
+    });
+
+    (async () => {
+      try {
+        showAuthenticated(await api("/admin/api/settings"));
+      } catch (_error) {
+        showLogin();
+      }
+    })();
+  </script>
+</body>
+</html>

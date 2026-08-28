@@ -1,9 +1,9 @@
 # Render persistent runtime data
 
-The adaptive background-search model and editable room-management settings
-write runtime data to JSON files. Render's normal filesystem is ephemeral, so
-production needs a persistent disk for these files to survive restarts and
-deploys.
+The adaptive background-search model, editable room-management settings,
+research kifu library, and privacy-limited usage analytics write runtime data
+to the filesystem. Render's normal filesystem is ephemeral, so production
+needs a persistent disk for these files to survive restarts and deploys.
 
 Render persistent disks require a paid web service. A service with an attached
 disk is limited to one service instance.
@@ -20,6 +20,8 @@ The files are then stored at:
 ```text
 /var/data/goita-ai/background_search_value.json
 /var/data/goita-room-settings.json
+/var/data/goita-research-kifu.sqlite3
+/var/data/goita-analytics.sqlite3
 ```
 
 The room settings file contains only editable room-management values: room
@@ -27,6 +29,12 @@ name, entry passphrase, AI profile, legal-action visibility, log visibility,
 the configured room background path, and changed room-admin passwords as
 salted PBKDF2 hashes. It never stores room-admin passwords in plaintext, and
 does not contain hands, scores, occupied seats, or other live match state.
+
+The analytics database stores anonymous browser/session IDs and an allow-listed
+set of product events. Its schema has no fields for player names, chat, kifu,
+hands, seats, partners, opponents, room IDs, or raw IP addresses. Users can
+disable analytics in personal settings; doing so deletes the history associated
+with that browser's analytics ID.
 
 The existing `GOITA_AI_ADAPTIVE_VALUE_PATH` variable still has priority when
 an exact file path is required. Without either setting, local development keeps
@@ -37,3 +45,9 @@ diagnostics and service log.
 `GOITA_ROOM_SETTINGS_PATH` can override only the room-settings file location.
 Without it or `GOITA_PERSISTENT_DATA_DIR`, room setting changes remain
 in-memory and reset on restart, matching the local development default.
+
+`GOITA_ANALYTICS_DB_PATH` can override only the analytics database location.
+The administrator dashboard is available directly at `/admin/` and is not
+linked from the public top-page settings. Set `GOITA_ADMIN_SESSION_SECRET` to a
+long random value when administrator login cookies should remain valid across
+deploys; otherwise a secure random value is generated at each process start.

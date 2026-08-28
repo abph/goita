@@ -4628,11 +4628,7 @@
   <div class="modal-content lobby-admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbySettingsTitle" onclick="event.stopPropagation()">
     <button class="settings-modal-close" type="button" onclick="closeLobbySettings()" aria-label="トップページ設定を閉じる" title="閉じる">×</button>
     <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
-    <div class="settings-tabs" role="tablist" aria-label="トップページ設定の種類">
-      <button id="lobbyPersonalSettingsTab" class="settings-tab active" type="button" role="tab" aria-selected="true" onclick="showLobbySettingsTab('personal')">個人設定</button>
-      <button id="lobbyAdminSettingsTab" class="settings-tab" type="button" role="tab" aria-selected="false" onclick="showLobbySettingsTab('admin')">管理者用設定</button>
-    </div>
-    <section id="lobbyPersonalSettingsPanel" class="settings-panel active" role="tabpanel" aria-labelledby="lobbyPersonalSettingsTab">
+    <section id="lobbyPersonalSettingsPanel" class="settings-panel active">
         <div class="settings-row">
           <div class="language-switcher" role="group" aria-label="表示言語">
             <span>表示言語</span>
@@ -4758,62 +4754,12 @@
             </div>
           </div>
         </details>
+        <div class="settings-row">
+          <label><input type="checkbox" id="lobbyCheckEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
+          <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
+        </div>
         <button class="settings-save-button" type="button" onclick="saveLobbyPersonalSettings()">個人設定を保存</button>
         <div id="lobbyPersonalSettingsStatus" class="settings-status" aria-live="polite"></div>
-    </section>
-    <section id="lobbyAdminSettingsPanel" class="settings-panel" role="tabpanel" aria-labelledby="lobbyAdminSettingsTab">
-        <div id="lobbyAdminAuthArea" class="settings-row">
-          <label for="lobbyAdminPassword">管理用パスワード</label>
-          <div class="settings-inline-action">
-            <input type="password" id="lobbyAdminPassword" autocomplete="current-password">
-            <button type="button" onclick="unlockLobbyAdminSettings()">確認</button>
-          </div>
-          <div id="lobbyAdminAuthStatus" class="settings-status" aria-live="polite"></div>
-        </div>
-
-        <div id="lobbyAdminFields" style="display:none;">
-          <div class="lobby-room-count-fields">
-            <div class="settings-row">
-              <label for="lobbyMainRoomCount">表示する公開部屋数</label>
-              <input type="number" id="lobbyMainRoomCount" min="1" max="6" step="1" inputmode="numeric">
-            </div>
-            <div class="settings-row">
-              <label for="lobbyPrivateRoomCount">表示するプライベート数</label>
-              <input type="number" id="lobbyPrivateRoomCount" min="0" max="6" step="1" inputmode="numeric">
-            </div>
-          </div>
-          <p class="lobby-admin-help">部屋を減らすとロビーから非表示になります。進行中の対局は中断されません。</p>
-          <section class="private-room-ad-settings" aria-labelledby="privateRoomAdSettingsTitle">
-            <h4 id="privateRoomAdSettingsTitle">プライベートルームのお知らせ</h4>
-            <div class="settings-row">
-              <label><input type="checkbox" id="lobbyPrivateAdEnabled" style="width:auto;"> お知らせを表示する</label>
-            </div>
-            <div class="settings-row">
-              <label for="lobbyPrivateAdTitle">見出し</label>
-              <input type="text" id="lobbyPrivateAdTitle" maxlength="40" placeholder="例：大会のお知らせ">
-            </div>
-            <div class="settings-row">
-              <label for="lobbyPrivateAdMessage">表示する文章</label>
-              <textarea id="lobbyPrivateAdMessage" maxlength="200" placeholder="プライベートルームに表示する文章"></textarea>
-            </div>
-            <div class="settings-row">
-              <label for="lobbyPrivateAdUrl">移動先URL（任意）</label>
-              <input type="url" id="lobbyPrivateAdUrl" maxlength="2048" inputmode="url" placeholder="https://example.com/">
-              <p class="settings-help-text" style="margin-left:0;">空欄の場合は、文章だけを表示します。</p>
-            </div>
-            <div class="settings-row">
-              <label>表示するルーム</label>
-              <div id="lobbyPrivateAdRoomList" class="private-room-ad-room-list"></div>
-            </div>
-          </section>
-          <button class="settings-save-button" type="button" onclick="saveLobbyAdminSettings()">設定を保存</button>
-          <div id="lobbyAdminSaveStatus" class="settings-status" aria-live="polite"></div>
-          <section class="private-room-admin-passwords" aria-labelledby="privateRoomAdminPasswordsTitle">
-            <h4 id="privateRoomAdminPasswordsTitle">プライベートルームの管理用パスワード</h4>
-            <p class="lobby-admin-help">現在のパスワードは表示しません。変更する部屋だけ新しいパスワードを入力してください。</p>
-            <div id="lobbyPrivateRoomPasswordList"></div>
-          </section>
-        </div>
     </section>
     <div class="settings-footer">
       <button type="button" onclick="closeLobbySettings()">閉じる</button>
@@ -4963,6 +4909,10 @@
           </div>
         </div>
       </details>
+      <div class="settings-row">
+        <label><input type="checkbox" id="checkEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
+        <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
+      </div>
       <details id="kifuSaveSettingsDetails" class="settings-disclosure">
         <summary>
           <span class="when-closed">▶ 棋譜保存を開く</span>
@@ -6200,11 +6150,13 @@ const SITE_INFO = {
     privacy: {
         title: "プライバシーポリシー",
         paragraphs: [
-            "そろうごいたでは、対局や各機能の提供に必要な範囲で、設定した名前、チャット内容、対局情報、棋譜情報などを取り扱います。個人設定の一部は、ご利用のブラウザー内に保存されます。",
-            "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。運営側がその情報を勝手に棋譜として保存・収集することはありません。研究用棋譜ライブラリには、プライベートルームの管理者が明示的に保存した棋譜だけを保存します。保存された棋譜を、本人の同意なくAI開発、研究、記事などに利用することはありません。設定画面の「棋譜を保存する」「匿名で棋譜を保存する」は、利用者自身の端末へ棋譜ファイルを保存するための機能です。",
-            "デバッグルームのボイスチャットは、参加者同士を直接つなぐためにWebRTCを利用します。音声を録音・保存することはありません。",
+            "本人から明示的な依頼または同意がある場合を除き、運営側が特定の利用者の棋譜や打ち方を収集・分析することはありません。",
+            "利用者が自ら保存を選択しない限り、棋譜がサーバーに保存されることもありません。",
+            "そろうごいたでは、サービスの利用傾向を把握するため、個人を直接特定しない分析用IDを用いて、サイトへの訪問、ルームへの入退室、利用時間、利用した機能などを記録する場合があります。これらの利用状況の記録は、サービスの運営中、保存期間を定めず保持する場合があります。個人設定から記録を無効にすると、そのブラウザーの分析用IDに結び付いた記録を削除します。",
+            "分析用の記録には、名前、チャット内容、棋譜、手駒、ペア相手、対戦相手の情報を含めません。生のIPアドレスも、マーケティング分析には保存しません。",
+            "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。研究用棋譜ライブラリには、利用者が明示的に保存した棋譜だけを保存します。保存された棋譜を、本人の同意なくAI開発、研究、記事などに利用することはありません。設定画面の棋譜保存機能は、利用者自身が棋譜を保存するための機能です。",
             "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
-            "取得した情報は、サービスの提供、改善、不具合調査のために必要な範囲で利用します。",
+            "取得した情報は、サービスの提供、改善、不具合調査および利用傾向の分析に必要な範囲で取り扱い、目的外で利用しません。",
         ],
     },
     notice: {
@@ -6289,7 +6241,6 @@ const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
     "王玉", "3し", "4し", "2香", "3香", "4香", "2中駒", "3中駒", "4中駒",
     "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
 ]);
-let lobbyAdminPasswordValue = "";
 let seatModeTarget = null;
 let lobbySitePeople = [];
 let roomSitePeople = [];
@@ -6358,6 +6309,7 @@ function loadPersonalSettings() {
                 ? saved.pieceSound
                 : "notanomori",
             enableCVoice: saved.enableCVoice === true,
+            enableAnalytics: saved.enableAnalytics !== false,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
             showAiThinkingBreakdown: saved.showAiThinkingBreakdown === true,
             autoRevealOwnHand: saved.autoRevealOwnHand === true
@@ -6384,6 +6336,7 @@ function loadPersonalSettings() {
             enableSoundEffects: true,
             pieceSound: "notanomori",
             enableCVoice: false,
+            enableAnalytics: true,
             enableBeginnerSupport: false,
             showAiThinkingBreakdown: false,
             autoRevealOwnHand: false,
@@ -6502,6 +6455,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyCheckEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("lobbyPieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
+    document.getElementById("lobbyCheckEnableAnalytics").checked = personalSettings.enableAnalytics !== false;
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
     document.getElementById("lobbyCheckAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
@@ -6513,6 +6467,8 @@ function syncLobbyPersonalSettingsControls() {
 function saveLobbyPersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
     const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
+    const previousEnableAnalytics = personalSettings.enableAnalytics !== false;
+    const previousBeginnerSupport = personalSettings.enableBeginnerSupport === true;
     personalSettings = {
         playerName: sanitizeName(document.getElementById("lobbyPersonalPlayerName").value),
         playerTag: normalizePlayerTag(document.getElementById("lobbyPersonalPlayerTag").value),
@@ -6529,6 +6485,7 @@ function saveLobbyPersonalSettings() {
         enableSoundEffects: document.getElementById("lobbyCheckEnableSoundEffects").checked,
         pieceSound: document.getElementById("lobbyPieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
+        enableAnalytics: document.getElementById("lobbyCheckEnableAnalytics").checked,
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
         showAiThinkingBreakdown: document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked,
         autoRevealOwnHand: document.getElementById("lobbyCheckAutoRevealOwnHand").checked,
@@ -6545,6 +6502,10 @@ function saveLobbyPersonalSettings() {
     } catch (_error) {
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存できませんでした。";
     }
+    handleAnalyticsPreferenceChange(previousEnableAnalytics);
+    if (personalSettings.enableAnalytics !== false && previousBeginnerSupport !== personalSettings.enableBeginnerSupport) {
+        trackAnalytics(personalSettings.enableBeginnerSupport ? "beginner_support_enabled" : "beginner_support_disabled");
+    }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
 }
@@ -6556,6 +6517,145 @@ if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
     sessionStorage.setItem("goita_client_id", clientId);
 }
+
+const ANALYTICS_ID_KEY = "goita_analytics_id";
+const ANALYTICS_SESSION_KEY = "goita_analytics_session_id";
+const ANALYTICS_SOURCE_KEY = "goita_analytics_source";
+const ANALYTICS_RECORDED_ROUNDS = new Set();
+let analyticsRoomEnteredAt = 0;
+
+function randomAnalyticsToken(prefix) {
+    if (window.crypto?.randomUUID) return `${prefix}_${window.crypto.randomUUID()}`;
+    return `${prefix}_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
+function analyticsIdentifier(storage, key, prefix) {
+    let value = storage.getItem(key);
+    if (!value) {
+        value = randomAnalyticsToken(prefix);
+        storage.setItem(key, value);
+    }
+    return value;
+}
+
+function analyticsAttribution() {
+    try {
+        const stored = JSON.parse(sessionStorage.getItem(ANALYTICS_SOURCE_KEY) || "null");
+        if (stored) return stored;
+    } catch (_error) {}
+    const params = new URLSearchParams(location.search);
+    let source = String(params.get("utm_source") || "").slice(0, 80);
+    const medium = String(params.get("utm_medium") || "").slice(0, 80);
+    const campaign = String(params.get("utm_campaign") || "").slice(0, 80);
+    if (!source && document.referrer) {
+        try { source = new URL(document.referrer).hostname.slice(0, 80); } catch (_error) {}
+    }
+    const result = {source: source || "direct", medium, campaign};
+    sessionStorage.setItem(ANALYTICS_SOURCE_KEY, JSON.stringify(result));
+    return result;
+}
+
+function analyticsRoomType(roomId = gid) {
+    if (!roomId || roomId === "lobby") return "lobby";
+    if (roomId === DEBUG_GID) return "none";
+    if (PRIVATE_ROOM_IDS.has(roomId)) return "private";
+    if (["main-e", "main-f"].includes(roomId)) return "public_ai";
+    return isMainRoomId(roomId) ? "public_human" : "none";
+}
+
+function analyticsDevice() {
+    return window.matchMedia("(max-width: 700px)").matches ? "mobile" : "desktop";
+}
+
+function analyticsContext(roomType = analyticsRoomType()) {
+    const attribution = analyticsAttribution();
+    return {
+        analytics_id: analyticsIdentifier(localStorage, ANALYTICS_ID_KEY, "visitor"),
+        session_id: analyticsIdentifier(sessionStorage, ANALYTICS_SESSION_KEY, "session"),
+        room_type: roomType,
+        source: attribution.source,
+        medium: attribution.medium,
+        campaign: attribution.campaign,
+        device: analyticsDevice(),
+        language: normalizeSiteLanguage(localStorage.getItem(SITE_LANGUAGE_KEY) || "ja"),
+    };
+}
+
+function trackAnalytics(eventName, properties = {}, roomType = analyticsRoomType(), useBeacon = false) {
+    if (personalSettings.enableAnalytics === false || roomType === "none") return;
+    const payload = JSON.stringify({...analyticsContext(roomType), event: eventName, properties});
+    if (useBeacon && navigator.sendBeacon) {
+        navigator.sendBeacon(`${API}/analytics/event`, new Blob([payload], {type: "application/json"}));
+        return;
+    }
+    fetch(`${API}/analytics/event`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: payload,
+        keepalive: true,
+    }).catch(() => {});
+}
+
+async function deleteAnalyticsHistory() {
+    const analyticsId = localStorage.getItem(ANALYTICS_ID_KEY);
+    if (analyticsId) {
+        await fetch(`${API}/analytics/delete`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({analytics_id: analyticsId}),
+            keepalive: true,
+        }).catch(() => {});
+    }
+    localStorage.removeItem(ANALYTICS_ID_KEY);
+    sessionStorage.removeItem(ANALYTICS_SESSION_KEY);
+    sessionStorage.removeItem(ANALYTICS_SOURCE_KEY);
+}
+
+function handleAnalyticsPreferenceChange(previousEnabled) {
+    if (previousEnabled && personalSettings.enableAnalytics === false) {
+        deleteAnalyticsHistory();
+    } else if (!previousEnabled && personalSettings.enableAnalytics !== false) {
+        const inLobby = document.getElementById("gameView")?.style.display === "none";
+        trackAnalytics("site_visit", {}, inLobby ? "lobby" : analyticsRoomType());
+    }
+}
+
+function analyticsGameProperties(state) {
+    const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
+    const humans = humanSeats.length;
+    const ais = Array.isArray(state?.ai_seats) ? state.ai_seats.length : 0;
+    const humanPair = humanSeats.slice().sort().join("");
+    return {
+        role: mySeat === "A" ? "host" : (isSpectator() ? "spectator" : "joined"),
+        human_count: humans,
+        ai_count: ais,
+        pair_practice: humans === 2 && ["AC", "BD"].includes(humanPair),
+    };
+}
+
+function trackAnalyticsGameState(state) {
+    if (!state?.is_started || isSpectator()) return;
+    const round = Number(state.round_count || 1);
+    const roomKey = `${gid}:${round}`;
+    const startKey = `${roomKey}:start`;
+    if (!ANALYTICS_RECORDED_ROUNDS.has(startKey)) {
+        ANALYTICS_RECORDED_ROUNDS.add(startKey);
+        trackAnalytics("game_started", analyticsGameProperties(state));
+    }
+    const finishKey = `${roomKey}:finish`;
+    if (state.finished && !ANALYTICS_RECORDED_ROUNDS.has(finishKey)) {
+        ANALYTICS_RECORDED_ROUNDS.add(finishKey);
+        trackAnalytics("game_completed", {...analyticsGameProperties(state), completed: true});
+    }
+}
+
+window.setInterval(() => {
+    if (document.visibilityState === "visible") trackAnalytics("heartbeat");
+}, 60000);
+
+window.addEventListener("pagehide", () => {
+    if (analyticsRoomEnteredAt) trackAnalytics("room_leave", {}, analyticsRoomType(), true);
+});
 
 let mySeat = WATCH;
 let lastSeat = "A";
@@ -7138,6 +7238,10 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    if (analyticsRoomEnteredAt) {
+        trackAnalytics("room_leave", {}, analyticsRoomType());
+        analyticsRoomEnteredAt = 0;
+    }
     if (settingTargetGid && settingTargetGid !== targetGid) {
         clearRoomAdminSession({clearTarget: true});
     }
@@ -7182,9 +7286,15 @@ async function enterRoom(targetGid, roomName) {
     
     connectWS(gid); 
     await refresh();
+    analyticsRoomEnteredAt = Date.now();
+    trackAnalytics("room_enter", {}, analyticsRoomType(targetGid));
 }
 
 async function returnToLobby() {
+    if (analyticsRoomEnteredAt) {
+        trackAnalytics("room_leave", {}, analyticsRoomType());
+        analyticsRoomEnteredAt = 0;
+    }
     clearRoomAdminSession({clearTarget: true});
     if (cpuTimer) {
         clearTimeout(cpuTimer);
@@ -7236,265 +7346,17 @@ async function returnToLobby() {
     fetchRoomList();
 }
 
-function applyLobbyAdminPayload(data) {
-    const mainInput = document.getElementById("lobbyMainRoomCount");
-    const privateInput = document.getElementById("lobbyPrivateRoomCount");
-    mainInput.min = "1";
-    mainInput.max = String(data.main_room_max || 6);
-    mainInput.value = String(data.main_room_count || 4);
-    privateInput.min = "0";
-    privateInput.max = String(data.private_room_max || 6);
-    privateInput.value = String(Math.max(0, Number(data.private_room_count) || 0));
-    const privateAd = data.private_room_ad || {};
-    document.getElementById("lobbyPrivateAdEnabled").checked = privateAd.enabled === true;
-    document.getElementById("lobbyPrivateAdTitle").value = String(privateAd.title || "お知らせ");
-    document.getElementById("lobbyPrivateAdMessage").value = String(privateAd.message || "");
-    document.getElementById("lobbyPrivateAdUrl").value = String(privateAd.url || "");
-    renderPrivateRoomAdminPasswordControls(data.private_rooms || []);
-    renderPrivateRoomAdControls(data.private_rooms || [], privateAd.room_ids || []);
-}
-
-function renderPrivateRoomAdControls(privateRooms, selectedRoomIds) {
-    const container = document.getElementById("lobbyPrivateAdRoomList");
-    if (!container) return;
-    const selected = new Set(Array.isArray(selectedRoomIds) ? selectedRoomIds : []);
-    container.innerHTML = privateRooms.map((room) => {
-        const gameId = escapeLobbyHtml(room.game_id);
-        const roomName = escapeLobbyHtml(room.owner_name || room.game_id);
-        return `
-          <label>
-            <input class="private-room-ad-room" type="checkbox" value="${gameId}"${selected.has(room.game_id) ? " checked" : ""}>
-            <span>${roomName}</span>
-          </label>`;
-    }).join("");
-}
-
-function renderPrivateRoomAdminPasswordControls(privateRooms) {
-    const container = document.getElementById("lobbyPrivateRoomPasswordList");
-    if (!container) return;
-    container.innerHTML = privateRooms.map((room) => {
-        const gameId = escapeLobbyHtml(room.game_id);
-        const roomName = escapeLobbyHtml(room.owner_name || room.game_id);
-        return `
-          <div class="private-room-password-row" data-private-room-password-row="${gameId}">
-            <span class="private-room-password-name">${roomName}</span>
-            <div class="private-room-password-inputs">
-              <input class="private-room-new-admin-password" type="password" maxlength="128" autocomplete="new-password" placeholder="新しい管理用パスワード">
-              <input class="private-room-confirm-admin-password" type="password" maxlength="128" autocomplete="new-password" placeholder="新しいパスワード（確認）">
-            </div>
-            <div class="private-room-password-actions">
-              <button type="button" onclick="changePrivateRoomAdminPassword('${gameId}', false)">変更</button>
-              <button class="private-room-password-reset" type="button" onclick="changePrivateRoomAdminPassword('${gameId}', true)">初期値に戻す</button>
-            </div>
-            <div class="private-room-password-status" aria-live="polite"></div>
-          </div>`;
-    }).join("");
-}
-
-async function changePrivateRoomAdminPassword(gameId, resetToDefault) {
-    if (!lobbyAdminPasswordValue) return;
-    const row = document.querySelector(`[data-private-room-password-row="${gameId}"]`);
-    if (!row) return;
-    const passwordInput = row.querySelector(".private-room-new-admin-password");
-    const confirmationInput = row.querySelector(".private-room-confirm-admin-password");
-    const status = row.querySelector(".private-room-password-status");
-    const newPassword = passwordInput.value;
-
-    if (!resetToDefault) {
-        if (!newPassword.trim()) {
-            status.textContent = "新しい管理用パスワードを入力してください。";
-            passwordInput.focus();
-            return;
-        }
-        if (newPassword !== confirmationInput.value) {
-            status.textContent = "確認用のパスワードが一致しません。";
-            confirmationInput.focus();
-            return;
-        }
-    }
-
-    const roomName = row.querySelector(".private-room-password-name")?.textContent || gameId;
-    const language = currentUiLanguage();
-    const confirmationMessage = language === "en"
-        ? (resetToDefault
-            ? `Restore the admin password for ${roomName} to its default?`
-            : `Change the admin password for ${roomName}?`)
-        : (language === "zh"
-            ? (resetToDefault
-                ? `要将${roomName}的管理员密码恢复为初始值吗？`
-                : `要更改${roomName}的管理员密码吗？`)
-            : (resetToDefault
-                ? `${roomName}の管理用パスワードを初期値に戻しますか？`
-                : `${roomName}の管理用パスワードを変更しますか？`));
-    if (!window.confirm(confirmationMessage)) return;
-
-    const buttons = Array.from(row.querySelectorAll("button"));
-    buttons.forEach(button => { button.disabled = true; });
-    status.textContent = "保存しています...";
-    try {
-        const response = await fetch(`${API}/lobby/admin/private-room-password`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                admin_password: lobbyAdminPasswordValue,
-                game_id: gameId,
-                new_password: resetToDefault ? "" : newPassword,
-                reset_to_default: resetToDefault,
-            }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            status.textContent = response.status === 401
-                ? "管理用パスワードが正しくありません。"
-                : (data.detail || "管理用パスワードの保存に失敗しました。");
-            return;
-        }
-        passwordInput.value = "";
-        confirmationInput.value = "";
-        status.textContent = resetToDefault
-            ? "管理用パスワードを初期値に戻しました。"
-            : "管理用パスワードを変更しました。";
-    } catch (_error) {
-        status.textContent = "通信エラーが発生しました。";
-    } finally {
-        buttons.forEach(button => { button.disabled = false; });
-    }
-}
-
-function showLobbySettingsTab(tabName) {
-    const isAdmin = tabName === "admin";
-    const personalTab = document.getElementById("lobbyPersonalSettingsTab");
-    const adminTab = document.getElementById("lobbyAdminSettingsTab");
-    personalTab.classList.toggle("active", !isAdmin);
-    adminTab.classList.toggle("active", isAdmin);
-    personalTab.setAttribute("aria-selected", String(!isAdmin));
-    adminTab.setAttribute("aria-selected", String(isAdmin));
-    document.getElementById("lobbyPersonalSettingsPanel").classList.toggle("active", !isAdmin);
-    document.getElementById("lobbyAdminSettingsPanel").classList.toggle("active", isAdmin);
-    if (isAdmin) {
-        setTimeout(() => document.getElementById("lobbyAdminPassword")?.focus(), 0);
-    }
-}
-
 function openLobbySettings() {
-    lobbyAdminPasswordValue = "";
     syncLobbyPersonalSettingsControls();
     ["lobbyMobileChatSettingsDetails", "lobbyPlaySupportSettingsDetails", "lobbySoundSettingsDetails"].forEach((id) => {
         document.getElementById(id).open = false;
     });
-    document.getElementById("lobbyAdminPassword").value = "";
-    document.getElementById("lobbyAdminAuthStatus").textContent = "";
-    document.getElementById("lobbyAdminSaveStatus").textContent = "";
-    document.getElementById("lobbyAdminAuthArea").style.display = "block";
-    document.getElementById("lobbyAdminFields").style.display = "none";
-    showLobbySettingsTab("personal");
     document.getElementById("lobbySettingsModal").style.display = "flex";
 }
 
 function closeLobbySettings(event) {
     if (event && event.target !== event.currentTarget) return;
-    lobbyAdminPasswordValue = "";
     document.getElementById("lobbySettingsModal").style.display = "none";
-}
-
-async function unlockLobbyAdminSettings() {
-    const passwordInput = document.getElementById("lobbyAdminPassword");
-    const status = document.getElementById("lobbyAdminAuthStatus");
-    const password = passwordInput.value;
-    if (!password) {
-        status.textContent = "管理用パスワードを入力してください。";
-        passwordInput.focus();
-        return;
-    }
-    passwordInput.disabled = true;
-    status.textContent = "確認しています...";
-    try {
-        const response = await fetch(`${API}/lobby/admin/verify`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({password}),
-        });
-        if (!response.ok) {
-            status.textContent = "管理用パスワードが正しくありません。";
-            return;
-        }
-        const data = await response.json();
-        lobbyAdminPasswordValue = password;
-        applyLobbyAdminPayload(data);
-        document.getElementById("lobbyAdminAuthArea").style.display = "none";
-        document.getElementById("lobbyAdminFields").style.display = "block";
-    } catch (_error) {
-        status.textContent = "通信エラーが発生しました。";
-    } finally {
-        passwordInput.disabled = false;
-    }
-}
-
-async function saveLobbyAdminSettings() {
-    if (!lobbyAdminPasswordValue) return;
-    const mainInput = document.getElementById("lobbyMainRoomCount");
-    const privateInput = document.getElementById("lobbyPrivateRoomCount");
-    const status = document.getElementById("lobbyAdminSaveStatus");
-    const mainRoomCount = Number(mainInput.value);
-    const privateRoomCount = Number(privateInput.value);
-    const privateAdEnabled = document.getElementById("lobbyPrivateAdEnabled").checked;
-    const privateAdTitle = document.getElementById("lobbyPrivateAdTitle").value.trim() || "お知らせ";
-    const privateAdMessage = document.getElementById("lobbyPrivateAdMessage").value.trim();
-    const privateAdUrl = document.getElementById("lobbyPrivateAdUrl").value.trim();
-    const privateAdRoomIds = Array.from(
-        document.querySelectorAll(".private-room-ad-room:checked"),
-        element => element.value,
-    );
-    if (
-        !Number.isInteger(mainRoomCount)
-        || mainRoomCount < Number(mainInput.min)
-        || mainRoomCount > Number(mainInput.max)
-        || !Number.isInteger(privateRoomCount)
-        || privateRoomCount < Number(privateInput.min)
-        || privateRoomCount > Number(privateInput.max)
-    ) {
-        status.textContent = "部屋数を入力範囲内の整数にしてください。";
-        return;
-    }
-    if (privateAdEnabled && !privateAdMessage) {
-        status.textContent = "お知らせに表示する文章を入力してください。";
-        return;
-    }
-    if (privateAdEnabled && privateAdRoomIds.length === 0) {
-        status.textContent = "お知らせを表示するルームを選択してください。";
-        return;
-    }
-
-    status.textContent = "保存しています...";
-    try {
-        const response = await fetch(`${API}/lobby/admin/settings`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                admin_password: lobbyAdminPasswordValue,
-                main_room_count: mainRoomCount,
-                private_room_count: privateRoomCount,
-                private_ad_enabled: privateAdEnabled,
-                private_ad_title: privateAdTitle,
-                private_ad_message: privateAdMessage,
-                private_ad_url: privateAdUrl,
-                private_ad_room_ids: privateAdRoomIds,
-            }),
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            status.textContent = response.status === 401
-                ? "管理用パスワードが正しくありません。"
-                : String(errorData.detail || "設定の保存に失敗しました。");
-            return;
-        }
-        const data = await response.json();
-        applyLobbyAdminPayload(data);
-        status.textContent = "設定を保存しました。";
-        await fetchRoomList();
-    } catch (_error) {
-        status.textContent = "通信エラーが発生しました。";
-    }
 }
 
 function truncateLobbyPlayerName(playerName, maxCharacters = 5) {
@@ -7665,6 +7527,7 @@ function showSettingsTab(tabName) {
         }
     }
     if (isResearch) {
+        trackAnalytics("kifu_library_opened");
         if (currentAdminPass) {
             document.getElementById("researchKifuAuthArea").style.display = "none";
             document.getElementById("researchKifuLibrary").style.display = "block";
@@ -7692,6 +7555,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("checkEnableSoundEffects").checked = personalSettings.enableSoundEffects !== false;
     document.getElementById("pieceSoundChoice").value = personalSettings.pieceSound || "notanomori";
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
+    document.getElementById("checkEnableAnalytics").checked = personalSettings.enableAnalytics !== false;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("checkShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
     document.getElementById("checkAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
@@ -7934,6 +7798,8 @@ function setupLobbyPieceBackground() {
 async function savePersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
     const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
+    const previousEnableAnalytics = personalSettings.enableAnalytics !== false;
+    const previousBeginnerSupport = personalSettings.enableBeginnerSupport === true;
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
         playerTag: normalizePlayerTag(document.getElementById("personalPlayerTag").value),
@@ -7950,6 +7816,7 @@ async function savePersonalSettings() {
         enableSoundEffects: document.getElementById("checkEnableSoundEffects").checked,
         pieceSound: document.getElementById("pieceSoundChoice").value === "standard" ? "standard" : "notanomori",
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
+        enableAnalytics: document.getElementById("checkEnableAnalytics").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
         showAiThinkingBreakdown: document.getElementById("checkShowAiThinkingBreakdown").checked,
         autoRevealOwnHand: document.getElementById("checkAutoRevealOwnHand").checked,
@@ -7971,6 +7838,10 @@ async function savePersonalSettings() {
         document.getElementById("personalSettingsStatus").textContent = "保存しました。";
     } catch (e) {
         document.getElementById("personalSettingsStatus").textContent = "保存できませんでした。";
+    }
+    handleAnalyticsPreferenceChange(previousEnableAnalytics);
+    if (personalSettings.enableAnalytics !== false && previousBeginnerSupport !== personalSettings.enableBeginnerSupport) {
+        trackAnalytics(personalSettings.enableBeginnerSupport ? "beginner_support_enabled" : "beginner_support_disabled");
     }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
@@ -8231,6 +8102,7 @@ async function saveCurrentResearchKifu(anonymous = false) {
         await loadResearchKifuList();
         const savedMessage = anonymous ? "匿名で保存しました。" : "保存しました。";
         status.textContent = `${uiText(savedMessage)} ${data.record?.id || ""}`.trim();
+        trackAnalytics("kifu_saved");
     } catch (error) {
         status.textContent = uiText(error?.message || "保存できませんでした。");
     }
@@ -8275,6 +8147,7 @@ async function importResearchKifuFile(event) {
         renderResearchKifuTagOptions("researchKifuSaveTags", []);
         await loadResearchKifuList();
         status.textContent = `${uiText("棋譜を読み込みました。")} ${data.record?.id || ""}`.trim();
+        trackAnalytics("kifu_loaded");
     } catch (error) {
         status.textContent = uiText(error?.message || "棋譜を読み込めませんでした。");
     } finally {
@@ -8980,6 +8853,7 @@ async function selectSeat(next) {
         mySeat = next;
         lastSeat = next;
         await setName(next, personalSettings.playerName || "");
+        trackAnalytics("seat_taken", {role: next === "A" ? "host" : "joined"});
     } else {
         mySeat = WATCH;
     }
@@ -9033,6 +8907,7 @@ async function leaveSeat(seat) {
     pending = null;
     setAutoPlayEnabled(false);
     await releaseSeat(seat);
+    trackAnalytics("seat_left", {role: seat === "A" ? "host" : "joined"});
     mySeat = WATCH;
     await refresh();
 }
@@ -10045,6 +9920,7 @@ function toggleLobbyChatPanel(open){
     btn.hidden = !inLobby;
   }
   if(lobbyChatOpen){
+    trackAnalytics("chat_opened", {}, "lobby");
     hideChatToast();
     lobbyChatLastReadTs = Math.max(
       lobbyChatLastReadTs,
@@ -10160,6 +10036,7 @@ function toggleChatPanel(open, focusComposer = true){
     btn.setAttribute("aria-expanded", String(chatOpen));
   }
   if(chatOpen){
+    trackAnalytics("chat_opened");
     hideChatToast();
     if(badge) badge.hidden = true;
     const messages = Array.isArray(latestState?.chat_messages) ? latestState.chat_messages : [];
@@ -11012,6 +10889,7 @@ async function askLobbyChatAi(){
   }
 
   lobbyChatAiAsking = true;
+  trackAnalytics("ai_question_used", {}, "lobby");
   setLobbyChatComposerDisabled(true);
   status.textContent = "";
   try{
@@ -11062,6 +10940,7 @@ async function askChatAi(){
   }
 
   chatAiAsking = true;
+  trackAnalytics("ai_question_used");
   setChatComposerDisabled(true);
   try{
     const res = await fetch(`${API}/games/${gid}/chat/ask_ai`, {
@@ -12703,6 +12582,7 @@ async function refresh(){
     return;
   }
   latestState = state;
+  trackAnalyticsGameState(state);
   window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null);
   if(await maybeAutoRevealOwnAndAiHands(state)){
     window.setTimeout(() => refresh(), 0);
@@ -13110,6 +12990,8 @@ window.addEventListener("load", async ()=>{
 
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
+
+  trackAnalytics("site_visit", {}, "lobby");
 
   connectWS("lobby");
   await fetchRoomList();
