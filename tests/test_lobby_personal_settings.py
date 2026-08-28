@@ -50,3 +50,13 @@ def test_lobby_does_not_expose_kifu_save_actions_in_personal_settings() -> None:
     lobby_personal_settings = html[start:end]
 
     assert "downloadKifu" not in lobby_personal_settings
+
+
+def test_analytics_cannot_block_lobby_initialization() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "function analyticsLanguage()" in html
+    assert "window.goitaI18n?.getLanguage?.()" in html
+    assert "normalizeSiteLanguage" not in html
+    assert "SITE_LANGUAGE_KEY" not in html
+    assert 'console.warn("利用状況の記録をスキップしました:", error)' in html

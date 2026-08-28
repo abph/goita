@@ -6567,6 +6567,11 @@ function analyticsDevice() {
     return window.matchMedia("(max-width: 700px)").matches ? "mobile" : "desktop";
 }
 
+function analyticsLanguage() {
+    const language = String(window.goitaI18n?.getLanguage?.() || document.documentElement.lang || "ja");
+    return ["ja", "zh", "en"].includes(language) ? language : "ja";
+}
+
 function analyticsContext(roomType = analyticsRoomType()) {
     const attribution = analyticsAttribution();
     return {
@@ -6577,23 +6582,27 @@ function analyticsContext(roomType = analyticsRoomType()) {
         medium: attribution.medium,
         campaign: attribution.campaign,
         device: analyticsDevice(),
-        language: normalizeSiteLanguage(localStorage.getItem(SITE_LANGUAGE_KEY) || "ja"),
+        language: analyticsLanguage(),
     };
 }
 
 function trackAnalytics(eventName, properties = {}, roomType = analyticsRoomType(), useBeacon = false) {
     if (personalSettings.enableAnalytics === false || roomType === "none") return;
-    const payload = JSON.stringify({...analyticsContext(roomType), event: eventName, properties});
-    if (useBeacon && navigator.sendBeacon) {
-        navigator.sendBeacon(`${API}/analytics/event`, new Blob([payload], {type: "application/json"}));
-        return;
+    try {
+        const payload = JSON.stringify({...analyticsContext(roomType), event: eventName, properties});
+        if (useBeacon && navigator.sendBeacon) {
+            navigator.sendBeacon(`${API}/analytics/event`, new Blob([payload], {type: "application/json"}));
+            return;
+        }
+        fetch(`${API}/analytics/event`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: payload,
+            keepalive: true,
+        }).catch(() => {});
+    } catch (error) {
+        console.warn("利用状況の記録をスキップしました:", error);
     }
-    fetch(`${API}/analytics/event`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: payload,
-        keepalive: true,
-    }).catch(() => {});
 }
 
 async function deleteAnalyticsHistory() {
