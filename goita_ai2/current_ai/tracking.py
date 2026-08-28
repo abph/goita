@@ -90,6 +90,8 @@ class TrackingMixin:
             pending_weak_hand_shi_signal=False,
             pending_inferred_endgame_attack=None,
             pending_low_reentry_attack_piece=None,
+            pending_kyosha_receive_attack_piece=None,
+            pending_conditional_response_attack_piece=None,
             pending_shi_insertion_attack_piece=None,
             pending_shi_insertion_wait=None,
             last_shi_insertion_analysis=None,
@@ -236,6 +238,8 @@ class TrackingMixin:
                 tr["my_shi_approval_sent"] = (attack == "1")
                 tr["my_shi_approval_pending"] = False
             tr["pending_ally_force_king_attack_piece"] = None
+            tr["pending_kyosha_receive_attack_piece"] = None
+            tr["pending_conditional_response_attack_piece"] = None
             tr["my_last_receive_piece"] = None
 
         if action_type in ("receive", "attack_after_block") and visible_block is not None:

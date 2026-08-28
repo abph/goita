@@ -16,6 +16,7 @@ from goita_ai2.current_ai.branched_attack_inference import BranchedAttackInferen
 from goita_ai2.current_ai.branched_attack_evaluator import BranchedAttackEvaluatorMixin
 from goita_ai2.current_ai.branched_attack_lifecycle import BranchedAttackLifecycleMixin
 from goita_ai2.current_ai.branched_attack_runtime import BranchedAttackRuntimeMixin
+from goita_ai2.current_ai.conditional_response import ConditionalResponseMixin
 from goita_ai2.current_ai.decision import DecisionMixin
 from goita_ai2.current_ai.endgame import EndgameMixin
 from goita_ai2.current_ai.forced_plans import ForcedPlansMixin
@@ -52,6 +53,7 @@ class RuleBasedAgent(
     BranchedAttackLifecycleMixin,
     AttackPlanTemplateMixin,
     BranchedAttackRuntimeMixin,
+    ConditionalResponseMixin,
     ProbabilisticHandInferenceMixin,
     InformationSetMixin,
     InformationSetActionModelMixin,
@@ -345,8 +347,13 @@ class RuleBasedAgent(
         self.TIME_SEARCH_CACHE_TTL_SECONDS = 600.0
         self.TIME_SEARCH_PREDICTION_CACHE_ENABLED = True
         self.TIME_SEARCH_PREDICTION_CACHE_WAIT_SECONDS = 0.12
+        self.CONDITIONAL_RESPONSE_ENABLED = True
+        self.CONDITIONAL_RESPONSE_MAX_ENTRIES = 512
+        self.CONDITIONAL_RESPONSE_TTL_SECONDS = 3600.0
+        self.CONDITIONAL_RESPONSE_MIN_DEPTH = 3
         self._initialize_search_cache()
         self._initialize_prediction_cache()
+        self._initialize_conditional_response_dictionary()
         self._initialize_time_search_budget()
         self.TIME_SEARCH_BACKGROUND_ENABLED = True
         self.TIME_SEARCH_BACKGROUND_MAX_PASSES = 3

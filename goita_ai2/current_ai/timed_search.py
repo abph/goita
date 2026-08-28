@@ -89,13 +89,19 @@ class TimedSearchMixin:
         information_enabled: bool,
         information_confidence: float,
     ) -> bool:
-        """Adopt the better depth-seven branch in a lance pass comparison."""
+        """Adopt either better depth-seven branch in a lance comparison."""
+        compared_actions = {baseline_action[0], best_action[0]}
+        receive_action = (
+            baseline_action
+            if baseline_action[0] == "receive"
+            else best_action
+        )
         return bool(
             getattr(self, "_time_search_profile", "default")
             == "kyosha_pass_compare"
-            and baseline_action[0] == "pass"
-            and best_action[0] == "receive"
-            and best_action[1] == "2"
+            and baseline_action != best_action
+            and compared_actions == {"pass", "receive"}
+            and receive_action[1] == "2"
             and information_enabled
             and completed_depth
             >= int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH)

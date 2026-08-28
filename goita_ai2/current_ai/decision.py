@@ -96,6 +96,9 @@ class DecisionMixin:
             "last_prediction_cache_hit",
             "last_prediction_cache_key",
             "last_prediction_cache_samples",
+            "_conditional_response_dictionary",
+            "last_conditional_response_key",
+            "last_conditional_response_hit",
             "last_rule_search_authority",
             "last_search_skip_reason",
             "_prediction_rollforward_states",
@@ -618,9 +621,30 @@ class DecisionMixin:
                 "only_legal_action" if len(actions) <= 1 else "proven_rule"
             )
 
+        response_plan = None
+        if not hard_locked:
+            response_plan = self._lookup_conditional_response_plan(
+                state,
+                player,
+                actions,
+                baseline_action,
+            )
+        if response_plan is not None:
+            self.last_attack_candidate_scores = copy.deepcopy(
+                getattr(preview, "last_attack_candidate_scores", [])
+            )
+            if response_plan.action == baseline_action:
+                self._adopt_rule_preview(preview)
+            self._commit_conditional_response_plan(state, response_plan)
+            self._set_decision_reason("response_dictionary")
+            self._set_score_fallback_detail(
+                f"conditional_response_{response_plan.action[0]}_"
+                f"{response_plan.source}_depth_{response_plan.depth}"
+            )
+            return response_plan.action
+
         kyosha_pass_compare_search = (
             not hard_locked
-            and baseline_action[0] == "pass"
             and self._should_compare_kyosha_pass_and_receive(
                 state,
                 player,
@@ -736,6 +760,13 @@ class DecisionMixin:
                 self._time_search_profile = previous_profile
 
         if search_result is not None:
+            override_accepted = bool(
+                search_result.action != baseline_action
+                and self._search_may_override_rule(
+                    rule_authority,
+                    search_result,
+                )
+            )
             search_snapshot = search_result.as_dict()
             search_snapshot["cache_hit"] = bool(self.last_time_search_cache_hit)
             search_snapshot["cache_key"] = self.last_time_search_cache_key
@@ -755,19 +786,27 @@ class DecisionMixin:
                 self.last_prediction_cache_samples
             )
             search_snapshot["rule_authority"] = rule_authority
-            search_snapshot["override_accepted"] = bool(
-                search_result.action != baseline_action
-                and self._search_may_override_rule(
-                    rule_authority,
-                    search_result,
-                )
-            )
+            search_snapshot["override_accepted"] = override_accepted
             preview_tracker = preview._track.get(id(state))
             if preview_tracker is not None:
                 preview_tracker["last_time_limited_search"] = dict(search_snapshot)
             tracker = self._track.get(id(state))
             if tracker is not None:
                 tracker["last_time_limited_search"] = dict(search_snapshot)
+            selected_response_action = (
+                search_result.action
+                if override_accepted
+                else baseline_action
+            )
+            self._remember_conditional_response_plan(
+                state,
+                player,
+                actions,
+                baseline_action,
+                selected_response_action,
+                search_result,
+                source=search_profile,
+            )
 
         if (
             search_result is not None
@@ -778,6 +817,12 @@ class DecisionMixin:
                 getattr(preview, "last_attack_candidate_scores", [])
             )
             self._commit_timed_search_action(state, player, search_result.action)
+            if kyosha_pass_compare_search:
+                self._remember_kyosha_receive_followup(
+                    state,
+                    player,
+                    search_result.action,
+                )
             if (
                 low_reentry_receive_search
                 and search_result.action[0] == "receive"
@@ -849,6 +894,12 @@ class DecisionMixin:
             return receive_before_third
 
         self._adopt_rule_preview(preview)
+        if kyosha_pass_compare_search:
+            self._remember_kyosha_receive_followup(
+                state,
+                player,
+                baseline_action,
+            )
         return baseline_action
 
     def _should_compare_kyosha_pass_and_receive(
@@ -917,6 +968,23 @@ class DecisionMixin:
             return None
         ranked.sort(reverse=True)
         return str(ranked[0][-1])
+
+    def _remember_kyosha_receive_followup(
+        self,
+        state,
+        player: str,
+        action: Action,
+    ) -> None:
+        """Keep the strongest public follow-up when the lance route is chosen."""
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return
+        tracker["pending_kyosha_receive_attack_piece"] = None
+        if action[0] != "receive" or action[1] != "2":
+            return
+        tracker["pending_kyosha_receive_attack_piece"] = (
+            self._low_reentry_followup_piece(state, player, "2")
+        )
 
     def _should_deep_search_low_reentry_receive(
         self,
@@ -1132,6 +1200,31 @@ class DecisionMixin:
                 self._set_score_fallback_detail("inferred_endgame_followup_attack")
                 return planned_attack
 
+        if (
+            tr is not None
+            and tr.get("pending_conditional_response_attack_piece") is not None
+        ):
+            planned_piece = str(
+                tr.get("pending_conditional_response_attack_piece")
+            )
+            tr["pending_conditional_response_attack_piece"] = None
+            planned_attack = next(
+                (
+                    action
+                    for action in actions
+                    if action[0] in ("attack", "attack_after_block")
+                    and action[2] == planned_piece
+                ),
+                None,
+            )
+            if planned_attack is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("response_dictionary")
+                self._set_score_fallback_detail(
+                    f"conditional_response_followup_{planned_piece}"
+                )
+                return planned_attack
+
         if tr is not None and tr.get("pending_low_reentry_attack_piece") is not None:
             planned_piece = str(tr.get("pending_low_reentry_attack_piece"))
             tr["pending_low_reentry_attack_piece"] = None
@@ -1148,6 +1241,26 @@ class DecisionMixin:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 self._set_decision_reason("time_search")
                 self._set_score_fallback_detail("low_reentry_followup_attack")
+                return planned_attack
+
+        if tr is not None and tr.get("pending_kyosha_receive_attack_piece") is not None:
+            planned_piece = str(tr.get("pending_kyosha_receive_attack_piece"))
+            tr["pending_kyosha_receive_attack_piece"] = None
+            planned_attack = next(
+                (
+                    action
+                    for action in actions
+                    if action[0] in ("attack", "attack_after_block")
+                    and action[2] == planned_piece
+                ),
+                None,
+            )
+            if planned_attack is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("time_search")
+                self._set_score_fallback_detail(
+                    f"kyosha_receive_followup_{planned_piece}"
+                )
                 return planned_attack
 
         if tr is not None and tr.get("pending_shi_insertion_attack_piece") is not None:

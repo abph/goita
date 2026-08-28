@@ -405,6 +405,13 @@ def test_kyosha_pass_compare_requires_a_completed_depth_seven_result() -> None:
     pass_best["best_action"] = ("pass", None, None)
     assert not agent._timed_search_kyosha_pass_compare_is_decisive(**pass_best)
 
+    receive_baseline = dict(result)
+    receive_baseline["baseline_action"] = ("receive", "2", None)
+    receive_baseline["best_action"] = ("pass", None, None)
+    assert agent._timed_search_kyosha_pass_compare_is_decisive(
+        **receive_baseline
+    )
+
 
 def test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse() -> None:
     clear_prediction_sample_cache()
@@ -475,6 +482,85 @@ def test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse() -> No
     attack = c_agent.select_action(state, "C", state.legal_actions("C"))
 
     assert attack == ("attack", None, "3")
+
+
+def test_kyosha_receive_plan_keeps_public_fourth_silver_for_followup() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11234678"),
+            "B": list("11112557"),
+            "C": list("11134459"),
+            "D": list("12233456"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    opening = (
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("receive", "4", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("receive", "3", None)),
+        ("A", ("attack", None, "6")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "6", None)),
+        ("D", ("attack", None, "2")),
+    )
+    for action_player, action in opening:
+        apply_public(action_player, action)
+
+    a_agent = agents["A"]
+    legal = state.legal_actions("A")
+    assert a_agent._should_compare_kyosha_pass_and_receive(state, "A", legal)
+    preview = copy.deepcopy(a_agent)
+    baseline = preview._select_rule_based_action(state, "A", legal)
+    receive = a_agent.select_action(state, "A", legal)
+
+    assert receive == ("receive", "2", None)
+    assert (
+        a_agent._track[id(state)]["pending_kyosha_receive_attack_piece"]
+        == "4"
+    )
+    stored_plan = a_agent._lookup_conditional_response_plan(
+        state,
+        "A",
+        legal,
+        baseline,
+    )
+    assert stored_plan is not None
+    assert stored_plan.action == receive
+    assert stored_plan.followup_attack_piece == "4"
+
+    apply_public("A", receive)
+    attack = a_agent._select_rule_based_action(
+        state,
+        "A",
+        state.legal_actions("A"),
+    )
+
+    assert attack == ("attack", None, "4")
+    assert a_agent.last_score_fallback_detail == "kyosha_receive_followup_4"
 
 
 def test_zero_shi_stop_signal_context_matches_enemy_reply_to_ally_shi() -> None:
@@ -689,6 +775,9 @@ if __name__ == "__main__":
     test_time_limited_search_returns_a_completed_legal_result()
     test_select_action_records_search_without_changing_public_state()
     test_enemy_second_attack_wait_requires_a_robust_inferred_win()
+    test_kyosha_pass_compare_requires_a_completed_depth_seven_result()
+    test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse()
+    test_kyosha_receive_plan_keeps_public_fourth_silver_for_followup()
     test_one_second_search_keeps_ally_gold_pass_after_broader_sampling()
     test_receive_branch_compares_followup_attacks_through_the_final_score()
     print("TIMED_SEARCH_MODULE_TEST_OK")

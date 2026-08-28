@@ -5311,6 +5311,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         responded: "味方の反応に合わせる判断",
         branched_plan: "分岐付き攻め計画",
         time_search: "時間制限付き探索",
+        response_dictionary: "事前に用意した応答計画",
         forced_king_third: "相手に王・玉を使わせる3枚目の攻め",
         king_order: "王・玉を使う順番の調整",
         safe_nonking_third: "王・玉を温存する安全な3枚目の攻め",
@@ -5328,6 +5329,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         responded: "根据搭档的反应行动",
         branched_plan: "分支进攻计划",
         time_search: "限时搜索",
+        response_dictionary: "预先准备的应对计划",
         forced_king_third: "第三次进攻迫使对手使用王或玉",
         king_order: "调整王与玉的使用顺序",
         safe_nonking_third: "保留王或玉的安全第三次进攻",
@@ -5345,6 +5347,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         responded: "Respond to the ally's signal",
         branched_plan: "Branched attack plan",
         time_search: "Time-limited search",
+        response_dictionary: "Precomputed response plan",
         forced_king_third: "Third attack intended to force a King",
         king_order: "Adjust the King play order",
         safe_nonking_third: "Safe third attack that preserves the King",
@@ -5434,6 +5437,26 @@ function localizeGameLogAiDetail(detail, language) {
     if(match) return language === "zh"
         ? `以“し”和王玉组合争取${match[1]}分`
         : `しと王・玉を使って${match[1]}点の上がりを狙う`;
+    match = String(detail || "").match(/^conditional_response_(pass|receive)_.+_depth_(\d+)$/);
+    if(match) {
+        const receives = match[1] === "receive";
+        if(language === "zh") return receives
+            ? `复用已搜索的接牌路线（搜索深度${match[2]}）`
+            : `复用已搜索的跳过路线（搜索深度${match[2]}）`;
+        if(language === "en") return receives
+            ? `Reuse the searched receive line (depth ${match[2]})`
+            : `Reuse the searched pass line (depth ${match[2]})`;
+        return receives
+            ? `探索済みの受ける計画を再利用（深さ${match[2]}）`
+            : `探索済みのパス計画を再利用（深さ${match[2]}）`;
+    }
+    match = String(detail || "").match(/^conditional_response_followup_([1-9])$/);
+    if(match) {
+        const piece = gameLogCandidatePieceLabel(match[1], language);
+        if(language === "zh") return `继续预先准备的计划，以${piece}进攻`;
+        if(language === "en") return `Continue the precomputed plan by attacking with ${piece}`;
+        return `事前に用意した計画を継続し、${piece}で攻める`;
+    }
     match = String(detail || "").match(/^safe_(\d+)_target_(\d+)_chance_(\d+)_risk_(\d+)$/);
     if(match) {
         if(language === "zh") return `与确定获得${match[1]}分的走法比较后，选择争取${match[2]}分（成功机会${match[3]}%，推测失败风险${match[4]}%）`;
