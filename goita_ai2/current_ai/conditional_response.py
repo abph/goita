@@ -17,6 +17,44 @@ from goita_ai2.current_ai.search_cache import _digest_payload
 
 Action = Tuple[str, Optional[str], Optional[str]]
 
+_RUNTIME_COUNTER_NAMES = (
+    "hits",
+    "misses",
+    "stores",
+    "invalid",
+    "evictions",
+    "expired",
+    "pass_hits",
+    "receive_hits",
+    "background_hits",
+    "foreground_hits",
+    "followup_hits",
+    "followup_unavailable",
+)
+_RUNTIME_LOCK = threading.RLock()
+_RUNTIME_COUNTERS = {name: 0 for name in _RUNTIME_COUNTER_NAMES}
+_RUNTIME_ESTIMATED_SAVED_MS = 0.0
+
+
+def _record_runtime_counter(name: str, amount: int = 1) -> None:
+    with _RUNTIME_LOCK:
+        _RUNTIME_COUNTERS[name] += int(amount)
+
+
+def _record_runtime_saved_ms(amount: float) -> None:
+    global _RUNTIME_ESTIMATED_SAVED_MS
+    with _RUNTIME_LOCK:
+        _RUNTIME_ESTIMATED_SAVED_MS += max(0.0, float(amount))
+
+
+def reset_conditional_response_runtime() -> None:
+    """Reset process-wide metrics for tests and explicit diagnostics."""
+    global _RUNTIME_ESTIMATED_SAVED_MS
+    with _RUNTIME_LOCK:
+        for name in _RUNTIME_COUNTER_NAMES:
+            _RUNTIME_COUNTERS[name] = 0
+        _RUNTIME_ESTIMATED_SAVED_MS = 0.0
+
 
 @dataclass(frozen=True)
 class ConditionalResponsePlan:
@@ -81,6 +119,8 @@ class ConditionalResponseDictionary:
         for key in expired:
             self._entries.pop(key, None)
             self._counters["expired"] += 1
+        if expired:
+            _record_runtime_counter("expired", len(expired))
 
     def get(self, key: str) -> Optional[ConditionalResponsePlan]:
         with self._lock:
@@ -89,6 +129,7 @@ class ConditionalResponseDictionary:
             entry = self._entries.get(key)
             if entry is None:
                 self._counters["misses"] += 1
+                _record_runtime_counter("misses")
                 return None
             entry.last_accessed_at = now
             self._entries.move_to_end(key)
@@ -101,36 +142,45 @@ class ConditionalResponseDictionary:
             self._entries.pop(key, None)
             self._entries[key] = _ConditionalResponseEntry(plan, now, now)
             self._counters["stores"] += 1
+            _record_runtime_counter("stores")
             while len(self._entries) > self.max_entries:
                 self._entries.popitem(last=False)
                 self._counters["evictions"] += 1
+                _record_runtime_counter("evictions")
 
     def mark_invalid(self, key: str) -> None:
         with self._lock:
             self._entries.pop(key, None)
             self._counters["invalid"] += 1
+            _record_runtime_counter("invalid")
 
     def record_reuse(self, plan: ConditionalResponsePlan) -> None:
         with self._lock:
             self._counters["hits"] += 1
+            _record_runtime_counter("hits")
             counter = (
                 "receive_hits"
                 if plan.action[0] == "receive"
                 else "pass_hits"
             )
             self._counters[counter] += 1
+            _record_runtime_counter(counter)
             source_counter = (
                 "background_hits"
                 if plan.cache_source == "background"
                 else "foreground_hits"
             )
             self._counters[source_counter] += 1
-            self._estimated_saved_ms += max(0.0, float(plan.cached_compute_ms))
+            _record_runtime_counter(source_counter)
+            saved_ms = max(0.0, float(plan.cached_compute_ms))
+            self._estimated_saved_ms += saved_ms
+            _record_runtime_saved_ms(saved_ms)
 
     def record_followup(self, *, used: bool) -> None:
         with self._lock:
             counter = "followup_hits" if used else "followup_unavailable"
             self._counters[counter] += 1
+            _record_runtime_counter(counter)
 
     def clear(self) -> None:
         with self._lock:
@@ -425,3 +475,25 @@ def merge_conditional_response_snapshots(
     )
     merged["dictionary_instances"] = len(snapshots)
     return merged
+
+
+def conditional_response_runtime_snapshot(
+    live_snapshots: Sequence[Dict[str, object]] = (),
+) -> Dict[str, object]:
+    """Return process-wide totals plus the currently active dictionary size."""
+    live = merge_conditional_response_snapshots(live_snapshots)
+    with _RUNTIME_LOCK:
+        counters = dict(_RUNTIME_COUNTERS)
+        saved_ms = float(_RUNTIME_ESTIMATED_SAVED_MS)
+    hits = int(counters["hits"])
+    lookups = hits + int(counters["misses"]) + int(counters["invalid"])
+    return {
+        **counters,
+        "lookups": lookups,
+        "hit_rate": round(hits / lookups if lookups else 0.0, 5),
+        "estimated_saved_ms": round(saved_ms, 3),
+        "estimated_saved_seconds": round(saved_ms / 1000.0, 4),
+        "size": int(live.get("size", 0) or 0),
+        "max_entries": int(live.get("max_entries", 0) or 0),
+        "dictionary_instances": len(live_snapshots),
+    }

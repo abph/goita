@@ -5,7 +5,9 @@ import copy
 from goita_ai2.current_ai.conditional_response import (
     ConditionalResponseMixin,
     ConditionalResponsePlan,
+    conditional_response_runtime_snapshot,
     merge_conditional_response_snapshots,
+    reset_conditional_response_runtime,
 )
 from goita_ai2.current_ai.timed_search import TimedSearchResult
 from goita_ai2.rule_based import RuleBasedAgent
@@ -70,6 +72,7 @@ def test_conditional_response_key_does_not_read_opponent_hands() -> None:
 
 
 def test_searched_receive_and_followup_are_reused_from_dictionary() -> None:
+    reset_conditional_response_runtime()
     state = _receive_state()
     agent = _agent_for(state)
     agent._track[id(state)]["public_seen_counts"]["4"] = 3
@@ -126,6 +129,42 @@ def test_searched_receive_and_followup_are_reused_from_dictionary() -> None:
     assert merged["estimated_saved_seconds"] == 2.0
     assert merged["dictionary_instances"] == 2
 
+    runtime = conditional_response_runtime_snapshot([snapshot])
+    assert runtime["hits"] == 1
+    assert runtime["stores"] == 1
+    assert runtime["estimated_saved_seconds"] == 1.0
+
+
+def test_runtime_totals_survive_agent_replacement() -> None:
+    reset_conditional_response_runtime()
+    state = _receive_state()
+    first_agent = _agent_for(state)
+    first_agent._conditional_response_dictionary.put(
+        "first-round-plan",
+        ConditionalResponsePlan(
+            action=("pass", None, None),
+            followup_attack_piece=None,
+            baseline_action=("pass", None, None),
+            source="test",
+            depth=3,
+            agreement=1.0,
+            information_confidence=1.0,
+            margin=10.0,
+            cache_source="foreground",
+            cache_branch_kind=None,
+            cache_branch_context=None,
+            cached_compute_ms=100.0,
+        ),
+    )
+
+    next_round_agent = _agent_for(_receive_state())
+    runtime = conditional_response_runtime_snapshot(
+        [next_round_agent.conditional_response_dictionary_snapshot()]
+    )
+
+    assert runtime["stores"] == 1
+    assert runtime["size"] == 0
+
 
 def test_illegal_cached_response_is_discarded() -> None:
     state = _receive_state()
@@ -171,5 +210,6 @@ if __name__ == "__main__":
     test_rule_based_agent_uses_conditional_response_mixin()
     test_conditional_response_key_does_not_read_opponent_hands()
     test_searched_receive_and_followup_are_reused_from_dictionary()
+    test_runtime_totals_survive_agent_replacement()
     test_illegal_cached_response_is_discarded()
     print("CONDITIONAL_RESPONSE_TEST_OK")

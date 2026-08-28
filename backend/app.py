@@ -43,7 +43,7 @@ from goita_ai2.current_ai.background_search import (
 from goita_ai2.current_ai.search_budget import time_search_budget_snapshot
 from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapshot
 from goita_ai2.current_ai.conditional_response import (
-    merge_conditional_response_snapshots,
+    conditional_response_runtime_snapshot,
 )
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
@@ -3344,7 +3344,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ai_background_search": background_search_runtime_snapshot(),
         "ai_search_budget": time_search_budget_snapshot(),
         "ai_prediction_cache": prediction_sample_cache_snapshot(),
-        "ai_conditional_response": merge_conditional_response_snapshots(
+        "ai_conditional_response": conditional_response_runtime_snapshot(
             response_snapshots
         ),
     }

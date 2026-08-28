@@ -21,7 +21,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
 
     backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
     assert '"ai_conditional_response"' in backend
-    assert "merge_conditional_response_snapshots" in backend
+    assert "conditional_response_runtime_snapshot" in backend
 
 
 def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> None:
