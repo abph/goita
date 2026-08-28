@@ -107,6 +107,28 @@ def test_fourth_middle_template_reserves_the_piece_for_attack_three() -> None:
     assert third.action is not None and third.action[2] == "5"
 
 
+def test_representative_template_rejects_a_mismatched_attack_history() -> None:
+    state = _state("11122357")
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    tracker = agent._track[id(state)]
+    tracker["public_seen_counts"]["5"] = 3
+    tracker["my_attack_count"] = 1
+    tracker["my_attack_history"] = ["6"]
+
+    plans = agent._generate_representative_attack_plans(
+        state,
+        "A",
+        state.legal_actions("A"),
+    )
+
+    assert not any(
+        plan.source == "representative:fourth_middle_finisher_5"
+        for plan in plans
+    )
+
+
 def test_royal_preservation_template_never_hides_the_royal_early() -> None:
     state = _state("11233459")
     agent = RuleBasedAgent()
@@ -135,5 +157,6 @@ if __name__ == "__main__":
     test_two_kyosha_middle_pair_with_royal_keeps_kyosha_then_pair()
     test_four_shi_template_generates_three_consecutive_shi_attacks()
     test_fourth_middle_template_reserves_the_piece_for_attack_three()
+    test_representative_template_rejects_a_mismatched_attack_history()
     test_royal_preservation_template_never_hides_the_royal_early()
     print("ATTACK_PLAN_TEMPLATES_TEST_OK")

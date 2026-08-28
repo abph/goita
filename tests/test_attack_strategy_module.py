@@ -9,6 +9,55 @@ def test_rule_based_agent_uses_attack_strategy_mixin() -> None:
     assert issubclass(RuleBasedAgent, AttackStrategyMixin)
 
 
+def test_second_attack_uses_rook_instead_of_weak_two_shi_bridge() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("76823411"),
+            "B": list("51521711"),
+            "C": list("53194411"),
+            "D": list("36212345"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+
+    actions = (
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "4")),
+        ("D", ("receive", "4", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("receive", "3", None)),
+        ("A", ("attack", None, "6")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "6", None)),
+        ("D", ("attack", None, "2")),
+        ("A", ("receive", "2", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    chosen = agents["A"].select_action(state, "A", state.legal_actions("A"))
+
+    assert chosen == ("attack", None, "7")
+
+
 def test_attack_strategy_methods_are_owned_by_mixin() -> None:
     for method_name in (
         "_dealer_opening_plan_adjustment",
@@ -654,6 +703,7 @@ def test_second_attack_avoids_weak_two_shi_signal_and_compares_other_attacks() -
 
 if __name__ == "__main__":
     test_rule_based_agent_uses_attack_strategy_mixin()
+    test_second_attack_uses_rook_instead_of_weak_two_shi_bridge()
     test_attack_strategy_methods_are_owned_by_mixin()
     test_four_shi_is_preferred_after_receiving_big_piece()
     test_three_shi_is_preferred_over_singletons_after_receiving_big_piece()

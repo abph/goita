@@ -355,6 +355,14 @@ class BranchedAttackRuntimeMixin:
             # specific local tactic by itself.
             if item.plan.source == "representative:royal_receive_width":
                 return False
+            if item.plan.source.startswith("representative:fourth_middle_finisher_"):
+                return (
+                    evaluation.failure_risk
+                    <= float(self.BRANCHED_ATTACK_GENERIC_MAX_FAILURE_RISK)
+                    and evaluation.receive_width
+                    >= float(self.BRANCHED_ATTACK_GENERIC_MIN_RECEIVE_WIDTH)
+                    and evaluation.covered_public_responses > 0
+                )
             return True
         return (
             evaluation.failure_risk

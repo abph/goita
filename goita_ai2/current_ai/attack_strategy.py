@@ -302,7 +302,6 @@ class AttackStrategyMixin:
             or int(tr.get("my_attack_count", 0)) != 1
             or int(tr.get("my_init_count", Counter()).get("1", 0)) != 2
             or hand.count("1") <= 0
-            or hand.count("8") + hand.count("9") > 0
         ):
             return False
 
@@ -332,6 +331,10 @@ class AttackStrategyMixin:
             return 0.0
 
         penalty = float(self.TWO_SHI_SECOND_ATTACK_SIGNAL_PENALTY)
+        if state.hands[player].count("8") + state.hands[player].count("9") > 0:
+            # A royal widens later receives, but does not make a misleading
+            # two-shi signal harmless. Keep a softer warning instead.
+            penalty *= 0.55
         if self._has_strong_repeat_attack(Counter(state.hands[player])):
             penalty *= 0.4
         return penalty

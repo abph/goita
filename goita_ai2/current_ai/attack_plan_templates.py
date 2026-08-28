@@ -241,6 +241,20 @@ class AttackPlanTemplateMixin:
         ))
 
     @staticmethod
+    def _template_matches_attack_history(
+        history: Sequence[str],
+        template: RepresentativeAttackTemplate,
+        attack_number: int,
+    ) -> bool:
+        """Reject a full-round template when its earlier attacks did not occur."""
+        completed = max(0, int(attack_number) - 1)
+        if completed <= 0:
+            return True
+        expected = tuple(template.attack_sequence[:completed])
+        actual = tuple(str(piece) for piece in history[:completed])
+        return len(expected) == completed and actual == expected
+
+    @staticmethod
     def _template_preserves_blocks(
         hand: Sequence[str],
         action: Action,
@@ -302,6 +316,13 @@ class AttackPlanTemplateMixin:
         attack_number = int(tr.get("my_attack_count", 0)) + 1 if tr else 1
         plans: List[BranchedAttackPlan] = []
         for template in self._representative_attack_templates(state, player):
+            history = tuple(tr.get("my_attack_history", ())) if tr else tuple()
+            if not self._template_matches_attack_history(
+                history,
+                template,
+                attack_number,
+            ):
+                continue
             roots = self._template_root_actions(
                 state,
                 player,
