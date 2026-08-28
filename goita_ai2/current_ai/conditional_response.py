@@ -9,7 +9,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Sequence, Tuple
 
 from goita_ai2.constants import ALL_SEATS
 from goita_ai2.current_ai.search_cache import _digest_payload
@@ -59,7 +59,14 @@ class ConditionalResponseDictionary:
             "invalid": 0,
             "evictions": 0,
             "expired": 0,
+            "pass_hits": 0,
+            "receive_hits": 0,
+            "background_hits": 0,
+            "foreground_hits": 0,
+            "followup_hits": 0,
+            "followup_unavailable": 0,
         }
+        self._estimated_saved_ms = 0.0
 
     def __deepcopy__(self, memo):
         memo[id(self)] = self
@@ -84,9 +91,7 @@ class ConditionalResponseDictionary:
                 self._counters["misses"] += 1
                 return None
             entry.last_accessed_at = now
-            entry.hits += 1
             self._entries.move_to_end(key)
-            self._counters["hits"] += 1
             return entry.plan
 
     def put(self, key: str, plan: ConditionalResponsePlan) -> None:
@@ -105,6 +110,28 @@ class ConditionalResponseDictionary:
             self._entries.pop(key, None)
             self._counters["invalid"] += 1
 
+    def record_reuse(self, plan: ConditionalResponsePlan) -> None:
+        with self._lock:
+            self._counters["hits"] += 1
+            counter = (
+                "receive_hits"
+                if plan.action[0] == "receive"
+                else "pass_hits"
+            )
+            self._counters[counter] += 1
+            source_counter = (
+                "background_hits"
+                if plan.cache_source == "background"
+                else "foreground_hits"
+            )
+            self._counters[source_counter] += 1
+            self._estimated_saved_ms += max(0.0, float(plan.cached_compute_ms))
+
+    def record_followup(self, *, used: bool) -> None:
+        with self._lock:
+            counter = "followup_hits" if used else "followup_unavailable"
+            self._counters[counter] += 1
+
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
@@ -114,11 +141,17 @@ class ConditionalResponseDictionary:
             self._prune(time.monotonic())
             hits = int(self._counters["hits"])
             misses = int(self._counters["misses"])
-            lookups = hits + misses
+            invalid = int(self._counters["invalid"])
+            lookups = hits + misses + invalid
             return {
                 **self._counters,
                 "lookups": lookups,
                 "hit_rate": round(hits / lookups if lookups else 0.0, 5),
+                "estimated_saved_ms": round(self._estimated_saved_ms, 3),
+                "estimated_saved_seconds": round(
+                    self._estimated_saved_ms / 1000.0,
+                    4,
+                ),
                 "size": len(self._entries),
                 "max_entries": self.max_entries,
                 "ttl_seconds": self.ttl_seconds,
@@ -243,6 +276,7 @@ class ConditionalResponseMixin:
             self._conditional_response_dictionary.mark_invalid(key)
             return None
         self.last_conditional_response_hit = True
+        self._conditional_response_dictionary.record_reuse(plan)
         self.last_time_search_cache_hit = True
         self.last_time_search_cache_key = key
         self.last_time_search_cache_source = plan.cache_source
@@ -347,3 +381,47 @@ class ConditionalResponseMixin:
 
     def clear_conditional_response_dictionary(self) -> None:
         self._conditional_response_dictionary.clear()
+
+    def _record_conditional_response_followup(self, *, used: bool) -> None:
+        self._conditional_response_dictionary.record_followup(used=used)
+
+
+def merge_conditional_response_snapshots(
+    snapshots: Sequence[Dict[str, object]],
+) -> Dict[str, object]:
+    """Combine per-agent counters for the administrator dashboard."""
+    additive = (
+        "hits",
+        "misses",
+        "stores",
+        "invalid",
+        "evictions",
+        "expired",
+        "pass_hits",
+        "receive_hits",
+        "background_hits",
+        "foreground_hits",
+        "followup_hits",
+        "followup_unavailable",
+        "lookups",
+        "size",
+        "max_entries",
+    )
+    merged = {
+        key: sum(int(snapshot.get(key, 0) or 0) for snapshot in snapshots)
+        for key in additive
+    }
+    saved_ms = sum(
+        float(snapshot.get("estimated_saved_ms", 0.0) or 0.0)
+        for snapshot in snapshots
+    )
+    merged["estimated_saved_ms"] = round(saved_ms, 3)
+    merged["estimated_saved_seconds"] = round(saved_ms / 1000.0, 4)
+    merged["hit_rate"] = round(
+        merged["hits"] / merged["lookups"]
+        if merged["lookups"]
+        else 0.0,
+        5,
+    )
+    merged["dictionary_instances"] = len(snapshots)
+    return merged

@@ -5,6 +5,7 @@ import copy
 from goita_ai2.current_ai.conditional_response import (
     ConditionalResponseMixin,
     ConditionalResponsePlan,
+    merge_conditional_response_snapshots,
 )
 from goita_ai2.current_ai.timed_search import TimedSearchResult
 from goita_ai2.rule_based import RuleBasedAgent
@@ -112,7 +113,18 @@ def test_searched_receive_and_followup_are_reused_from_dictionary() -> None:
     assert reused.action == selected
     assert reused.followup_attack_piece == "4"
     assert clone.last_conditional_response_hit is True
-    assert clone.conditional_response_dictionary_snapshot()["hits"] == 1
+    clone._record_conditional_response_followup(used=True)
+    snapshot = clone.conditional_response_dictionary_snapshot()
+    assert snapshot["hits"] == 1
+    assert snapshot["receive_hits"] == 1
+    assert snapshot["foreground_hits"] == 1
+    assert snapshot["followup_hits"] == 1
+    assert snapshot["estimated_saved_ms"] == 1000.0
+
+    merged = merge_conditional_response_snapshots([snapshot, snapshot])
+    assert merged["hits"] == 2
+    assert merged["estimated_saved_seconds"] == 2.0
+    assert merged["dictionary_instances"] == 2
 
 
 def test_illegal_cached_response_is_discarded() -> None:
@@ -150,6 +162,8 @@ def test_illegal_cached_response_is_discarded() -> None:
     )
     snapshot = agent.conditional_response_dictionary_snapshot()
     assert snapshot["invalid"] == 1
+    assert snapshot["hits"] == 0
+    assert snapshot["lookups"] == 1
     assert snapshot["size"] == 0
 
 

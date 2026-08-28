@@ -42,6 +42,9 @@ from goita_ai2.current_ai.background_search import (
 )
 from goita_ai2.current_ai.search_budget import time_search_budget_snapshot
 from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapshot
+from goita_ai2.current_ai.conditional_response import (
+    merge_conditional_response_snapshots,
+)
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 from backend.room_settings_persistence import (
@@ -3299,6 +3302,27 @@ def list_public_tables(exclude: str = MEETING_ROOM_GID):
 
 def _lobby_admin_payload() -> Dict[str, Any]:
     room_data = list_rooms()
+    response_snapshots = []
+    seen_dictionaries = set()
+    for game in GAMES.values():
+        agents = game.get("agents", {})
+        if not isinstance(agents, dict):
+            continue
+        for agent in agents.values():
+            dictionary = getattr(agent, "_conditional_response_dictionary", None)
+            snapshotter = getattr(
+                agent,
+                "conditional_response_dictionary_snapshot",
+                None,
+            )
+            if (
+                dictionary is None
+                or not callable(snapshotter)
+                or id(dictionary) in seen_dictionaries
+            ):
+                continue
+            seen_dictionaries.add(id(dictionary))
+            response_snapshots.append(snapshotter())
     return {
         "ok": True,
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
@@ -3320,6 +3344,9 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ai_background_search": background_search_runtime_snapshot(),
         "ai_search_budget": time_search_budget_snapshot(),
         "ai_prediction_cache": prediction_sample_cache_snapshot(),
+        "ai_conditional_response": merge_conditional_response_snapshots(
+            response_snapshots
+        ),
     }
 
 

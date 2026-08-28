@@ -227,6 +227,15 @@
           <p class="muted">現在のパスワードは表示しません。変更する部屋だけ入力してください。</p>
           <div id="privateRoomPasswords"></div>
         </section>
+
+        <section class="panel" style="margin-top:16px">
+          <div class="analytics-toolbar">
+            <h2 class="section-heading" style="margin:0">AI応答辞書の計測</h2>
+            <button id="responseMetricsRefresh" class="button" type="button">更新</button>
+          </div>
+          <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
+          <div id="responseMetricGrid" class="metric-grid"></div>
+        </section>
       </section>
 
       <section id="analyticsView" class="view">
@@ -352,6 +361,42 @@
       `).join("");
       document.querySelectorAll(".change-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, false)));
       document.querySelectorAll(".reset-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, true)));
+      renderResponseMetrics(data.ai_conditional_response || {});
+    }
+
+    function renderResponseMetrics(data) {
+      const hitRate = Math.round((Number(data.hit_rate) || 0) * 1000) / 10;
+      const savedSeconds = Number(data.estimated_saved_seconds) || 0;
+      const metrics = [
+        ["命中率", `${hitRate}%`],
+        ["命中", `${data.hits || 0}回`],
+        ["未命中", `${data.misses || 0}回`],
+        ["短縮時間（推定）", `${savedSeconds.toFixed(2)}秒`],
+        ["受けを再利用", `${data.receive_hits || 0}回`],
+        ["パスを再利用", `${data.pass_hits || 0}回`],
+        ["事前探索から再利用", `${data.background_hits || 0}回`],
+        ["手番探索から再利用", `${data.foreground_hits || 0}回`],
+        ["後続攻めを実行", `${data.followup_hits || 0}回`],
+        ["後続攻めが不成立", `${data.followup_unavailable || 0}回`],
+        ["無効化", `${data.invalid || 0}回`],
+        ["期限切れ", `${data.expired || 0}回`],
+        ["累計登録", `${data.stores || 0}件`],
+        ["登録中", `${data.size || 0}件`],
+      ];
+      document.getElementById("responseMetricGrid").innerHTML = metrics.map(([label, value]) => `
+        <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
+      `).join("");
+    }
+
+    async function loadResponseMetrics() {
+      const button = document.getElementById("responseMetricsRefresh");
+      button.disabled = true;
+      try {
+        const data = await api("/admin/api/settings");
+        renderResponseMetrics(data.ai_conditional_response || {});
+      } finally {
+        button.disabled = false;
+      }
     }
 
     async function changeRoomPassword(button, reset) {
@@ -522,6 +567,7 @@
 
     document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
     document.getElementById("analyticsDays").addEventListener("change", loadAnalytics);
+    document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
     document.getElementById("logoutButton").addEventListener("click", async () => {
       await api("/admin/api/logout", {method: "POST"}).catch(() => {});
       showLogin();

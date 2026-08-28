@@ -1218,12 +1218,14 @@ class DecisionMixin:
                 None,
             )
             if planned_attack is not None:
+                self._record_conditional_response_followup(used=True)
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 self._set_decision_reason("response_dictionary")
                 self._set_score_fallback_detail(
                     f"conditional_response_followup_{planned_piece}"
                 )
                 return planned_attack
+            self._record_conditional_response_followup(used=False)
 
         if tr is not None and tr.get("pending_low_reentry_attack_piece") is not None:
             planned_piece = str(tr.get("pending_low_reentry_attack_piece"))
