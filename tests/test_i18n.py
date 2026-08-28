@@ -35,6 +35,23 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "凑齐Goita" not in i18n
 
 
+def test_footer_information_modal_has_close_button_and_current_notice() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    assert 'onclick="closeSiteInfo()" aria-label="案内を閉じる"' in html
+    assert ".site-info-modal-content > h3 { padding-right: 36px; }" in html
+    assert "そろうごいたは現在ベータ版です" not in html
+    for source in [
+        "そろうごいたでは、サービスの改善や保守のため、予告なく機能の変更、一時停止、メンテナンスなどを行う場合があります。",
+        "保存した棋譜などのデータが、障害や仕様変更によって利用できなくなる場合があります。大切な棋譜は「棋譜DL」で端末にも保存してください。",
+    ]:
+        assert source in html
+        assert source in chinese
+        assert source in english
+
+
 def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")

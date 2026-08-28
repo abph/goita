@@ -1041,7 +1041,12 @@
     }
     .lobby-footer-link:hover { color: #a2521c; }
     .lobby-footer-copy { font-size: 12px; }
-    .site-info-modal-content { max-height: min(560px, calc(100vh - 32px)); overflow-y: auto; }
+    .site-info-modal-content {
+        position: relative;
+        max-height: min(560px, calc(100vh - 32px));
+        overflow-y: auto;
+    }
+    .site-info-modal-content > h3 { padding-right: 36px; }
     .site-info-body { color: #333; font-size: 14px; line-height: 1.8; }
     .site-info-body p { margin: 0 0 12px; }
     .site-info-body p:last-child { margin-bottom: 0; }
@@ -4616,6 +4621,7 @@
 
 <div id="siteInfoModal" class="modal-overlay" onclick="closeSiteInfo(event)">
   <div class="modal-content site-info-modal-content" role="dialog" aria-modal="true" aria-labelledby="siteInfoTitle" onclick="event.stopPropagation()">
+    <button class="settings-modal-close" type="button" onclick="closeSiteInfo()" aria-label="案内を閉じる" title="閉じる">×</button>
     <h3 id="siteInfoTitle"></h3>
     <div id="siteInfoBody" class="site-info-body"></div>
     <div class="settings-footer">
@@ -6178,8 +6184,9 @@ const SITE_INFO = {
     notice: {
         title: "利用上の注意",
         paragraphs: [
-            "そろうごいたは現在ベータ版です。予告なく機能の変更、停止、データの初期化などを行う場合があります。",
+            "そろうごいたでは、サービスの改善や保守のため、予告なく機能の変更、一時停止、メンテナンスなどを行う場合があります。",
             "通信状況や不具合などにより、対局が中断したり、操作内容が正しく反映されなかったりする場合があります。",
+            "保存した棋譜などのデータが、障害や仕様変更によって利用できなくなる場合があります。大切な棋譜は「棋譜DL」で端末にも保存してください。",
             "他の利用者が不快になる発言や、対局・サービスの運営を妨げる行為はお控えください。",
         ],
     },
