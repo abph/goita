@@ -253,6 +253,9 @@ class RuleBasedAgent(
         self.TIME_SEARCH_OVERRIDE_MARGIN = 300.0
         self.TIME_SEARCH_OVERRIDE_AGREEMENT = 0.75
         self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH = 7
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MIN_DEPTH = 7
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_AGREEMENT = 0.70
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN = 600.0
         self.TIME_SEARCH_INFORMATION_SET_ENABLED = True
         self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_WEIGHT = 0.18
         self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_CAP = 200.0
@@ -345,6 +348,8 @@ class RuleBasedAgent(
         self.last_attack_candidate_scores: List[dict] = []
         self.last_attack_candidate_snapshot: Dict[str, object] = {}
         self.last_information_set_search = None
+        self.last_rule_search_authority = "ordinary"
+        self.last_search_skip_reason = ""
 
     def bind_player(self, player: str) -> None:
         if self.me is None:

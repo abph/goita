@@ -244,7 +244,7 @@ def test_third_attack_inserts_shi_for_inferred_ally_finish() -> None:
     assert d_agent.last_score_fallback_detail == "attack_inferred_ally_shi_sashikomi_win"
 
 
-def test_inferred_endgame_prefers_lower_scoring_enemy_finish() -> None:
+def test_information_search_may_override_single_map_endgame_loss_route() -> None:
     state = GoitaState(
         hands={
             "A": list("12517153"),
@@ -311,9 +311,15 @@ def test_inferred_endgame_prefers_lower_scoring_enemy_finish() -> None:
     assert inferred_result[0] == ("receive", "2", None)
     assert inferred_result[1] == "B"
     assert inferred_result[2] < 40
-    assert chosen == ("receive", "2", None)
-    assert a_agent.last_decision_reason == "inferred_endgame"
-    assert a_agent.last_score_fallback_detail.startswith("inferred_endgame_min_loss_B_")
+    assert chosen == ("pass", None, None)
+    assert a_agent.last_decision_reason == "time_search"
+    assert a_agent.last_rule_search_authority == "strong"
+    search = a_agent._track[id(state)]["last_time_limited_search"]
+    assert search["rule_authority"] == "strong"
+    assert search["override_accepted"] is True
+    assert search["depth"] >= 7
+    assert search["agreement"] >= 0.70
+    assert search["margin"] >= 600.0
 
 
 def test_inferred_endgame_prefers_ally_finish_over_enemy_finish() -> None:
@@ -1332,7 +1338,7 @@ if __name__ == "__main__":
     test_reach_avoidance_conditional_tsume_prefers_hisha_over_kin()
     test_third_attack_uses_royal_bridge_for_thirty_point_finish()
     test_third_attack_inserts_shi_for_inferred_ally_finish()
-    test_inferred_endgame_prefers_lower_scoring_enemy_finish()
+    test_information_search_may_override_single_map_endgame_loss_route()
     test_inferred_endgame_prefers_ally_finish_over_enemy_finish()
     test_inferred_endgame_carries_receive_followup_attack()
     test_inferred_endgame_passes_rook_to_keep_forty_point_finish()

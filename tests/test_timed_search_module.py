@@ -5,7 +5,7 @@ import time
 
 from goita_ai2.current_ai.prediction_cache import clear_prediction_sample_cache
 from goita_ai2.current_ai.search_budget import reset_time_search_budget_model
-from goita_ai2.current_ai.timed_search import TimedSearchMixin
+from goita_ai2.current_ai.timed_search import TimedSearchMixin, TimedSearchResult
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
 
@@ -40,6 +40,139 @@ def _sample_key(states) -> tuple:
 
 def test_rule_based_agent_uses_timed_search_mixin() -> None:
     assert issubclass(RuleBasedAgent, TimedSearchMixin)
+
+
+def _search_result(
+    *,
+    depth: int = 7,
+    agreement: float = 0.70,
+    margin: float = 600.0,
+    decisive: bool = True,
+) -> TimedSearchResult:
+    return TimedSearchResult(
+        action=("pass", None, None),
+        depth=depth,
+        samples=8,
+        nodes=100,
+        elapsed_seconds=0.01,
+        value=1000.0,
+        margin=margin,
+        agreement=agreement,
+        decisive=decisive,
+    )
+
+
+def test_rule_search_authority_separates_proven_and_strategic_rules() -> None:
+    agent = RuleBasedAgent()
+
+    assert agent._rule_search_authority("win_now", "") == "proven"
+    assert agent._rule_search_authority("tsume", "high_score_50") == "proven"
+    assert agent._rule_search_authority("score_fallback", "receive_tsume_after") == "proven"
+    assert agent._rule_search_authority("kakari", "") == "strong"
+    assert agent._rule_search_authority("shi_signal", "") == "strong"
+    assert agent._rule_search_authority("tsume", "") == "strong"
+    assert agent._rule_search_authority(
+        "score_fallback",
+        "attack_sequence_two_kyosha_middle_pair",
+    ) == "strong"
+    assert agent._rule_search_authority(
+        "score_fallback",
+        "attack_occupancy",
+    ) == "ordinary"
+
+
+def test_strong_rule_requires_deep_agreed_search_before_override() -> None:
+    agent = RuleBasedAgent()
+
+    assert agent._search_may_override_rule("ordinary", _search_result(depth=5))
+    assert agent._search_may_override_rule("strong", _search_result())
+    assert not agent._search_may_override_rule(
+        "strong",
+        _search_result(depth=6),
+    )
+    assert not agent._search_may_override_rule(
+        "strong",
+        _search_result(agreement=0.69),
+    )
+    assert not agent._search_may_override_rule(
+        "strong",
+        _search_result(margin=599.0),
+    )
+    assert not agent._search_may_override_rule("proven", _search_result())
+
+
+def test_strong_rule_runs_search_instead_of_stopping_it() -> None:
+    class SearchProbeAgent(RuleBasedAgent):
+        search_calls = 0
+
+        def _select_rule_based_action(self, state, player, actions):
+            self._set_decision_reason("kakari")
+            self._set_score_fallback_detail("")
+            return actions[0]
+
+        def _time_limited_search_action(
+            self,
+            state,
+            player,
+            actions,
+            baseline_action,
+            *,
+            cancel_event=None,
+        ):
+            type(self).search_calls += 1
+            return TimedSearchResult(
+                action=baseline_action,
+                depth=1,
+                samples=1,
+                nodes=1,
+                elapsed_seconds=0.0,
+                value=0.0,
+                margin=0.0,
+                agreement=1.0,
+                decisive=False,
+            )
+
+    SearchProbeAgent.search_calls = 0
+    state = _initial_state()
+    agent = SearchProbeAgent()
+    chosen = agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert chosen in state.legal_actions("A")
+    assert SearchProbeAgent.search_calls == 1
+    assert agent.last_rule_search_authority == "strong"
+    assert agent.last_search_skip_reason == ""
+
+
+def test_proven_rule_still_skips_search() -> None:
+    class ProvenProbeAgent(RuleBasedAgent):
+        search_calls = 0
+
+        def _select_rule_based_action(self, state, player, actions):
+            self._set_decision_reason("win_now")
+            self._set_score_fallback_detail("")
+            return actions[0]
+
+        def _time_limited_search_action(
+            self,
+            state,
+            player,
+            actions,
+            baseline_action,
+            *,
+            cancel_event=None,
+        ):
+            type(self).search_calls += 1
+            return None
+
+    ProvenProbeAgent.search_calls = 0
+    state = _initial_state()
+    agent = ProvenProbeAgent()
+    chosen = agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert chosen in state.legal_actions("A")
+    assert ProvenProbeAgent.search_calls == 0
+    assert agent.last_rule_search_authority == "proven"
+    assert agent.last_search_skip_reason == "proven_rule"
 
 
 def test_hidden_hand_sampling_does_not_read_actual_opponent_hands() -> None:
@@ -548,6 +681,10 @@ def test_receive_branch_compares_followup_attacks_through_the_final_score() -> N
 
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
+    test_rule_search_authority_separates_proven_and_strategic_rules()
+    test_strong_rule_requires_deep_agreed_search_before_override()
+    test_strong_rule_runs_search_instead_of_stopping_it()
+    test_proven_rule_still_skips_search()
     test_hidden_hand_sampling_does_not_read_actual_opponent_hands()
     test_time_limited_search_returns_a_completed_legal_result()
     test_select_action_records_search_without_changing_public_state()

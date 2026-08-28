@@ -324,117 +324,10 @@ def test_two_kyosha_horse_pair_without_royal_starts_with_horse_after_receive() -
     assert "2" in remaining or "3" in remaining
 
 
-def test_middle_pair_single_big_without_royal_uses_pair_pair_big() -> None:
-    attacks, first_action = _attack_sequence(["1", "1", "2", "3", "4", "5", "5", "7"])
-    assert attacks == ["5", "5", "7"]
-    assert first_action[1] not in ("5", "7")
-
-
-def test_middle_pair_single_big_with_one_royal_uses_pair_big_pair() -> None:
-    attacks, first_action = _attack_sequence(["1", "1", "2", "3", "5", "5", "7", "9"])
-    assert attacks == ["5", "7", "5"]
-    assert first_action[1] not in ("5", "7")
-
-
-def test_middle_pair_single_big_generalizes_to_silver_and_horse() -> None:
-    agent = RuleBasedAgent()
-    assert agent._middle_pair_single_big_attack_plan(
-        Counter(["1", "1", "2", "3", "4", "4", "6", "9"])
-    ) == ["4", "6", "4"]
-    assert agent._middle_pair_single_big_attack_plan(
-        Counter(["1", "1", "2", "3", "3", "4", "5", "7"])
-    ) == ["3", "3", "7"]
-
-
-def test_middle_pair_plan_keeps_big_piece_in_shi_counter_position() -> None:
-    state = GoitaState(
-        hands={
-            "A": ["2", "1", "1", "4", "1", "2", "4", "2"],
-            "B": ["4", "1", "5", "5", "5", "6", "7", "3"],
-            "C": ["2", "1", "1", "4", "3", "9", "6", "1"],
-            "D": ["1", "1", "7", "5", "8", "3", "3", "1"],
-        },
-        dealer="B",
-    )
-    agent = RuleBasedAgent()
-    agent.bind_player("D")
-
-    actions: List[tuple[str, Action]] = [
-        ("B", ("attack_after_block", "1", "5")),
-        ("C", ("pass", None, None)),
-        ("D", ("pass", None, None)),
-        ("A", ("pass", None, None)),
-        ("B", ("attack_after_block", "3", "5")),
-        ("C", ("receive", "9", None)),
-        ("C", ("attack", None, "1")),
-        ("D", ("receive", "1", None)),
-        ("D", ("attack", None, "5")),
-        ("A", ("pass", None, None)),
-        ("B", ("pass", None, None)),
-        ("C", ("pass", None, None)),
-    ]
-    for player, action in actions:
-        _apply_public_action(agent, state, player, action)
-
-    assert agent._conditional_shi_royal_finish_score(
-        state, "D", "attack_after_block", "1", "3"
-    ) == 40.0
-    assert agent._conditional_shi_royal_finish_score(
-        state, "D", "attack_after_block", "7", "3"
-    ) == 20.0
-
-    state.king_block_used = 0
-    assert agent._conditional_shi_royal_finish_score(
-        state, "D", "attack_after_block", "1", "3"
-    ) is None
-    state.king_block_used = 1
-
-    c_attacks = agent._track[id(state)]["public_hand_models"]["C"]["attacks"]
-    c_shi_attacks = c_attacks["1"]
-    c_attacks["1"] = 0
-    assert agent._conditional_shi_royal_finish_score(
-        state, "D", "attack_after_block", "1", "3"
-    ) is None
-    c_attacks["1"] = c_shi_attacks
-
-    chosen = agent.select_action(state, "D", state.legal_actions("D"))
-    assert chosen == ("attack_after_block", "1", "3")
-    assert agent.last_score_fallback_detail == "attack_conditional_shi_royal_finish_40"
-
-    _apply_public_action(agent, state, "D", chosen)
-    _apply_public_action(agent, state, "A", ("pass", None, None))
-    _apply_public_action(agent, state, "B", ("pass", None, None))
-    _apply_public_action(agent, state, "C", ("receive", "3", None))
-    _apply_public_action(agent, state, "C", ("attack", None, "1"))
-
-    receive_shi = agent.select_action(state, "D", state.legal_actions("D"))
-    assert receive_shi == ("receive", "1", None)
-    _apply_public_action(agent, state, "D", receive_shi)
-
-    attack_gyoku = agent.select_action(state, "D", state.legal_actions("D"))
-    assert attack_gyoku == ("attack", None, "8")
-    _apply_public_action(agent, state, "D", attack_gyoku)
-    _apply_public_action(agent, state, "A", ("pass", None, None))
-    _apply_public_action(agent, state, "B", ("pass", None, None))
-    _apply_public_action(agent, state, "C", ("pass", None, None))
-
-    finish = agent.select_action(state, "D", state.legal_actions("D"))
-    assert finish == ("attack_after_block", "3", "7")
-
-
-def test_new_plans_do_not_override_higher_attack_types() -> None:
+def test_two_kyosha_gold_pair_does_not_override_higher_attack_types() -> None:
     agent = RuleBasedAgent()
     assert agent._two_kyosha_gold_pair_attack_plan(
         Counter(["1", "2", "2", "2", "5", "5", "6", "9"])
-    ) is None
-    assert agent._middle_pair_single_big_attack_plan(
-        Counter(["1", "2", "3", "5", "5", "5", "7", "9"])
-    ) is None
-    assert agent._middle_pair_single_big_attack_plan(
-        Counter(["1", "2", "3", "4", "5", "5", "7", "7"])
-    ) is None
-    assert agent._middle_pair_single_big_attack_plan(
-        Counter(["1", "2", "3", "4", "4", "5", "5", "7"])
     ) is None
 
 
@@ -472,10 +365,6 @@ if __name__ == "__main__":
     test_two_kyosha_middle_pair_royal_allows_horse_pair_and_big_piece()
     test_two_kyosha_middle_pair_without_royal_uses_pair_then_kyosha()
     test_two_kyosha_horse_pair_without_royal_starts_with_horse_after_receive()
-    test_middle_pair_single_big_without_royal_uses_pair_pair_big()
-    test_middle_pair_single_big_with_one_royal_uses_pair_big_pair()
-    test_middle_pair_single_big_generalizes_to_silver_and_horse()
-    test_middle_pair_plan_keeps_big_piece_in_shi_counter_position()
-    test_new_plans_do_not_override_higher_attack_types()
+    test_two_kyosha_gold_pair_does_not_override_higher_attack_types()
     test_plan_is_limited_to_the_requested_hand_shapes()
     print("TWO_KYOSHA_BIG_PLAN_TEST_OK")

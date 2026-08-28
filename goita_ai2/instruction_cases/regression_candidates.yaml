@@ -25,7 +25,7 @@ cases:
     forbidden:
       - pass
     reason: 自分がし0枚であることを味方へ早く伝え、逆し攻めを防ぐ
-    regression: pending
+    regression: covered
 
   - id: KIFU-002
     status: confirmed
@@ -84,7 +84,7 @@ cases:
       preferred_attacks: [金, 角]
       route: 攻め2に金、攻め3に角
     reason: パスするとDがしで上がるが、銀受けならCの確定上がりになる
-    regression: pending
+    regression: covered
 
   - id: KIFU-004
     status: confirmed

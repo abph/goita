@@ -96,6 +96,8 @@ class DecisionMixin:
             "last_prediction_cache_hit",
             "last_prediction_cache_key",
             "last_prediction_cache_samples",
+            "last_rule_search_authority",
+            "last_search_skip_reason",
             "_prediction_rollforward_states",
             "_prediction_rollforward_key",
             "_prediction_cache_rollforward_enabled",
@@ -109,6 +111,64 @@ class DecisionMixin:
 
     def _set_score_fallback_detail(self, detail: str) -> None:
         self.last_score_fallback_detail = detail
+
+    @staticmethod
+    def _rule_search_authority(reason: str, detail: str) -> str:
+        """Classify whether a rule is proven, strongly preferred, or ordinary."""
+        if reason == "win_now":
+            return "proven"
+        if reason == "tsume" and (
+            detail.startswith("high_score_")
+            or detail.startswith("royal_bridge_high_score_")
+        ):
+            return "proven"
+        if detail in ("receive_win_after", "receive_tsume_after"):
+            return "proven"
+        if (
+            detail.startswith("pass_full_receive_cover_")
+            or detail.startswith("pass_ally_guaranteed_win_")
+        ):
+            return "proven"
+
+        strong_reasons = {
+            "tsume",
+            "inferred_endgame",
+            "conditional_tsume",
+            "kakari",
+            "shi_signal",
+            "responded",
+            "forced_king_third",
+            "king_order",
+            "safe_nonking_third",
+            "upside_finish",
+        }
+        if reason in strong_reasons:
+            return "strong"
+        if (
+            detail.startswith("attack_sequence_")
+            or detail.startswith("pass_ally_kyosha_continuation")
+            or detail.startswith("pass_royal_reserve_")
+            or detail.startswith("receive_no_shi_royal_")
+        ):
+            return "strong"
+        return "ordinary"
+
+    def _search_may_override_rule(self, authority: str, search_result) -> bool:
+        """Require stronger evidence before replacing a dedicated strategy."""
+        if search_result is None or not bool(search_result.decisive):
+            return False
+        if authority == "proven":
+            return False
+        if authority != "strong":
+            return True
+        return bool(
+            int(search_result.depth)
+            >= int(self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MIN_DEPTH)
+            and float(search_result.agreement)
+            >= float(self.TIME_SEARCH_STRONG_RULE_OVERRIDE_AGREEMENT)
+            and float(search_result.margin)
+            >= float(self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN)
+        )
 
     def _classify_score_fallback(
         self,
@@ -526,6 +586,8 @@ class DecisionMixin:
         self.last_prediction_cache_samples = 0
         self.last_information_set_search = None
         self.last_branched_attack_metrics = {}
+        self.last_rule_search_authority = "ordinary"
+        self.last_search_skip_reason = ""
         if self.me is None:
             self.me = player
         elif self.me != player:
@@ -542,31 +604,21 @@ class DecisionMixin:
             baseline_action = preview._select_rule_based_action(state, player, actions)
         baseline_reason = str(preview.last_decision_reason or "")
         baseline_detail = str(preview.last_score_fallback_detail or "")
-        protected = (
-            baseline_reason in (
-                "win_now",
-                "tsume",
-                "inferred_endgame",
-                "conditional_tsume",
-                "kakari",
-                "shi_signal",
-                "responded",
-                "forced_king_third",
-                "king_order",
-                "safe_nonking_third",
-                "upside_finish",
-            )
-            or baseline_detail in ("receive_win_after", "receive_tsume_after")
-            or baseline_detail.startswith("attack_sequence_")
-            or baseline_detail.startswith("pass_full_receive_cover_")
-            or baseline_detail.startswith("pass_ally_guaranteed_win_")
-            or baseline_detail.startswith("pass_ally_kyosha_continuation")
-            or baseline_detail.startswith("pass_royal_reserve_")
-            or baseline_detail.startswith("receive_no_shi_royal_")
+        rule_authority = self._rule_search_authority(
+            baseline_reason,
+            baseline_detail,
         )
+        if len(actions) <= 1:
+            rule_authority = "proven"
+        self.last_rule_search_authority = rule_authority
+        hard_locked = rule_authority == "proven"
+        if hard_locked:
+            self.last_search_skip_reason = (
+                "only_legal_action" if len(actions) <= 1 else "proven_rule"
+            )
 
         kyosha_pass_compare_search = (
-            not protected
+            not hard_locked
             and baseline_action[0] == "pass"
             and self._should_compare_kyosha_pass_and_receive(
                 state,
@@ -575,7 +627,7 @@ class DecisionMixin:
             )
         )
         low_reentry_receive_search = (
-            not protected
+            not hard_locked
             and not kyosha_pass_compare_search
             and baseline_action[0] == "pass"
             and self._should_deep_search_low_reentry_receive(
@@ -585,7 +637,7 @@ class DecisionMixin:
             )
         )
         weak_first_receive_search = (
-            not protected
+            not hard_locked
             and not kyosha_pass_compare_search
             and not low_reentry_receive_search
             and self._should_deep_search_weak_first_receive(
@@ -601,7 +653,7 @@ class DecisionMixin:
         )
 
         search_result = None
-        if not protected:
+        if not hard_locked:
             previous_profile = str(
                 getattr(self, "_time_search_profile", "default")
             )
@@ -680,6 +732,14 @@ class DecisionMixin:
             search_snapshot["prediction_cache_samples"] = int(
                 self.last_prediction_cache_samples
             )
+            search_snapshot["rule_authority"] = rule_authority
+            search_snapshot["override_accepted"] = bool(
+                search_result.action != baseline_action
+                and self._search_may_override_rule(
+                    rule_authority,
+                    search_result,
+                )
+            )
             preview_tracker = preview._track.get(id(state))
             if preview_tracker is not None:
                 preview_tracker["last_time_limited_search"] = dict(search_snapshot)
@@ -689,7 +749,7 @@ class DecisionMixin:
 
         if (
             search_result is not None
-            and search_result.decisive
+            and self._search_may_override_rule(rule_authority, search_result)
             and search_result.action != baseline_action
         ):
             self.last_attack_candidate_scores = copy.deepcopy(
