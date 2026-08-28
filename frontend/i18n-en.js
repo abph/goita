@@ -35,6 +35,8 @@
     "表示言語": "Language",
     "お問い合わせ": "Contact",
     "プライバシーポリシー": "Privacy Policy",
+    "▶ データ提供の設定を開く": "▶ Open Data Sharing Settings",
+    "▼ データ提供の設定を閉じる": "▼ Close Data Sharing Settings",
     "匿名の利用状況を記録する": "Record anonymous usage data",
     "名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。": "Names, chat messages, kifu, hands, partners, and opponents are not recorded.",
     "本人から明示的な依頼または同意がある場合を除き、運営側が特定の利用者の棋譜や打ち方を収集・分析することはありません。": "Unless a user explicitly requests or consents to it, the operator will not collect or analyze that specific user's kifu or playing style.",

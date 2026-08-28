@@ -4754,10 +4754,18 @@
             </div>
           </div>
         </details>
-        <div class="settings-row">
-          <label><input type="checkbox" id="lobbyCheckEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
-          <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
-        </div>
+        <details id="lobbyDataSharingSettingsDetails" class="settings-disclosure">
+          <summary>
+            <span class="when-closed">▶ データ提供の設定を開く</span>
+            <span class="when-open">▼ データ提供の設定を閉じる</span>
+          </summary>
+          <div class="settings-disclosure-content">
+            <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
+              <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
+            </div>
+          </div>
+        </details>
         <button class="settings-save-button" type="button" onclick="saveLobbyPersonalSettings()">個人設定を保存</button>
         <div id="lobbyPersonalSettingsStatus" class="settings-status" aria-live="polite"></div>
     </section>
@@ -4909,10 +4917,18 @@
           </div>
         </div>
       </details>
-      <div class="settings-row">
-        <label><input type="checkbox" id="checkEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
-        <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
-      </div>
+      <details id="dataSharingSettingsDetails" class="settings-disclosure">
+        <summary>
+          <span class="when-closed">▶ データ提供の設定を開く</span>
+          <span class="when-open">▼ データ提供の設定を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkEnableAnalytics" style="width:auto;"> 匿名の利用状況を記録する</label>
+            <p class="settings-help-text">名前、チャット内容、棋譜、手駒、ペア相手、対戦相手は記録しません。</p>
+          </div>
+        </div>
+      </details>
       <details id="kifuSaveSettingsDetails" class="settings-disclosure">
         <summary>
           <span class="when-closed">▶ 棋譜保存を開く</span>
@@ -7357,7 +7373,7 @@ async function returnToLobby() {
 
 function openLobbySettings() {
     syncLobbyPersonalSettingsControls();
-    ["lobbyMobileChatSettingsDetails", "lobbyPlaySupportSettingsDetails", "lobbySoundSettingsDetails"].forEach((id) => {
+    ["lobbyMobileChatSettingsDetails", "lobbyPlaySupportSettingsDetails", "lobbySoundSettingsDetails", "lobbyDataSharingSettingsDetails"].forEach((id) => {
         document.getElementById(id).open = false;
     });
     document.getElementById("lobbySettingsModal").style.display = "flex";
@@ -7747,7 +7763,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     document.getElementById("boardViewSettingRow").style.display =
         supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
     if (!sameTarget) {
-        ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
+        ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "dataSharingSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
             const details = document.getElementById(id);
             if (details) details.open = false;
         });

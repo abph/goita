@@ -21,6 +21,10 @@ def test_lobby_exposes_shared_personal_settings() -> None:
     assert 'id="lobbyPieceSoundChoice"' in html
     assert 'id="lobbyCheckEnableCVoice"' in html
     assert 'id="lobbyCheckEnableAnalytics"' in html
+    assert 'id="lobbyDataSharingSettingsDetails"' in html
+    assert 'id="dataSharingSettingsDetails"' in html
+    assert "▶ データ提供の設定を開く" in html
+    assert "▼ データ提供の設定を閉じる" in html
     assert 'onclick="saveLobbyPersonalSettings()"' in html
     assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings))' in html
     assert '.settings-disclosure[open] > summary .when-open' in html
