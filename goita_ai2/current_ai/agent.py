@@ -34,6 +34,7 @@ from goita_ai2.current_ai.probabilistic_hand_inference import (
 from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
 from goita_ai2.current_ai.search_cache import SearchCacheMixin
 from goita_ai2.current_ai.search_budget import SearchBudgetMixin
+from goita_ai2.current_ai.shi_insertion import ShiInsertionStrategyMixin
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.current_ai.tracking import TrackingMixin
 from goita_ai2.current_ai.upside_finish import UpsideFinishMixin
@@ -65,6 +66,7 @@ class RuleBasedAgent(
     EndgameMixin,
     AttackPlanningMixin,
     AttackStrategyMixin,
+    ShiInsertionStrategyMixin,
     ReceiveStrategyMixin,
     PublicInferenceMixin,
 ):
@@ -288,6 +290,28 @@ class RuleBasedAgent(
         self.KYOSHA_PASS_COMPARE_MIN_AGREEMENT = 0.50
         self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE = 0.45
         self.KYOSHA_PASS_COMPARE_MIN_MARGIN = 0.0
+        self.SHI_INSERTION_ENABLED = True
+        self.SHI_INSERTION_MAX_FOLLOWUPS = 6
+        self.SHI_INSERTION_MAX_ROUTES = 10
+        self.SHI_INSERTION_MIN_ROUTE_MARGIN = 1.0
+        self.SHI_INSERTION_SHI_ATTACK_VALUE = 150.0
+        self.SHI_INSERTION_INFORMATION_VALUE = 38.0
+        self.SHI_INSERTION_ALLY_PROGRESS_VALUE = 95.0
+        self.SHI_INSERTION_ONE_HIDDEN_VALUE = 72.0
+        self.SHI_INSERTION_ONE_HIDDEN_SHI_REDUCTION = 0.28
+        self.SHI_INSERTION_INTERCEPTION_PENALTY = 105.0
+        self.SHI_INSERTION_ONE_ROYAL_VALUE = 48.0
+        self.SHI_INSERTION_BOTH_ROYALS_VALUE = 105.0
+        self.SHI_INSERTION_MATCHING_RECEIVE_VALUE = 36.0
+        self.SHI_INSERTION_EXTRA_BLOCK_VALUE = 42.0
+        self.SHI_INSERTION_WAIT_AFTER_ONE_HIDDEN_VALUE = 24.0
+        self.SHI_INSERTION_REPEAT_ATTACK_PENALTY = 42.0
+        self.SHI_INSERTION_ENEMY_PROGRESS_PENALTY = 52.0
+        self.SHI_INSERTION_SEARCH_MAX_SECONDS = 5.0
+        self.SHI_INSERTION_SEARCH_SAMPLE_COUNT = 64
+        self.SHI_INSERTION_SEARCH_MAX_DEPTH = 7
+        self.SHI_INSERTION_SEARCH_MAX_NODES = 500_000
+        self.SHI_INSERTION_SEARCH_TARGET_DEPTH = 7
         self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_MARGIN = 50.0
         self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_AGREEMENT = 0.55
         self.ZERO_SHI_STOP_SIGNAL_MIN_CONFIDENCE = 0.50

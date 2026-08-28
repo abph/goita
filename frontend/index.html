@@ -5307,6 +5307,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         conditional_tsume: "条件付きの上がり筋を優先",
         inferred_endgame: "手駒推定に基づく終盤判断",
         upside_finish: "確定上がりを基準に高得点を狙う",
+        shi_insertion: "受ける時機と差し込みを比較",
         responded: "味方の反応に合わせる判断",
         branched_plan: "分岐付き攻め計画",
         time_search: "時間制限付き探索",
@@ -5323,6 +5324,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         conditional_tsume: "优先有条件的获胜路线",
         inferred_endgame: "根据手牌推测作出的残局判断",
         upside_finish: "以确定获胜路线为基准争取更高分",
+        shi_insertion: "比较接牌时机与“し”插入战术",
         responded: "根据搭档的反应行动",
         branched_plan: "分支进攻计划",
         time_search: "限时搜索",
@@ -5339,6 +5341,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         conditional_tsume: "Prioritize a conditional winning line",
         inferred_endgame: "Endgame decision based on inferred hands",
         upside_finish: "Pursue a higher score against a guaranteed-win baseline",
+        shi_insertion: "Compare receive timing and shi insertion",
         responded: "Respond to the ally's signal",
         branched_plan: "Branched attack plan",
         time_search: "Time-limited search",
@@ -5388,6 +5391,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続",
         inferred_endgame_followup_attack: "推定した終盤の上がり筋を継続",
         ally_shi_approval_already_sent_pass: "し攻めへの賛同は伝達済みのためパス",
+        shi_insertion_followup_1: "し攻め・味方の反応・味方の進行を狙って、しを差し込む",
     },
     zh: {
         pass_base: "按基本方针跳过",
@@ -5407,12 +5411,14 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         pass_preserve_win_attack: "为保留获胜所需棋子而跳过",
         receive_before_unproven_enemy_third_attack: "无法确认等待对手第三次进攻是否安全，因此用同种棋子接下",
         low_reentry_followup_attack: "为保留再次参与的机会，接牌后继续选择公开信息下安全的进攻",
+        shi_insertion_followup_1: "用“し”进攻，同时观察搭档反应并帮助搭档推进手牌",
     },
     en: {
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
         attack_avoid_two_shi_second_signal: "Compare other attacks instead of overstating two shi to the ally",
         receive_before_unproven_enemy_third_attack: "Receive with the matching piece because waiting for the opponent's third attack is not proven safe",
         low_reentry_followup_attack: "Continue with a publicly safe attack after receiving to preserve re-entry",
+        shi_insertion_followup_1: "Insert shi to pressure the opponents, read the ally's response, and advance the ally's hand",
     },
 });
 
@@ -5446,6 +5452,27 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return "如果跳过，之后很难再次参与，因此比较后选择接牌";
         if(language === "en") return "Receive after comparing the lines because passing would make re-entry unlikely";
         return "パスすると再び参加しにくいため、探索で比較して同じ駒で受ける";
+    }
+    match = String(detail || "").match(/^shi_insertion_(immediate|delayed)_([1-9])$/);
+    if(match) {
+        const timing = match[1] === "delayed";
+        const piece = gameLogCandidatePieceLabel(match[2], language);
+        if(language === "zh") return timing
+            ? `先跳过一轮，再接牌并以${piece}进攻`
+            : `立即接牌后以${piece}进攻`;
+        if(language === "en") return timing
+            ? `Wait one cycle, receive the repeated attack, then attack with ${piece}`
+            : `Receive now, then attack with ${piece}`;
+        return timing
+            ? `1巡待って同じ駒を受け、その後${piece}で攻める計画`
+            : `今すぐ同じ駒で受け、その後${piece}で攻める計画`;
+    }
+    match = String(detail || "").match(/^shi_insertion_followup_([1-9])$/);
+    if(match) {
+        const piece = gameLogCandidatePieceLabel(match[1], language);
+        if(language === "zh") return `继续差入计划，以${piece}进攻`;
+        if(language === "en") return `Continue the insertion plan by attacking with ${piece}`;
+        return `差し込み計画を継続し、${piece}で攻める`;
     }
     if(/^enemy_first_(pass|receive)_hand_strength_/.test(String(detail || ""))) {
         const receives = String(detail).includes("_receive_");

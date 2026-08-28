@@ -1316,7 +1316,7 @@ class TimedSearchMixin:
             for index, action in enumerate(ranked_rules)
         }
         search_profile = getattr(self, "_time_search_profile", "default")
-        if search_profile != "kyosha_pass_compare":
+        if search_profile not in ("kyosha_pass_compare", "shi_insertion"):
             rule_rank_bonus[baseline_action] = (
                 rule_rank_bonus.get(baseline_action, 0.0)
                 + self.TIME_SEARCH_BASELINE_PRIOR
@@ -1343,6 +1343,15 @@ class TimedSearchMixin:
             minimum_override_depth = min(
                 maximum_depth,
                 int(self.LOW_REENTRY_RECEIVE_SEARCH_TARGET_DEPTH),
+            )
+        elif search_profile == "shi_insertion":
+            maximum_depth = min(
+                maximum_depth,
+                int(self.SHI_INSERTION_SEARCH_TARGET_DEPTH),
+            )
+            minimum_override_depth = min(
+                maximum_depth,
+                int(self.SHI_INSERTION_SEARCH_TARGET_DEPTH),
             )
         elif weak_first_receive_profile:
             minimum_override_depth = min(

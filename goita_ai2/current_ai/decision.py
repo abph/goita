@@ -141,6 +141,7 @@ class DecisionMixin:
             "king_order",
             "safe_nonking_third",
             "upside_finish",
+            "shi_insertion",
         }
         if reason in strong_reasons:
             return "strong"
@@ -636,10 +637,17 @@ class DecisionMixin:
                 actions,
             )
         )
+        shi_insertion_search = (
+            not hard_locked
+            and not kyosha_pass_compare_search
+            and not low_reentry_receive_search
+            and baseline_reason == "shi_insertion"
+        )
         weak_first_receive_search = (
             not hard_locked
             and not kyosha_pass_compare_search
             and not low_reentry_receive_search
+            and not shi_insertion_search
             and self._should_deep_search_weak_first_receive(
                 state,
                 player,
@@ -649,6 +657,7 @@ class DecisionMixin:
         deep_receive_search = (
             kyosha_pass_compare_search
             or low_reentry_receive_search
+            or shi_insertion_search
             or weak_first_receive_search
         )
 
@@ -661,6 +670,8 @@ class DecisionMixin:
                 search_profile = "kyosha_pass_compare"
             elif low_reentry_receive_search:
                 search_profile = "low_reentry_receive"
+            elif shi_insertion_search:
+                search_profile = "shi_insertion"
             elif weak_first_receive_search:
                 search_profile = "weak_first_receive"
             else:
@@ -686,6 +697,17 @@ class DecisionMixin:
                     configured_samples=self.LOW_REENTRY_RECEIVE_SEARCH_SAMPLE_COUNT,
                     configured_depth=self.LOW_REENTRY_RECEIVE_SEARCH_MAX_DEPTH,
                     configured_nodes=self.LOW_REENTRY_RECEIVE_SEARCH_MAX_NODES,
+                    adaptive_enabled=False,
+                )
+            elif shi_insertion_search:
+                budget_plan = self._prepare_time_search_budget(
+                    state,
+                    player,
+                    actions,
+                    configured_seconds=self.SHI_INSERTION_SEARCH_MAX_SECONDS,
+                    configured_samples=self.SHI_INSERTION_SEARCH_SAMPLE_COUNT,
+                    configured_depth=self.SHI_INSERTION_SEARCH_MAX_DEPTH,
+                    configured_nodes=self.SHI_INSERTION_SEARCH_MAX_NODES,
                     adaptive_enabled=False,
                 )
             elif deep_receive_search:
@@ -769,6 +791,13 @@ class DecisionMixin:
                             str(search_result.action[1]),
                         )
                     )
+            if shi_insertion_search:
+                self._commit_shi_insertion_root(
+                    state,
+                    player,
+                    actions,
+                    search_result.action,
+                )
             self._set_decision_reason("time_search")
             if getattr(search_result, "enemy_third_attack_wait", False):
                 self._set_score_fallback_detail(
@@ -779,6 +808,7 @@ class DecisionMixin:
             else:
                 self._set_score_fallback_detail(
                     f"{'low_reentry_receive_' if low_reentry_receive_search else ''}"
+                    f"{'shi_insertion_' if shi_insertion_search else ''}"
                     f"{'weak_first_receive_' if weak_first_receive_search else ''}"
                     f"{'kyosha_pass_compare_' if kyosha_pass_compare_search else ''}"
                     f"{'cache_' if self.last_time_search_cache_hit else ''}"
@@ -1120,6 +1150,26 @@ class DecisionMixin:
                 self._set_score_fallback_detail("low_reentry_followup_attack")
                 return planned_attack
 
+        if tr is not None and tr.get("pending_shi_insertion_attack_piece") is not None:
+            planned_piece = str(tr.get("pending_shi_insertion_attack_piece"))
+            tr["pending_shi_insertion_attack_piece"] = None
+            planned_attack = next(
+                (
+                    action
+                    for action in actions
+                    if action[0] in ("attack", "attack_after_block")
+                    and action[2] == planned_piece
+                ),
+                None,
+            )
+            if planned_attack is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._set_decision_reason("shi_insertion")
+                self._set_score_fallback_detail(
+                    f"shi_insertion_followup_{planned_piece}"
+                )
+                return planned_attack
+
         if tr is not None and tr.get("pending_weak_hand_shi_signal"):
             attack_actions = [
                 (t, b, a)
@@ -1338,6 +1388,22 @@ class DecisionMixin:
                     f"inferred_endgame_min_loss_{winner}_{score}"
                 )
             return chosen
+
+        shi_insertion_action = self._shi_insertion_plan_action(
+            state,
+            player,
+            actions,
+        )
+        if shi_insertion_action is not None:
+            analysis = tr.get("last_shi_insertion_analysis") if tr is not None else None
+            recommended = analysis.get("recommended", {}) if isinstance(analysis, dict) else {}
+            timing = str(recommended.get("timing", "immediate"))
+            followup = str(recommended.get("followup", "1"))
+            self._set_decision_reason("shi_insertion")
+            self._set_score_fallback_detail(
+                f"shi_insertion_{timing}_{followup}"
+            )
+            return shi_insertion_action
 
         ally_kyosha_continuation = self._ally_kyosha_continuation_pass_action(
             state,
