@@ -45,6 +45,10 @@ from goita_ai2.current_ai.prediction_cache import prediction_sample_cache_snapsh
 from goita_ai2.current_ai.conditional_response import (
     conditional_response_runtime_snapshot,
 )
+from goita_ai2.current_ai.generic_response_store import (
+    checkpoint_generic_response_patterns,
+    generic_response_pattern_snapshot,
+)
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
 from backend.room_settings_persistence import (
@@ -2963,6 +2967,7 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
             checkpoint_ai_search_telemetry("round_finish")
             checkpoint_background_search_value_model("round_finish")
+            checkpoint_generic_response_patterns("round_finish")
 
 
 def _apply_agent_turn(
@@ -3347,6 +3352,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ai_conditional_response": conditional_response_runtime_snapshot(
             response_snapshots
         ),
+        "ai_generic_response_patterns": generic_response_pattern_snapshot(),
     }
 
 

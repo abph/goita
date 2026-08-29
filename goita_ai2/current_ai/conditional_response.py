@@ -327,6 +327,20 @@ class ConditionalResponseMixin:
             return None
         self.last_conditional_response_hit = True
         self._conditional_response_dictionary.record_reuse(plan)
+        self._compare_generic_response_shadow(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+            plan.action,
+        )
+        self._record_generic_response_plan_reuse(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+            plan,
+        )
         self.last_time_search_cache_hit = True
         self.last_time_search_cache_key = key
         self.last_time_search_cache_source = plan.cache_source

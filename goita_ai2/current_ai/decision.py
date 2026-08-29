@@ -592,6 +592,8 @@ class DecisionMixin:
         self.last_branched_attack_metrics = {}
         self.last_rule_search_authority = "ordinary"
         self.last_search_skip_reason = ""
+        self.last_generic_response_shadow = {}
+        self.last_generic_response_priority = {}
         if self.me is None:
             self.me = player
         elif self.me != player:
@@ -860,6 +862,22 @@ class DecisionMixin:
                     f"depth_{search_result.depth}_samples_{search_result.samples}_"
                     f"agreement_{int(round(search_result.agreement * 100))}"
                 )
+            self._compare_generic_response_shadow(
+                state,
+                player,
+                actions,
+                baseline_action,
+                search_result.action,
+            )
+            self._record_generic_response_search_result(
+                state,
+                player,
+                actions,
+                baseline_action,
+                search_result.action,
+                search_result,
+                source=search_profile,
+            )
             return search_result.action
 
         if (
@@ -873,6 +891,22 @@ class DecisionMixin:
                 f"wait_enemy_third_guaranteed_win_"
                 f"depth_{search_result.depth}_samples_{search_result.samples}_"
                 f"agreement_{int(round(search_result.agreement * 100))}"
+            )
+            self._compare_generic_response_shadow(
+                state,
+                player,
+                actions,
+                baseline_action,
+                baseline_action,
+            )
+            self._record_generic_response_search_result(
+                state,
+                player,
+                actions,
+                baseline_action,
+                baseline_action,
+                search_result,
+                source=search_profile,
             )
             return baseline_action
 
@@ -891,6 +925,23 @@ class DecisionMixin:
             self._set_score_fallback_detail(
                 "receive_before_unproven_enemy_third_attack"
             )
+            self._compare_generic_response_shadow(
+                state,
+                player,
+                actions,
+                baseline_action,
+                receive_before_third,
+            )
+            if search_result is not None:
+                self._record_generic_response_search_result(
+                    state,
+                    player,
+                    actions,
+                    baseline_action,
+                    receive_before_third,
+                    search_result,
+                    source=search_profile,
+                )
             return receive_before_third
 
         self._adopt_rule_preview(preview)
@@ -899,6 +950,23 @@ class DecisionMixin:
                 state,
                 player,
                 baseline_action,
+            )
+        self._compare_generic_response_shadow(
+            state,
+            player,
+            actions,
+            baseline_action,
+            baseline_action,
+        )
+        if search_result is not None:
+            self._record_generic_response_search_result(
+                state,
+                player,
+                actions,
+                baseline_action,
+                baseline_action,
+                search_result,
+                source=search_profile,
             )
         return baseline_action
 

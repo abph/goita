@@ -21,6 +21,9 @@ from goita_ai2.current_ai.decision import DecisionMixin
 from goita_ai2.current_ai.endgame import EndgameMixin
 from goita_ai2.current_ai.forced_plans import ForcedPlansMixin
 from goita_ai2.current_ai.forced_win_planner import ForcedWinPlannerMixin
+from goita_ai2.current_ai.generic_response_pattern import (
+    GenericResponsePatternMixin,
+)
 from goita_ai2.current_ai.hand_evaluation import HandEvaluationMixin
 from goita_ai2.current_ai.information_set import InformationSetMixin
 from goita_ai2.current_ai.information_set_action_model import InformationSetActionModelMixin
@@ -53,6 +56,7 @@ class RuleBasedAgent(
     BranchedAttackLifecycleMixin,
     AttackPlanTemplateMixin,
     BranchedAttackRuntimeMixin,
+    GenericResponsePatternMixin,
     ConditionalResponseMixin,
     ProbabilisticHandInferenceMixin,
     InformationSetMixin,

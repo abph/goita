@@ -78,6 +78,18 @@ class TimedSearchResult:
 class TimedSearchMixin:
     """Adds public-information sampling and time-limited coalition search."""
 
+    @staticmethod
+    def _timed_search_prioritize_root_actions(
+        actions: Sequence[Action],
+        priority_action: Optional[Action],
+    ) -> List[Action]:
+        """Move one hint first without removing or scoring any legal action."""
+        ordered = list(actions)
+        if priority_action in ordered:
+            ordered.remove(priority_action)
+            ordered.insert(0, priority_action)
+        return ordered
+
     def _timed_search_kyosha_pass_compare_is_decisive(
         self,
         *,
@@ -1302,6 +1314,16 @@ class TimedSearchMixin:
             }
 
         root_actions = list(actions)
+        generic_priority_action = self._generic_response_priority_action(
+            state,
+            player,
+            root_actions,
+            baseline_action,
+        )
+        root_actions = self._timed_search_prioritize_root_actions(
+            root_actions,
+            generic_priority_action,
+        )
         completed_values: Optional[Dict[Action, List[float]]] = None
         completed_world_values: Optional[Dict[Action, Dict[int, float]]] = None
         completed_robust_values: Optional[Dict[Action, float]] = None
@@ -1469,6 +1491,19 @@ class TimedSearchMixin:
                 )[: self.TIME_SEARCH_ROOT_BEAM]
                 if baseline_action not in narrowed:
                     narrowed[-1] = baseline_action
+                if (
+                    generic_priority_action is not None
+                    and generic_priority_action not in narrowed
+                ):
+                    replaceable = [
+                        action
+                        for action in reversed(narrowed)
+                        if action != baseline_action
+                    ]
+                    if replaceable:
+                        narrowed[narrowed.index(replaceable[0])] = (
+                            generic_priority_action
+                        )
                 root_actions = narrowed
             if depth >= minimum_override_depth and stable_count >= 2:
                 ordered = sorted(aggregate.values(), reverse=True)

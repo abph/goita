@@ -235,6 +235,9 @@
           </div>
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
+          <h3 class="subheading">汎用パターンの収集</h3>
+          <p class="muted">深い探索で実際に採用した判断を匿名の型として集計します。現在は計測のみで、AIの判断には使用していません。</p>
+          <div id="genericPatternMetricGrid" class="metric-grid"></div>
         </section>
       </section>
 
@@ -362,6 +365,7 @@
       document.querySelectorAll(".change-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, false)));
       document.querySelectorAll(".reset-password").forEach(button => button.addEventListener("click", () => changeRoomPassword(button, true)));
       renderResponseMetrics(data.ai_conditional_response || {});
+      renderGenericPatternMetrics(data.ai_generic_response_patterns || {});
     }
 
     function renderResponseMetrics(data) {
@@ -388,12 +392,52 @@
       `).join("");
     }
 
+    function renderGenericPatternMetrics(data) {
+      const actions = data.action_counts || {};
+      const agreement = (Number(data.average_agreement) || 0) * 100;
+      const confidence = (Number(data.average_confidence) || 0) * 100;
+      const shadowMatchRate = (Number(data.shadow_match_rate) || 0) * 100;
+      const priorityHitRate = (Number(data.priority_hit_rate) || 0) * 100;
+      const metrics = [
+        ["有効サンプル", `${data.recorded || 0}件`],
+        ["汎用パターン", `${data.pattern_count || 0}種類`],
+        ["検討対象", `${data.considered || 0}件`],
+        ["品質不足で除外", `${data.rejected || 0}件`],
+        ["平均探索深さ", `${Number(data.average_depth || 0).toFixed(2)}`],
+        ["平均一致率", `${agreement.toFixed(1)}%`],
+        ["平均推定信頼度", `${confidence.toFixed(1)}%`],
+        ["平均評価差", `${Number(data.average_margin || 0).toFixed(1)}`],
+        ["パス", `${actions.pass || 0}件`],
+        ["同じ駒で受ける", `${actions.receive_same || 0}件`],
+        ["王・玉で受ける", `${actions.receive_royal || 0}件`],
+        ["5件以上集まった型", `${data.patterns_5_plus || 0}種類`],
+        ["20件以上集まった型", `${data.patterns_20_plus || 0}種類`],
+        ["50件以上集まった型", `${data.patterns_50_plus || 0}種類`],
+        ["永続保存", data.persistent ? "有効" : "無効"],
+        ["影響なし比較", `${data.shadow_lookups || 0}回`],
+        ["辞書の推奨あり", `${data.shadow_recommendations || 0}回`],
+        ["現在AIと一致", `${data.shadow_matches || 0}回`],
+        ["現在AIと不一致", `${data.shadow_mismatches || 0}回`],
+        ["一致率", `${shadowMatchRate.toFixed(1)}%`],
+        ["該当パターンなし", `${data.shadow_no_pattern || 0}回`],
+        ["データ不足", `${data.shadow_insufficient || 0}回`],
+        ["判断が割れている", `${data.shadow_ambiguous || 0}回`],
+        ["探索時の辞書照会", `${data.priority_queries || 0}回`],
+        ["優先候補に使用", `${data.priority_hits || 0}回`],
+        ["優先候補の該当率", `${priorityHitRate.toFixed(1)}%`],
+      ];
+      document.getElementById("genericPatternMetricGrid").innerHTML = metrics.map(([label, value]) => `
+        <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
+      `).join("");
+    }
+
     async function loadResponseMetrics() {
       const button = document.getElementById("responseMetricsRefresh");
       button.disabled = true;
       try {
         const data = await api("/admin/api/settings");
         renderResponseMetrics(data.ai_conditional_response || {});
+        renderGenericPatternMetrics(data.ai_generic_response_patterns || {});
       } finally {
         button.disabled = false;
       }

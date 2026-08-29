@@ -42,6 +42,25 @@ def test_rule_based_agent_uses_timed_search_mixin() -> None:
     assert issubclass(RuleBasedAgent, TimedSearchMixin)
 
 
+def test_generic_hint_only_reorders_root_actions() -> None:
+    actions = [
+        ("pass", None, None),
+        ("receive", "2", None),
+        ("receive", "8", None),
+    ]
+    priority = ("receive", "2", None)
+
+    ordered = TimedSearchMixin._timed_search_prioritize_root_actions(
+        actions,
+        priority,
+    )
+
+    assert ordered[0] == priority
+    assert set(ordered) == set(actions)
+    assert len(ordered) == len(actions)
+    assert actions[0] == ("pass", None, None)
+
+
 def _search_result(
     *,
     depth: int = 7,
@@ -767,6 +786,7 @@ def test_receive_branch_compares_followup_attacks_through_the_final_score() -> N
 
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
+    test_generic_hint_only_reorders_root_actions()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

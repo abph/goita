@@ -16,12 +16,21 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="privateRoomPasswords"' in admin
     assert 'id="sessionList"' in admin
     assert 'id="responseMetricGrid"' in admin
+    assert 'id="genericPatternMetricGrid"' in admin
     assert "AI応答辞書の計測" in admin
+    assert "汎用パターンの収集" in admin
+    assert "現在は計測のみで、AIの判断には使用していません" in admin
+    assert "影響なし比較" in admin
+    assert "現在AIと不一致" in admin
+    assert "優先候補に使用" in admin
     assert 'data.ai_conditional_response || {}' in admin
+    assert 'data.ai_generic_response_patterns || {}' in admin
 
     backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
     assert '"ai_conditional_response"' in backend
     assert "conditional_response_runtime_snapshot" in backend
+    assert '"ai_generic_response_patterns"' in backend
+    assert "checkpoint_generic_response_patterns" in backend
 
 
 def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> None:
