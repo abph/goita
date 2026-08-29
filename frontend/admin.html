@@ -236,7 +236,7 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。最終手を直接決定するものではありません。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
         </section>
       </section>
@@ -400,6 +400,9 @@
       const confidence = (Number(data.average_confidence) || 0) * 100;
       const shadowMatchRate = (Number(data.shadow_match_rate) || 0) * 100;
       const priorityHitRate = (Number(data.priority_hit_rate) || 0) * 100;
+      const priorityEffectChangeRate = (
+        Number(data.priority_effect_change_rate) || 0
+      ) * 100;
       const metrics = [
         ["有効サンプル", `${data.recorded || 0}件`],
         ["汎用パターン", `${data.pattern_count || 0}種類`],
@@ -435,6 +438,21 @@
         ["詳細分類から優先", `${priorityGranularity.detailed || 0}回`],
         ["中分類から優先", `${priorityGranularity.medium || 0}回`],
         ["優先候補の該当率", `${priorityHitRate.toFixed(1)}%`],
+        ["辞書効果を比較", `${data.priority_effect_comparisons || 0}回`],
+        ["正確に比較できた", `${data.priority_effect_exact || 0}回`],
+        ["比較未完了", `${data.priority_effect_incomplete || 0}回`],
+        ["探索順を変更", `${data.priority_effect_reorders || 0}回`],
+        ["辞書で候補を維持", `${data.priority_effect_beam_preserved || 0}回`],
+        ["辞書候補を最終採用", `${data.priority_effect_selected || 0}回`],
+        ["最終判断が変化", `${data.priority_effect_changed || 0}回`],
+        ["最終判断は同じ", `${data.priority_effect_unchanged || 0}回`],
+        ["判断変化率", `${priorityEffectChangeRate.toFixed(1)}%`],
+        ["辞書あり平均深さ", `${Number(data.priority_effect_average_with_depth || 0).toFixed(2)}`],
+        ["辞書なし平均深さ", `${Number(data.priority_effect_average_without_depth || 0).toFixed(2)}`],
+        ["辞書あり平均時間", `${Number(data.priority_effect_average_with_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["辞書なし平均時間", `${Number(data.priority_effect_average_without_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["短縮時間（比較値）", `${Number(data.priority_effect_saved_seconds || 0).toFixed(3)}秒`],
+        ["平均評価差", `${Number(data.priority_effect_average_value_delta || 0).toFixed(1)}`],
       ];
       document.getElementById("genericPatternMetricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>

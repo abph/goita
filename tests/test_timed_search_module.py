@@ -4,6 +4,10 @@ import copy
 import time
 
 from goita_ai2.current_ai.prediction_cache import clear_prediction_sample_cache
+from goita_ai2.current_ai.generic_response_store import (
+    generic_response_pattern_snapshot,
+    reset_generic_response_patterns,
+)
 from goita_ai2.current_ai.search_budget import reset_time_search_budget_model
 from goita_ai2.current_ai.timed_search import TimedSearchMixin, TimedSearchResult
 from goita_ai2.rule_based import RuleBasedAgent
@@ -59,6 +63,50 @@ def test_generic_hint_only_reorders_root_actions() -> None:
     assert set(ordered) == set(actions)
     assert len(ordered) == len(actions)
     assert actions[0] == ("pass", None, None)
+
+
+def test_generic_hint_effect_is_measured_without_changing_legal_actions() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_MAX_SECONDS = 0.3
+    agent.TIME_SEARCH_SAMPLE_COUNT = 2
+    agent.TIME_SEARCH_MAX_DEPTH = 1
+    agent.TIME_SEARCH_MAX_NODES = 10_000
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    agent._generic_response_priority_action = (
+        lambda _state, _player, _actions, _baseline: priority
+    )
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action in actions
+    assert set(actions) == {baseline, priority}
+    assert snapshot["priority_effect_comparisons"] == 1
+    assert snapshot["priority_effect_exact"] == 1
+    assert snapshot["priority_effect_incomplete"] == 0
+    assert snapshot["priority_effect_reorders"] == 1
+    assert (
+        snapshot["priority_effect_changed"]
+        + snapshot["priority_effect_unchanged"]
+        == 1
+    )
 
 
 def _search_result(
@@ -787,6 +835,7 @@ def test_receive_branch_compares_followup_attacks_through_the_final_score() -> N
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
     test_generic_hint_only_reorders_root_actions()
+    test_generic_hint_effect_is_measured_without_changing_legal_actions()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

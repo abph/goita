@@ -266,10 +266,60 @@ def test_shadow_uses_medium_pattern_when_detail_has_no_support() -> None:
     assert snapshot["shadow_granularity_counts"] == {"medium": 1}
 
 
+def test_priority_effect_metrics_compare_and_restore_without_board_data() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        store.record_priority_effect(
+            reordered=True,
+            beam_preserved=False,
+            comparison_complete=True,
+            recommended_selected=True,
+            action_changed=False,
+            with_depth=7,
+            without_depth=7,
+            with_elapsed_seconds=1.25,
+            without_elapsed_seconds=1.25,
+            value_delta=0.0,
+        )
+        store.record_priority_effect(
+            reordered=True,
+            beam_preserved=True,
+            comparison_complete=False,
+            recommended_selected=False,
+            action_changed=False,
+            with_depth=5,
+            without_depth=0,
+            with_elapsed_seconds=0.8,
+            without_elapsed_seconds=0.0,
+            value_delta=0.0,
+        )
+
+        snapshot = store.snapshot()
+        assert snapshot["priority_effect_comparisons"] == 2
+        assert snapshot["priority_effect_exact"] == 1
+        assert snapshot["priority_effect_incomplete"] == 1
+        assert snapshot["priority_effect_reorders"] == 2
+        assert snapshot["priority_effect_beam_preserved"] == 1
+        assert snapshot["priority_effect_selected"] == 1
+        assert snapshot["priority_effect_changed"] == 0
+        assert snapshot["priority_effect_unchanged"] == 1
+        assert snapshot["priority_effect_average_with_depth"] == 7.0
+        assert snapshot["priority_effect_average_without_depth"] == 7.0
+        assert snapshot["priority_effect_saved_seconds"] == 0.0
+
+        assert store.checkpoint("priority-effect") is True
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        assert restored["priority_effect_comparisons"] == 2
+        assert restored["priority_effect_exact"] == 1
+        assert restored["priority_effect_beam_preserved"] == 1
+
+
 if __name__ == "__main__":
     test_store_aggregates_and_restores_anonymous_patterns()
     test_store_path_uses_render_persistent_directory()
     test_shadow_comparison_requires_support_and_never_selects_an_action()
     test_medium_patterns_pool_detailed_variants_and_survive_restore()
     test_shadow_uses_medium_pattern_when_detail_has_no_support()
+    test_priority_effect_metrics_compare_and_restore_without_board_data()
     print("GENERIC_RESPONSE_STORE_TEST_OK")

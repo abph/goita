@@ -25,6 +25,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "影響なし比較" in admin
     assert "現在AIと不一致" in admin
     assert "優先候補に使用" in admin
+    assert "辞書効果を比較" in admin
+    assert "最終判断が変化" in admin
+    assert "辞書あり平均深さ" in admin
+    assert "短縮時間（比較値）" in admin
     assert 'data.ai_conditional_response || {}' in admin
     assert 'data.ai_generic_response_patterns || {}' in admin
 

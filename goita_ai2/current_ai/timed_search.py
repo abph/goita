@@ -1313,7 +1313,8 @@ class TimedSearchMixin:
                 "normalized_entropy": information_set.normalized_entropy,
             }
 
-        root_actions = list(actions)
+        control_root_actions = list(actions)
+        root_actions = list(control_root_actions)
         generic_priority_action = self._generic_response_priority_action(
             state,
             player,
@@ -1324,6 +1325,14 @@ class TimedSearchMixin:
             root_actions,
             generic_priority_action,
         )
+        priority_reordered = bool(
+            generic_priority_action is not None
+            and control_root_actions
+            and control_root_actions[0] != generic_priority_action
+        )
+        control_active_actions = list(control_root_actions)
+        priority_beam_preserved = False
+        priority_comparison_complete = True
         completed_values: Optional[Dict[Action, List[float]]] = None
         completed_world_values: Optional[Dict[Action, Dict[int, float]]] = None
         completed_robust_values: Optional[Dict[Action, float]] = None
@@ -1504,6 +1513,22 @@ class TimedSearchMixin:
                         narrowed[narrowed.index(replaceable[0])] = (
                             generic_priority_action
                         )
+                control_narrowed = sorted(
+                    control_root_actions,
+                    key=lambda action: aggregate.get(action, -float("inf")),
+                    reverse=True,
+                )[: self.TIME_SEARCH_ROOT_BEAM]
+                if baseline_action not in control_narrowed:
+                    control_narrowed[-1] = baseline_action
+                control_active_actions = control_narrowed
+                priority_beam_preserved = bool(
+                    generic_priority_action is not None
+                    and generic_priority_action in narrowed
+                    and generic_priority_action not in control_narrowed
+                )
+                priority_comparison_complete = (
+                    set(narrowed) == set(control_narrowed)
+                )
                 root_actions = narrowed
             if depth >= minimum_override_depth and stable_count >= 2:
                 ordered = sorted(aggregate.values(), reverse=True)
@@ -1645,12 +1670,51 @@ class TimedSearchMixin:
                 and agreement >= self.TIME_SEARCH_OVERRIDE_AGREEMENT
                 and margin >= self.TIME_SEARCH_OVERRIDE_MARGIN
             ) or enemy_third_attack_wait or weak_first_receive_decisive
+        elapsed_seconds = time.perf_counter() - start
+        if generic_priority_action is not None:
+            control_candidates = [
+                action
+                for action in control_active_actions
+                if action in aggregate
+            ]
+            comparison_complete = bool(
+                priority_comparison_complete
+                and len(control_candidates) == len(control_active_actions)
+            )
+            control_best_action = (
+                max(control_candidates, key=lambda action: aggregate[action])
+                if comparison_complete and control_candidates
+                else None
+            )
+            control_value = (
+                aggregate[control_best_action]
+                if control_best_action is not None
+                else best_value
+            )
+            self._record_generic_response_priority_effect(
+                reordered=priority_reordered,
+                beam_preserved=priority_beam_preserved,
+                comparison_complete=comparison_complete,
+                recommended_selected=best_action == generic_priority_action,
+                action_changed=(
+                    control_best_action is not None
+                    and best_action != control_best_action
+                ),
+                with_depth=completed_depth,
+                without_depth=(completed_depth if comparison_complete else 0),
+                with_elapsed_seconds=elapsed_seconds,
+                without_elapsed_seconds=(
+                    elapsed_seconds if comparison_complete else 0.0
+                ),
+                value_delta=best_value - control_value,
+            )
+
         return TimedSearchResult(
             action=best_action,
             depth=completed_depth,
             samples=sample_total,
             nodes=stats["nodes"],
-            elapsed_seconds=time.perf_counter() - start,
+            elapsed_seconds=elapsed_seconds,
             value=best_value,
             margin=margin,
             agreement=agreement,

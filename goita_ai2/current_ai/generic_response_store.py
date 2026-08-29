@@ -119,6 +119,20 @@ class GenericResponsePatternStore:
             "shadow_mismatches": 0,
             "priority_queries": 0,
             "priority_hits": 0,
+            "priority_effect_comparisons": 0,
+            "priority_effect_exact": 0,
+            "priority_effect_incomplete": 0,
+            "priority_effect_reorders": 0,
+            "priority_effect_beam_preserved": 0,
+            "priority_effect_selected": 0,
+            "priority_effect_changed": 0,
+            "priority_effect_unchanged": 0,
+            "priority_effect_with_depth_sum": 0.0,
+            "priority_effect_without_depth_sum": 0.0,
+            "priority_effect_with_elapsed_sum": 0.0,
+            "priority_effect_without_elapsed_sum": 0.0,
+            "priority_effect_saved_seconds_sum": 0.0,
+            "priority_effect_value_delta_sum": 0.0,
             "action_counts": Counter(),
             "followup_counts": Counter(),
             "source_counts": Counter(),
@@ -539,6 +553,14 @@ class GenericResponsePatternStore:
                 "shadow_mismatches",
                 "priority_queries",
                 "priority_hits",
+                "priority_effect_comparisons",
+                "priority_effect_exact",
+                "priority_effect_incomplete",
+                "priority_effect_reorders",
+                "priority_effect_beam_preserved",
+                "priority_effect_selected",
+                "priority_effect_changed",
+                "priority_effect_unchanged",
             ):
                 restored_counters[name] = max(0, int(counters.get(name, 0)))
             for name in (
@@ -546,6 +568,12 @@ class GenericResponsePatternStore:
                 "agreement_sum",
                 "confidence_sum",
                 "margin_sum",
+                "priority_effect_with_depth_sum",
+                "priority_effect_without_depth_sum",
+                "priority_effect_with_elapsed_sum",
+                "priority_effect_without_elapsed_sum",
+                "priority_effect_saved_seconds_sum",
+                "priority_effect_value_delta_sum",
             ):
                 restored_counters[name] = float(counters.get(name, 0.0))
             for name in (
@@ -762,6 +790,53 @@ class GenericResponsePatternStore:
             self._counters["priority_action_counts"][action] += 1
             self._counters["priority_granularity_counts"][granularity] += 1
 
+    def record_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        beam_preserved: bool,
+        comparison_complete: bool,
+        recommended_selected: bool,
+        action_changed: bool,
+        with_depth: int,
+        without_depth: int,
+        with_elapsed_seconds: float,
+        without_elapsed_seconds: float,
+        value_delta: float,
+    ) -> None:
+        """Aggregate one paired search-order comparison without storing a board."""
+        with self._lock:
+            counters = self._counters
+            counters["priority_effect_comparisons"] += 1
+            if reordered:
+                counters["priority_effect_reorders"] += 1
+            if beam_preserved:
+                counters["priority_effect_beam_preserved"] += 1
+            if recommended_selected:
+                counters["priority_effect_selected"] += 1
+            if not comparison_complete:
+                counters["priority_effect_incomplete"] += 1
+                return
+
+            counters["priority_effect_exact"] += 1
+            if action_changed:
+                counters["priority_effect_changed"] += 1
+            else:
+                counters["priority_effect_unchanged"] += 1
+            counters["priority_effect_with_depth_sum"] += max(0, int(with_depth))
+            counters["priority_effect_without_depth_sum"] += max(
+                0,
+                int(without_depth),
+            )
+            with_elapsed = max(0.0, float(with_elapsed_seconds))
+            without_elapsed = max(0.0, float(without_elapsed_seconds))
+            counters["priority_effect_with_elapsed_sum"] += with_elapsed
+            counters["priority_effect_without_elapsed_sum"] += without_elapsed
+            counters["priority_effect_saved_seconds_sum"] += (
+                without_elapsed - with_elapsed
+            )
+            counters["priority_effect_value_delta_sum"] += float(value_delta)
+
     def compare_shadow(
         self,
         *,
@@ -902,6 +977,62 @@ class GenericResponsePatternStore:
                 ),
                 "priority_granularity_counts": dict(
                     counters["priority_granularity_counts"]
+                ),
+                "priority_effect_comparisons": int(
+                    counters["priority_effect_comparisons"]
+                ),
+                "priority_effect_exact": int(counters["priority_effect_exact"]),
+                "priority_effect_incomplete": int(
+                    counters["priority_effect_incomplete"]
+                ),
+                "priority_effect_reorders": int(
+                    counters["priority_effect_reorders"]
+                ),
+                "priority_effect_beam_preserved": int(
+                    counters["priority_effect_beam_preserved"]
+                ),
+                "priority_effect_selected": int(
+                    counters["priority_effect_selected"]
+                ),
+                "priority_effect_changed": int(
+                    counters["priority_effect_changed"]
+                ),
+                "priority_effect_unchanged": int(
+                    counters["priority_effect_unchanged"]
+                ),
+                "priority_effect_change_rate": round(
+                    int(counters["priority_effect_changed"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    5,
+                ),
+                "priority_effect_average_with_depth": round(
+                    float(counters["priority_effect_with_depth_sum"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    3,
+                ),
+                "priority_effect_average_without_depth": round(
+                    float(counters["priority_effect_without_depth_sum"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    3,
+                ),
+                "priority_effect_average_with_elapsed_seconds": round(
+                    float(counters["priority_effect_with_elapsed_sum"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    5,
+                ),
+                "priority_effect_average_without_elapsed_seconds": round(
+                    float(counters["priority_effect_without_elapsed_sum"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    5,
+                ),
+                "priority_effect_saved_seconds": round(
+                    float(counters["priority_effect_saved_seconds_sum"]),
+                    5,
+                ),
+                "priority_effect_average_value_delta": round(
+                    float(counters["priority_effect_value_delta_sum"])
+                    / max(1, int(counters["priority_effect_exact"])),
+                    3,
                 ),
                 "average_depth": round(
                     float(counters["depth_sum"]) / recorded if recorded else 0.0,

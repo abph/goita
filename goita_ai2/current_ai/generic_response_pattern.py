@@ -620,6 +620,34 @@ class GenericResponsePatternMixin:
         }
         return priority
 
+    def _record_generic_response_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        beam_preserved: bool,
+        comparison_complete: bool,
+        recommended_selected: bool,
+        action_changed: bool,
+        with_depth: int,
+        without_depth: int,
+        with_elapsed_seconds: float,
+        without_elapsed_seconds: float,
+        value_delta: float,
+    ) -> None:
+        """Record aggregate-only evidence about one priority hint's effect."""
+        generic_response_pattern_store().record_priority_effect(
+            reordered=reordered,
+            beam_preserved=beam_preserved,
+            comparison_complete=comparison_complete,
+            recommended_selected=recommended_selected,
+            action_changed=action_changed,
+            with_depth=with_depth,
+            without_depth=without_depth,
+            with_elapsed_seconds=with_elapsed_seconds,
+            without_elapsed_seconds=without_elapsed_seconds,
+            value_delta=value_delta,
+        )
+
     def _record_generic_response_search_result(
         self,
         state,
