@@ -11,6 +11,7 @@ from typing import Dict, Iterable, Optional, Tuple
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, POINTS
 from goita_ai2.current_ai.generic_response_store import (
     generic_response_pattern_store,
+    medium_response_pattern_payload,
 )
 from goita_ai2.current_ai.search_cache import _digest_payload
 
@@ -27,6 +28,9 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_PATTERN_MIN_CONFIDENCE = 0.45
     GENERIC_RESPONSE_SHADOW_MIN_OBSERVATIONS = 5
     GENERIC_RESPONSE_SHADOW_MIN_DOMINANCE = 0.60
+    GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
+    GENERIC_RESPONSE_MEDIUM_PRIORITY_MIN_OBSERVATIONS = 10
+    GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_PRIORITY_ENABLED = True
 
     @staticmethod
@@ -320,6 +324,37 @@ class GenericResponsePatternMixin:
             )
         )
 
+    def _medium_response_pattern_payload(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> Dict[str, object]:
+        detailed = self._generic_response_pattern_payload(
+            state,
+            player,
+            actions,
+            baseline_action,
+        )
+        return medium_response_pattern_payload(detailed)
+
+    def _medium_response_pattern_key(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> str:
+        return _digest_payload(
+            self._medium_response_pattern_payload(
+                state,
+                player,
+                actions,
+                baseline_action,
+            )
+        )
+
     def _generic_response_action_label(
         self,
         action: Action,
@@ -468,14 +503,27 @@ class GenericResponsePatternMixin:
             actions_list,
             baseline_action,
         )
+        medium_key = self._medium_response_pattern_key(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+        )
         result = generic_response_pattern_store().compare_shadow(
             pattern_key=key,
+            medium_pattern_key=medium_key,
             actual_action=self._generic_response_action_label(
                 actual_action,
                 state.current_attack,
             ),
             min_observations=self.GENERIC_RESPONSE_SHADOW_MIN_OBSERVATIONS,
             min_dominance=self.GENERIC_RESPONSE_SHADOW_MIN_DOMINANCE,
+            medium_min_observations=(
+                self.GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS
+            ),
+            medium_min_dominance=(
+                self.GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE
+            ),
         )
         self.last_generic_response_shadow = dict(result)
         return result
@@ -511,9 +559,27 @@ class GenericResponsePatternMixin:
         store = generic_response_pattern_store()
         recommendation = store.recommendation(
             key,
+            granularity="detailed",
             min_observations=self.GENERIC_RESPONSE_SHADOW_MIN_OBSERVATIONS,
             min_dominance=self.GENERIC_RESPONSE_SHADOW_MIN_DOMINANCE,
         )
+        if recommendation.get("status") != "recommended":
+            medium_key = self._medium_response_pattern_key(
+                state,
+                player,
+                actions_list,
+                baseline_action,
+            )
+            medium_recommendation = store.recommendation(
+                medium_key,
+                granularity="medium",
+                min_observations=(
+                    self.GENERIC_RESPONSE_MEDIUM_PRIORITY_MIN_OBSERVATIONS
+                ),
+                min_dominance=self.GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE,
+            )
+            if medium_recommendation.get("status") == "recommended":
+                recommendation = medium_recommendation
         label = str(recommendation.get("recommended_action", ""))
 
         def matches(action: Action) -> bool:

@@ -6,9 +6,11 @@ from goita_ai2.current_ai.generic_response_pattern import (
     GenericResponsePatternMixin,
 )
 from goita_ai2.current_ai.generic_response_store import (
+    generic_response_pattern_store,
     generic_response_pattern_snapshot,
     reset_generic_response_patterns,
 )
+from goita_ai2.current_ai.search_cache import _digest_payload
 from goita_ai2.current_ai.timed_search import TimedSearchResult
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
@@ -248,6 +250,47 @@ def test_shadow_comparison_observes_but_does_not_change_the_action() -> None:
     assert snapshot["priority_hits"] == 1
 
 
+def test_medium_pattern_can_prioritize_search_without_detailed_match() -> None:
+    reset_generic_response_patterns()
+    state = _receive_state()
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    detailed = agent._generic_response_pattern_payload(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    store = generic_response_pattern_store()
+    for index in range(10):
+        variant = {**detailed, "test_detailed_variant": index}
+        store.record(
+            pattern_key=_digest_payload(variant),
+            features=variant,
+            action_label="receive_same",
+            followup_label="kyosha_pair",
+            source="default",
+            depth=7,
+            agreement=0.80,
+            confidence=0.70,
+            margin=100.0,
+        )
+
+    priority = agent._generic_response_priority_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+    assert priority == ("receive", "2", None)
+    assert agent.last_generic_response_priority["granularity"] == "medium"
+    assert snapshot["priority_granularity_counts"] == {"medium": 1}
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_generic_response_pattern_mixin()
     test_pattern_does_not_read_or_encode_opponent_hands()
@@ -257,4 +300,5 @@ if __name__ == "__main__":
     test_adopted_deep_search_is_aggregated()
     test_shallow_uncertain_or_unadopted_search_is_rejected()
     test_shadow_comparison_observes_but_does_not_change_the_action()
+    test_medium_pattern_can_prioritize_search_without_detailed_match()
     print("GENERIC_RESPONSE_PATTERN_TEST_OK")

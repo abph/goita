@@ -19,7 +19,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="genericPatternMetricGrid"' in admin
     assert "AI応答辞書の計測" in admin
     assert "汎用パターンの収集" in admin
-    assert "現在は計測のみで、AIの判断には使用していません" in admin
+    assert "十分な支持がある型は探索順の優先候補として使用します" in admin
+    assert "中分類パターン" in admin
+    assert "中分類から優先" in admin
     assert "影響なし比較" in admin
     assert "現在AIと不一致" in admin
     assert "優先候補に使用" in admin

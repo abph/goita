@@ -6,8 +6,10 @@ from pathlib import Path
 
 from goita_ai2.current_ai.generic_response_store import (
     GenericResponsePatternStore,
+    medium_response_pattern_payload,
     resolve_generic_response_store_path,
 )
+from goita_ai2.current_ai.search_cache import _digest_payload
 
 
 def _features() -> dict:
@@ -190,8 +192,84 @@ def test_shadow_comparison_requires_support_and_never_selects_an_action() -> Non
     assert snapshot["priority_action_counts"] == {"receive_same": 1}
 
 
+def test_medium_patterns_pool_detailed_variants_and_survive_restore() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        medium_key = _digest_payload(medium_response_pattern_payload(_features()))
+
+        for index in range(10):
+            features = {**_features(), "detailed_variant": index}
+            store.record(
+                pattern_key=f"detail-{index}",
+                features=features,
+                action_label="receive_same",
+                followup_label="middle_pair",
+                source="default",
+                depth=7,
+                agreement=0.80,
+                confidence=0.70,
+                margin=100.0,
+            )
+
+        snapshot = store.snapshot()
+        recommendation = store.recommendation(
+            medium_key,
+            granularity="medium",
+            min_observations=10,
+            min_dominance=0.70,
+        )
+        assert snapshot["pattern_count"] == 10
+        assert snapshot["medium_pattern_count"] == 1
+        assert snapshot["medium_patterns_10_plus"] == 1
+        assert recommendation["status"] == "recommended"
+        assert recommendation["granularity"] == "medium"
+        assert recommendation["recommended_action"] == "receive_same"
+
+        assert store.checkpoint("medium-backfill") is True
+        restored = GenericResponsePatternStore(path=path)
+        restored_medium = restored.pattern(
+            medium_key,
+            granularity="medium",
+        )
+        assert restored.snapshot()["medium_pattern_count"] == 1
+        assert restored_medium is not None
+        assert restored_medium["observations"] == 10
+
+
+def test_shadow_uses_medium_pattern_when_detail_has_no_support() -> None:
+    store = GenericResponsePatternStore()
+    medium_key = _digest_payload(medium_response_pattern_payload(_features()))
+    for index in range(5):
+        store.record(
+            pattern_key=f"detail-{index}",
+            features={**_features(), "detailed_variant": index},
+            action_label="pass",
+            followup_label="none",
+            source="default",
+            depth=7,
+            agreement=0.80,
+            confidence=0.70,
+            margin=100.0,
+        )
+
+    result = store.compare_shadow(
+        pattern_key="unseen-detail",
+        medium_pattern_key=medium_key,
+        actual_action="pass",
+        medium_min_observations=5,
+        medium_min_dominance=0.70,
+    )
+    snapshot = store.snapshot()
+    assert result["status"] == "match"
+    assert result["granularity"] == "medium"
+    assert snapshot["shadow_granularity_counts"] == {"medium": 1}
+
+
 if __name__ == "__main__":
     test_store_aggregates_and_restores_anonymous_patterns()
     test_store_path_uses_render_persistent_directory()
     test_shadow_comparison_requires_support_and_never_selects_an_action()
+    test_medium_patterns_pool_detailed_variants_and_survive_restore()
+    test_shadow_uses_medium_pattern_when_detail_has_no_support()
     print("GENERIC_RESPONSE_STORE_TEST_OK")

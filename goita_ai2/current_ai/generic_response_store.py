@@ -14,10 +14,54 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, Mapping, Optional
 
+from goita_ai2.current_ai.search_cache import _digest_payload
+
 
 GENERIC_RESPONSE_STORE_SCHEMA_VERSION = 1
 GENERIC_RESPONSE_STORE_FILENAME = "generic-response-patterns.json"
 _LOGGER = logging.getLogger(__name__)
+
+
+def medium_response_pattern_payload(
+    detailed: Mapping[str, object],
+) -> Dict[str, object]:
+    """Collapse a detailed public pattern into a reusable tactical class."""
+    context = dict(detailed.get("context", {}) or {})
+    hand = dict(detailed.get("hand", {}) or {})
+    after = dict(detailed.get("after_same_receive", {}) or {})
+    followup = dict(after.get("followup", {}) or {})
+    receive_modes = tuple(
+        sorted(str(item) for item in detailed.get("legal", {}).get(
+            "receive_modes",
+            (),
+        ))
+    )
+
+    def present(value) -> bool:
+        return str(value or "0") != "0"
+
+    same_piece = str(hand.get("same_piece", "0"))
+    attack_count = str(context.get("attacker_attack_count", "0"))
+    if present(followup.get("fourth_followups")):
+        followup_strength = "fourth"
+    elif present(followup.get("scarce_followups")):
+        followup_strength = "scarce"
+    elif present(followup.get("pair_followups")):
+        followup_strength = "pair"
+    else:
+        followup_strength = "open"
+
+    return {
+        "version": 1,
+        "granularity": "medium",
+        "attacker_relation": str(context.get("attacker_relation", "none")),
+        "attack_family": str(context.get("attack_family", "none")),
+        "attack_stage": "first" if attack_count in ("0", "1") else "later",
+        "hand_stage": str(hand.get("size", "middle")),
+        "same_piece": "multiple" if same_piece in ("2", "3+") else "one",
+        "royal_receive": "royal" in receive_modes,
+        "followup_strength": followup_strength,
+    }
 
 
 def resolve_generic_response_store_path(
@@ -55,6 +99,7 @@ class GenericResponsePatternStore:
         self._checkpoint_lock = threading.Lock()
         self._started_at = time.time()
         self._patterns: Dict[str, dict] = {}
+        self._medium_patterns: Dict[str, dict] = {}
         self._counters = self._empty_counters()
         self._last_checkpoint_error = ""
         self._restore()
@@ -81,7 +126,9 @@ class GenericResponsePatternStore:
             "shadow_recommended_actions": Counter(),
             "shadow_actual_actions": Counter(),
             "shadow_match_actions": Counter(),
+            "shadow_granularity_counts": Counter(),
             "priority_action_counts": Counter(),
+            "priority_granularity_counts": Counter(),
             "depth_sum": 0.0,
             "agreement_sum": 0.0,
             "confidence_sum": 0.0,
@@ -92,6 +139,7 @@ class GenericResponsePatternStore:
         with self._lock:
             self._started_at = time.time()
             self._patterns = {}
+            self._medium_patterns = {}
             self._counters = self._empty_counters()
             self._last_checkpoint_error = ""
 
@@ -99,6 +147,84 @@ class GenericResponsePatternStore:
         with self._lock:
             self._counters["considered"] += 1
             self._counters["rejection_counts"][str(reason or "other")] += 1
+
+    def _record_pattern_locked(
+        self,
+        table: Dict[str, dict],
+        *,
+        pattern_key: str,
+        features: Mapping[str, object],
+        action_label: str,
+        followup_label: str,
+        source: str,
+        depth: int,
+        agreement: float,
+        confidence: float,
+        margin: float,
+        now: float,
+    ) -> None:
+        key = str(pattern_key)
+        entry = table.get(key)
+        if entry is None:
+            if len(table) >= self.max_patterns:
+                evicted_key = min(
+                    table,
+                    key=lambda existing_key: (
+                        int(table[existing_key].get("observations", 0)),
+                        float(table[existing_key].get("last_seen_at", 0.0)),
+                    ),
+                )
+                table.pop(evicted_key, None)
+                self._counters["evicted_patterns"] += 1
+            entry = {
+                "features": dict(features),
+                "observations": 0,
+                "action_counts": Counter(),
+                "followup_counts": Counter(),
+                "source_counts": Counter(),
+                "routes": {},
+                "depth_sum": 0.0,
+                "agreement_sum": 0.0,
+                "confidence_sum": 0.0,
+                "margin_sum": 0.0,
+                "first_seen_at": now,
+                "last_seen_at": now,
+            }
+            table[key] = entry
+
+        entry["observations"] += 1
+        entry["action_counts"][str(action_label)] += 1
+        entry["followup_counts"][str(followup_label)] += 1
+        entry["source_counts"][str(source)] += 1
+        entry["depth_sum"] += max(0, int(depth))
+        entry["agreement_sum"] += max(0.0, min(1.0, float(agreement)))
+        entry["confidence_sum"] += max(0.0, min(1.0, float(confidence)))
+        entry["margin_sum"] += float(margin)
+        entry["last_seen_at"] = now
+
+        route_key = f"{action_label}|{followup_label}"
+        route = entry["routes"].get(route_key)
+        if route is None:
+            route = {
+                "action": str(action_label),
+                "followup": str(followup_label),
+                "observations": 0,
+                "source_counts": Counter(),
+                "depth_sum": 0.0,
+                "agreement_sum": 0.0,
+                "confidence_sum": 0.0,
+                "margin_sum": 0.0,
+            }
+            entry["routes"][route_key] = route
+        route["observations"] += 1
+        route["source_counts"][str(source)] += 1
+        route["depth_sum"] += max(0, int(depth))
+        route["agreement_sum"] += max(0.0, min(1.0, float(agreement)))
+        route["confidence_sum"] += max(
+            0.0,
+            min(1.0, float(confidence)),
+        )
+        route["margin_sum"] += float(margin)
 
     def record(
         self,
@@ -114,7 +240,6 @@ class GenericResponsePatternStore:
         margin: float,
     ) -> None:
         now = time.time()
-        key = str(pattern_key)
         with self._lock:
             self._counters["considered"] += 1
             self._counters["recorded"] += 1
@@ -130,67 +255,33 @@ class GenericResponsePatternStore:
             )
             self._counters["margin_sum"] += float(margin)
 
-            entry = self._patterns.get(key)
-            if entry is None:
-                if len(self._patterns) >= self.max_patterns:
-                    evicted_key = min(
-                        self._patterns,
-                        key=lambda existing_key: (
-                            int(self._patterns[existing_key].get("observations", 0)),
-                            float(self._patterns[existing_key].get("last_seen_at", 0.0)),
-                        ),
-                    )
-                    self._patterns.pop(evicted_key, None)
-                    self._counters["evicted_patterns"] += 1
-                entry = {
-                    "features": dict(features),
-                    "observations": 0,
-                    "action_counts": Counter(),
-                    "followup_counts": Counter(),
-                    "source_counts": Counter(),
-                    "routes": {},
-                    "depth_sum": 0.0,
-                    "agreement_sum": 0.0,
-                    "confidence_sum": 0.0,
-                    "margin_sum": 0.0,
-                    "first_seen_at": now,
-                    "last_seen_at": now,
-                }
-                self._patterns[key] = entry
-
-            entry["observations"] += 1
-            entry["action_counts"][str(action_label)] += 1
-            entry["followup_counts"][str(followup_label)] += 1
-            entry["source_counts"][str(source)] += 1
-            entry["depth_sum"] += max(0, int(depth))
-            entry["agreement_sum"] += max(0.0, min(1.0, float(agreement)))
-            entry["confidence_sum"] += max(0.0, min(1.0, float(confidence)))
-            entry["margin_sum"] += float(margin)
-            entry["last_seen_at"] = now
-
-            route_key = f"{action_label}|{followup_label}"
-            route = entry["routes"].get(route_key)
-            if route is None:
-                route = {
-                    "action": str(action_label),
-                    "followup": str(followup_label),
-                    "observations": 0,
-                    "source_counts": Counter(),
-                    "depth_sum": 0.0,
-                    "agreement_sum": 0.0,
-                    "confidence_sum": 0.0,
-                    "margin_sum": 0.0,
-                }
-                entry["routes"][route_key] = route
-            route["observations"] += 1
-            route["source_counts"][str(source)] += 1
-            route["depth_sum"] += max(0, int(depth))
-            route["agreement_sum"] += max(0.0, min(1.0, float(agreement)))
-            route["confidence_sum"] += max(
-                0.0,
-                min(1.0, float(confidence)),
+            self._record_pattern_locked(
+                self._patterns,
+                pattern_key=str(pattern_key),
+                features=features,
+                action_label=action_label,
+                followup_label=followup_label,
+                source=source,
+                depth=depth,
+                agreement=agreement,
+                confidence=confidence,
+                margin=margin,
+                now=now,
             )
-            route["margin_sum"] += float(margin)
+            medium_features = medium_response_pattern_payload(features)
+            self._record_pattern_locked(
+                self._medium_patterns,
+                pattern_key=_digest_payload(medium_features),
+                features=medium_features,
+                action_label=action_label,
+                followup_label=followup_label,
+                source=source,
+                depth=depth,
+                agreement=agreement,
+                confidence=confidence,
+                margin=margin,
+                now=now,
+            )
 
     @staticmethod
     def _counter_dict(value) -> Dict[str, int]:
@@ -201,23 +292,113 @@ class GenericResponsePatternStore:
             for key, count in value.items()
         }
 
-    def _serializable_locked(self) -> dict:
-        patterns = {}
-        for key, raw in self._patterns.items():
-            routes = {
-                route_key: {
-                    **route,
-                    "source_counts": dict(route["source_counts"]),
+    def _merge_pattern_entry_locked(
+        self,
+        table: Dict[str, dict],
+        *,
+        pattern_key: str,
+        features: Mapping[str, object],
+        raw: Mapping[str, object],
+    ) -> None:
+        key = str(pattern_key)
+        entry = table.get(key)
+        if entry is None:
+            entry = {
+                "features": dict(features),
+                "observations": 0,
+                "action_counts": Counter(),
+                "followup_counts": Counter(),
+                "source_counts": Counter(),
+                "routes": {},
+                "depth_sum": 0.0,
+                "agreement_sum": 0.0,
+                "confidence_sum": 0.0,
+                "margin_sum": 0.0,
+                "first_seen_at": float(raw.get("first_seen_at", 0.0)),
+                "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+            }
+            table[key] = entry
+
+        entry["observations"] += max(0, int(raw.get("observations", 0)))
+        entry["action_counts"].update(raw.get("action_counts", {}))
+        entry["followup_counts"].update(raw.get("followup_counts", {}))
+        entry["source_counts"].update(raw.get("source_counts", {}))
+        for name in (
+            "depth_sum",
+            "agreement_sum",
+            "confidence_sum",
+            "margin_sum",
+        ):
+            entry[name] += float(raw.get(name, 0.0))
+        first_seen = float(raw.get("first_seen_at", 0.0))
+        last_seen = float(raw.get("last_seen_at", 0.0))
+        if entry["first_seen_at"] <= 0.0 or (
+            first_seen > 0.0 and first_seen < entry["first_seen_at"]
+        ):
+            entry["first_seen_at"] = first_seen
+        entry["last_seen_at"] = max(entry["last_seen_at"], last_seen)
+
+        for route_key, raw_route in raw.get("routes", {}).items():
+            route = entry["routes"].get(route_key)
+            if route is None:
+                route = {
+                    "action": str(raw_route.get("action", "other")),
+                    "followup": str(raw_route.get("followup", "none")),
+                    "observations": 0,
+                    "source_counts": Counter(),
+                    "depth_sum": 0.0,
+                    "agreement_sum": 0.0,
+                    "confidence_sum": 0.0,
+                    "margin_sum": 0.0,
                 }
-                for route_key, route in raw.get("routes", {}).items()
-            }
-            patterns[key] = {
-                **raw,
-                "action_counts": dict(raw["action_counts"]),
-                "followup_counts": dict(raw["followup_counts"]),
-                "source_counts": dict(raw["source_counts"]),
-                "routes": routes,
-            }
+                entry["routes"][str(route_key)] = route
+            route["observations"] += max(
+                0,
+                int(raw_route.get("observations", 0)),
+            )
+            route["source_counts"].update(
+                raw_route.get("source_counts", {})
+            )
+            for name in (
+                "depth_sum",
+                "agreement_sum",
+                "confidence_sum",
+                "margin_sum",
+            ):
+                route[name] += float(raw_route.get(name, 0.0))
+
+    def _rebuild_medium_patterns_locked(self) -> None:
+        self._medium_patterns = {}
+        for raw in self._patterns.values():
+            detailed_features = dict(raw.get("features", {}) or {})
+            medium_features = medium_response_pattern_payload(detailed_features)
+            self._merge_pattern_entry_locked(
+                self._medium_patterns,
+                pattern_key=_digest_payload(medium_features),
+                features=medium_features,
+                raw=raw,
+            )
+
+    def _serializable_locked(self) -> dict:
+        def serialize_patterns(table: Dict[str, dict]) -> dict:
+            patterns = {}
+            for key, raw in table.items():
+                routes = {
+                    route_key: {
+                        **route,
+                        "source_counts": dict(route["source_counts"]),
+                    }
+                    for route_key, route in raw.get("routes", {}).items()
+                }
+                patterns[key] = {
+                    **raw,
+                    "action_counts": dict(raw["action_counts"]),
+                    "followup_counts": dict(raw["followup_counts"]),
+                    "source_counts": dict(raw["source_counts"]),
+                    "routes": routes,
+                }
+            return patterns
+
         return {
             "schema_version": GENERIC_RESPONSE_STORE_SCHEMA_VERSION,
             "saved_at": time.time(),
@@ -229,8 +410,15 @@ class GenericResponsePatternStore:
                 "followup_counts": dict(self._counters["followup_counts"]),
                 "source_counts": dict(self._counters["source_counts"]),
                 "rejection_counts": dict(self._counters["rejection_counts"]),
+                "shadow_granularity_counts": dict(
+                    self._counters["shadow_granularity_counts"]
+                ),
+                "priority_granularity_counts": dict(
+                    self._counters["priority_granularity_counts"]
+                ),
             },
-            "patterns": patterns,
+            "patterns": serialize_patterns(self._patterns),
+            "medium_patterns": serialize_patterns(self._medium_patterns),
         }
 
     def checkpoint(self, reason: str = "manual") -> bool:
@@ -368,7 +556,9 @@ class GenericResponsePatternStore:
                 "shadow_recommended_actions",
                 "shadow_actual_actions",
                 "shadow_match_actions",
+                "shadow_granularity_counts",
                 "priority_action_counts",
+                "priority_granularity_counts",
             ):
                 restored_counters[name] = Counter(
                     self._counter_dict(counters.get(name, {}))
@@ -378,14 +568,25 @@ class GenericResponsePatternStore:
 
         with self._lock:
             self._patterns = restored_patterns
+            self._rebuild_medium_patterns_locked()
             self._counters = restored_counters
             self._started_at = float(payload.get("started_at", time.time()))
             self._last_checkpoint_error = ""
         return True
 
-    def pattern(self, pattern_key: str) -> Optional[dict]:
+    def pattern(
+        self,
+        pattern_key: str,
+        *,
+        granularity: str = "detailed",
+    ) -> Optional[dict]:
         with self._lock:
-            raw = self._patterns.get(str(pattern_key))
+            table = (
+                self._medium_patterns
+                if granularity == "medium"
+                else self._patterns
+            )
+            raw = table.get(str(pattern_key))
             if raw is None:
                 return None
             observations = int(raw["observations"])
@@ -455,17 +656,27 @@ class GenericResponsePatternStore:
         self,
         pattern_key: str,
         *,
+        granularity: str,
         min_observations: int,
         min_dominance: float,
     ) -> dict:
-        raw = self._patterns.get(str(pattern_key))
+        table = (
+            self._medium_patterns
+            if granularity == "medium"
+            else self._patterns
+        )
+        raw = table.get(str(pattern_key))
         if raw is None:
-            return {"status": "no_pattern"}
+            return {
+                "status": "no_pattern",
+                "granularity": granularity,
+            }
 
         observations = max(0, int(raw.get("observations", 0)))
         if observations < max(1, int(min_observations)):
             return {
                 "status": "insufficient",
+                "granularity": granularity,
                 "observations": observations,
             }
 
@@ -480,6 +691,7 @@ class GenericResponsePatternStore:
         if not ranked or ranked[0][1] <= 0:
             return {
                 "status": "insufficient",
+                "granularity": granularity,
                 "observations": observations,
             }
         top_action, top_count = ranked[0]
@@ -491,6 +703,7 @@ class GenericResponsePatternStore:
         ):
             return {
                 "status": "ambiguous",
+                "granularity": granularity,
                 "observations": observations,
                 "dominance": round(dominance, 5),
             }
@@ -512,6 +725,7 @@ class GenericResponsePatternStore:
         )
         return {
             "status": "recommended",
+            "granularity": granularity,
             "recommended_action": top_action,
             "recommended_followup": followup,
             "observations": observations,
@@ -523,6 +737,7 @@ class GenericResponsePatternStore:
         self,
         pattern_key: str,
         *,
+        granularity: str = "detailed",
         min_observations: int = 5,
         min_dominance: float = 0.60,
     ) -> dict:
@@ -530,6 +745,7 @@ class GenericResponsePatternStore:
         with self._lock:
             return dict(self._recommendation_locked(
                 pattern_key,
+                granularity=granularity,
                 min_observations=min_observations,
                 min_dominance=min_dominance,
             ))
@@ -541,25 +757,45 @@ class GenericResponsePatternStore:
             if not recommendation or recommendation.get("status") != "recommended":
                 return
             action = str(recommendation.get("recommended_action", "other"))
+            granularity = str(recommendation.get("granularity", "detailed"))
             self._counters["priority_hits"] += 1
             self._counters["priority_action_counts"][action] += 1
+            self._counters["priority_granularity_counts"][granularity] += 1
 
     def compare_shadow(
         self,
         *,
         pattern_key: str,
+        medium_pattern_key: Optional[str] = None,
         actual_action: str,
         min_observations: int = 5,
         min_dominance: float = 0.60,
+        medium_min_observations: int = 5,
+        medium_min_dominance: float = 0.70,
     ) -> dict:
         """Compare a stored recommendation without affecting gameplay."""
         with self._lock:
             self._counters["shadow_lookups"] += 1
             recommendation = self._recommendation_locked(
                 pattern_key,
+                granularity="detailed",
                 min_observations=min_observations,
                 min_dominance=min_dominance,
             )
+            if (
+                recommendation.get("status") != "recommended"
+                and medium_pattern_key is not None
+            ):
+                medium_recommendation = self._recommendation_locked(
+                    medium_pattern_key,
+                    granularity="medium",
+                    min_observations=medium_min_observations,
+                    min_dominance=medium_min_dominance,
+                )
+                if medium_recommendation.get("status") == "recommended":
+                    recommendation = medium_recommendation
+                elif recommendation.get("status") == "no_pattern":
+                    recommendation = medium_recommendation
             status = str(recommendation.get("status", "insufficient"))
             if status == "no_pattern":
                 self._counters["shadow_no_pattern"] += 1
@@ -577,6 +813,8 @@ class GenericResponsePatternStore:
             self._counters["shadow_recommendations"] += 1
             self._counters["shadow_recommended_actions"][top_action] += 1
             self._counters["shadow_actual_actions"][actual] += 1
+            granularity = str(recommendation.get("granularity", "detailed"))
+            self._counters["shadow_granularity_counts"][granularity] += 1
             if matched:
                 self._counters["shadow_matches"] += 1
                 self._counters["shadow_match_actions"][top_action] += 1
@@ -597,6 +835,10 @@ class GenericResponsePatternStore:
                 int(raw.get("observations", 0))
                 for raw in self._patterns.values()
             ]
+            medium_observation_counts = [
+                int(raw.get("observations", 0))
+                for raw in self._medium_patterns.values()
+            ]
             return {
                 "considered": int(counters["considered"]),
                 "recorded": recorded,
@@ -608,6 +850,16 @@ class GenericResponsePatternStore:
                 "patterns_5_plus": sum(count >= 5 for count in observation_counts),
                 "patterns_20_plus": sum(count >= 20 for count in observation_counts),
                 "patterns_50_plus": sum(count >= 50 for count in observation_counts),
+                "medium_pattern_count": len(self._medium_patterns),
+                "medium_patterns_5_plus": sum(
+                    count >= 5 for count in medium_observation_counts
+                ),
+                "medium_patterns_10_plus": sum(
+                    count >= 10 for count in medium_observation_counts
+                ),
+                "medium_patterns_20_plus": sum(
+                    count >= 20 for count in medium_observation_counts
+                ),
                 "action_counts": dict(counters["action_counts"]),
                 "followup_counts": dict(counters["followup_counts"]),
                 "source_counts": dict(counters["source_counts"]),
@@ -635,6 +887,9 @@ class GenericResponsePatternStore:
                 "shadow_match_actions": dict(
                     counters["shadow_match_actions"]
                 ),
+                "shadow_granularity_counts": dict(
+                    counters["shadow_granularity_counts"]
+                ),
                 "priority_queries": int(counters["priority_queries"]),
                 "priority_hits": int(counters["priority_hits"]),
                 "priority_hit_rate": round(
@@ -644,6 +899,9 @@ class GenericResponsePatternStore:
                 ),
                 "priority_action_counts": dict(
                     counters["priority_action_counts"]
+                ),
+                "priority_granularity_counts": dict(
+                    counters["priority_granularity_counts"]
                 ),
                 "average_depth": round(
                     float(counters["depth_sum"]) / recorded if recorded else 0.0,
