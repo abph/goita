@@ -24,6 +24,7 @@ def _run() -> None:
     assert debug_room["hidden_from_lobby"] is True
     assert debug_room["is_debug_room"] is True
     assert debug_room["debug_auto_next_round"] is False
+    assert debug_room["debug_auto_new_game"] is False
 
     listed_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
     assert app_module.DEBUG_GID not in listed_ids

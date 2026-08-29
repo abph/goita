@@ -5002,7 +5002,10 @@
           <div class="settings-row">
             <label><input type="checkbox" id="checkDebugAutoNextRound" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 自動で次の局へ進む</label>
           </div>
-          <div class="small">局終了から3秒後に、勝者を親として次の局を開始します。150点に到達した場合は停止します。</div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkDebugAutoNewGame" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 150点到達後も新規ゲームを自動開始する</label>
+          </div>
+          <div class="small">局終了から3秒後に、勝者を親として自動開始します。新規ゲームでは得点を0に戻します。</div>
           <div id="debugAutoNextRoundStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </details>
@@ -7693,12 +7696,15 @@ function syncDealModeControls() {
 function syncDebugAutoNextRoundControls() {
     const details = document.getElementById("debugAutoNextRoundDetails");
     const checkbox = document.getElementById("checkDebugAutoNextRound");
-    if (!details || !checkbox || debugAutoNextRoundSaving) return;
+    const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
+    if (!details || !checkbox || !newGameCheckbox || debugAutoNextRoundSaving) return;
     const targetGid = settingTargetGid || gid;
     const isDebugRoom = targetGid === DEBUG_GID;
     details.style.display = isDebugRoom ? "block" : "none";
     checkbox.checked = isDebugRoom && latestState?.debug_auto_next_round === true;
+    newGameCheckbox.checked = isDebugRoom && latestState?.debug_auto_new_game === true;
     checkbox.disabled = !isDebugRoom || !isCurrentClientHost();
+    newGameCheckbox.disabled = !isDebugRoom || !isCurrentClientHost();
 }
 
 async function saveDebugAutoNextRoundSetting() {
@@ -7709,12 +7715,15 @@ async function saveDebugAutoNextRoundSetting() {
         || debugAutoNextRoundSaving
     ) return;
     const checkbox = document.getElementById("checkDebugAutoNextRound");
+    const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
     const status = document.getElementById("debugAutoNextRoundStatus");
-    if (!checkbox || !status) return;
+    if (!checkbox || !newGameCheckbox || !status) return;
 
     const enabled = checkbox.checked === true;
+    const autoNewGame = newGameCheckbox.checked === true;
     debugAutoNextRoundSaving = true;
     checkbox.disabled = true;
+    newGameCheckbox.disabled = true;
     status.textContent = uiText("保存しています...");
     try {
         const response = await fetch(`${API}/games/${targetGid}/debug_auto_next_round`, {
@@ -7724,21 +7733,25 @@ async function saveDebugAutoNextRoundSetting() {
                 requester: mySeat,
                 client_id: clientId,
                 enabled,
+                auto_new_game: autoNewGame,
             }),
         });
         if (!response.ok) throw new Error("Failed to save automatic next rounds.");
         const saved = await response.json();
         if (latestState) {
             latestState.debug_auto_next_round = saved.debug_auto_next_round === true;
+            latestState.debug_auto_new_game = saved.debug_auto_new_game === true;
         }
-        status.textContent = uiText(enabled
-            ? "自動で次の局へ進みます。"
-            : "自動進行を停止しました。"
+        status.textContent = uiText(
+            enabled || autoNewGame
+                ? "自動進行の設定を保存しました。"
+                : "自動進行を停止しました。"
         );
     } catch (error) {
         console.error("Automatic next round save error:", error);
         status.textContent = uiText("保存できませんでした。");
         checkbox.checked = latestState?.debug_auto_next_round === true;
+        newGameCheckbox.checked = latestState?.debug_auto_new_game === true;
     } finally {
         debugAutoNextRoundSaving = false;
         syncDebugAutoNextRoundControls();
@@ -12821,8 +12834,10 @@ async function refresh(){
   const autoNextRoundPending = (
       gid === DEBUG_GID
       && state.finished
-      && !state.match_finished
-      && state.debug_auto_next_round === true
+      && (
+          (!state.match_finished && state.debug_auto_next_round === true)
+          || (state.match_finished && state.debug_auto_new_game === true)
+      )
   );
   if (btnNewGame) {
       btnNewGame.style.display = (isHost && state.finished && !autoNextRoundPending) ? "" : "none";
@@ -12864,7 +12879,9 @@ async function refresh(){
       pending = null;
   } else if (state.finished) {
       if (state.match_finished) {
-          if (mySeat === "A") {
+          if (autoNextRoundPending) {
+              setHint(`🎊 ${state.match_winner}ペアの勝利です！3秒後に新規ゲームを開始します。`);
+          } else if (mySeat === "A") {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) 「新規ゲーム」でスコアをリセットします。`);
           } else {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) ホストの操作をお待ちください。`);

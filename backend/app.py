@@ -1782,14 +1782,20 @@ def _cancel_debug_auto_next_round_task(game_id: str) -> None:
 def _schedule_debug_auto_next_round(game_id: str) -> None:
     game = GAMES.get(game_id)
     state = game.get("state") if game else None
+    match_finished = bool(game.get("match_finished", False)) if game else False
+    auto_advance_enabled = bool(
+        game.get(
+            "debug_auto_new_game" if match_finished else "debug_auto_next_round",
+            False,
+        )
+    ) if game else False
     if (
         game_id != DEBUG_GID
         or not game
         or not bool(game.get("is_debug_room", False))
-        or not bool(game.get("debug_auto_next_round", False))
+        or not auto_advance_enabled
         or state is None
         or not bool(getattr(state, "finished", False))
-        or bool(game.get("match_finished", False))
     ):
         _cancel_debug_auto_next_round_task(game_id)
         return
@@ -1825,14 +1831,21 @@ async def _debug_auto_next_round_worker(
             if (
                 not game
                 or not bool(game.get("is_debug_room", False))
-                or not bool(game.get("debug_auto_next_round", False))
                 or state is None
                 or id(state) != state_identity
                 or int(game.get("round_count", 1)) != round_count
                 or not bool(getattr(state, "finished", False))
-                or bool(game.get("match_finished", False))
                 or not host_client_id
             ):
+                return
+            match_finished = bool(game.get("match_finished", False))
+            auto_advance_enabled = bool(
+                game.get(
+                    "debug_auto_new_game" if match_finished else "debug_auto_next_round",
+                    False,
+                )
+            )
+            if not auto_advance_enabled:
                 return
             dealer = str(getattr(state, "winner", None) or game.get("dealer", "A"))
             await reset_game(
@@ -1840,7 +1853,7 @@ async def _debug_auto_next_round_worker(
                 dealer=dealer,
                 requester="A",
                 client_id=host_client_id,
-                keep_score=True,
+                keep_score=not match_finished,
                 auto_start=True,
             )
     except asyncio.CancelledError:
@@ -2011,6 +2024,7 @@ class DebugAutoNextRoundRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
     enabled: bool = False
+    auto_new_game: bool = False
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -2626,6 +2640,10 @@ def _state_public_view(
             game_id == DEBUG_GID
             and game_obj.get("debug_auto_next_round", False)
         ),
+        "debug_auto_new_game": bool(
+            game_id == DEBUG_GID
+            and game_obj.get("debug_auto_new_game", False)
+        ),
         "turn_time_limit_seconds": _normalize_turn_time_limit(
             game_obj.get("turn_time_limit_seconds", 0)
         ),
@@ -2704,6 +2722,7 @@ def _create_game_obj(
         "hidden_from_lobby": False,
         "is_debug_room": False,
         "debug_auto_next_round": False,
+        "debug_auto_new_game": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -2792,6 +2811,7 @@ def setup_debug_room() -> None:
     room["hidden_from_lobby"] = True
     room["is_debug_room"] = True
     room["debug_auto_next_round"] = False
+    room["debug_auto_new_game"] = False
     GAMES[DEBUG_GID] = room
 
 
@@ -3794,7 +3814,8 @@ async def update_debug_auto_next_round(
     _require_human_seat_owner(game, "A", req.client_id)
 
     game["debug_auto_next_round"] = bool(req.enabled)
-    if game["debug_auto_next_round"]:
+    game["debug_auto_new_game"] = bool(req.auto_new_game)
+    if game["debug_auto_next_round"] or game["debug_auto_new_game"]:
         _schedule_debug_auto_next_round(game_id)
     else:
         _cancel_debug_auto_next_round_task(game_id)
@@ -3802,6 +3823,7 @@ async def update_debug_auto_next_round(
     return {
         "ok": True,
         "debug_auto_next_round": bool(game["debug_auto_next_round"]),
+        "debug_auto_new_game": bool(game["debug_auto_new_game"]),
     }
 
 
@@ -3900,6 +3922,7 @@ async def reset_game(
     debug_auto_next_round = bool(
         old_game.get("debug_auto_next_round", False)
     )
+    debug_auto_new_game = bool(old_game.get("debug_auto_new_game", False))
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -3934,6 +3957,7 @@ async def reset_game(
     new_game["hidden_from_lobby"] = hidden_from_lobby
     new_game["is_debug_room"] = is_debug_room
     new_game["debug_auto_next_round"] = debug_auto_next_round
+    new_game["debug_auto_new_game"] = debug_auto_new_game
     new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["deal_mode"] = deal_mode
@@ -3982,6 +4006,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     debug_auto_next_round = bool(
         old_game.get("debug_auto_next_round", False)
     )
+    debug_auto_new_game = bool(old_game.get("debug_auto_new_game", False))
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -4023,6 +4048,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
         new_game["debug_auto_next_round"] = debug_auto_next_round
+        new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -4057,6 +4083,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
         new_game["debug_auto_next_round"] = debug_auto_next_round
+        new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
