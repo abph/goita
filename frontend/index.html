@@ -2729,6 +2729,42 @@
       color: #a62424;
       font-weight: 900;
     }
+    .admin-seat-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .admin-seat-row {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 34px;
+      padding: 5px 7px;
+      border: 1px solid rgba(139, 90, 43, 0.28);
+      background: rgba(255, 255, 255, 0.45);
+    }
+    .admin-seat-letter { color: #6d461f; font-weight: 900; }
+    .admin-seat-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .admin-seat-vacate-button {
+      padding: 5px 8px;
+      border: 1px solid #a62424;
+      background: #fffafa;
+      color: #a62424;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .admin-seat-empty {
+      padding: 8px 0;
+      color: #756b61;
+      font-size: 12px;
+    }
     .research-kifu-form {
       display: grid;
       gap: 8px;
@@ -5111,6 +5147,16 @@
         <div class="settings-row">
           <label><input type="checkbox" id="checkShowLog" style="width:auto;"> ログを表示する</label>
         </div>
+        <details id="adminSeatManagementDetails" class="settings-disclosure" style="display:none;">
+          <summary>
+            <span class="when-closed">▶ 着席者の管理を開く</span>
+            <span class="when-open">▼ 着席者の管理を閉じる</span>
+          </summary>
+          <div class="settings-disclosure-content">
+            <div id="adminSeatManagementList" class="admin-seat-list"></div>
+            <div id="adminSeatManagementStatus" class="settings-status" aria-live="polite"></div>
+          </div>
+        </details>
         <button class="settings-save-button" type="button" onclick="saveRoomManagement()">ルーム管理を保存</button>
       </div>
     </section>
@@ -6321,6 +6367,7 @@ let gid = MAIN_GID;
 const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
+let managedHumanSeats = [];
 let settingTargetGid = null; 
 let lastSettingsTab = "personal";
 let researchKifuRecords = [];
@@ -7591,6 +7638,111 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel.value) sel.value = "current";
 }
 
+function renderAdminSeatManagement(seats = []) {
+    const details = document.getElementById("adminSeatManagementDetails");
+    const list = document.getElementById("adminSeatManagementList");
+    if (!details || !list) return;
+    const isPrivateRoom = PRIVATE_ROOM_IDS.has(settingTargetGid);
+    details.style.display = isPrivateRoom ? "block" : "none";
+    managedHumanSeats = isPrivateRoom && Array.isArray(seats)
+        ? seats.filter(item => item && ["A", "B", "C", "D"].includes(item.seat))
+        : [];
+    list.replaceChildren();
+    if (!managedHumanSeats.length) {
+        const empty = document.createElement("div");
+        empty.className = "admin-seat-empty";
+        empty.textContent = uiText("現在、着席している人はいません。");
+        list.appendChild(empty);
+        return;
+    }
+    managedHumanSeats.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "admin-seat-row";
+
+        const seat = document.createElement("span");
+        seat.className = "admin-seat-letter";
+        seat.textContent = item.seat;
+
+        const name = document.createElement("span");
+        name.className = "admin-seat-name";
+        name.textContent = String(item.name || `プレイヤー${item.seat}`);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "admin-seat-vacate-button";
+        button.textContent = uiText("席を空ける");
+        button.addEventListener("click", () => vacateManagedSeat(item));
+
+        row.append(seat, name, button);
+        list.appendChild(row);
+    });
+}
+
+async function refreshAdminSeatManagement() {
+    if (!currentAdminPass || !PRIVATE_ROOM_IDS.has(settingTargetGid)) {
+        renderAdminSeatManagement([]);
+        return;
+    }
+    try {
+        const response = await fetch(`${API}/games/${settingTargetGid}/verify_admin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password: currentAdminPass}),
+        });
+        if (!response.ok) {
+            if (response.status === 401) clearRoomAdminSession();
+            return;
+        }
+        const data = await response.json();
+        renderAdminSeatManagement(data.managed_human_seats || []);
+    } catch (error) {
+        console.error("Seat management refresh error:", error);
+    }
+}
+
+async function vacateManagedSeat(item) {
+    const targetGid = settingTargetGid;
+    if (
+        !item
+        || !currentAdminPass
+        || !PRIVATE_ROOM_IDS.has(targetGid)
+    ) return;
+    const displayName = String(item.name || `プレイヤー${item.seat}`);
+    const confirmed = window.confirm(uiText(
+        `${item.seat}（${displayName}）の席を空けますか？\n対局中の場合、進行が止まることがあります。`
+    ));
+    if (!confirmed) return;
+
+    const status = document.getElementById("adminSeatManagementStatus");
+    if (status) status.textContent = uiText("処理しています...");
+    try {
+        const response = await fetch(`${API}/games/${targetGid}/admin_vacate_seat`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                admin_password: currentAdminPass,
+                seat: item.seat,
+                occupancy_token: item.occupancy_token,
+            }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            if (response.status === 401) clearRoomAdminSession();
+            if (response.status === 409) {
+                await refreshAdminSeatManagement();
+                throw new Error("席の状態が変わりました。もう一度確認してください。");
+            }
+            throw new Error(data?.detail || "席を空けられませんでした。");
+        }
+        if (settingTargetGid === targetGid) {
+            renderAdminSeatManagement(data.managed_human_seats || []);
+            if (status) status.textContent = uiText("席を空けました。");
+        }
+    } catch (error) {
+        if (status) status.textContent = uiText(error?.message || "席を空けられませんでした。");
+    }
+}
+
 function showSettingsTab(tabName) {
     const isMatch = tabName === "match";
     const isManagement = tabName === "management";
@@ -7619,6 +7771,8 @@ function showSettingsTab(tabName) {
             if (fields) fields.style.display = isLoaded ? "block" : "none";
             if (!isLoaded) {
                 unlockRoomManagement(currentAdminPass, true);
+            } else {
+                refreshAdminSeatManagement();
             }
         } else {
             document.getElementById("adminAuthArea").style.display = "block";
@@ -7848,6 +8002,7 @@ async function saveTurnTimeLimitSetting() {
 
 function clearRoomAdminSession({clearTarget = false} = {}) {
     currentAdminPass = "";
+    managedHumanSeats = [];
     lastSettingsTab = "personal";
     researchKifuRecords = [];
     selectedResearchKifu = null;
@@ -7859,6 +8014,10 @@ function clearRoomAdminSession({clearTarget = false} = {}) {
     document.getElementById("adminAuthArea").style.display = "block";
     document.getElementById("researchKifuAuthArea").style.display = "block";
     document.getElementById("researchKifuLibrary").style.display = "none";
+    const seatDetails = document.getElementById("adminSeatManagementDetails");
+    if (seatDetails) seatDetails.style.display = "none";
+    const seatStatus = document.getElementById("adminSeatManagementStatus");
+    if (seatStatus) seatStatus.textContent = "";
     closeResearchKifuDetail();
     if (clearTarget) settingTargetGid = null;
 }
@@ -7877,6 +8036,8 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     if(dealModeStatus) dealModeStatus.textContent = "";
     const debugAutoNextRoundStatus = document.getElementById("debugAutoNextRoundStatus");
     if(debugAutoNextRoundStatus) debugAutoNextRoundStatus.textContent = "";
+    const adminSeatManagementStatus = document.getElementById("adminSeatManagementStatus");
+    if(adminSeatManagementStatus) adminSeatManagementStatus.textContent = "";
     syncPersonalSettingsControls();
     syncTurnTimeLimitControls();
     syncDealModeControls();
@@ -8051,6 +8212,7 @@ async function unlockRoomManagement(passwordOverride = "", fromRememberedSession
         const fields = document.getElementById("roomManagementFields");
         fields.style.display = "block";
         fields.dataset.loadedFor = settingTargetGid;
+        renderAdminSeatManagement(data.managed_human_seats || []);
     } catch (e) {
         status.textContent = "通信エラーが発生しました。";
     } finally {

@@ -2037,6 +2037,12 @@ class SettingsUpdateRequest(BaseModel):
     room_background_image: Optional[str] = None
 
 
+class AdminVacateSeatRequest(BaseModel):
+    admin_password: str
+    seat: str
+    occupancy_token: str = Field(min_length=1, max_length=128)
+
+
 class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
@@ -2988,6 +2994,42 @@ def _room_admin_password_matches(game: Dict[str, Any], password: str) -> bool:
     )
 
 
+def _admin_seat_occupancy_token(
+    game_id: str,
+    seat: str,
+    client_id: str,
+) -> str:
+    message = f"vacate-seat|{game_id}|{seat}|{client_id}".encode("utf-8")
+    return hmac.new(ADMIN_SESSION_SECRET, message, hashlib.sha256).hexdigest()
+
+
+def _admin_managed_human_seats(
+    game_id: str,
+    game: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    if game_id not in PRIVATE_ROOM_NAMES:
+        return []
+    human_seats = game.get("human_seats", {})
+    player_names = game.get("player_names", {})
+    if not isinstance(human_seats, dict):
+        return []
+    return [
+        {
+            "seat": seat,
+            "name": _sanitize_player_name(
+                player_names.get(seat, "") if isinstance(player_names, dict) else ""
+            ) or f"プレイヤー{seat}",
+            "occupancy_token": _admin_seat_occupancy_token(
+                game_id,
+                seat,
+                str(human_seats[seat]),
+            ),
+        }
+        for seat in ALL_SEATS
+        if human_seats.get(seat)
+    ]
+
+
 setup_main_rooms()
 setup_supporter_rooms()
 setup_debug_room()
@@ -3636,6 +3678,7 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
             "show_log": bool(game.get("show_log", False)),
             "room_background_image": str(game.get("room_background_image", "")),
             "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
+            "managed_human_seats": _admin_managed_human_seats(game_id, game),
             "ai_profiles": {
                 key: str(info["label"])
                 for key, info in AI_PROFILES.items()
@@ -3690,6 +3733,63 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         "show_log": bool(game.get("show_log", False)),
         "room_background_image": str(game.get("room_background_image", "")),
         "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
+    }
+
+
+@app.post("/games/{game_id}/admin_vacate_seat")
+async def admin_vacate_seat(game_id: str, req: AdminVacateSeatRequest):
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail="Seats can be vacated by administrators only in private rooms.",
+        )
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if not _room_admin_password_matches(game, req.admin_password):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    seat = _validate_seat(req.seat, name="seat")
+    human_seats = game.setdefault("human_seats", {})
+    if not isinstance(human_seats, dict):
+        raise HTTPException(status_code=409, detail="The seat is no longer occupied.")
+    owner_client_id = str(human_seats.get(seat, ""))
+    if not owner_client_id:
+        raise HTTPException(status_code=409, detail="The seat is no longer occupied.")
+    expected_token = _admin_seat_occupancy_token(
+        game_id,
+        seat,
+        owner_client_id,
+    )
+    if not hmac.compare_digest(req.occupancy_token, expected_token):
+        raise HTTPException(status_code=409, detail="The seat occupant has changed.")
+
+    del human_seats[seat]
+    _clear_player_name(game, seat)
+    manager.cancel_disconnect_release(game_id, owner_client_id)
+    await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
+
+    chat_messages = game.setdefault("chat_messages", [])
+    chat_messages.append({
+        "seat": "notice",
+        "sender": "連絡",
+        "message": f"管理者が{seat}席を空けました。",
+        "ts": _next_chat_timestamp(),
+        "notice_importance": "important",
+    })
+    if len(chat_messages) > 100:
+        del chat_messages[:-100]
+
+    state = game.get("state")
+    if game.get("is_started") and getattr(state, "turn", None) == seat:
+        _arm_turn_timeout(game_id)
+
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "vacated_seat": seat,
+        "managed_human_seats": _admin_managed_human_seats(game_id, game),
     }
 
 
