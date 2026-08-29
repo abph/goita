@@ -4993,6 +4993,20 @@
         </div>
       </details>
 
+      <details id="debugAutoNextRoundDetails" class="settings-disclosure" open style="display:none;">
+        <summary>
+          <span class="when-closed">▶ 自動進行を開く</span>
+          <span class="when-open">▼ 自動進行を閉じる</span>
+        </summary>
+        <div class="settings-disclosure-content">
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkDebugAutoNextRound" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 自動で次の局へ進む</label>
+          </div>
+          <div class="small">局終了から3秒後に、勝者を親として次の局を開始します。150点に到達した場合は停止します。</div>
+          <div id="debugAutoNextRoundStatus" class="settings-status" aria-live="polite"></div>
+        </div>
+      </details>
+
       <details id="dealerDetails" class="settings-disclosure" open style="display:none;">
         <summary>
           <span class="when-closed">▶ 親設定を開く</span>
@@ -6754,6 +6768,7 @@ let cpuTimer = null;
 let turnCountdownTimer = null;
 let turnTimeLimitSaving = false;
 let dealModeSaving = false;
+let debugAutoNextRoundSaving = false;
 let latestState = null;
 let meetingPublicTableRefreshInFlight = false;
 let meetingPublicTableLastRefreshAt = 0;
@@ -7675,6 +7690,61 @@ function syncDealModeControls() {
     select.disabled = !isCurrentClientHost() || !isPrivateRoom;
 }
 
+function syncDebugAutoNextRoundControls() {
+    const details = document.getElementById("debugAutoNextRoundDetails");
+    const checkbox = document.getElementById("checkDebugAutoNextRound");
+    if (!details || !checkbox || debugAutoNextRoundSaving) return;
+    const targetGid = settingTargetGid || gid;
+    const isDebugRoom = targetGid === DEBUG_GID;
+    details.style.display = isDebugRoom ? "block" : "none";
+    checkbox.checked = isDebugRoom && latestState?.debug_auto_next_round === true;
+    checkbox.disabled = !isDebugRoom || !isCurrentClientHost();
+}
+
+async function saveDebugAutoNextRoundSetting() {
+    const targetGid = settingTargetGid || gid;
+    if (
+        targetGid !== DEBUG_GID
+        || !isCurrentClientHost()
+        || debugAutoNextRoundSaving
+    ) return;
+    const checkbox = document.getElementById("checkDebugAutoNextRound");
+    const status = document.getElementById("debugAutoNextRoundStatus");
+    if (!checkbox || !status) return;
+
+    const enabled = checkbox.checked === true;
+    debugAutoNextRoundSaving = true;
+    checkbox.disabled = true;
+    status.textContent = uiText("保存しています...");
+    try {
+        const response = await fetch(`${API}/games/${targetGid}/debug_auto_next_round`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                requester: mySeat,
+                client_id: clientId,
+                enabled,
+            }),
+        });
+        if (!response.ok) throw new Error("Failed to save automatic next rounds.");
+        const saved = await response.json();
+        if (latestState) {
+            latestState.debug_auto_next_round = saved.debug_auto_next_round === true;
+        }
+        status.textContent = uiText(enabled
+            ? "自動で次の局へ進みます。"
+            : "自動進行を停止しました。"
+        );
+    } catch (error) {
+        console.error("Automatic next round save error:", error);
+        status.textContent = uiText("保存できませんでした。");
+        checkbox.checked = latestState?.debug_auto_next_round === true;
+    } finally {
+        debugAutoNextRoundSaving = false;
+        syncDebugAutoNextRoundControls();
+    }
+}
+
 async function saveDealModeSetting() {
     const targetGid = settingTargetGid || gid;
     if (!isCurrentClientHost() || !PRIVATE_ROOM_IDS.has(targetGid) || dealModeSaving) return;
@@ -7792,9 +7862,12 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     if(turnTimeLimitStatus) turnTimeLimitStatus.textContent = "";
     const dealModeStatus = document.getElementById("dealModeStatus");
     if(dealModeStatus) dealModeStatus.textContent = "";
+    const debugAutoNextRoundStatus = document.getElementById("debugAutoNextRoundStatus");
+    if(debugAutoNextRoundStatus) debugAutoNextRoundStatus.textContent = "";
     syncPersonalSettingsControls();
     syncTurnTimeLimitControls();
     syncDealModeControls();
+    syncDebugAutoNextRoundControls();
     document.getElementById("setAdminPassword").value = "";
     document.getElementById("adminAuthStatus").textContent = "";
     document.getElementById("adminAuthArea").style.display = currentAdminPass ? "none" : "block";
@@ -12664,6 +12737,7 @@ async function refresh(){
     return;
   }
   latestState = state;
+  syncDebugAutoNextRoundControls();
   trackAnalyticsGameState(state);
   window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null);
   if(await maybeAutoRevealOwnAndAiHands(state)){
@@ -12746,8 +12820,14 @@ async function refresh(){
   const btnNewGame = document.getElementById("btnNewGame");
   const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
   const isHost = isCurrentClientHost();
+  const autoNextRoundPending = (
+      gid === DEBUG_GID
+      && state.finished
+      && !state.match_finished
+      && state.debug_auto_next_round === true
+  );
   if (btnNewGame) {
-      btnNewGame.style.display = (isHost && state.finished) ? "" : "none";
+      btnNewGame.style.display = (isHost && state.finished && !autoNextRoundPending) ? "" : "none";
       btnNewGame.disabled = nextRoundRequestInFlight;
       if (nextRoundRequestInFlight) {
           btnNewGame.textContent = uiText("配牌中...");
@@ -12792,7 +12872,9 @@ async function refresh(){
               setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) ホストの操作をお待ちください。`);
           }
       } else {
-          if (mySeat === "A") {
+          if (autoNextRoundPending) {
+              setHint(`勝者:${state.winner}、${state.last_round_score}点獲得。3秒後に次の局を開始します。`);
+          } else if (mySeat === "A") {
               setHint(`勝者:${state.winner}、${state.last_round_score}点獲得。「次の一局へ」を押してください。`);
           } else {
               setHint(`勝者:${state.winner}、${state.last_round_score}点獲得。ホストの操作をお待ちください。`);

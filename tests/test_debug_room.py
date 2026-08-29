@@ -23,6 +23,7 @@ def _run() -> None:
     assert debug_room["show_log"] is True
     assert debug_room["hidden_from_lobby"] is True
     assert debug_room["is_debug_room"] is True
+    assert debug_room["debug_auto_next_round"] is False
 
     listed_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
     assert app_module.DEBUG_GID not in listed_ids
@@ -36,6 +37,7 @@ def _run() -> None:
     assert 'params.get("password")' in html
     assert "autoEnterDebugRoomFromUrl" in html
     assert 'url.searchParams.delete("password")' in html
+    assert 'id="debugAutoNextRoundDetails"' in html
 
 
 if __name__ == "__main__":

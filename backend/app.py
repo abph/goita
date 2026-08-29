@@ -88,6 +88,7 @@ MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
     "main-f": ("B", "C", "D"),
 }
 DEBUG_GID = "debug"
+DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = 3.0
 PRIVATE_A_GID = "room-gold-01"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 DEFAULT_LOBBY_ADMIN_PASSWORD = "admin-lobby"
@@ -1759,6 +1760,7 @@ def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str
 GAMES: Dict[str, Dict[str, Any]] = {}
 GAME_TURN_LOCKS: Dict[str, asyncio.Lock] = {}
 TURN_TIMEOUT_TASKS: Dict[str, asyncio.Task] = {}
+DEBUG_AUTO_NEXT_ROUND_TASKS: Dict[str, asyncio.Task] = {}
 
 
 def _game_turn_lock(game_id: str) -> asyncio.Lock:
@@ -1768,6 +1770,84 @@ def _game_turn_lock(game_id: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         GAME_TURN_LOCKS[game_id] = lock
     return lock
+
+
+def _cancel_debug_auto_next_round_task(game_id: str) -> None:
+    task = DEBUG_AUTO_NEXT_ROUND_TASKS.pop(game_id, None)
+    current_task = asyncio.current_task()
+    if task is not None and task is not current_task and not task.done():
+        task.cancel()
+
+
+def _schedule_debug_auto_next_round(game_id: str) -> None:
+    game = GAMES.get(game_id)
+    state = game.get("state") if game else None
+    if (
+        game_id != DEBUG_GID
+        or not game
+        or not bool(game.get("is_debug_room", False))
+        or not bool(game.get("debug_auto_next_round", False))
+        or state is None
+        or not bool(getattr(state, "finished", False))
+        or bool(game.get("match_finished", False))
+    ):
+        _cancel_debug_auto_next_round_task(game_id)
+        return
+
+    current = DEBUG_AUTO_NEXT_ROUND_TASKS.get(game_id)
+    if current is not None and not current.done():
+        return
+    DEBUG_AUTO_NEXT_ROUND_TASKS[game_id] = asyncio.create_task(
+        _debug_auto_next_round_worker(
+            game_id,
+            int(game.get("round_count", 1)),
+            id(state),
+        )
+    )
+
+
+async def _debug_auto_next_round_worker(
+    game_id: str,
+    round_count: int,
+    state_identity: int,
+) -> None:
+    try:
+        await asyncio.sleep(DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS)
+        async with _game_turn_lock(game_id):
+            game = GAMES.get(game_id)
+            state = game.get("state") if game else None
+            human_seats = game.get("human_seats", {}) if game else {}
+            host_client_id = (
+                str(human_seats.get("A", ""))
+                if isinstance(human_seats, dict)
+                else ""
+            )
+            if (
+                not game
+                or not bool(game.get("is_debug_room", False))
+                or not bool(game.get("debug_auto_next_round", False))
+                or state is None
+                or id(state) != state_identity
+                or int(game.get("round_count", 1)) != round_count
+                or not bool(getattr(state, "finished", False))
+                or bool(game.get("match_finished", False))
+                or not host_client_id
+            ):
+                return
+            dealer = str(getattr(state, "winner", None) or game.get("dealer", "A"))
+            await reset_game(
+                game_id,
+                dealer=dealer,
+                requester="A",
+                client_id=host_client_id,
+                keep_score=True,
+                auto_start=True,
+            )
+    except asyncio.CancelledError:
+        return
+    finally:
+        if DEBUG_AUTO_NEXT_ROUND_TASKS.get(game_id) is asyncio.current_task():
+            DEBUG_AUTO_NEXT_ROUND_TASKS.pop(game_id, None)
 
 
 def _normalize_turn_time_limit(value: Any) -> int:
@@ -1865,6 +1945,7 @@ async def _turn_timeout_worker(
             )
             if result.get("status") == "ok":
                 _arm_turn_timeout(game_id)
+                _schedule_debug_auto_next_round(game_id)
                 await manager.broadcast_update(game_id)
     except asyncio.CancelledError:
         return
@@ -1924,6 +2005,12 @@ class DealModeUpdateRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
     mode: str = "normal"
+
+
+class DebugAutoNextRoundRequest(BaseModel):
+    requester: str = Field(default="W")
+    client_id: str = ""
+    enabled: bool = False
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -2535,6 +2622,10 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "debug_auto_next_round": bool(
+            game_id == DEBUG_GID
+            and game_obj.get("debug_auto_next_round", False)
+        ),
         "turn_time_limit_seconds": _normalize_turn_time_limit(
             game_obj.get("turn_time_limit_seconds", 0)
         ),
@@ -2612,6 +2703,7 @@ def _create_game_obj(
         "room_background_image": "",
         "hidden_from_lobby": False,
         "is_debug_room": False,
+        "debug_auto_next_round": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -2699,6 +2791,7 @@ def setup_debug_room() -> None:
     room["show_log"] = True
     room["hidden_from_lobby"] = True
     room["is_debug_room"] = True
+    room["debug_auto_next_round"] = False
     GAMES[DEBUG_GID] = room
 
 
@@ -3678,6 +3771,40 @@ async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
     }
 
 
+@app.post("/games/{game_id}/debug_auto_next_round")
+async def update_debug_auto_next_round(
+    game_id: str,
+    req: DebugAutoNextRoundRequest,
+):
+    game = GAMES.get(game_id)
+    if (
+        game_id != DEBUG_GID
+        or not game
+        or not bool(game.get("is_debug_room", False))
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Automatic next rounds are available only in the debug room.",
+        )
+    if req.requester != "A":
+        raise HTTPException(
+            status_code=403,
+            detail="Only player in seat A can change automatic next rounds.",
+        )
+    _require_human_seat_owner(game, "A", req.client_id)
+
+    game["debug_auto_next_round"] = bool(req.enabled)
+    if game["debug_auto_next_round"]:
+        _schedule_debug_auto_next_round(game_id)
+    else:
+        _cancel_debug_auto_next_round_task(game_id)
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "debug_auto_next_round": bool(game["debug_auto_next_round"]),
+    }
+
+
 @app.post("/games/{game_id}/reveal_hand")
 async def reveal_hand(
     game_id: str,
@@ -3754,6 +3881,7 @@ async def reset_game(
 
     old_game = GAMES.get(game_id, {})
     _require_human_seat_owner(old_game, "A", client_id)
+    _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
     admin_password_hash = old_game.get("admin_password_hash", "")
@@ -3769,6 +3897,9 @@ async def reset_game(
     room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
+    debug_auto_next_round = bool(
+        old_game.get("debug_auto_next_round", False)
+    )
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -3802,6 +3933,7 @@ async def reset_game(
     new_game["room_background_image"] = room_background_image
     new_game["hidden_from_lobby"] = hidden_from_lobby
     new_game["is_debug_room"] = is_debug_room
+    new_game["debug_auto_next_round"] = debug_auto_next_round
     new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["deal_mode"] = deal_mode
@@ -3831,6 +3963,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     preset = body.preset_counts or {}
     old_game = GAMES.get(game_id, {})
     _require_human_seat_owner(old_game, "A", body.client_id)
+    _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
     admin_password_hash = old_game.get("admin_password_hash", "")
@@ -3846,6 +3979,9 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     room_background_image = str(old_game.get("room_background_image", ""))
     hidden_from_lobby = bool(old_game.get("hidden_from_lobby", False))
     is_debug_room = bool(old_game.get("is_debug_room", False))
+    debug_auto_next_round = bool(
+        old_game.get("debug_auto_next_round", False)
+    )
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -3886,6 +4022,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -3919,6 +4056,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -4360,6 +4498,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
 
     _handle_round_finish(game, state, action, effects)
     _arm_turn_timeout(game_id)
+    _schedule_debug_auto_next_round(game_id)
 
     await manager.broadcast_update(game_id)
     return {
@@ -4399,6 +4538,7 @@ async def _cpu_step_unlocked(game_id: str):
         return result
 
     _arm_turn_timeout(game_id)
+    _schedule_debug_auto_next_round(game_id)
     await manager.broadcast_update(game_id)
     return result
 
@@ -4429,6 +4569,7 @@ async def _auto_step_unlocked(game_id: str, player: str = "A", client_id: str = 
     result = await asyncio.to_thread(_apply_agent_turn, game, player)
     if result.get("status") == "ok":
         _arm_turn_timeout(game_id)
+        _schedule_debug_auto_next_round(game_id)
         await manager.broadcast_update(game_id)
     return result
 
