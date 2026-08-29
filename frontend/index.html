@@ -12783,9 +12783,7 @@ async function refresh(){
     fixedHandMemory = {};
     autoRevealHandsRoundKey = "";
   }
-  if (currentLogCount > 1) {
-    isGameStarted = true;
-  }
+  isGameStarted = state.is_started === true;
 
   renderBoard(state);
   playNewPieceSoundsAfterBoardRender(state, currentLogCount);
@@ -13013,7 +13011,7 @@ async function refresh(){
   lastLogCount = currentLogCount;
   logAudioPrimed = true;
 
-  if(isGameStarted && !state.finished && !isProcessingCpu){
+  if(state.is_started === true && !state.finished && !isProcessingCpu){
     if(seatIsAi(state, state.turn)){
       isProcessingCpu = true;
       scheduleAiThinking(state.turn);

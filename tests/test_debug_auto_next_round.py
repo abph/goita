@@ -74,6 +74,11 @@ def test_frontend_exposes_debug_only_auto_next_round_setting() -> None:
     assert "function saveDebugAutoNextRoundSetting()" in html
     assert "targetGid === DEBUG_GID" in html
     assert "3秒後に次の局を開始します" in html
+    assert "isGameStarted = state.is_started === true;" in html
+    assert (
+        "if(state.is_started === true && !state.finished && !isProcessingCpu)"
+        in html
+    )
 
 
 if __name__ == "__main__":
