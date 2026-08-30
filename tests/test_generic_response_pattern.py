@@ -291,6 +291,49 @@ def test_medium_pattern_can_prioritize_search_without_detailed_match() -> None:
     assert snapshot["priority_granularity_counts"] == {"medium": 1}
 
 
+def test_tactical_pattern_safely_prioritizes_same_receive_in_debug_mode() -> None:
+    reset_generic_response_patterns()
+    state = _receive_state()
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = True
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    detailed = agent._generic_response_pattern_payload(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    store = generic_response_pattern_store()
+    for index in range(15):
+        variant = {**detailed, "test_tactical_variant": index}
+        store.record(
+            pattern_key=_digest_payload(variant),
+            features=variant,
+            action_label="receive_same",
+            followup_label="kyosha_pair",
+            source="default",
+            depth=7,
+            agreement=0.90,
+            confidence=0.70,
+            margin=100.0,
+        )
+
+    priority = agent._tactical_response_priority_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+    assert priority == ("receive", "2", None)
+    assert snapshot["tactical_priority_lookups"] == 1
+    assert snapshot["tactical_priority_offered"] == 1
+    assert agent.last_generic_response_tactical_priority["dominance"] == 1.0
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_generic_response_pattern_mixin()
     test_pattern_does_not_read_or_encode_opponent_hands()
@@ -301,4 +344,5 @@ if __name__ == "__main__":
     test_shallow_uncertain_or_unadopted_search_is_rejected()
     test_shadow_comparison_observes_but_does_not_change_the_action()
     test_medium_pattern_can_prioritize_search_without_detailed_match()
+    test_tactical_pattern_safely_prioritizes_same_receive_in_debug_mode()
     print("GENERIC_RESPONSE_PATTERN_TEST_OK")

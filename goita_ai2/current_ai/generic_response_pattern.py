@@ -31,6 +31,9 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_SHADOW_MIN_DOMINANCE = 0.60
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_OBSERVATIONS = 8
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE = 0.70
+    GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
+    GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_OBSERVATIONS = 15
+    GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_DOMINANCE = 0.90
     GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
     GENERIC_RESPONSE_MEDIUM_PRIORITY_MIN_OBSERVATIONS = 10
     GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE = 0.70
@@ -678,6 +681,101 @@ class GenericResponsePatternMixin:
             "used": priority is not None,
         }
         return priority
+
+    def _tactical_response_priority_action(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> Optional[Action]:
+        """Offer a high-support tactical receive as a debug-only search hint."""
+        if (
+            not self.GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED
+            or state.phase != "receive"
+        ):
+            return None
+        actions_list = list(actions)
+        root_choices = {
+            action[0]
+            for action in actions_list
+            if action[0] in ("pass", "receive")
+        }
+        if len(root_choices) < 2:
+            return None
+
+        store = generic_response_pattern_store()
+        tactical_payload = self._tactical_response_pattern_payload(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+        )
+        recommendation = store.recommendation(
+            _digest_payload(tactical_payload),
+            granularity="tactical",
+            min_observations=(
+                self.GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_OBSERVATIONS
+            ),
+            min_dominance=(
+                self.GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_DOMINANCE
+            ),
+        )
+        if recommendation.get("status") != "recommended":
+            store.record_tactical_priority_query("no_recommendation")
+            return None
+        if recommendation.get("recommended_action") != "receive_same":
+            store.record_tactical_priority_query("rejected_action")
+            return None
+        if tactical_payload.get("same_piece") == "none":
+            store.record_tactical_priority_query("rejected_context")
+            return None
+
+        priority = next(
+            (
+                action
+                for action in actions_list
+                if action[0] == "receive"
+                and action[1] == state.current_attack
+            ),
+            None,
+        )
+        if priority is None:
+            store.record_tactical_priority_query("rejected_context")
+            return None
+        try:
+            after_receive = self._timed_search_apply(state, player, priority)
+            followups = after_receive.legal_actions(player)
+        except (AttributeError, TypeError, ValueError):
+            store.record_tactical_priority_query("no_legal_followup")
+            return None
+        if not any(action[0] == "attack" for action in followups):
+            store.record_tactical_priority_query("no_legal_followup")
+            return None
+
+        store.record_tactical_priority_query("offered")
+        self.last_generic_response_tactical_priority = {
+            **recommendation,
+            "priority_action": priority,
+            "used": True,
+            "anonymous_context": tactical_payload,
+        }
+        return priority
+
+    def _record_tactical_response_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        baseline_disagreed: bool,
+        selected: bool,
+        completed_depth: int,
+    ) -> None:
+        generic_response_pattern_store().record_tactical_priority_effect(
+            reordered=reordered,
+            baseline_disagreed=baseline_disagreed,
+            selected=selected,
+            completed_depth=completed_depth,
+        )
 
     def _record_generic_response_priority_effect(
         self,

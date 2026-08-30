@@ -1395,12 +1395,21 @@ class TimedSearchMixin:
 
         control_root_actions = list(actions)
         root_actions = list(control_root_actions)
-        generic_priority_action = self._generic_response_priority_action(
+        tactical_priority_action = self._tactical_response_priority_action(
             state,
             player,
             root_actions,
             baseline_action,
         )
+        generic_priority_action = tactical_priority_action
+        if generic_priority_action is None:
+            generic_priority_action = self._generic_response_priority_action(
+                state,
+                player,
+                root_actions,
+                baseline_action,
+            )
+        priority_is_tactical = tactical_priority_action is not None
         root_actions = self._timed_search_prioritize_root_actions(
             root_actions,
             generic_priority_action,
@@ -1891,23 +1900,33 @@ class TimedSearchMixin:
                 if control_best_action is not None
                 else best_value
             )
-            self._record_generic_response_priority_effect(
-                reordered=priority_reordered,
-                beam_preserved=priority_beam_preserved,
-                comparison_complete=comparison_complete,
-                recommended_selected=best_action == generic_priority_action,
-                action_changed=(
-                    control_best_action is not None
-                    and best_action != control_best_action
-                ),
-                with_depth=completed_depth,
-                without_depth=(completed_depth if comparison_complete else 0),
-                with_elapsed_seconds=elapsed_seconds,
-                without_elapsed_seconds=(
-                    elapsed_seconds if comparison_complete else 0.0
-                ),
-                value_delta=best_value - control_value,
-            )
+            if priority_is_tactical:
+                self._record_tactical_response_priority_effect(
+                    reordered=priority_reordered,
+                    baseline_disagreed=(
+                        generic_priority_action != baseline_action
+                    ),
+                    selected=best_action == generic_priority_action,
+                    completed_depth=completed_depth,
+                )
+            else:
+                self._record_generic_response_priority_effect(
+                    reordered=priority_reordered,
+                    beam_preserved=priority_beam_preserved,
+                    comparison_complete=comparison_complete,
+                    recommended_selected=best_action == generic_priority_action,
+                    action_changed=(
+                        control_best_action is not None
+                        and best_action != control_best_action
+                    ),
+                    with_depth=completed_depth,
+                    without_depth=(completed_depth if comparison_complete else 0),
+                    with_elapsed_seconds=elapsed_seconds,
+                    without_elapsed_seconds=(
+                        elapsed_seconds if comparison_complete else 0.0
+                    ),
+                    value_delta=best_value - control_value,
+                )
             if (
                 narrowing_shadow_status == "compared"
                 and active_narrowing_status != "applied"

@@ -5043,10 +5043,10 @@
             <label><input type="checkbox" id="checkDebugAutoNewGame" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 150点到達後も新規ゲームを自動開始する</label>
           </div>
           <div class="settings-row">
-            <label><input type="checkbox" id="checkDebugDictionaryNarrowing" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 汎用辞書で探索候補を絞る（試験中）</label>
+            <label><input type="checkbox" id="checkDebugDictionaryNarrowing" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 汎用・戦術辞書で探索候補を絞る（試験中）</label>
           </div>
           <div class="small">局終了から3秒後に、勝者を親として自動開始します。新規ゲームでは得点を0に戻します。</div>
-          <div class="small">深さ3で安全条件を満たした場合だけ、以降の探索を有力な2候補に絞ります。</div>
+          <div class="small">戦術辞書は15件以上・支持率90%以上の同種受けを優先し、深さ3で安全条件を満たした場合だけ、以降の探索を有力な2候補に絞ります。</div>
           <div id="debugAutoNextRoundStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </details>

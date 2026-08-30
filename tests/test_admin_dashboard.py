@@ -29,9 +29,11 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "匿名の局面" in admin
     assert "受け後の見通し" in admin
     assert "再参加困難" in admin
+    assert "戦術優先・候補に使用" in admin
+    assert "戦術優先・最終採用" in admin
     assert 'id="tacticalMismatchRows"' in admin
     assert "観測・支持" in admin
-    assert "戦術分類は現在、AIの判断に影響しない比較のみです" in admin
+    assert "戦術分類はデバッグルームだけで" in admin
     assert "中分類から優先" in admin
     assert "影響なし比較" in admin
     assert "現在AIと不一致" in admin

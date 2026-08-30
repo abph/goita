@@ -212,6 +212,17 @@ class GenericResponsePatternStore:
             "tactical_shadow_recommendations": 0,
             "tactical_shadow_matches": 0,
             "tactical_shadow_mismatches": 0,
+            "tactical_priority_lookups": 0,
+            "tactical_priority_no_recommendation": 0,
+            "tactical_priority_rejected_action": 0,
+            "tactical_priority_rejected_context": 0,
+            "tactical_priority_no_legal_followup": 0,
+            "tactical_priority_offered": 0,
+            "tactical_priority_effects": 0,
+            "tactical_priority_reordered": 0,
+            "tactical_priority_baseline_disagreements": 0,
+            "tactical_priority_selected": 0,
+            "tactical_priority_depth_sum": 0,
             "priority_queries": 0,
             "priority_hits": 0,
             "priority_effect_comparisons": 0,
@@ -757,6 +768,17 @@ class GenericResponsePatternStore:
                 "tactical_shadow_recommendations",
                 "tactical_shadow_matches",
                 "tactical_shadow_mismatches",
+                "tactical_priority_lookups",
+                "tactical_priority_no_recommendation",
+                "tactical_priority_rejected_action",
+                "tactical_priority_rejected_context",
+                "tactical_priority_no_legal_followup",
+                "tactical_priority_offered",
+                "tactical_priority_effects",
+                "tactical_priority_reordered",
+                "tactical_priority_baseline_disagreements",
+                "tactical_priority_selected",
+                "tactical_priority_depth_sum",
                 "priority_queries",
                 "priority_hits",
                 "priority_effect_comparisons",
@@ -1040,6 +1062,42 @@ class GenericResponsePatternStore:
             self._counters["priority_hits"] += 1
             self._counters["priority_action_counts"][action] += 1
             self._counters["priority_granularity_counts"][granularity] += 1
+
+    def record_tactical_priority_query(self, status: str) -> None:
+        """Count one debug-only tactical priority lookup."""
+        counter_name = {
+            "no_recommendation": "tactical_priority_no_recommendation",
+            "rejected_action": "tactical_priority_rejected_action",
+            "rejected_context": "tactical_priority_rejected_context",
+            "no_legal_followup": "tactical_priority_no_legal_followup",
+            "offered": "tactical_priority_offered",
+        }.get(str(status), "tactical_priority_rejected_context")
+        with self._lock:
+            self._counters["tactical_priority_lookups"] += 1
+            self._counters[counter_name] += 1
+
+    def record_tactical_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        baseline_disagreed: bool,
+        selected: bool,
+        completed_depth: int,
+    ) -> None:
+        """Record aggregate-only effects of an offered tactical hint."""
+        with self._lock:
+            counters = self._counters
+            counters["tactical_priority_effects"] += 1
+            if reordered:
+                counters["tactical_priority_reordered"] += 1
+            if baseline_disagreed:
+                counters["tactical_priority_baseline_disagreements"] += 1
+            if selected:
+                counters["tactical_priority_selected"] += 1
+            counters["tactical_priority_depth_sum"] += max(
+                0,
+                int(completed_depth),
+            )
 
     def record_priority_effect(
         self,
@@ -1565,6 +1623,46 @@ class GenericResponsePatternStore:
                 "tactical_mismatch_details": tactical_mismatch_details[:50],
                 "tactical_mismatch_detail_count": len(
                     self._tactical_mismatch_details
+                ),
+                "tactical_priority_lookups": int(
+                    counters["tactical_priority_lookups"]
+                ),
+                "tactical_priority_no_recommendation": int(
+                    counters["tactical_priority_no_recommendation"]
+                ),
+                "tactical_priority_rejected_action": int(
+                    counters["tactical_priority_rejected_action"]
+                ),
+                "tactical_priority_rejected_context": int(
+                    counters["tactical_priority_rejected_context"]
+                ),
+                "tactical_priority_no_legal_followup": int(
+                    counters["tactical_priority_no_legal_followup"]
+                ),
+                "tactical_priority_offered": int(
+                    counters["tactical_priority_offered"]
+                ),
+                "tactical_priority_effects": int(
+                    counters["tactical_priority_effects"]
+                ),
+                "tactical_priority_reordered": int(
+                    counters["tactical_priority_reordered"]
+                ),
+                "tactical_priority_baseline_disagreements": int(
+                    counters["tactical_priority_baseline_disagreements"]
+                ),
+                "tactical_priority_selected": int(
+                    counters["tactical_priority_selected"]
+                ),
+                "tactical_priority_selected_rate": round(
+                    int(counters["tactical_priority_selected"])
+                    / max(1, int(counters["tactical_priority_effects"])),
+                    5,
+                ),
+                "tactical_priority_average_depth": round(
+                    int(counters["tactical_priority_depth_sum"])
+                    / max(1, int(counters["tactical_priority_effects"])),
+                    3,
                 ),
                 "priority_queries": int(counters["priority_queries"]),
                 "priority_hits": int(counters["priority_hits"]),

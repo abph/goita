@@ -40,6 +40,7 @@ def _run() -> None:
     assert "autoEnterDebugRoomFromUrl" in html
     assert 'url.searchParams.delete("password")' in html
     assert 'id="debugAutoNextRoundDetails"' in html
+    assert "汎用・戦術辞書で探索候補を絞る" in html
 
 
 if __name__ == "__main__":

@@ -238,7 +238,7 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。戦術分類は現在、AIの判断に影響しない比較のみです。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">戦術分類の不一致内訳</h3>
           <p class="muted">手駒や棋譜は保存せず、この機能の導入後に発生した匿名の判断差だけを集計します。</p>
@@ -419,6 +419,9 @@
       const tacticalShadowMatchRate = (
         Number(data.tactical_shadow_match_rate) || 0
       ) * 100;
+      const tacticalPrioritySelectedRate = (
+        Number(data.tactical_priority_selected_rate) || 0
+      ) * 100;
       const priorityHitRate = (Number(data.priority_hit_rate) || 0) * 100;
       const priorityEffectChangeRate = (
         Number(data.priority_effect_change_rate) || 0
@@ -458,6 +461,18 @@
         ["戦術分類・該当なし", `${data.tactical_shadow_no_pattern || 0}回`],
         ["戦術分類・データ不足", `${data.tactical_shadow_insufficient || 0}回`],
         ["戦術分類・判断が割れる", `${data.tactical_shadow_ambiguous || 0}回`],
+        ["戦術優先・照会", `${data.tactical_priority_lookups || 0}回`],
+        ["戦術優先・候補に使用", `${data.tactical_priority_offered || 0}回`],
+        ["戦術優先・推薦なし", `${data.tactical_priority_no_recommendation || 0}回`],
+        ["戦術優先・同種受け以外", `${data.tactical_priority_rejected_action || 0}回`],
+        ["戦術優先・条件不足", `${data.tactical_priority_rejected_context || 0}回`],
+        ["戦術優先・後続攻めなし", `${data.tactical_priority_no_legal_followup || 0}回`],
+        ["戦術優先・探索完了", `${data.tactical_priority_effects || 0}回`],
+        ["戦術優先・探索順を変更", `${data.tactical_priority_reordered || 0}回`],
+        ["戦術優先・通常判断と相違", `${data.tactical_priority_baseline_disagreements || 0}回`],
+        ["戦術優先・最終採用", `${data.tactical_priority_selected || 0}回`],
+        ["戦術優先・最終採用率", `${tacticalPrioritySelectedRate.toFixed(1)}%`],
+        ["戦術優先・平均探索深さ", `${Number(data.tactical_priority_average_depth || 0).toFixed(2)}`],
         ["影響なし比較", `${data.shadow_lookups || 0}回`],
         ["辞書の推奨あり", `${data.shadow_recommendations || 0}回`],
         ["現在AIと一致", `${data.shadow_matches || 0}回`],

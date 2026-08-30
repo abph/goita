@@ -109,6 +109,50 @@ def test_generic_hint_effect_is_measured_without_changing_legal_actions() -> Non
     )
 
 
+def test_tactical_hint_takes_priority_and_records_the_final_search_choice() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_INFORMATION_SET_ENABLED = False
+    agent.TIME_SEARCH_MAX_SECONDS = 0.3
+    agent.TIME_SEARCH_SAMPLE_COUNT = 2
+    agent.TIME_SEARCH_MAX_DEPTH = 1
+    agent.TIME_SEARCH_MAX_NODES = 10_000
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    agent._tactical_response_priority_action = (
+        lambda _state, _player, _actions, _baseline: priority
+    )
+    agent._generic_response_priority_action = (
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("generic priority must not replace tactical priority")
+        )
+    )
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action in actions
+    assert snapshot["tactical_priority_effects"] == 1
+    assert snapshot["tactical_priority_reordered"] == 1
+    assert snapshot["tactical_priority_baseline_disagreements"] == 1
+    assert snapshot["priority_effect_comparisons"] == 0
+
+
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
     reset_generic_response_patterns()
     state = _initial_state()
@@ -1005,6 +1049,7 @@ if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
     test_generic_hint_only_reorders_root_actions()
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
+    test_tactical_hint_takes_priority_and_records_the_final_search_choice()
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
     test_generic_narrowing_requires_a_clear_depth_three_gap()
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()

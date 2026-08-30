@@ -299,6 +299,13 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
             pattern_key=tactical_key,
             actual_action="pass",
         )
+        store.record_tactical_priority_query("offered")
+        store.record_tactical_priority_effect(
+            reordered=True,
+            baseline_disagreed=True,
+            selected=True,
+            completed_depth=7,
+        )
         snapshot = store.snapshot()
         assert matched["status"] == "match"
         assert mismatched["status"] == "mismatch"
@@ -312,6 +319,14 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
         assert snapshot["tactical_shadow_mismatches"] == 2
         assert snapshot["tactical_shadow_match_rate"] == 0.33333
         assert snapshot["tactical_mismatch_detail_count"] == 1
+        assert snapshot["tactical_priority_lookups"] == 1
+        assert snapshot["tactical_priority_offered"] == 1
+        assert snapshot["tactical_priority_effects"] == 1
+        assert snapshot["tactical_priority_reordered"] == 1
+        assert snapshot["tactical_priority_baseline_disagreements"] == 1
+        assert snapshot["tactical_priority_selected"] == 1
+        assert snapshot["tactical_priority_selected_rate"] == 1.0
+        assert snapshot["tactical_priority_average_depth"] == 7.0
         assert snapshot["tactical_mismatch_details"] == [{
             "pattern_id": tactical_key[:10],
             "recommended_action": "receive_same",
@@ -351,6 +366,8 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
         )
         assert restored_snapshot["tactical_pattern_count"] == 1
         assert restored_snapshot["tactical_mismatch_detail_count"] == 1
+        assert restored_snapshot["tactical_priority_offered"] == 1
+        assert restored_snapshot["tactical_priority_selected"] == 1
         assert restored_snapshot["tactical_mismatch_details"][0]["count"] == 2
         assert restored_snapshot["tactical_mismatch_details"][0][
             "recommended_action"
