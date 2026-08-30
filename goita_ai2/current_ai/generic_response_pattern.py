@@ -689,6 +689,7 @@ class GenericResponsePatternMixin:
         elapsed_seconds: float = 0.0,
         priority_selected: bool = False,
         continuation_extension_seconds: float = 0.0,
+        no_deepening_reason: str = "",
     ) -> None:
         """Record aggregate-only results from live candidate narrowing."""
         generic_response_pattern_store().record_active_narrowing(
@@ -699,6 +700,7 @@ class GenericResponsePatternMixin:
             elapsed_seconds=elapsed_seconds,
             priority_selected=priority_selected,
             continuation_extension_seconds=continuation_extension_seconds,
+            no_deepening_reason=no_deepening_reason,
         )
 
     def _record_generic_response_search_result(

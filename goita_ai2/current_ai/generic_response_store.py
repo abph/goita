@@ -162,6 +162,9 @@ class GenericResponsePatternStore:
             "active_narrowing_incomplete": 0,
             "active_narrowing_deepened": 0,
             "active_narrowing_no_deepening": 0,
+            "active_narrowing_no_deepening_time_limit": 0,
+            "active_narrowing_no_deepening_node_limit": 0,
+            "active_narrowing_no_deepening_other": 0,
             "active_narrowing_priority_selected": 0,
             "active_narrowing_continuation_extensions": 0,
             "active_narrowing_full_candidates_sum": 0.0,
@@ -618,6 +621,9 @@ class GenericResponsePatternStore:
                 "active_narrowing_incomplete",
                 "active_narrowing_deepened",
                 "active_narrowing_no_deepening",
+                "active_narrowing_no_deepening_time_limit",
+                "active_narrowing_no_deepening_node_limit",
+                "active_narrowing_no_deepening_other",
                 "active_narrowing_priority_selected",
                 "active_narrowing_continuation_extensions",
             ):
@@ -981,6 +987,7 @@ class GenericResponsePatternStore:
         elapsed_seconds: float = 0.0,
         priority_selected: bool = False,
         continuation_extension_seconds: float = 0.0,
+        no_deepening_reason: str = "",
     ) -> None:
         """Aggregate live narrowing without retaining hands or actions."""
         with self._lock:
@@ -1025,6 +1032,11 @@ class GenericResponsePatternStore:
             kept_count = max(0, min(full_count, int(kept_candidates)))
             counters["active_narrowing_applied"] += 1
             counters[f"active_narrowing_{normalized_status}"] += 1
+            if normalized_status == "no_deepening":
+                reason = str(no_deepening_reason or "other")
+                if reason not in ("time_limit", "node_limit"):
+                    reason = "other"
+                counters[f"active_narrowing_no_deepening_{reason}"] += 1
             if priority_selected:
                 counters["active_narrowing_priority_selected"] += 1
             extension_seconds = max(
@@ -1356,6 +1368,15 @@ class GenericResponsePatternStore:
                 ),
                 "active_narrowing_no_deepening": int(
                     counters["active_narrowing_no_deepening"]
+                ),
+                "active_narrowing_no_deepening_time_limit": int(
+                    counters["active_narrowing_no_deepening_time_limit"]
+                ),
+                "active_narrowing_no_deepening_node_limit": int(
+                    counters["active_narrowing_no_deepening_node_limit"]
+                ),
+                "active_narrowing_no_deepening_other": int(
+                    counters["active_narrowing_no_deepening_other"]
                 ),
                 "active_narrowing_deepening_rate": round(
                     int(counters["active_narrowing_deepened"])

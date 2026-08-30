@@ -301,6 +301,13 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         )
         store.record_active_narrowing(status="low_confidence")
         store.record_active_narrowing(
+            status="no_deepening",
+            full_candidates=3,
+            kept_candidates=2,
+            completed_depth=3,
+            no_deepening_reason="node_limit",
+        )
+        store.record_active_narrowing(
             status="deepened",
             full_candidates=4,
             kept_candidates=2,
@@ -344,15 +351,19 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert snapshot["narrowing_shadow_average_kept_candidates"] == 2.0
         assert snapshot["narrowing_shadow_average_removed_candidates"] == 2.0
         assert snapshot["narrowing_shadow_estimated_saved_seconds"] == 1.0
-        assert snapshot["active_narrowing_considered"] == 2
-        assert snapshot["active_narrowing_applied"] == 1
+        assert snapshot["active_narrowing_considered"] == 3
+        assert snapshot["active_narrowing_applied"] == 2
         assert snapshot["active_narrowing_safety_rejected"] == 1
         assert snapshot["active_narrowing_rejected_low_confidence"] == 1
         assert snapshot["active_narrowing_deepened"] == 1
-        assert snapshot["active_narrowing_average_full_candidates"] == 4.0
+        assert snapshot["active_narrowing_no_deepening"] == 1
+        assert snapshot["active_narrowing_no_deepening_node_limit"] == 1
+        assert snapshot["active_narrowing_no_deepening_time_limit"] == 0
+        assert snapshot["active_narrowing_no_deepening_other"] == 0
+        assert snapshot["active_narrowing_average_full_candidates"] == 3.5
         assert snapshot["active_narrowing_average_kept_candidates"] == 2.0
-        assert snapshot["active_narrowing_average_depth"] == 7.0
-        assert snapshot["active_narrowing_average_elapsed_seconds"] == 2.5
+        assert snapshot["active_narrowing_average_depth"] == 5.0
+        assert snapshot["active_narrowing_average_elapsed_seconds"] == 1.25
         assert snapshot["active_narrowing_continuation_extensions"] == 1
         assert snapshot["active_narrowing_continuation_extension_seconds"] == 0.8
 
@@ -364,11 +375,13 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert restored["narrowing_shadow_considered"] == 3
         assert restored["narrowing_shadow_matches"] == 1
         assert restored["narrowing_shadow_estimated_saved_seconds"] == 1.0
-        assert restored["active_narrowing_considered"] == 2
-        assert restored["active_narrowing_applied"] == 1
+        assert restored["active_narrowing_considered"] == 3
+        assert restored["active_narrowing_applied"] == 2
         assert restored["active_narrowing_safety_rejected"] == 1
         assert restored["active_narrowing_rejected_low_confidence"] == 1
         assert restored["active_narrowing_deepened"] == 1
+        assert restored["active_narrowing_no_deepening"] == 1
+        assert restored["active_narrowing_no_deepening_node_limit"] == 1
         assert restored["active_narrowing_continuation_extensions"] == 1
         assert restored["active_narrowing_continuation_extension_seconds"] == 0.8
 

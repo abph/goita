@@ -297,8 +297,10 @@ class InformationSetSearchMixin:
             raise InformationSetSearchCancelled()
         maximum_nodes = int(stats.get("max_nodes", self.TIME_SEARCH_MAX_NODES))
         node_cost = max(1, len(worlds))
-        if time.perf_counter() >= deadline or stats["nodes"] + node_cost > maximum_nodes:
-            raise InformationSetSearchDeadline()
+        if time.perf_counter() >= deadline:
+            raise InformationSetSearchDeadline("time_limit")
+        if stats["nodes"] + node_cost > maximum_nodes:
+            raise InformationSetSearchDeadline("node_limit")
         stats["nodes"] += node_cost
 
         terminal_values: Dict[int, float] = {}

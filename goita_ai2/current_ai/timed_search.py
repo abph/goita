@@ -1093,8 +1093,10 @@ class TimedSearchMixin:
         if cancel_event is not None and cancel_event.is_set():
             raise _SearchCancelled()
         maximum_nodes = int(stats.get("max_nodes", self.TIME_SEARCH_MAX_NODES))
-        if time.perf_counter() >= deadline or stats["nodes"] >= maximum_nodes:
-            raise _SearchDeadline()
+        if time.perf_counter() >= deadline:
+            raise _SearchDeadline("time_limit")
+        if stats["nodes"] >= maximum_nodes:
+            raise _SearchDeadline("node_limit")
         stats["nodes"] += 1
         if state.finished or depth <= 0:
             return self._timed_search_static_value(state, root_player, baseline_scores)
@@ -1414,6 +1416,7 @@ class TimedSearchMixin:
         active_narrowing_full_candidates = 0
         active_narrowing_kept_candidates = 0
         active_narrowing_continuation_extension_seconds = 0.0
+        active_narrowing_stop_reason = ""
         active_narrowing_depth = int(
             getattr(self, "GENERIC_RESPONSE_NARROWING_DEPTH", 3)
         )
@@ -1496,7 +1499,7 @@ class TimedSearchMixin:
                         if cancel_event is not None and cancel_event.is_set():
                             raise InformationSetSearchCancelled()
                         if time.perf_counter() >= deadline:
-                            raise InformationSetSearchDeadline()
+                            raise InformationSetSearchDeadline("time_limit")
                         outcome = self._information_set_search_root_action(
                             state,
                             information_worlds,
@@ -1528,7 +1531,7 @@ class TimedSearchMixin:
                             if cancel_event is not None and cancel_event.is_set():
                                 raise _SearchCancelled()
                             if time.perf_counter() >= deadline:
-                                raise _SearchDeadline()
+                                raise _SearchDeadline("time_limit")
                             next_state = self._timed_search_apply(sampled, player, action)
                             value = self._timed_search_minimax(
                                 next_state,
@@ -1545,7 +1548,10 @@ class TimedSearchMixin:
                             iteration[action].append(value)
             except (_SearchCancelled, InformationSetSearchCancelled):
                 return None
-            except (_SearchDeadline, InformationSetSearchDeadline):
+            except (_SearchDeadline, InformationSetSearchDeadline) as exc:
+                active_narrowing_stop_reason = (
+                    str(exc.args[0]) if exc.args else "other"
+                )
                 break
 
             completed_values = iteration
@@ -1945,6 +1951,11 @@ class TimedSearchMixin:
                     priority_selected=(best_action == generic_priority_action),
                     continuation_extension_seconds=(
                         active_narrowing_continuation_extension_seconds
+                    ),
+                    no_deepening_reason=(
+                        active_narrowing_stop_reason
+                        if live_status == "no_deepening"
+                        else ""
                     ),
                 )
 
