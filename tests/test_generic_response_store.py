@@ -299,7 +299,7 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
             estimated_elapsed_seconds=3.0,
             value_loss=0.0,
         )
-        store.record_active_narrowing(status="safety_rejected")
+        store.record_active_narrowing(status="low_confidence")
         store.record_active_narrowing(
             status="deepened",
             full_candidates=4,
@@ -346,6 +346,7 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert snapshot["active_narrowing_considered"] == 2
         assert snapshot["active_narrowing_applied"] == 1
         assert snapshot["active_narrowing_safety_rejected"] == 1
+        assert snapshot["active_narrowing_rejected_low_confidence"] == 1
         assert snapshot["active_narrowing_deepened"] == 1
         assert snapshot["active_narrowing_average_full_candidates"] == 4.0
         assert snapshot["active_narrowing_average_kept_candidates"] == 2.0
@@ -363,6 +364,7 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert restored["active_narrowing_considered"] == 2
         assert restored["active_narrowing_applied"] == 1
         assert restored["active_narrowing_safety_rejected"] == 1
+        assert restored["active_narrowing_rejected_low_confidence"] == 1
         assert restored["active_narrowing_deepened"] == 1
 
 

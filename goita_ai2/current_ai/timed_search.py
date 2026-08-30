@@ -111,12 +111,11 @@ class TimedSearchMixin:
         if len(actions) <= 2:
             return None, "no_reduction"
         if search_profile != "default":
-            return None, "safety_rejected"
-        if (
-            not information_enabled
-            or float(information_confidence) < float(minimum_confidence)
-        ):
-            return None, "safety_rejected"
+            return None, "specialized_profile"
+        if not information_enabled:
+            return None, "information_unavailable"
+        if float(information_confidence) < float(minimum_confidence):
+            return None, "low_confidence"
 
         ranked = sorted(
             (action for action in actions if action in aggregate),
@@ -124,7 +123,7 @@ class TimedSearchMixin:
             reverse=True,
         )
         if len(ranked) != len(actions) or priority_action not in ranked[:2]:
-            return None, "safety_rejected"
+            return None, "priority_not_top_two"
         strongest_rival = next(
             action for action in ranked if action != priority_action
         )
@@ -136,7 +135,7 @@ class TimedSearchMixin:
         )
         weakest_kept = min(aggregate[action] for action in kept)
         if weakest_kept - best_excluded < float(minimum_excluded_margin):
-            return None, "safety_rejected"
+            return None, "insufficient_margin"
         return kept, "applied"
 
     def _timed_search_kyosha_pass_compare_is_decisive(

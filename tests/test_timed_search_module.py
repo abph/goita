@@ -192,7 +192,7 @@ def test_generic_narrowing_requires_a_clear_depth_three_gap() -> None:
         minimum_excluded_margin=450.0,
     )
     assert narrowed is None
-    assert status == "safety_rejected"
+    assert status == "insufficient_margin"
 
 
 def test_generic_narrowing_rejects_specialized_or_uncertain_searches() -> None:
@@ -202,10 +202,10 @@ def test_generic_narrowing_rejects_specialized_or_uncertain_searches() -> None:
     actions = [priority, rival, excluded]
     aggregate = {priority: 1800.0, rival: 1400.0, excluded: 800.0}
 
-    for profile, information_enabled, confidence in (
-        ("kyosha_pass_compare", True, 0.70),
-        ("default", False, 0.70),
-        ("default", True, 0.30),
+    for profile, information_enabled, confidence, expected_status in (
+        ("kyosha_pass_compare", True, 0.70, "specialized_profile"),
+        ("default", False, 0.70, "information_unavailable"),
+        ("default", True, 0.30, "low_confidence"),
     ):
         narrowed, status = RuleBasedAgent._timed_search_safe_generic_narrowing(
             actions,
@@ -219,7 +219,28 @@ def test_generic_narrowing_rejects_specialized_or_uncertain_searches() -> None:
             minimum_excluded_margin=450.0,
         )
         assert narrowed is None
-        assert status == "safety_rejected"
+        assert status == expected_status
+
+
+def test_generic_narrowing_records_when_dictionary_move_is_outside_top_two() -> None:
+    priority = ("receive", "5", None)
+    rival = ("receive", "8", None)
+    best = ("pass", None, None)
+    actions = [priority, rival, best]
+
+    narrowed, status = RuleBasedAgent._timed_search_safe_generic_narrowing(
+        actions,
+        {priority: 700.0, rival: 1400.0, best: 1800.0},
+        priority,
+        enabled=True,
+        search_profile="default",
+        information_enabled=True,
+        information_confidence=0.70,
+        minimum_confidence=0.45,
+        minimum_excluded_margin=450.0,
+    )
+    assert narrowed is None
+    assert status == "priority_not_top_two"
 
 
 def _search_result(
@@ -952,6 +973,7 @@ if __name__ == "__main__":
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
     test_generic_narrowing_requires_a_clear_depth_three_gap()
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()
+    test_generic_narrowing_records_when_dictionary_move_is_outside_top_two()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

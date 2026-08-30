@@ -154,6 +154,11 @@ class GenericResponsePatternStore:
             "active_narrowing_insufficient_depth": 0,
             "active_narrowing_no_reduction": 0,
             "active_narrowing_safety_rejected": 0,
+            "active_narrowing_rejected_specialized_profile": 0,
+            "active_narrowing_rejected_information_unavailable": 0,
+            "active_narrowing_rejected_low_confidence": 0,
+            "active_narrowing_rejected_priority_not_top_two": 0,
+            "active_narrowing_rejected_insufficient_margin": 0,
             "active_narrowing_incomplete": 0,
             "active_narrowing_deepened": 0,
             "active_narrowing_no_deepening": 0,
@@ -603,6 +608,11 @@ class GenericResponsePatternStore:
                 "active_narrowing_insufficient_depth",
                 "active_narrowing_no_reduction",
                 "active_narrowing_safety_rejected",
+                "active_narrowing_rejected_specialized_profile",
+                "active_narrowing_rejected_information_unavailable",
+                "active_narrowing_rejected_low_confidence",
+                "active_narrowing_rejected_priority_not_top_two",
+                "active_narrowing_rejected_insufficient_margin",
                 "active_narrowing_incomplete",
                 "active_narrowing_deepened",
                 "active_narrowing_no_deepening",
@@ -978,8 +988,29 @@ class GenericResponsePatternStore:
             if normalized_status == "no_reduction":
                 counters["active_narrowing_no_reduction"] += 1
                 return
+            rejection_counters = {
+                "specialized_profile": (
+                    "active_narrowing_rejected_specialized_profile"
+                ),
+                "information_unavailable": (
+                    "active_narrowing_rejected_information_unavailable"
+                ),
+                "low_confidence": (
+                    "active_narrowing_rejected_low_confidence"
+                ),
+                "priority_not_top_two": (
+                    "active_narrowing_rejected_priority_not_top_two"
+                ),
+                "insufficient_margin": (
+                    "active_narrowing_rejected_insufficient_margin"
+                ),
+            }
             if normalized_status == "safety_rejected":
                 counters["active_narrowing_safety_rejected"] += 1
+                return
+            if normalized_status in rejection_counters:
+                counters["active_narrowing_safety_rejected"] += 1
+                counters[rejection_counters[normalized_status]] += 1
                 return
             if normalized_status not in ("deepened", "no_deepening"):
                 counters["active_narrowing_incomplete"] += 1
@@ -1281,6 +1312,27 @@ class GenericResponsePatternStore:
                 ),
                 "active_narrowing_safety_rejected": int(
                     counters["active_narrowing_safety_rejected"]
+                ),
+                "active_narrowing_rejected_specialized_profile": int(
+                    counters["active_narrowing_rejected_specialized_profile"]
+                ),
+                "active_narrowing_rejected_information_unavailable": int(
+                    counters[
+                        "active_narrowing_rejected_information_unavailable"
+                    ]
+                ),
+                "active_narrowing_rejected_low_confidence": int(
+                    counters["active_narrowing_rejected_low_confidence"]
+                ),
+                "active_narrowing_rejected_priority_not_top_two": int(
+                    counters[
+                        "active_narrowing_rejected_priority_not_top_two"
+                    ]
+                ),
+                "active_narrowing_rejected_insufficient_margin": int(
+                    counters[
+                        "active_narrowing_rejected_insufficient_margin"
+                    ]
                 ),
                 "active_narrowing_incomplete": int(
                     counters["active_narrowing_incomplete"]
