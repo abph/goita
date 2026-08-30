@@ -9,6 +9,7 @@ def test_debug_auto_next_round_defaults_to_off() -> None:
     game = app_module._create_game_obj(dealer="A")
     assert game["debug_auto_next_round"] is False
     assert game["debug_auto_new_game"] is False
+    assert game["debug_dictionary_narrowing"] is False
 
 
 def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
@@ -36,9 +37,11 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
                     requester="A",
                     client_id=client_id,
                     enabled=True,
+                    dictionary_narrowing=True,
                 ),
             )
             assert saved["debug_auto_next_round"] is True
+            assert saved["debug_dictionary_narrowing"] is True
             await asyncio.sleep(0.05)
 
             next_game = app_module.GAMES[game_id]
@@ -48,6 +51,7 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
             assert next_game["round_count"] == 4
             assert next_game["total_team_score"] == {"AC": 40, "BD": 30}
             assert next_game["debug_auto_next_round"] is True
+            assert next_game["debug_dictionary_narrowing"] is True
 
             next_game["state"].finished = True
             next_game["state"].winner = "A"
@@ -76,6 +80,7 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
             assert restarted_game["total_team_score"] == {"AC": 0, "BD": 0}
             assert restarted_game["debug_auto_next_round"] is True
             assert restarted_game["debug_auto_new_game"] is True
+            assert restarted_game["debug_dictionary_narrowing"] is True
         finally:
             app_module._cancel_debug_auto_next_round_task(game_id)
             app_module.DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = previous_delay
@@ -95,6 +100,8 @@ def test_frontend_exposes_debug_only_auto_next_round_setting() -> None:
     assert 'id="debugAutoNextRoundDetails"' in html
     assert 'id="checkDebugAutoNextRound"' in html
     assert 'id="checkDebugAutoNewGame"' in html
+    assert 'id="checkDebugDictionaryNarrowing"' in html
+    assert "dictionary_narrowing: dictionaryNarrowing" in html
     assert "function saveDebugAutoNextRoundSetting()" in html
     assert "targetGid === DEBUG_GID" in html
     assert "3秒後に新規ゲームを開始します" in html

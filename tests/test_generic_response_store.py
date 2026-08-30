@@ -299,6 +299,15 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
             estimated_elapsed_seconds=3.0,
             value_loss=0.0,
         )
+        store.record_active_narrowing(status="safety_rejected")
+        store.record_active_narrowing(
+            status="deepened",
+            full_candidates=4,
+            kept_candidates=2,
+            completed_depth=7,
+            elapsed_seconds=2.5,
+            priority_selected=True,
+        )
         store.record_priority_effect(
             reordered=True,
             beam_preserved=True,
@@ -334,6 +343,14 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert snapshot["narrowing_shadow_average_kept_candidates"] == 2.0
         assert snapshot["narrowing_shadow_average_removed_candidates"] == 2.0
         assert snapshot["narrowing_shadow_estimated_saved_seconds"] == 1.0
+        assert snapshot["active_narrowing_considered"] == 2
+        assert snapshot["active_narrowing_applied"] == 1
+        assert snapshot["active_narrowing_safety_rejected"] == 1
+        assert snapshot["active_narrowing_deepened"] == 1
+        assert snapshot["active_narrowing_average_full_candidates"] == 4.0
+        assert snapshot["active_narrowing_average_kept_candidates"] == 2.0
+        assert snapshot["active_narrowing_average_depth"] == 7.0
+        assert snapshot["active_narrowing_average_elapsed_seconds"] == 2.5
 
         assert store.checkpoint("priority-effect") is True
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -343,6 +360,10 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert restored["narrowing_shadow_considered"] == 3
         assert restored["narrowing_shadow_matches"] == 1
         assert restored["narrowing_shadow_estimated_saved_seconds"] == 1.0
+        assert restored["active_narrowing_considered"] == 2
+        assert restored["active_narrowing_applied"] == 1
+        assert restored["active_narrowing_safety_rejected"] == 1
+        assert restored["active_narrowing_deepened"] == 1
 
 
 if __name__ == "__main__":

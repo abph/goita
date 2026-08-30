@@ -90,6 +90,55 @@ class TimedSearchMixin:
             ordered.insert(0, priority_action)
         return ordered
 
+    @staticmethod
+    def _timed_search_safe_generic_narrowing(
+        actions: Sequence[Action],
+        aggregate: Dict[Action, float],
+        priority_action: Optional[Action],
+        *,
+        enabled: bool,
+        search_profile: str,
+        information_enabled: bool,
+        information_confidence: float,
+        minimum_confidence: float,
+        minimum_excluded_margin: float,
+    ) -> Tuple[Optional[List[Action]], str]:
+        """Keep a learned move and its best rival only when depth three is clear."""
+        if not enabled:
+            return None, "disabled"
+        if priority_action is None or priority_action not in aggregate:
+            return None, "incomplete"
+        if len(actions) <= 2:
+            return None, "no_reduction"
+        if search_profile != "default":
+            return None, "safety_rejected"
+        if (
+            not information_enabled
+            or float(information_confidence) < float(minimum_confidence)
+        ):
+            return None, "safety_rejected"
+
+        ranked = sorted(
+            (action for action in actions if action in aggregate),
+            key=lambda action: aggregate[action],
+            reverse=True,
+        )
+        if len(ranked) != len(actions) or priority_action not in ranked[:2]:
+            return None, "safety_rejected"
+        strongest_rival = next(
+            action for action in ranked if action != priority_action
+        )
+        kept = [priority_action, strongest_rival]
+        best_excluded = max(
+            aggregate[action]
+            for action in ranked
+            if action not in kept
+        )
+        weakest_kept = min(aggregate[action] for action in kept)
+        if weakest_kept - best_excluded < float(minimum_excluded_margin):
+            return None, "safety_rejected"
+        return kept, "applied"
+
     def _timed_search_kyosha_pass_compare_is_decisive(
         self,
         *,
@@ -1337,6 +1386,17 @@ class TimedSearchMixin:
         narrowing_shadow_actions: List[Action] = []
         narrowing_shadow_full_candidates = 0
         narrowing_shadow_elapsed_through_depth_three = 0.0
+        active_narrowing_status: Optional[str] = (
+            "insufficient_depth"
+            if generic_priority_action is not None
+            and bool(getattr(self, "GENERIC_RESPONSE_NARROWING_ENABLED", False))
+            else None
+        )
+        active_narrowing_full_candidates = 0
+        active_narrowing_kept_candidates = 0
+        active_narrowing_depth = int(
+            getattr(self, "GENERIC_RESPONSE_NARROWING_DEPTH", 3)
+        )
         completed_values: Optional[Dict[Action, List[float]]] = None
         completed_world_values: Optional[Dict[Action, Dict[int, float]]] = None
         completed_robust_values: Optional[Dict[Action, float]] = None
@@ -1496,8 +1556,8 @@ class TimedSearchMixin:
                 stable_best = best
                 stable_count = 1
 
-            # Measure a two-candidate continuation without changing this search.
-            if depth == 3 and generic_priority_action is not None:
+            # Compare, and optionally activate, a two-candidate continuation.
+            if depth == active_narrowing_depth and generic_priority_action is not None:
                 narrowing_shadow_full_candidates = len(root_actions)
                 narrowing_shadow_elapsed_through_depth_three = (
                     time.perf_counter() - start
@@ -1523,6 +1583,46 @@ class TimedSearchMixin:
                         strongest_rival,
                     ]
                     narrowing_shadow_status = "compared"
+
+                if bool(
+                    getattr(self, "GENERIC_RESPONSE_NARROWING_ENABLED", False)
+                ):
+                    active_narrowing_full_candidates = len(root_actions)
+                    if maximum_depth <= depth:
+                        active_narrowing_status = "insufficient_depth"
+                    else:
+                        narrowed_actions, active_narrowing_status = (
+                            self._timed_search_safe_generic_narrowing(
+                                root_actions,
+                                aggregate,
+                                generic_priority_action,
+                                enabled=True,
+                                search_profile=search_profile,
+                                information_enabled=information_enabled,
+                                information_confidence=(
+                                    float(information_set.confidence)
+                                    if information_enabled
+                                    else 0.0
+                                ),
+                                minimum_confidence=float(
+                                    getattr(
+                                        self,
+                                        "GENERIC_RESPONSE_NARROWING_MIN_CONFIDENCE",
+                                        0.45,
+                                    )
+                                ),
+                                minimum_excluded_margin=float(
+                                    getattr(
+                                        self,
+                                        "GENERIC_RESPONSE_NARROWING_MIN_EXCLUDED_MARGIN",
+                                        450.0,
+                                    )
+                                ),
+                            )
+                        )
+                        if narrowed_actions is not None:
+                            root_actions = narrowed_actions
+                            active_narrowing_kept_candidates = len(root_actions)
 
             if depth == 1 and len(root_actions) > self.TIME_SEARCH_ROOT_BEAM:
                 narrowed = sorted(
@@ -1740,7 +1840,10 @@ class TimedSearchMixin:
                 ),
                 value_delta=best_value - control_value,
             )
-            if narrowing_shadow_status == "compared":
+            if (
+                narrowing_shadow_status == "compared"
+                and active_narrowing_status != "applied"
+            ):
                 shadow_candidates = [
                     action
                     for action in narrowing_shadow_actions
@@ -1781,9 +1884,28 @@ class TimedSearchMixin:
                             best_value - aggregate[shadow_best_action]
                         ),
                     )
-            if narrowing_shadow_status != "compared":
+            if (
+                narrowing_shadow_status != "compared"
+                and active_narrowing_status != "applied"
+            ):
                 self._record_generic_response_narrowing_shadow(
                     status=narrowing_shadow_status,
+                )
+            if active_narrowing_status is not None:
+                live_status = active_narrowing_status
+                if live_status == "applied":
+                    live_status = (
+                        "deepened"
+                        if completed_depth > active_narrowing_depth
+                        else "no_deepening"
+                    )
+                self._record_generic_response_active_narrowing(
+                    status=live_status,
+                    full_candidates=active_narrowing_full_candidates,
+                    kept_candidates=active_narrowing_kept_candidates,
+                    completed_depth=completed_depth,
+                    elapsed_seconds=elapsed_seconds,
+                    priority_selected=(best_action == generic_priority_action),
                 )
 
         return TimedSearchResult(

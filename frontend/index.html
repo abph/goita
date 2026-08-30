@@ -5041,7 +5041,11 @@
           <div class="settings-row">
             <label><input type="checkbox" id="checkDebugAutoNewGame" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 150点到達後も新規ゲームを自動開始する</label>
           </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkDebugDictionaryNarrowing" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 汎用辞書で探索候補を絞る（試験中）</label>
+          </div>
           <div class="small">局終了から3秒後に、勝者を親として自動開始します。新規ゲームでは得点を0に戻します。</div>
+          <div class="small">深さ3で安全条件を満たした場合だけ、以降の探索を有力な2候補に絞ります。</div>
           <div id="debugAutoNextRoundStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </details>
@@ -7851,14 +7855,17 @@ function syncDebugAutoNextRoundControls() {
     const details = document.getElementById("debugAutoNextRoundDetails");
     const checkbox = document.getElementById("checkDebugAutoNextRound");
     const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
-    if (!details || !checkbox || !newGameCheckbox || debugAutoNextRoundSaving) return;
+    const narrowingCheckbox = document.getElementById("checkDebugDictionaryNarrowing");
+    if (!details || !checkbox || !newGameCheckbox || !narrowingCheckbox || debugAutoNextRoundSaving) return;
     const targetGid = settingTargetGid || gid;
     const isDebugRoom = targetGid === DEBUG_GID;
     details.style.display = isDebugRoom ? "block" : "none";
     checkbox.checked = isDebugRoom && latestState?.debug_auto_next_round === true;
     newGameCheckbox.checked = isDebugRoom && latestState?.debug_auto_new_game === true;
+    narrowingCheckbox.checked = isDebugRoom && latestState?.debug_dictionary_narrowing === true;
     checkbox.disabled = !isDebugRoom || !isCurrentClientHost();
     newGameCheckbox.disabled = !isDebugRoom || !isCurrentClientHost();
+    narrowingCheckbox.disabled = !isDebugRoom || !isCurrentClientHost();
 }
 
 async function saveDebugAutoNextRoundSetting() {
@@ -7870,14 +7877,17 @@ async function saveDebugAutoNextRoundSetting() {
     ) return;
     const checkbox = document.getElementById("checkDebugAutoNextRound");
     const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
+    const narrowingCheckbox = document.getElementById("checkDebugDictionaryNarrowing");
     const status = document.getElementById("debugAutoNextRoundStatus");
-    if (!checkbox || !newGameCheckbox || !status) return;
+    if (!checkbox || !newGameCheckbox || !narrowingCheckbox || !status) return;
 
     const enabled = checkbox.checked === true;
     const autoNewGame = newGameCheckbox.checked === true;
+    const dictionaryNarrowing = narrowingCheckbox.checked === true;
     debugAutoNextRoundSaving = true;
     checkbox.disabled = true;
     newGameCheckbox.disabled = true;
+    narrowingCheckbox.disabled = true;
     status.textContent = uiText("保存しています...");
     try {
         const response = await fetch(`${API}/games/${targetGid}/debug_auto_next_round`, {
@@ -7888,6 +7898,7 @@ async function saveDebugAutoNextRoundSetting() {
                 client_id: clientId,
                 enabled,
                 auto_new_game: autoNewGame,
+                dictionary_narrowing: dictionaryNarrowing,
             }),
         });
         if (!response.ok) throw new Error("Failed to save automatic next rounds.");
@@ -7895,17 +7906,19 @@ async function saveDebugAutoNextRoundSetting() {
         if (latestState) {
             latestState.debug_auto_next_round = saved.debug_auto_next_round === true;
             latestState.debug_auto_new_game = saved.debug_auto_new_game === true;
+            latestState.debug_dictionary_narrowing = saved.debug_dictionary_narrowing === true;
         }
         status.textContent = uiText(
-            enabled || autoNewGame
-                ? "自動進行の設定を保存しました。"
-                : "自動進行を停止しました。"
+            enabled || autoNewGame || dictionaryNarrowing
+                ? "デバッグ設定を保存しました。"
+                : "デバッグ設定を停止しました。"
         );
     } catch (error) {
         console.error("Automatic next round save error:", error);
         status.textContent = uiText("保存できませんでした。");
         checkbox.checked = latestState?.debug_auto_next_round === true;
         newGameCheckbox.checked = latestState?.debug_auto_new_game === true;
+        narrowingCheckbox.checked = latestState?.debug_dictionary_narrowing === true;
     } finally {
         debugAutoNextRoundSaving = false;
         syncDebugAutoNextRoundControls();

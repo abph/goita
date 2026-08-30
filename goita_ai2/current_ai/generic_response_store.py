@@ -149,6 +149,19 @@ class GenericResponsePatternStore:
             "narrowing_shadow_estimated_elapsed_sum": 0.0,
             "narrowing_shadow_estimated_saved_sum": 0.0,
             "narrowing_shadow_value_loss_sum": 0.0,
+            "active_narrowing_considered": 0,
+            "active_narrowing_applied": 0,
+            "active_narrowing_insufficient_depth": 0,
+            "active_narrowing_no_reduction": 0,
+            "active_narrowing_safety_rejected": 0,
+            "active_narrowing_incomplete": 0,
+            "active_narrowing_deepened": 0,
+            "active_narrowing_no_deepening": 0,
+            "active_narrowing_priority_selected": 0,
+            "active_narrowing_full_candidates_sum": 0.0,
+            "active_narrowing_kept_candidates_sum": 0.0,
+            "active_narrowing_depth_sum": 0.0,
+            "active_narrowing_elapsed_sum": 0.0,
             "action_counts": Counter(),
             "followup_counts": Counter(),
             "source_counts": Counter(),
@@ -585,6 +598,15 @@ class GenericResponsePatternStore:
                 "narrowing_shadow_matches",
                 "narrowing_shadow_mismatches",
                 "narrowing_shadow_priority_selected",
+                "active_narrowing_considered",
+                "active_narrowing_applied",
+                "active_narrowing_insufficient_depth",
+                "active_narrowing_no_reduction",
+                "active_narrowing_safety_rejected",
+                "active_narrowing_incomplete",
+                "active_narrowing_deepened",
+                "active_narrowing_no_deepening",
+                "active_narrowing_priority_selected",
             ):
                 restored_counters[name] = max(0, int(counters.get(name, 0)))
             for name in (
@@ -606,6 +628,10 @@ class GenericResponsePatternStore:
                 "narrowing_shadow_estimated_elapsed_sum",
                 "narrowing_shadow_estimated_saved_sum",
                 "narrowing_shadow_value_loss_sum",
+                "active_narrowing_full_candidates_sum",
+                "active_narrowing_kept_candidates_sum",
+                "active_narrowing_depth_sum",
+                "active_narrowing_elapsed_sum",
             ):
                 restored_counters[name] = float(counters.get(name, 0.0))
             for name in (
@@ -931,6 +957,51 @@ class GenericResponsePatternStore:
                 float(value_loss),
             )
 
+    def record_active_narrowing(
+        self,
+        *,
+        status: str,
+        full_candidates: int = 0,
+        kept_candidates: int = 0,
+        completed_depth: int = 0,
+        elapsed_seconds: float = 0.0,
+        priority_selected: bool = False,
+    ) -> None:
+        """Aggregate live narrowing without retaining hands or actions."""
+        with self._lock:
+            counters = self._counters
+            counters["active_narrowing_considered"] += 1
+            normalized_status = str(status or "incomplete")
+            if normalized_status == "insufficient_depth":
+                counters["active_narrowing_insufficient_depth"] += 1
+                return
+            if normalized_status == "no_reduction":
+                counters["active_narrowing_no_reduction"] += 1
+                return
+            if normalized_status == "safety_rejected":
+                counters["active_narrowing_safety_rejected"] += 1
+                return
+            if normalized_status not in ("deepened", "no_deepening"):
+                counters["active_narrowing_incomplete"] += 1
+                return
+
+            full_count = max(0, int(full_candidates))
+            kept_count = max(0, min(full_count, int(kept_candidates)))
+            counters["active_narrowing_applied"] += 1
+            counters[f"active_narrowing_{normalized_status}"] += 1
+            if priority_selected:
+                counters["active_narrowing_priority_selected"] += 1
+            counters["active_narrowing_full_candidates_sum"] += full_count
+            counters["active_narrowing_kept_candidates_sum"] += kept_count
+            counters["active_narrowing_depth_sum"] += max(
+                0,
+                int(completed_depth),
+            )
+            counters["active_narrowing_elapsed_sum"] += max(
+                0.0,
+                float(elapsed_seconds),
+            )
+
     def compare_shadow(
         self,
         *,
@@ -1195,6 +1266,58 @@ class GenericResponsePatternStore:
                     float(counters["narrowing_shadow_value_loss_sum"])
                     / max(1, int(counters["narrowing_shadow_comparisons"])),
                     3,
+                ),
+                "active_narrowing_considered": int(
+                    counters["active_narrowing_considered"]
+                ),
+                "active_narrowing_applied": int(
+                    counters["active_narrowing_applied"]
+                ),
+                "active_narrowing_insufficient_depth": int(
+                    counters["active_narrowing_insufficient_depth"]
+                ),
+                "active_narrowing_no_reduction": int(
+                    counters["active_narrowing_no_reduction"]
+                ),
+                "active_narrowing_safety_rejected": int(
+                    counters["active_narrowing_safety_rejected"]
+                ),
+                "active_narrowing_incomplete": int(
+                    counters["active_narrowing_incomplete"]
+                ),
+                "active_narrowing_deepened": int(
+                    counters["active_narrowing_deepened"]
+                ),
+                "active_narrowing_no_deepening": int(
+                    counters["active_narrowing_no_deepening"]
+                ),
+                "active_narrowing_deepening_rate": round(
+                    int(counters["active_narrowing_deepened"])
+                    / max(1, int(counters["active_narrowing_applied"])),
+                    5,
+                ),
+                "active_narrowing_priority_selected": int(
+                    counters["active_narrowing_priority_selected"]
+                ),
+                "active_narrowing_average_full_candidates": round(
+                    float(counters["active_narrowing_full_candidates_sum"])
+                    / max(1, int(counters["active_narrowing_applied"])),
+                    3,
+                ),
+                "active_narrowing_average_kept_candidates": round(
+                    float(counters["active_narrowing_kept_candidates_sum"])
+                    / max(1, int(counters["active_narrowing_applied"])),
+                    3,
+                ),
+                "active_narrowing_average_depth": round(
+                    float(counters["active_narrowing_depth_sum"])
+                    / max(1, int(counters["active_narrowing_applied"])),
+                    3,
+                ),
+                "active_narrowing_average_elapsed_seconds": round(
+                    float(counters["active_narrowing_elapsed_sum"])
+                    / max(1, int(counters["active_narrowing_applied"])),
+                    5,
                 ),
                 "average_depth": round(
                     float(counters["depth_sum"]) / recorded if recorded else 0.0,

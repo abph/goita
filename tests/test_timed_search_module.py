@@ -160,6 +160,68 @@ def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
     )
 
 
+def test_generic_narrowing_requires_a_clear_depth_three_gap() -> None:
+    priority = ("receive", "5", None)
+    rival = ("receive", "8", None)
+    excluded = ("pass", None, None)
+    actions = [priority, rival, excluded]
+
+    narrowed, status = RuleBasedAgent._timed_search_safe_generic_narrowing(
+        actions,
+        {priority: 1800.0, rival: 1400.0, excluded: 800.0},
+        priority,
+        enabled=True,
+        search_profile="default",
+        information_enabled=True,
+        information_confidence=0.70,
+        minimum_confidence=0.45,
+        minimum_excluded_margin=450.0,
+    )
+    assert status == "applied"
+    assert narrowed == [priority, rival]
+
+    narrowed, status = RuleBasedAgent._timed_search_safe_generic_narrowing(
+        actions,
+        {priority: 1800.0, rival: 1400.0, excluded: 1100.0},
+        priority,
+        enabled=True,
+        search_profile="default",
+        information_enabled=True,
+        information_confidence=0.70,
+        minimum_confidence=0.45,
+        minimum_excluded_margin=450.0,
+    )
+    assert narrowed is None
+    assert status == "safety_rejected"
+
+
+def test_generic_narrowing_rejects_specialized_or_uncertain_searches() -> None:
+    priority = ("receive", "5", None)
+    rival = ("receive", "8", None)
+    excluded = ("pass", None, None)
+    actions = [priority, rival, excluded]
+    aggregate = {priority: 1800.0, rival: 1400.0, excluded: 800.0}
+
+    for profile, information_enabled, confidence in (
+        ("kyosha_pass_compare", True, 0.70),
+        ("default", False, 0.70),
+        ("default", True, 0.30),
+    ):
+        narrowed, status = RuleBasedAgent._timed_search_safe_generic_narrowing(
+            actions,
+            aggregate,
+            priority,
+            enabled=True,
+            search_profile=profile,
+            information_enabled=information_enabled,
+            information_confidence=confidence,
+            minimum_confidence=0.45,
+            minimum_excluded_margin=450.0,
+        )
+        assert narrowed is None
+        assert status == "safety_rejected"
+
+
 def _search_result(
     *,
     depth: int = 7,
@@ -888,6 +950,8 @@ if __name__ == "__main__":
     test_generic_hint_only_reorders_root_actions()
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
+    test_generic_narrowing_requires_a_clear_depth_three_gap()
+    test_generic_narrowing_rejects_specialized_or_uncertain_searches()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

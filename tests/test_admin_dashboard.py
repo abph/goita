@@ -32,6 +32,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "仮想絞り込みを比較" in admin
     assert "絞り込み判断一致率" in admin
     assert "絞り込み推定短縮時間" in admin
+    assert "実際に絞り込み" in admin
+    assert "安全条件で見送り" in admin
+    assert "デバッグルームでは、安全条件を満たす場合に限り" in admin
     assert 'data.ai_conditional_response || {}' in admin
     assert 'data.ai_generic_response_patterns || {}' in admin
 

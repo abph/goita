@@ -2025,6 +2025,7 @@ class DebugAutoNextRoundRequest(BaseModel):
     client_id: str = ""
     enabled: bool = False
     auto_new_game: bool = False
+    dictionary_narrowing: Optional[bool] = None
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -2650,6 +2651,10 @@ def _state_public_view(
             game_id == DEBUG_GID
             and game_obj.get("debug_auto_new_game", False)
         ),
+        "debug_dictionary_narrowing": bool(
+            game_id == DEBUG_GID
+            and game_obj.get("debug_dictionary_narrowing", False)
+        ),
         "turn_time_limit_seconds": _normalize_turn_time_limit(
             game_obj.get("turn_time_limit_seconds", 0)
         ),
@@ -2729,6 +2734,7 @@ def _create_game_obj(
         "is_debug_room": False,
         "debug_auto_next_round": False,
         "debug_auto_new_game": False,
+        "debug_dictionary_narrowing": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -2818,6 +2824,7 @@ def setup_debug_room() -> None:
     room["is_debug_room"] = True
     room["debug_auto_next_round"] = False
     room["debug_auto_new_game"] = False
+    room["debug_dictionary_narrowing"] = True
     GAMES[DEBUG_GID] = room
 
 
@@ -3147,6 +3154,11 @@ def _apply_agent_turn(
         return {"status": "no_legal_actions"}
 
     agent = agents[player]
+    if hasattr(agent, "GENERIC_RESPONSE_NARROWING_ENABLED"):
+        agent.GENERIC_RESPONSE_NARROWING_ENABLED = bool(
+            game.get("is_debug_room", False)
+            and game.get("debug_dictionary_narrowing", False)
+        )
     if forced_action is not None and forced_action in acts:
         agent_action = forced_action
     else:
@@ -3915,6 +3927,10 @@ async def update_debug_auto_next_round(
 
     game["debug_auto_next_round"] = bool(req.enabled)
     game["debug_auto_new_game"] = bool(req.auto_new_game)
+    if req.dictionary_narrowing is not None:
+        game["debug_dictionary_narrowing"] = bool(
+            req.dictionary_narrowing
+        )
     if game["debug_auto_next_round"] or game["debug_auto_new_game"]:
         _schedule_debug_auto_next_round(game_id)
     else:
@@ -3924,6 +3940,9 @@ async def update_debug_auto_next_round(
         "ok": True,
         "debug_auto_next_round": bool(game["debug_auto_next_round"]),
         "debug_auto_new_game": bool(game["debug_auto_new_game"]),
+        "debug_dictionary_narrowing": bool(
+            game.get("debug_dictionary_narrowing", False)
+        ),
     }
 
 
@@ -4023,6 +4042,9 @@ async def reset_game(
         old_game.get("debug_auto_next_round", False)
     )
     debug_auto_new_game = bool(old_game.get("debug_auto_new_game", False))
+    debug_dictionary_narrowing = bool(
+        old_game.get("debug_dictionary_narrowing", False)
+    )
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -4058,6 +4080,7 @@ async def reset_game(
     new_game["is_debug_room"] = is_debug_room
     new_game["debug_auto_next_round"] = debug_auto_next_round
     new_game["debug_auto_new_game"] = debug_auto_new_game
+    new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
     new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["deal_mode"] = deal_mode
@@ -4107,6 +4130,9 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         old_game.get("debug_auto_next_round", False)
     )
     debug_auto_new_game = bool(old_game.get("debug_auto_new_game", False))
+    debug_dictionary_narrowing = bool(
+        old_game.get("debug_dictionary_narrowing", False)
+    )
     turn_time_limit_seconds = _normalize_turn_time_limit(
         old_game.get(
             "next_turn_time_limit_seconds",
@@ -4149,6 +4175,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["is_debug_room"] = is_debug_room
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
+        new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -4184,6 +4211,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["is_debug_room"] = is_debug_room
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
+        new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode

@@ -32,6 +32,10 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_MEDIUM_PRIORITY_MIN_OBSERVATIONS = 10
     GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_PRIORITY_ENABLED = True
+    GENERIC_RESPONSE_NARROWING_ENABLED = False
+    GENERIC_RESPONSE_NARROWING_DEPTH = 3
+    GENERIC_RESPONSE_NARROWING_MIN_CONFIDENCE = 0.45
+    GENERIC_RESPONSE_NARROWING_MIN_EXCLUDED_MARGIN = 450.0
 
     @staticmethod
     def _generic_count_bucket(value: int) -> str:
@@ -672,6 +676,26 @@ class GenericResponsePatternMixin:
             actual_elapsed_seconds=actual_elapsed_seconds,
             estimated_elapsed_seconds=estimated_elapsed_seconds,
             value_loss=value_loss,
+        )
+
+    def _record_generic_response_active_narrowing(
+        self,
+        *,
+        status: str,
+        full_candidates: int = 0,
+        kept_candidates: int = 0,
+        completed_depth: int = 0,
+        elapsed_seconds: float = 0.0,
+        priority_selected: bool = False,
+    ) -> None:
+        """Record aggregate-only results from live candidate narrowing."""
+        generic_response_pattern_store().record_active_narrowing(
+            status=status,
+            full_candidates=full_candidates,
+            kept_candidates=kept_candidates,
+            completed_depth=completed_depth,
+            elapsed_seconds=elapsed_seconds,
+            priority_selected=priority_selected,
         )
 
     def _record_generic_response_search_result(
