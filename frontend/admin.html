@@ -488,6 +488,8 @@
         ["絞り込み後に深掘りできず", `${data.active_narrowing_no_deepening || 0}回`],
         ["実絞り込みの深掘り率", `${((Number(data.active_narrowing_deepening_rate) || 0) * 100).toFixed(1)}%`],
         ["実絞り込みで辞書候補を採用", `${data.active_narrowing_priority_selected || 0}回`],
+        ["深掘り時間を追加", `${data.active_narrowing_continuation_extensions || 0}回`],
+        ["追加した深掘り時間", `${Number(data.active_narrowing_continuation_extension_seconds || 0).toFixed(3)}秒`],
         ["実絞り込み前の平均候補数", `${Number(data.active_narrowing_average_full_candidates || 0).toFixed(2)}`],
         ["実絞り込み後の平均候補数", `${Number(data.active_narrowing_average_kept_candidates || 0).toFixed(2)}`],
         ["実絞り込みの平均探索深さ", `${Number(data.active_narrowing_average_depth || 0).toFixed(2)}`],

@@ -243,6 +243,30 @@ def test_generic_narrowing_records_when_dictionary_move_is_outside_top_two() -> 
     assert status == "priority_not_top_two"
 
 
+def test_generic_narrowing_reserves_one_second_within_hard_limit() -> None:
+    deadline, extension = (
+        RuleBasedAgent._timed_search_extend_narrowing_deadline(
+            deadline=10.5,
+            hard_deadline=30.0,
+            now=10.4,
+            minimum_continuation_seconds=1.0,
+        )
+    )
+    assert deadline == 11.4
+    assert round(extension, 6) == 0.9
+
+    deadline, extension = (
+        RuleBasedAgent._timed_search_extend_narrowing_deadline(
+            deadline=29.8,
+            hard_deadline=30.0,
+            now=29.7,
+            minimum_continuation_seconds=1.0,
+        )
+    )
+    assert deadline == 30.0
+    assert round(extension, 6) == 0.2
+
+
 def _search_result(
     *,
     depth: int = 7,
@@ -974,6 +998,7 @@ if __name__ == "__main__":
     test_generic_narrowing_requires_a_clear_depth_three_gap()
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()
     test_generic_narrowing_records_when_dictionary_move_is_outside_top_two()
+    test_generic_narrowing_reserves_one_second_within_hard_limit()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

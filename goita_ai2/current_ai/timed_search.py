@@ -138,6 +138,23 @@ class TimedSearchMixin:
             return None, "insufficient_margin"
         return kept, "applied"
 
+    @staticmethod
+    def _timed_search_extend_narrowing_deadline(
+        deadline: float,
+        hard_deadline: float,
+        now: float,
+        minimum_continuation_seconds: float,
+    ) -> Tuple[float, float]:
+        """Reserve post-narrowing time without exceeding the hard limit."""
+        extended = min(
+            float(hard_deadline),
+            max(
+                float(deadline),
+                float(now) + max(0.0, float(minimum_continuation_seconds)),
+            ),
+        )
+        return extended, max(0.0, extended - float(deadline))
+
     def _timed_search_kyosha_pass_compare_is_decisive(
         self,
         *,
@@ -1316,8 +1333,11 @@ class TimedSearchMixin:
                 self.TIME_SEARCH_MAX_SECONDS,
             )
         )
+        hard_deadline = start + float(
+            getattr(self, "TIME_SEARCH_HARD_MAX_SECONDS", 20.0)
+        )
         deadline = start + min(
-            float(getattr(self, "TIME_SEARCH_HARD_MAX_SECONDS", 20.0)),
+            hard_deadline - start,
             max(0.01, effective_seconds),
         )
         baseline_scores = {
@@ -1393,6 +1413,7 @@ class TimedSearchMixin:
         )
         active_narrowing_full_candidates = 0
         active_narrowing_kept_candidates = 0
+        active_narrowing_continuation_extension_seconds = 0.0
         active_narrowing_depth = int(
             getattr(self, "GENERIC_RESPONSE_NARROWING_DEPTH", 3)
         )
@@ -1622,6 +1643,23 @@ class TimedSearchMixin:
                         if narrowed_actions is not None:
                             root_actions = narrowed_actions
                             active_narrowing_kept_candidates = len(root_actions)
+                            deadline, extension = (
+                                self._timed_search_extend_narrowing_deadline(
+                                    deadline,
+                                    hard_deadline,
+                                    time.perf_counter(),
+                                    float(
+                                        getattr(
+                                            self,
+                                            "GENERIC_RESPONSE_NARROWING_MIN_CONTINUATION_SECONDS",
+                                            1.0,
+                                        )
+                                    ),
+                                )
+                            )
+                            active_narrowing_continuation_extension_seconds += (
+                                extension
+                            )
 
             if depth == 1 and len(root_actions) > self.TIME_SEARCH_ROOT_BEAM:
                 narrowed = sorted(
@@ -1905,6 +1943,9 @@ class TimedSearchMixin:
                     completed_depth=completed_depth,
                     elapsed_seconds=elapsed_seconds,
                     priority_selected=(best_action == generic_priority_action),
+                    continuation_extension_seconds=(
+                        active_narrowing_continuation_extension_seconds
+                    ),
                 )
 
         return TimedSearchResult(

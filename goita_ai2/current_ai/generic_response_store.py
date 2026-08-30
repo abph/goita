@@ -163,10 +163,12 @@ class GenericResponsePatternStore:
             "active_narrowing_deepened": 0,
             "active_narrowing_no_deepening": 0,
             "active_narrowing_priority_selected": 0,
+            "active_narrowing_continuation_extensions": 0,
             "active_narrowing_full_candidates_sum": 0.0,
             "active_narrowing_kept_candidates_sum": 0.0,
             "active_narrowing_depth_sum": 0.0,
             "active_narrowing_elapsed_sum": 0.0,
+            "active_narrowing_continuation_extension_seconds_sum": 0.0,
             "action_counts": Counter(),
             "followup_counts": Counter(),
             "source_counts": Counter(),
@@ -617,6 +619,7 @@ class GenericResponsePatternStore:
                 "active_narrowing_deepened",
                 "active_narrowing_no_deepening",
                 "active_narrowing_priority_selected",
+                "active_narrowing_continuation_extensions",
             ):
                 restored_counters[name] = max(0, int(counters.get(name, 0)))
             for name in (
@@ -642,6 +645,7 @@ class GenericResponsePatternStore:
                 "active_narrowing_kept_candidates_sum",
                 "active_narrowing_depth_sum",
                 "active_narrowing_elapsed_sum",
+                "active_narrowing_continuation_extension_seconds_sum",
             ):
                 restored_counters[name] = float(counters.get(name, 0.0))
             for name in (
@@ -976,6 +980,7 @@ class GenericResponsePatternStore:
         completed_depth: int = 0,
         elapsed_seconds: float = 0.0,
         priority_selected: bool = False,
+        continuation_extension_seconds: float = 0.0,
     ) -> None:
         """Aggregate live narrowing without retaining hands or actions."""
         with self._lock:
@@ -1022,6 +1027,15 @@ class GenericResponsePatternStore:
             counters[f"active_narrowing_{normalized_status}"] += 1
             if priority_selected:
                 counters["active_narrowing_priority_selected"] += 1
+            extension_seconds = max(
+                0.0,
+                float(continuation_extension_seconds),
+            )
+            if extension_seconds > 0.0:
+                counters["active_narrowing_continuation_extensions"] += 1
+                counters[
+                    "active_narrowing_continuation_extension_seconds_sum"
+                ] += extension_seconds
             counters["active_narrowing_full_candidates_sum"] += full_count
             counters["active_narrowing_kept_candidates_sum"] += kept_count
             counters["active_narrowing_depth_sum"] += max(
@@ -1350,6 +1364,17 @@ class GenericResponsePatternStore:
                 ),
                 "active_narrowing_priority_selected": int(
                     counters["active_narrowing_priority_selected"]
+                ),
+                "active_narrowing_continuation_extensions": int(
+                    counters["active_narrowing_continuation_extensions"]
+                ),
+                "active_narrowing_continuation_extension_seconds": round(
+                    float(
+                        counters[
+                            "active_narrowing_continuation_extension_seconds_sum"
+                        ]
+                    ),
+                    5,
                 ),
                 "active_narrowing_average_full_candidates": round(
                     float(counters["active_narrowing_full_candidates_sum"])
