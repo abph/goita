@@ -262,6 +262,11 @@
               <thead><tr><th>流入元</th><th>利用者</th><th>訪問</th></tr></thead>
               <tbody id="sourceRows"></tbody>
             </table>
+            <h2 class="subheading">地域（推定）</h2>
+            <table>
+              <thead><tr><th>都道府県</th><th>利用者</th><th>訪問</th></tr></thead>
+              <tbody id="regionRows"></tbody>
+            </table>
             <h2 class="subheading">入室先</h2>
             <table>
               <thead><tr><th>ルーム種別</th><th>入室</th></tr></thead>
@@ -607,6 +612,9 @@
       `).join("");
       document.getElementById("sourceRows").innerHTML = (data.sources || []).map(source => `
         <tr><td>${escapeHtml(source.source_name)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
+      `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
+      document.getElementById("regionRows").innerHTML = (data.regions || []).map(region => `
+        <tr><td>${escapeHtml(region.prefecture)}</td><td>${region.visitors}</td><td>${region.sessions}</td></tr>
       `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
       document.getElementById("roomEntryRows").innerHTML = Object.entries(data.room_entries || {})
         .sort((left, right) => Number(right[1]) - Number(left[1]))

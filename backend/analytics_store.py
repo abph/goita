@@ -16,6 +16,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from backend.analytics_geo import normalize_prefecture
+
 
 ANALYTICS_FILENAME = "goita-analytics.sqlite3"
 ANALYTICS_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
@@ -145,6 +147,7 @@ class AnalyticsStore:
                         campaign TEXT NOT NULL DEFAULT '',
                         device TEXT NOT NULL DEFAULT 'unknown',
                         language TEXT NOT NULL DEFAULT 'other',
+                        prefecture TEXT NOT NULL DEFAULT '不明',
                         event_count INTEGER NOT NULL DEFAULT 0,
                         FOREIGN KEY (analytics_id) REFERENCES analytics_visitors(analytics_id)
                     );
@@ -169,6 +172,15 @@ class AnalyticsStore:
                     ON analytics_sessions(started_at DESC);
                     """
                 )
+                session_columns = {
+                    str(row[1])
+                    for row in connection.execute("PRAGMA table_info(analytics_sessions)")
+                }
+                if "prefecture" not in session_columns:
+                    connection.execute(
+                        "ALTER TABLE analytics_sessions "
+                        "ADD COLUMN prefecture TEXT NOT NULL DEFAULT '不明'"
+                    )
                 connection.commit()
             self._schema_ready = True
 
@@ -197,6 +209,7 @@ class AnalyticsStore:
         source = _clean_text(payload.get("source"), 80)
         medium = _clean_text(payload.get("medium"), 80)
         campaign = _clean_text(payload.get("campaign"), 80)
+        prefecture = normalize_prefecture(payload.get("prefecture"))
         properties = _safe_properties(payload.get("properties"))
         now = _utc_now_text()
 
@@ -220,8 +233,9 @@ class AnalyticsStore:
                 """
                 INSERT INTO analytics_sessions (
                     session_id, analytics_id, started_at, last_seen,
-                    source, medium, campaign, device, language, event_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    source, medium, campaign, device, language, prefecture,
+                    event_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(session_id) DO UPDATE SET
                     last_seen = excluded.last_seen
                 """,
@@ -235,6 +249,7 @@ class AnalyticsStore:
                     campaign,
                     device,
                     language,
+                    prefecture,
                 ),
             )
             if event_name != "heartbeat":
@@ -375,6 +390,18 @@ class AnalyticsStore:
                 """,
                 (since,),
             ).fetchall()
+            region_rows = connection.execute(
+                """
+                SELECT CASE WHEN prefecture = '' THEN '不明' ELSE prefecture END AS prefecture,
+                       COUNT(DISTINCT analytics_id) AS visitors,
+                       COUNT(*) AS sessions
+                FROM analytics_sessions
+                WHERE started_at >= ?
+                GROUP BY CASE WHEN prefecture = '' THEN '不明' ELSE prefecture END
+                ORDER BY visitors DESC, sessions DESC
+                """,
+                (since,),
+            ).fetchall()
             recent_sessions = connection.execute(
                 """
                 SELECT session_id, analytics_id, started_at, last_seen, ended_at,
@@ -438,6 +465,7 @@ class AnalyticsStore:
             "room_entries": room_entries,
             "event_counts": event_counts,
             "sources": [dict(row) for row in source_rows],
+            "regions": [dict(row) for row in region_rows],
             "recent_sessions": recent,
             "database_bytes": self.path.stat().st_size if self.path.exists() else 0,
         }

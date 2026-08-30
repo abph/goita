@@ -68,6 +68,7 @@ from backend.research_kifu_store import (
 )
 from backend.frequent_deal import is_frequent_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
+from backend.analytics_geo import infer_prefecture
 
 LOGGER = logging.getLogger(__name__)
 
@@ -2102,8 +2103,10 @@ class AnalyticsDeleteRequest(BaseModel):
 
 
 @app.post("/analytics/event")
-def record_analytics_event(req: AnalyticsEventRequest):
-    if not ANALYTICS_STORE.record_event(req.model_dump()):
+def record_analytics_event(req: AnalyticsEventRequest, request: Request):
+    payload = req.model_dump()
+    payload["prefecture"] = infer_prefecture(request.headers)
+    if not ANALYTICS_STORE.record_event(payload):
         raise HTTPException(status_code=400, detail="記録できない利用イベントです")
     return {"ok": True}
 
