@@ -648,6 +648,32 @@ class GenericResponsePatternMixin:
             value_delta=value_delta,
         )
 
+    def _record_generic_response_narrowing_shadow(
+        self,
+        *,
+        status: str,
+        matched: bool = False,
+        priority_selected: bool = False,
+        full_candidates: int = 0,
+        kept_candidates: int = 0,
+        depth: int = 0,
+        actual_elapsed_seconds: float = 0.0,
+        estimated_elapsed_seconds: float = 0.0,
+        value_loss: float = 0.0,
+    ) -> None:
+        """Record an aggregate-only hypothetical depth-three narrowing."""
+        generic_response_pattern_store().record_narrowing_shadow(
+            status=status,
+            matched=matched,
+            priority_selected=priority_selected,
+            full_candidates=full_candidates,
+            kept_candidates=kept_candidates,
+            depth=depth,
+            actual_elapsed_seconds=actual_elapsed_seconds,
+            estimated_elapsed_seconds=estimated_elapsed_seconds,
+            value_loss=value_loss,
+        )
+
     def _record_generic_response_search_result(
         self,
         state,

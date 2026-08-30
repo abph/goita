@@ -236,7 +236,7 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。深さ3以降を辞書候補と最有力の対抗候補に絞る比較も、現在はAIの判断に影響しない計測のみです。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
         </section>
       </section>
@@ -403,6 +403,9 @@
       const priorityEffectChangeRate = (
         Number(data.priority_effect_change_rate) || 0
       ) * 100;
+      const narrowingShadowMatchRate = (
+        Number(data.narrowing_shadow_match_rate) || 0
+      ) * 100;
       const metrics = [
         ["有効サンプル", `${data.recorded || 0}件`],
         ["汎用パターン", `${data.pattern_count || 0}種類`],
@@ -453,6 +456,23 @@
         ["辞書なし平均時間", `${Number(data.priority_effect_average_without_elapsed_seconds || 0).toFixed(3)}秒`],
         ["短縮時間（比較値）", `${Number(data.priority_effect_saved_seconds || 0).toFixed(3)}秒`],
         ["平均評価差", `${Number(data.priority_effect_average_value_delta || 0).toFixed(1)}`],
+        ["絞り込みを検討", `${data.narrowing_shadow_considered || 0}回`],
+        ["深さ3未到達", `${data.narrowing_shadow_insufficient_depth || 0}回`],
+        ["候補削減なし", `${data.narrowing_shadow_no_reduction || 0}回`],
+        ["絞り込み比較未完了", `${data.narrowing_shadow_incomplete || 0}回`],
+        ["仮想絞り込みを比較", `${data.narrowing_shadow_comparisons || 0}回`],
+        ["全探索と同じ判断", `${data.narrowing_shadow_matches || 0}回`],
+        ["全探索と違う判断", `${data.narrowing_shadow_mismatches || 0}回`],
+        ["絞り込み判断一致率", `${narrowingShadowMatchRate.toFixed(1)}%`],
+        ["辞書候補が最終手", `${data.narrowing_shadow_priority_selected || 0}回`],
+        ["平均候補数（全探索）", `${Number(data.narrowing_shadow_average_full_candidates || 0).toFixed(2)}`],
+        ["平均候補数（絞込後）", `${Number(data.narrowing_shadow_average_kept_candidates || 0).toFixed(2)}`],
+        ["平均削減候補数", `${Number(data.narrowing_shadow_average_removed_candidates || 0).toFixed(2)}`],
+        ["絞り込み対象の平均深さ", `${Number(data.narrowing_shadow_average_depth || 0).toFixed(2)}`],
+        ["全探索の平均時間", `${Number(data.narrowing_shadow_average_actual_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["絞り込み時の推定時間", `${Number(data.narrowing_shadow_average_estimated_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["絞り込み推定短縮時間", `${Number(data.narrowing_shadow_estimated_saved_seconds || 0).toFixed(3)}秒`],
+        ["絞り込み平均評価損失", `${Number(data.narrowing_shadow_average_value_loss || 0).toFixed(1)}`],
       ];
       document.getElementById("genericPatternMetricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>

@@ -282,6 +282,23 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
             without_elapsed_seconds=1.25,
             value_delta=0.0,
         )
+        store.record_narrowing_shadow(
+            status="insufficient_depth",
+        )
+        store.record_narrowing_shadow(
+            status="no_reduction",
+        )
+        store.record_narrowing_shadow(
+            status="compared",
+            matched=True,
+            priority_selected=True,
+            full_candidates=4,
+            kept_candidates=2,
+            depth=7,
+            actual_elapsed_seconds=4.0,
+            estimated_elapsed_seconds=3.0,
+            value_loss=0.0,
+        )
         store.record_priority_effect(
             reordered=True,
             beam_preserved=True,
@@ -307,12 +324,25 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert snapshot["priority_effect_average_with_depth"] == 7.0
         assert snapshot["priority_effect_average_without_depth"] == 7.0
         assert snapshot["priority_effect_saved_seconds"] == 0.0
+        assert snapshot["narrowing_shadow_considered"] == 3
+        assert snapshot["narrowing_shadow_insufficient_depth"] == 1
+        assert snapshot["narrowing_shadow_no_reduction"] == 1
+        assert snapshot["narrowing_shadow_comparisons"] == 1
+        assert snapshot["narrowing_shadow_matches"] == 1
+        assert snapshot["narrowing_shadow_match_rate"] == 1.0
+        assert snapshot["narrowing_shadow_average_full_candidates"] == 4.0
+        assert snapshot["narrowing_shadow_average_kept_candidates"] == 2.0
+        assert snapshot["narrowing_shadow_average_removed_candidates"] == 2.0
+        assert snapshot["narrowing_shadow_estimated_saved_seconds"] == 1.0
 
         assert store.checkpoint("priority-effect") is True
         restored = GenericResponsePatternStore(path=path).snapshot()
         assert restored["priority_effect_comparisons"] == 2
         assert restored["priority_effect_exact"] == 1
         assert restored["priority_effect_beam_preserved"] == 1
+        assert restored["narrowing_shadow_considered"] == 3
+        assert restored["narrowing_shadow_matches"] == 1
+        assert restored["narrowing_shadow_estimated_saved_seconds"] == 1.0
 
 
 if __name__ == "__main__":

@@ -1333,6 +1333,10 @@ class TimedSearchMixin:
         control_active_actions = list(control_root_actions)
         priority_beam_preserved = False
         priority_comparison_complete = True
+        narrowing_shadow_status = "insufficient_depth"
+        narrowing_shadow_actions: List[Action] = []
+        narrowing_shadow_full_candidates = 0
+        narrowing_shadow_elapsed_through_depth_three = 0.0
         completed_values: Optional[Dict[Action, List[float]]] = None
         completed_world_values: Optional[Dict[Action, Dict[int, float]]] = None
         completed_robust_values: Optional[Dict[Action, float]] = None
@@ -1491,6 +1495,34 @@ class TimedSearchMixin:
             else:
                 stable_best = best
                 stable_count = 1
+
+            # Measure a two-candidate continuation without changing this search.
+            if depth == 3 and generic_priority_action is not None:
+                narrowing_shadow_full_candidates = len(root_actions)
+                narrowing_shadow_elapsed_through_depth_three = (
+                    time.perf_counter() - start
+                )
+                if generic_priority_action not in aggregate:
+                    narrowing_shadow_status = "incomplete"
+                elif len(root_actions) <= 2:
+                    narrowing_shadow_status = "no_reduction"
+                else:
+                    strongest_rival = max(
+                        (
+                            action
+                            for action in root_actions
+                            if action != generic_priority_action
+                        ),
+                        key=lambda action: aggregate.get(
+                            action,
+                            -float("inf"),
+                        ),
+                    )
+                    narrowing_shadow_actions = [
+                        generic_priority_action,
+                        strongest_rival,
+                    ]
+                    narrowing_shadow_status = "compared"
 
             if depth == 1 and len(root_actions) > self.TIME_SEARCH_ROOT_BEAM:
                 narrowed = sorted(
@@ -1708,6 +1740,51 @@ class TimedSearchMixin:
                 ),
                 value_delta=best_value - control_value,
             )
+            if narrowing_shadow_status == "compared":
+                shadow_candidates = [
+                    action
+                    for action in narrowing_shadow_actions
+                    if action in aggregate
+                ]
+                if len(shadow_candidates) != len(narrowing_shadow_actions):
+                    narrowing_shadow_status = "incomplete"
+                else:
+                    shadow_best_action = max(
+                        shadow_candidates,
+                        key=lambda action: aggregate[action],
+                    )
+                    deeper_elapsed = max(
+                        0.0,
+                        elapsed_seconds
+                        - narrowing_shadow_elapsed_through_depth_three,
+                    )
+                    kept_ratio = (
+                        len(shadow_candidates)
+                        / max(1, narrowing_shadow_full_candidates)
+                    )
+                    estimated_elapsed = (
+                        narrowing_shadow_elapsed_through_depth_three
+                        + deeper_elapsed * kept_ratio
+                    )
+                    self._record_generic_response_narrowing_shadow(
+                        status="compared",
+                        matched=shadow_best_action == best_action,
+                        priority_selected=(
+                            best_action == generic_priority_action
+                        ),
+                        full_candidates=narrowing_shadow_full_candidates,
+                        kept_candidates=len(shadow_candidates),
+                        depth=completed_depth,
+                        actual_elapsed_seconds=elapsed_seconds,
+                        estimated_elapsed_seconds=estimated_elapsed,
+                        value_loss=(
+                            best_value - aggregate[shadow_best_action]
+                        ),
+                    )
+            if narrowing_shadow_status != "compared":
+                self._record_generic_response_narrowing_shadow(
+                    status=narrowing_shadow_status,
+                )
 
         return TimedSearchResult(
             action=best_action,

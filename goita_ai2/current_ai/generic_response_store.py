@@ -133,6 +133,22 @@ class GenericResponsePatternStore:
             "priority_effect_without_elapsed_sum": 0.0,
             "priority_effect_saved_seconds_sum": 0.0,
             "priority_effect_value_delta_sum": 0.0,
+            "narrowing_shadow_considered": 0,
+            "narrowing_shadow_insufficient_depth": 0,
+            "narrowing_shadow_no_reduction": 0,
+            "narrowing_shadow_incomplete": 0,
+            "narrowing_shadow_comparisons": 0,
+            "narrowing_shadow_matches": 0,
+            "narrowing_shadow_mismatches": 0,
+            "narrowing_shadow_priority_selected": 0,
+            "narrowing_shadow_full_candidates_sum": 0.0,
+            "narrowing_shadow_kept_candidates_sum": 0.0,
+            "narrowing_shadow_removed_candidates_sum": 0.0,
+            "narrowing_shadow_depth_sum": 0.0,
+            "narrowing_shadow_actual_elapsed_sum": 0.0,
+            "narrowing_shadow_estimated_elapsed_sum": 0.0,
+            "narrowing_shadow_estimated_saved_sum": 0.0,
+            "narrowing_shadow_value_loss_sum": 0.0,
             "action_counts": Counter(),
             "followup_counts": Counter(),
             "source_counts": Counter(),
@@ -561,6 +577,14 @@ class GenericResponsePatternStore:
                 "priority_effect_selected",
                 "priority_effect_changed",
                 "priority_effect_unchanged",
+                "narrowing_shadow_considered",
+                "narrowing_shadow_insufficient_depth",
+                "narrowing_shadow_no_reduction",
+                "narrowing_shadow_incomplete",
+                "narrowing_shadow_comparisons",
+                "narrowing_shadow_matches",
+                "narrowing_shadow_mismatches",
+                "narrowing_shadow_priority_selected",
             ):
                 restored_counters[name] = max(0, int(counters.get(name, 0)))
             for name in (
@@ -574,6 +598,14 @@ class GenericResponsePatternStore:
                 "priority_effect_without_elapsed_sum",
                 "priority_effect_saved_seconds_sum",
                 "priority_effect_value_delta_sum",
+                "narrowing_shadow_full_candidates_sum",
+                "narrowing_shadow_kept_candidates_sum",
+                "narrowing_shadow_removed_candidates_sum",
+                "narrowing_shadow_depth_sum",
+                "narrowing_shadow_actual_elapsed_sum",
+                "narrowing_shadow_estimated_elapsed_sum",
+                "narrowing_shadow_estimated_saved_sum",
+                "narrowing_shadow_value_loss_sum",
             ):
                 restored_counters[name] = float(counters.get(name, 0.0))
             for name in (
@@ -837,6 +869,68 @@ class GenericResponsePatternStore:
             )
             counters["priority_effect_value_delta_sum"] += float(value_delta)
 
+    def record_narrowing_shadow(
+        self,
+        *,
+        status: str,
+        matched: bool = False,
+        priority_selected: bool = False,
+        full_candidates: int = 0,
+        kept_candidates: int = 0,
+        depth: int = 0,
+        actual_elapsed_seconds: float = 0.0,
+        estimated_elapsed_seconds: float = 0.0,
+        value_loss: float = 0.0,
+    ) -> None:
+        """Aggregate a depth-three hypothetical narrowing comparison."""
+        with self._lock:
+            counters = self._counters
+            counters["narrowing_shadow_considered"] += 1
+            normalized_status = str(status or "incomplete")
+            if normalized_status == "insufficient_depth":
+                counters["narrowing_shadow_insufficient_depth"] += 1
+                return
+            if normalized_status == "no_reduction":
+                counters["narrowing_shadow_no_reduction"] += 1
+                return
+            if normalized_status != "compared":
+                counters["narrowing_shadow_incomplete"] += 1
+                return
+
+            full_count = max(0, int(full_candidates))
+            kept_count = max(0, min(full_count, int(kept_candidates)))
+            actual_elapsed = max(0.0, float(actual_elapsed_seconds))
+            estimated_elapsed = max(
+                0.0,
+                min(actual_elapsed, float(estimated_elapsed_seconds)),
+            )
+            counters["narrowing_shadow_comparisons"] += 1
+            if matched:
+                counters["narrowing_shadow_matches"] += 1
+            else:
+                counters["narrowing_shadow_mismatches"] += 1
+            if priority_selected:
+                counters["narrowing_shadow_priority_selected"] += 1
+            counters["narrowing_shadow_full_candidates_sum"] += full_count
+            counters["narrowing_shadow_kept_candidates_sum"] += kept_count
+            counters["narrowing_shadow_removed_candidates_sum"] += max(
+                0,
+                full_count - kept_count,
+            )
+            counters["narrowing_shadow_depth_sum"] += max(0, int(depth))
+            counters["narrowing_shadow_actual_elapsed_sum"] += actual_elapsed
+            counters["narrowing_shadow_estimated_elapsed_sum"] += (
+                estimated_elapsed
+            )
+            counters["narrowing_shadow_estimated_saved_sum"] += max(
+                0.0,
+                actual_elapsed - estimated_elapsed,
+            )
+            counters["narrowing_shadow_value_loss_sum"] += max(
+                0.0,
+                float(value_loss),
+            )
+
     def compare_shadow(
         self,
         *,
@@ -1032,6 +1126,74 @@ class GenericResponsePatternStore:
                 "priority_effect_average_value_delta": round(
                     float(counters["priority_effect_value_delta_sum"])
                     / max(1, int(counters["priority_effect_exact"])),
+                    3,
+                ),
+                "narrowing_shadow_considered": int(
+                    counters["narrowing_shadow_considered"]
+                ),
+                "narrowing_shadow_insufficient_depth": int(
+                    counters["narrowing_shadow_insufficient_depth"]
+                ),
+                "narrowing_shadow_no_reduction": int(
+                    counters["narrowing_shadow_no_reduction"]
+                ),
+                "narrowing_shadow_incomplete": int(
+                    counters["narrowing_shadow_incomplete"]
+                ),
+                "narrowing_shadow_comparisons": int(
+                    counters["narrowing_shadow_comparisons"]
+                ),
+                "narrowing_shadow_matches": int(
+                    counters["narrowing_shadow_matches"]
+                ),
+                "narrowing_shadow_mismatches": int(
+                    counters["narrowing_shadow_mismatches"]
+                ),
+                "narrowing_shadow_match_rate": round(
+                    int(counters["narrowing_shadow_matches"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    5,
+                ),
+                "narrowing_shadow_priority_selected": int(
+                    counters["narrowing_shadow_priority_selected"]
+                ),
+                "narrowing_shadow_average_full_candidates": round(
+                    float(counters["narrowing_shadow_full_candidates_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    3,
+                ),
+                "narrowing_shadow_average_kept_candidates": round(
+                    float(counters["narrowing_shadow_kept_candidates_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    3,
+                ),
+                "narrowing_shadow_average_removed_candidates": round(
+                    float(counters["narrowing_shadow_removed_candidates_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    3,
+                ),
+                "narrowing_shadow_average_depth": round(
+                    float(counters["narrowing_shadow_depth_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    3,
+                ),
+                "narrowing_shadow_average_actual_elapsed_seconds": round(
+                    float(counters["narrowing_shadow_actual_elapsed_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    5,
+                ),
+                "narrowing_shadow_average_estimated_elapsed_seconds": round(
+                    float(counters["narrowing_shadow_estimated_elapsed_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
+                    5,
+                ),
+                "narrowing_shadow_estimated_saved_seconds": round(
+                    float(counters["narrowing_shadow_estimated_saved_sum"]),
+                    5,
+                ),
+                "narrowing_shadow_average_value_loss": round(
+                    float(counters["narrowing_shadow_value_loss_sum"])
+                    / max(1, int(counters["narrowing_shadow_comparisons"])),
                     3,
                 ),
                 "average_depth": round(

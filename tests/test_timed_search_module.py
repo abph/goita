@@ -109,6 +109,57 @@ def test_generic_hint_effect_is_measured_without_changing_legal_actions() -> Non
     )
 
 
+def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.hands["A"].remove("7")
+    state.hands["A"].append("8")
+    state.hands["D"].remove("8")
+    state.hands["D"].append("7")
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_INFORMATION_SET_ENABLED = False
+    agent.TIME_SEARCH_MAX_SECONDS = 1.0
+    agent.TIME_SEARCH_SAMPLE_COUNT = 2
+    agent.TIME_SEARCH_MAX_DEPTH = 3
+    agent.TIME_SEARCH_MAX_NODES = 30_000
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    agent._generic_response_priority_action = (
+        lambda _state, _player, _actions, _baseline: priority
+    )
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.depth == 3
+    assert len(actions) == 3
+    assert snapshot["narrowing_shadow_considered"] == 1
+    assert snapshot["narrowing_shadow_comparisons"] == 1
+    assert snapshot["narrowing_shadow_incomplete"] == 0
+    assert snapshot["narrowing_shadow_average_full_candidates"] == 3.0
+    assert snapshot["narrowing_shadow_average_kept_candidates"] == 2.0
+    assert snapshot["narrowing_shadow_average_removed_candidates"] == 1.0
+    assert (
+        snapshot["narrowing_shadow_matches"]
+        + snapshot["narrowing_shadow_mismatches"]
+        == 1
+    )
+
+
 def _search_result(
     *,
     depth: int = 7,
@@ -836,6 +887,7 @@ if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
     test_generic_hint_only_reorders_root_actions()
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
+    test_generic_hint_narrowing_shadow_compares_after_depth_three()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()
