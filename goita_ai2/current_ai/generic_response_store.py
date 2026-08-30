@@ -19,6 +19,7 @@ from goita_ai2.current_ai.search_cache import _digest_payload
 
 GENERIC_RESPONSE_STORE_SCHEMA_VERSION = 1
 GENERIC_RESPONSE_STORE_FILENAME = "generic-response-patterns.json"
+TACTICAL_MISMATCH_DETAIL_LIMIT = 250
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -186,6 +187,7 @@ class GenericResponsePatternStore:
         self._patterns: Dict[str, dict] = {}
         self._tactical_patterns: Dict[str, dict] = {}
         self._medium_patterns: Dict[str, dict] = {}
+        self._tactical_mismatch_details: Dict[str, dict] = {}
         self._counters = self._empty_counters()
         self._last_checkpoint_error = ""
         self._restore()
@@ -289,6 +291,7 @@ class GenericResponsePatternStore:
             self._patterns = {}
             self._tactical_patterns = {}
             self._medium_patterns = {}
+            self._tactical_mismatch_details = {}
             self._counters = self._empty_counters()
             self._last_checkpoint_error = ""
 
@@ -597,6 +600,7 @@ class GenericResponsePatternStore:
             "patterns": serialize_patterns(self._patterns),
             "tactical_patterns": serialize_patterns(self._tactical_patterns),
             "medium_patterns": serialize_patterns(self._medium_patterns),
+            "tactical_mismatch_details": self._tactical_mismatch_details,
         }
 
     def checkpoint(self, reason: str = "manual") -> bool:
@@ -653,9 +657,13 @@ class GenericResponsePatternStore:
 
         counters = payload.get("counters", {})
         patterns = payload.get("patterns", {})
+        mismatch_details = payload.get("tactical_mismatch_details", {})
         if not isinstance(counters, dict) or not isinstance(patterns, dict):
             return False
+        if not isinstance(mismatch_details, dict):
+            mismatch_details = {}
         restored_patterns = {}
+        restored_mismatch_details = {}
         try:
             for key, raw in patterns.items():
                 if not isinstance(key, str) or not isinstance(raw, dict):
@@ -700,6 +708,33 @@ class GenericResponsePatternStore:
                     "agreement_sum": float(raw.get("agreement_sum", 0.0)),
                     "confidence_sum": float(raw.get("confidence_sum", 0.0)),
                     "margin_sum": float(raw.get("margin_sum", 0.0)),
+                    "first_seen_at": float(raw.get("first_seen_at", 0.0)),
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                }
+            for key, raw in mismatch_details.items():
+                if not isinstance(key, str) or not isinstance(raw, dict):
+                    continue
+                pattern_key = str(raw.get("pattern_key", ""))
+                recommended_action = str(
+                    raw.get("recommended_action", "other")
+                )
+                actual_action = str(raw.get("actual_action", "other"))
+                if not pattern_key:
+                    continue
+                restored_mismatch_details[key] = {
+                    "pattern_key": pattern_key,
+                    "recommended_action": recommended_action,
+                    "actual_action": actual_action,
+                    "count": max(0, int(raw.get("count", 0))),
+                    "observations": max(
+                        0,
+                        int(raw.get("observations", 0)),
+                    ),
+                    "support": max(0, int(raw.get("support", 0))),
+                    "dominance": max(
+                        0.0,
+                        min(1.0, float(raw.get("dominance", 0.0))),
+                    ),
                     "first_seen_at": float(raw.get("first_seen_at", 0.0)),
                     "last_seen_at": float(raw.get("last_seen_at", 0.0)),
                 }
@@ -810,6 +845,7 @@ class GenericResponsePatternStore:
             self._patterns = restored_patterns
             self._rebuild_tactical_patterns_locked()
             self._rebuild_medium_patterns_locked()
+            self._tactical_mismatch_details = restored_mismatch_details
             self._counters = restored_counters
             self._started_at = float(payload.get("started_at", time.time()))
             self._last_checkpoint_error = ""
@@ -1305,6 +1341,54 @@ class GenericResponsePatternStore:
                 counters["tactical_shadow_matches"] += 1
             else:
                 counters["tactical_shadow_mismatches"] += 1
+                detail_key = _digest_payload({
+                    "pattern_key": str(pattern_key),
+                    "recommended_action": recommended,
+                    "actual_action": actual,
+                })
+                detail = self._tactical_mismatch_details.get(detail_key)
+                now = time.time()
+                if detail is None:
+                    if (
+                        len(self._tactical_mismatch_details)
+                        >= TACTICAL_MISMATCH_DETAIL_LIMIT
+                    ):
+                        evicted_key = min(
+                            self._tactical_mismatch_details,
+                            key=lambda key: (
+                                int(self._tactical_mismatch_details[key].get(
+                                    "count",
+                                    0,
+                                )),
+                                float(self._tactical_mismatch_details[key].get(
+                                    "last_seen_at",
+                                    0.0,
+                                )),
+                            ),
+                        )
+                        self._tactical_mismatch_details.pop(evicted_key, None)
+                    detail = {
+                        "pattern_key": str(pattern_key),
+                        "recommended_action": recommended,
+                        "actual_action": actual,
+                        "count": 0,
+                        "first_seen_at": now,
+                    }
+                    self._tactical_mismatch_details[detail_key] = detail
+                detail["count"] = int(detail.get("count", 0)) + 1
+                detail["observations"] = max(
+                    0,
+                    int(recommendation.get("observations", 0)),
+                )
+                detail["support"] = max(
+                    0,
+                    int(recommendation.get("support", 0)),
+                )
+                detail["dominance"] = max(
+                    0.0,
+                    min(1.0, float(recommendation.get("dominance", 0.0))),
+                )
+                detail["last_seen_at"] = now
             return {
                 **recommendation,
                 "status": "match" if matched else "mismatch",
@@ -1327,6 +1411,48 @@ class GenericResponsePatternStore:
                 int(raw.get("observations", 0))
                 for raw in self._tactical_patterns.values()
             ]
+            tactical_mismatch_details = []
+            for detail_key, raw in self._tactical_mismatch_details.items():
+                pattern_key = str(raw.get("pattern_key", ""))
+                recommended_action = str(
+                    raw.get("recommended_action", "other")
+                )
+                pattern = self._tactical_patterns.get(pattern_key, {})
+                observations = max(
+                    0,
+                    int(pattern.get(
+                        "observations",
+                        raw.get("observations", 0),
+                    )),
+                )
+                support = max(
+                    0,
+                    int(pattern.get("action_counts", {}).get(
+                        recommended_action,
+                        raw.get("support", 0),
+                    )),
+                )
+                tactical_mismatch_details.append({
+                    "pattern_id": pattern_key[:10],
+                    "recommended_action": recommended_action,
+                    "actual_action": str(raw.get("actual_action", "other")),
+                    "count": max(0, int(raw.get("count", 0))),
+                    "observations": observations,
+                    "support": support,
+                    "dominance": round(
+                        support / max(1, observations),
+                        5,
+                    ),
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                    "detail_id": detail_key[:10],
+                })
+            tactical_mismatch_details.sort(
+                key=lambda item: (
+                    -int(item["count"]),
+                    -float(item["last_seen_at"]),
+                    str(item["detail_id"]),
+                )
+            )
             return {
                 "considered": int(counters["considered"]),
                 "recorded": recorded,
@@ -1416,6 +1542,10 @@ class GenericResponsePatternStore:
                         int(counters["tactical_shadow_recommendations"]),
                     ),
                     5,
+                ),
+                "tactical_mismatch_details": tactical_mismatch_details[:50],
+                "tactical_mismatch_detail_count": len(
+                    self._tactical_mismatch_details
                 ),
                 "priority_queries": int(counters["priority_queries"]),
                 "priority_hits": int(counters["priority_hits"]),

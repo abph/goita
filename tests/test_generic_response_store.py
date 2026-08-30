@@ -295,17 +295,38 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
             pattern_key=tactical_key,
             actual_action="pass",
         )
+        repeated_mismatch = store.compare_tactical_shadow(
+            pattern_key=tactical_key,
+            actual_action="pass",
+        )
         snapshot = store.snapshot()
         assert matched["status"] == "match"
         assert mismatched["status"] == "mismatch"
+        assert repeated_mismatch["status"] == "mismatch"
         assert snapshot["tactical_pattern_count"] == 1
         assert snapshot["tactical_patterns_8_plus"] == 1
         assert snapshot["tactical_patterns_10_plus"] == 1
-        assert snapshot["tactical_shadow_lookups"] == 2
-        assert snapshot["tactical_shadow_recommendations"] == 2
+        assert snapshot["tactical_shadow_lookups"] == 3
+        assert snapshot["tactical_shadow_recommendations"] == 3
         assert snapshot["tactical_shadow_matches"] == 1
-        assert snapshot["tactical_shadow_mismatches"] == 1
-        assert snapshot["tactical_shadow_match_rate"] == 0.5
+        assert snapshot["tactical_shadow_mismatches"] == 2
+        assert snapshot["tactical_shadow_match_rate"] == 0.33333
+        assert snapshot["tactical_mismatch_detail_count"] == 1
+        assert snapshot["tactical_mismatch_details"] == [{
+            "pattern_id": tactical_key[:10],
+            "recommended_action": "receive_same",
+            "actual_action": "pass",
+            "count": 2,
+            "observations": 10,
+            "support": 10,
+            "dominance": 1.0,
+            "last_seen_at": snapshot["tactical_mismatch_details"][0][
+                "last_seen_at"
+            ],
+            "detail_id": snapshot["tactical_mismatch_details"][0][
+                "detail_id"
+            ],
+        }]
         assert snapshot["priority_queries"] == 0
 
         assert store.checkpoint("tactical-backfill") is True
@@ -316,6 +337,14 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
             granularity="tactical",
         )
         assert restored_snapshot["tactical_pattern_count"] == 1
+        assert restored_snapshot["tactical_mismatch_detail_count"] == 1
+        assert restored_snapshot["tactical_mismatch_details"][0]["count"] == 2
+        assert restored_snapshot["tactical_mismatch_details"][0][
+            "recommended_action"
+        ] == "receive_same"
+        assert restored_snapshot["tactical_mismatch_details"][0][
+            "actual_action"
+        ] == "pass"
         assert restored_pattern is not None
         assert restored_pattern["observations"] == 10
 

@@ -128,6 +128,7 @@
     .analytics-toolbar select { width: auto; }
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
+    .table-scroll { max-width: 100%; overflow-x: auto; }
     th, td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     th { color: var(--muted); font-size: 12px; }
     .session-list { display: grid; gap: 8px; max-height: 620px; overflow: auto; }
@@ -238,6 +239,16 @@
           <h3 class="subheading">汎用パターンの収集</h3>
           <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。戦術分類は現在、AIの判断に影響しない比較のみです。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
+          <h3 class="subheading">戦術分類の不一致内訳</h3>
+          <p class="muted">手駒や棋譜は保存せず、この機能の導入後に発生した匿名の判断差だけを集計します。</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>型</th><th>辞書の推薦</th><th>現在AI</th><th>発生</th><th>型の観測</th><th>支持率</th></tr>
+              </thead>
+              <tbody id="tacticalMismatchRows"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 
@@ -523,6 +534,25 @@
       document.getElementById("genericPatternMetricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
       `).join("");
+      const actionLabels = {
+        pass: "パス",
+        receive_same: "同じ駒で受ける",
+        receive_royal: "王・玉で受ける",
+        receive_other: "別の駒で受ける",
+        other: "その他",
+      };
+      document.getElementById("tacticalMismatchRows").innerHTML = (
+        data.tactical_mismatch_details || []
+      ).map((detail, index) => `
+        <tr>
+          <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
+          <td>${escapeHtml(actionLabels[detail.recommended_action] || detail.recommended_action)}</td>
+          <td>${escapeHtml(actionLabels[detail.actual_action] || detail.actual_action)}</td>
+          <td>${Number(detail.count || 0)}回</td>
+          <td>${Number(detail.observations || 0)}件</td>
+          <td>${((Number(detail.dominance) || 0) * 100).toFixed(1)}%</td>
+        </tr>
+      `).join("") || '<tr><td colspan="6" class="muted">導入後の不一致はまだありません。</td></tr>';
     }
 
     async function loadResponseMetrics() {
