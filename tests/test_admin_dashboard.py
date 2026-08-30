@@ -21,6 +21,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "汎用パターンの収集" in admin
     assert "十分な支持がある型は探索順の優先候補として使用します" in admin
     assert "中分類パターン" in admin
+    assert "戦術分類パターン" in admin
+    assert "戦術分類・影響なし比較" in admin
+    assert "戦術分類は現在、AIの判断に影響しない比較のみです" in admin
     assert "中分類から優先" in admin
     assert "影響なし比較" in admin
     assert "現在AIと不一致" in admin

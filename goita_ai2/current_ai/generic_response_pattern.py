@@ -12,6 +12,7 @@ from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, POINTS
 from goita_ai2.current_ai.generic_response_store import (
     generic_response_pattern_store,
     medium_response_pattern_payload,
+    tactical_response_pattern_payload,
 )
 from goita_ai2.current_ai.search_cache import _digest_payload
 
@@ -28,6 +29,8 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_PATTERN_MIN_CONFIDENCE = 0.45
     GENERIC_RESPONSE_SHADOW_MIN_OBSERVATIONS = 5
     GENERIC_RESPONSE_SHADOW_MIN_DOMINANCE = 0.60
+    GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_OBSERVATIONS = 8
+    GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
     GENERIC_RESPONSE_MEDIUM_PRIORITY_MIN_OBSERVATIONS = 10
     GENERIC_RESPONSE_MEDIUM_MIN_DOMINANCE = 0.70
@@ -345,6 +348,37 @@ class GenericResponsePatternMixin:
         )
         return medium_response_pattern_payload(detailed)
 
+    def _tactical_response_pattern_payload(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> Dict[str, object]:
+        detailed = self._generic_response_pattern_payload(
+            state,
+            player,
+            actions,
+            baseline_action,
+        )
+        return tactical_response_pattern_payload(detailed)
+
+    def _tactical_response_pattern_key(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> str:
+        return _digest_payload(
+            self._tactical_response_pattern_payload(
+                state,
+                player,
+                actions,
+                baseline_action,
+            )
+        )
+
     def _medium_response_pattern_key(
         self,
         state,
@@ -532,6 +566,25 @@ class GenericResponsePatternMixin:
             ),
         )
         self.last_generic_response_shadow = dict(result)
+        tactical_result = generic_response_pattern_store().compare_tactical_shadow(
+            pattern_key=self._tactical_response_pattern_key(
+                state,
+                player,
+                actions_list,
+                baseline_action,
+            ),
+            actual_action=self._generic_response_action_label(
+                actual_action,
+                state.current_attack,
+            ),
+            min_observations=(
+                self.GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_OBSERVATIONS
+            ),
+            min_dominance=(
+                self.GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE
+            ),
+        )
+        self.last_generic_response_tactical_shadow = dict(tactical_result)
         return result
 
     def _generic_response_priority_action(

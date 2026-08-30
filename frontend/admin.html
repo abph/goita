@@ -236,7 +236,7 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。戦術分類は現在、AIの判断に影響しない比較のみです。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
         </section>
       </section>
@@ -399,6 +399,9 @@
       const agreement = (Number(data.average_agreement) || 0) * 100;
       const confidence = (Number(data.average_confidence) || 0) * 100;
       const shadowMatchRate = (Number(data.shadow_match_rate) || 0) * 100;
+      const tacticalShadowMatchRate = (
+        Number(data.tactical_shadow_match_rate) || 0
+      ) * 100;
       const priorityHitRate = (Number(data.priority_hit_rate) || 0) * 100;
       const priorityEffectChangeRate = (
         Number(data.priority_effect_change_rate) || 0
@@ -409,6 +412,7 @@
       const metrics = [
         ["有効サンプル", `${data.recorded || 0}件`],
         ["汎用パターン", `${data.pattern_count || 0}種類`],
+        ["戦術分類パターン", `${data.tactical_pattern_count || 0}種類`],
         ["中分類パターン", `${data.medium_pattern_count || 0}種類`],
         ["検討対象", `${data.considered || 0}件`],
         ["品質不足で除外", `${data.rejected || 0}件`],
@@ -425,7 +429,18 @@
         ["中分類・5件以上", `${data.medium_patterns_5_plus || 0}種類`],
         ["中分類・10件以上", `${data.medium_patterns_10_plus || 0}種類`],
         ["中分類・20件以上", `${data.medium_patterns_20_plus || 0}種類`],
+        ["戦術分類・8件以上", `${data.tactical_patterns_8_plus || 0}種類`],
+        ["戦術分類・10件以上", `${data.tactical_patterns_10_plus || 0}種類`],
+        ["戦術分類・20件以上", `${data.tactical_patterns_20_plus || 0}種類`],
         ["永続保存", data.persistent ? "有効" : "無効"],
+        ["戦術分類・影響なし比較", `${data.tactical_shadow_lookups || 0}回`],
+        ["戦術分類・推薦あり", `${data.tactical_shadow_recommendations || 0}回`],
+        ["戦術分類・現在AIと一致", `${data.tactical_shadow_matches || 0}回`],
+        ["戦術分類・現在AIと不一致", `${data.tactical_shadow_mismatches || 0}回`],
+        ["戦術分類・一致率", `${tacticalShadowMatchRate.toFixed(1)}%`],
+        ["戦術分類・該当なし", `${data.tactical_shadow_no_pattern || 0}回`],
+        ["戦術分類・データ不足", `${data.tactical_shadow_insufficient || 0}回`],
+        ["戦術分類・判断が割れる", `${data.tactical_shadow_ambiguous || 0}回`],
         ["影響なし比較", `${data.shadow_lookups || 0}回`],
         ["辞書の推奨あり", `${data.shadow_recommendations || 0}回`],
         ["現在AIと一致", `${data.shadow_matches || 0}回`],

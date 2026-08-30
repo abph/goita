@@ -8,6 +8,7 @@ from goita_ai2.current_ai.generic_response_store import (
     GenericResponsePatternStore,
     medium_response_pattern_payload,
     resolve_generic_response_store_path,
+    tactical_response_pattern_payload,
 )
 from goita_ai2.current_ai.search_cache import _digest_payload
 
@@ -266,6 +267,59 @@ def test_shadow_uses_medium_pattern_when_detail_has_no_support() -> None:
     assert snapshot["shadow_granularity_counts"] == {"medium": 1}
 
 
+def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        tactical_key = _digest_payload(
+            tactical_response_pattern_payload(_features())
+        )
+        for index in range(10):
+            store.record(
+                pattern_key=f"tactical-detail-{index}",
+                features={**_features(), "detailed_variant": index},
+                action_label="receive_same",
+                followup_label="middle_pair",
+                source="default",
+                depth=7,
+                agreement=0.80,
+                confidence=0.70,
+                margin=100.0,
+            )
+
+        matched = store.compare_tactical_shadow(
+            pattern_key=tactical_key,
+            actual_action="receive_same",
+        )
+        mismatched = store.compare_tactical_shadow(
+            pattern_key=tactical_key,
+            actual_action="pass",
+        )
+        snapshot = store.snapshot()
+        assert matched["status"] == "match"
+        assert mismatched["status"] == "mismatch"
+        assert snapshot["tactical_pattern_count"] == 1
+        assert snapshot["tactical_patterns_8_plus"] == 1
+        assert snapshot["tactical_patterns_10_plus"] == 1
+        assert snapshot["tactical_shadow_lookups"] == 2
+        assert snapshot["tactical_shadow_recommendations"] == 2
+        assert snapshot["tactical_shadow_matches"] == 1
+        assert snapshot["tactical_shadow_mismatches"] == 1
+        assert snapshot["tactical_shadow_match_rate"] == 0.5
+        assert snapshot["priority_queries"] == 0
+
+        assert store.checkpoint("tactical-backfill") is True
+        restored = GenericResponsePatternStore(path=path)
+        restored_snapshot = restored.snapshot()
+        restored_pattern = restored.pattern(
+            tactical_key,
+            granularity="tactical",
+        )
+        assert restored_snapshot["tactical_pattern_count"] == 1
+        assert restored_pattern is not None
+        assert restored_pattern["observations"] == 10
+
+
 def test_priority_effect_metrics_compare_and_restore_without_board_data() -> None:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "generic-patterns.json"
@@ -397,5 +451,6 @@ if __name__ == "__main__":
     test_shadow_comparison_requires_support_and_never_selects_an_action()
     test_medium_patterns_pool_detailed_variants_and_survive_restore()
     test_shadow_uses_medium_pattern_when_detail_has_no_support()
+    test_tactical_patterns_backfill_and_compare_without_affecting_priority()
     test_priority_effect_metrics_compare_and_restore_without_board_data()
     print("GENERIC_RESPONSE_STORE_TEST_OK")

@@ -64,6 +64,91 @@ def medium_response_pattern_payload(
     }
 
 
+def tactical_response_pattern_payload(
+    detailed: Mapping[str, object],
+) -> Dict[str, object]:
+    """Keep tactically meaningful detail without retaining an exact position."""
+    context = dict(detailed.get("context", {}) or {})
+    legal = dict(detailed.get("legal", {}) or {})
+    hand = dict(detailed.get("hand", {}) or {})
+    after = dict(detailed.get("after_same_receive", {}) or {})
+    followup = dict(after.get("followup", {}) or {})
+    signals = dict(detailed.get("signals", {}) or {})
+    score = dict(detailed.get("score", {}) or {})
+    receive_modes = {
+        str(item) for item in legal.get("receive_modes", ())
+    }
+
+    same_piece = str(hand.get("same_piece", "0"))
+    if same_piece == "0":
+        same_piece_class = "none"
+    elif same_piece == "1":
+        same_piece_class = "one"
+    else:
+        same_piece_class = "multiple"
+
+    attack_count = str(context.get("attacker_attack_count", "0"))
+    if str(followup.get("fourth_followups", "0")) != "0":
+        followup_strength = "fourth"
+    elif str(followup.get("scarce_followups", "0")) != "0":
+        followup_strength = "scarce"
+    elif str(followup.get("pair_followups", "0")) != "0":
+        followup_strength = "pair"
+    else:
+        followup_strength = "open"
+
+    reentry = str(followup.get("reentry_width", "0"))
+    if reentry == "0":
+        reentry_width = "closed"
+    elif reentry == "1":
+        reentry_width = "narrow"
+    else:
+        reentry_width = "wide"
+
+    attack_family = str(context.get("attack_family", "none"))
+    if attack_family != "shi":
+        shi_context = "not_shi"
+    elif bool(signals.get("shi_attack_mode", False)) or str(
+        signals.get("ally_shi", "unknown")
+    ) in ("returned_shi", "sashikomi"):
+        shi_context = "continue"
+    elif str(signals.get("ally_shi", "unknown")) == "weak":
+        shi_context = "stop"
+    elif bool(signals.get("enemy_rejected_shi", False)):
+        shi_context = "enemy_rejected"
+    else:
+        shi_context = "neutral"
+
+    own_near = str(score.get("own_match_point", "normal")) == "near"
+    enemy_near = str(score.get("enemy_match_point", "normal")) == "near"
+    if own_near and enemy_near:
+        score_pressure = "both_near"
+    elif own_near:
+        score_pressure = "own_near"
+    elif enemy_near:
+        score_pressure = "enemy_near"
+    else:
+        score_pressure = "normal"
+
+    return {
+        "version": 1,
+        "granularity": "tactical",
+        "attacker_relation": str(context.get("attacker_relation", "none")),
+        "attack_piece": str(context.get("attack_piece", "none")),
+        "attack_stage": "first" if attack_count in ("0", "1") else "later",
+        "hand_stage": str(hand.get("size", "middle")),
+        "next_receiver_stage": str(
+            context.get("next_receiver_hand", "middle")
+        ),
+        "same_piece": same_piece_class,
+        "royal_receive": "royal" in receive_modes,
+        "followup_strength": followup_strength,
+        "reentry_width": reentry_width,
+        "shi_context": shi_context,
+        "score_pressure": score_pressure,
+    }
+
+
 def resolve_generic_response_store_path(
     environ: Mapping[str, str],
 ) -> Optional[Path]:
@@ -99,6 +184,7 @@ class GenericResponsePatternStore:
         self._checkpoint_lock = threading.Lock()
         self._started_at = time.time()
         self._patterns: Dict[str, dict] = {}
+        self._tactical_patterns: Dict[str, dict] = {}
         self._medium_patterns: Dict[str, dict] = {}
         self._counters = self._empty_counters()
         self._last_checkpoint_error = ""
@@ -117,6 +203,13 @@ class GenericResponsePatternStore:
             "shadow_recommendations": 0,
             "shadow_matches": 0,
             "shadow_mismatches": 0,
+            "tactical_shadow_lookups": 0,
+            "tactical_shadow_no_pattern": 0,
+            "tactical_shadow_insufficient": 0,
+            "tactical_shadow_ambiguous": 0,
+            "tactical_shadow_recommendations": 0,
+            "tactical_shadow_matches": 0,
+            "tactical_shadow_mismatches": 0,
             "priority_queries": 0,
             "priority_hits": 0,
             "priority_effect_comparisons": 0,
@@ -194,6 +287,7 @@ class GenericResponsePatternStore:
         with self._lock:
             self._started_at = time.time()
             self._patterns = {}
+            self._tactical_patterns = {}
             self._medium_patterns = {}
             self._counters = self._empty_counters()
             self._last_checkpoint_error = ""
@@ -323,6 +417,20 @@ class GenericResponsePatternStore:
                 margin=margin,
                 now=now,
             )
+            tactical_features = tactical_response_pattern_payload(features)
+            self._record_pattern_locked(
+                self._tactical_patterns,
+                pattern_key=_digest_payload(tactical_features),
+                features=tactical_features,
+                action_label=action_label,
+                followup_label=followup_label,
+                source=source,
+                depth=depth,
+                agreement=agreement,
+                confidence=confidence,
+                margin=margin,
+                now=now,
+            )
             medium_features = medium_response_pattern_payload(features)
             self._record_pattern_locked(
                 self._medium_patterns,
@@ -434,6 +542,20 @@ class GenericResponsePatternStore:
                 raw=raw,
             )
 
+    def _rebuild_tactical_patterns_locked(self) -> None:
+        self._tactical_patterns = {}
+        for raw in self._patterns.values():
+            detailed_features = dict(raw.get("features", {}) or {})
+            tactical_features = tactical_response_pattern_payload(
+                detailed_features
+            )
+            self._merge_pattern_entry_locked(
+                self._tactical_patterns,
+                pattern_key=_digest_payload(tactical_features),
+                features=tactical_features,
+                raw=raw,
+            )
+
     def _serializable_locked(self) -> dict:
         def serialize_patterns(table: Dict[str, dict]) -> dict:
             patterns = {}
@@ -473,6 +595,7 @@ class GenericResponsePatternStore:
                 ),
             },
             "patterns": serialize_patterns(self._patterns),
+            "tactical_patterns": serialize_patterns(self._tactical_patterns),
             "medium_patterns": serialize_patterns(self._medium_patterns),
         }
 
@@ -592,6 +715,13 @@ class GenericResponsePatternStore:
                 "shadow_recommendations",
                 "shadow_matches",
                 "shadow_mismatches",
+                "tactical_shadow_lookups",
+                "tactical_shadow_no_pattern",
+                "tactical_shadow_insufficient",
+                "tactical_shadow_ambiguous",
+                "tactical_shadow_recommendations",
+                "tactical_shadow_matches",
+                "tactical_shadow_mismatches",
                 "priority_queries",
                 "priority_hits",
                 "priority_effect_comparisons",
@@ -678,6 +808,7 @@ class GenericResponsePatternStore:
 
         with self._lock:
             self._patterns = restored_patterns
+            self._rebuild_tactical_patterns_locked()
             self._rebuild_medium_patterns_locked()
             self._counters = restored_counters
             self._started_at = float(payload.get("started_at", time.time()))
@@ -691,11 +822,12 @@ class GenericResponsePatternStore:
         granularity: str = "detailed",
     ) -> Optional[dict]:
         with self._lock:
-            table = (
-                self._medium_patterns
-                if granularity == "medium"
-                else self._patterns
-            )
+            if granularity == "tactical":
+                table = self._tactical_patterns
+            elif granularity == "medium":
+                table = self._medium_patterns
+            else:
+                table = self._patterns
             raw = table.get(str(pattern_key))
             if raw is None:
                 return None
@@ -770,11 +902,12 @@ class GenericResponsePatternStore:
         min_observations: int,
         min_dominance: float,
     ) -> dict:
-        table = (
-            self._medium_patterns
-            if granularity == "medium"
-            else self._patterns
-        )
+        if granularity == "tactical":
+            table = self._tactical_patterns
+        elif granularity == "medium":
+            table = self._medium_patterns
+        else:
+            table = self._patterns
         raw = table.get(str(pattern_key))
         if raw is None:
             return {
@@ -1135,6 +1268,49 @@ class GenericResponsePatternStore:
                 "actual_action": actual,
             }
 
+    def compare_tactical_shadow(
+        self,
+        *,
+        pattern_key: str,
+        actual_action: str,
+        min_observations: int = 8,
+        min_dominance: float = 0.70,
+    ) -> dict:
+        """Measure tactical-class advice without affecting search order."""
+        with self._lock:
+            counters = self._counters
+            counters["tactical_shadow_lookups"] += 1
+            recommendation = self._recommendation_locked(
+                pattern_key,
+                granularity="tactical",
+                min_observations=min_observations,
+                min_dominance=min_dominance,
+            )
+            status = str(recommendation.get("status", "insufficient"))
+            if status == "no_pattern":
+                counters["tactical_shadow_no_pattern"] += 1
+                return recommendation
+            if status == "insufficient":
+                counters["tactical_shadow_insufficient"] += 1
+                return recommendation
+            if status == "ambiguous":
+                counters["tactical_shadow_ambiguous"] += 1
+                return recommendation
+
+            actual = str(actual_action)
+            recommended = str(recommendation["recommended_action"])
+            matched = actual == recommended
+            counters["tactical_shadow_recommendations"] += 1
+            if matched:
+                counters["tactical_shadow_matches"] += 1
+            else:
+                counters["tactical_shadow_mismatches"] += 1
+            return {
+                **recommendation,
+                "status": "match" if matched else "mismatch",
+                "actual_action": actual,
+            }
+
     def snapshot(self) -> dict:
         with self._lock:
             counters = self._counters
@@ -1146,6 +1322,10 @@ class GenericResponsePatternStore:
             medium_observation_counts = [
                 int(raw.get("observations", 0))
                 for raw in self._medium_patterns.values()
+            ]
+            tactical_observation_counts = [
+                int(raw.get("observations", 0))
+                for raw in self._tactical_patterns.values()
             ]
             return {
                 "considered": int(counters["considered"]),
@@ -1167,6 +1347,16 @@ class GenericResponsePatternStore:
                 ),
                 "medium_patterns_20_plus": sum(
                     count >= 20 for count in medium_observation_counts
+                ),
+                "tactical_pattern_count": len(self._tactical_patterns),
+                "tactical_patterns_8_plus": sum(
+                    count >= 8 for count in tactical_observation_counts
+                ),
+                "tactical_patterns_10_plus": sum(
+                    count >= 10 for count in tactical_observation_counts
+                ),
+                "tactical_patterns_20_plus": sum(
+                    count >= 20 for count in tactical_observation_counts
                 ),
                 "action_counts": dict(counters["action_counts"]),
                 "followup_counts": dict(counters["followup_counts"]),
@@ -1197,6 +1387,35 @@ class GenericResponsePatternStore:
                 ),
                 "shadow_granularity_counts": dict(
                     counters["shadow_granularity_counts"]
+                ),
+                "tactical_shadow_lookups": int(
+                    counters["tactical_shadow_lookups"]
+                ),
+                "tactical_shadow_no_pattern": int(
+                    counters["tactical_shadow_no_pattern"]
+                ),
+                "tactical_shadow_insufficient": int(
+                    counters["tactical_shadow_insufficient"]
+                ),
+                "tactical_shadow_ambiguous": int(
+                    counters["tactical_shadow_ambiguous"]
+                ),
+                "tactical_shadow_recommendations": int(
+                    counters["tactical_shadow_recommendations"]
+                ),
+                "tactical_shadow_matches": int(
+                    counters["tactical_shadow_matches"]
+                ),
+                "tactical_shadow_mismatches": int(
+                    counters["tactical_shadow_mismatches"]
+                ),
+                "tactical_shadow_match_rate": round(
+                    int(counters["tactical_shadow_matches"])
+                    / max(
+                        1,
+                        int(counters["tactical_shadow_recommendations"]),
+                    ),
+                    5,
                 ),
                 "priority_queries": int(counters["priority_queries"]),
                 "priority_hits": int(counters["priority_hits"]),
