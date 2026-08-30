@@ -129,6 +129,7 @@
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
     .table-scroll { max-width: 100%; overflow-x: auto; }
+    .tactical-mismatch-table { min-width: 1040px; }
     th, td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     th { color: var(--muted); font-size: 12px; }
     .session-list { display: grid; gap: 8px; max-height: 620px; overflow: auto; }
@@ -242,9 +243,9 @@
           <h3 class="subheading">戦術分類の不一致内訳</h3>
           <p class="muted">手駒や棋譜は保存せず、この機能の導入後に発生した匿名の判断差だけを集計します。</p>
           <div class="table-scroll">
-            <table>
+            <table class="tactical-mismatch-table">
               <thead>
-                <tr><th>型</th><th>辞書の推薦</th><th>現在AI</th><th>発生</th><th>型の観測</th><th>支持率</th></tr>
+                <tr><th>型</th><th>匿名の局面</th><th>受け後の見通し</th><th>辞書の推薦</th><th>現在AI</th><th>発生</th><th>観測・支持</th></tr>
               </thead>
               <tbody id="tacticalMismatchRows"></tbody>
             </table>
@@ -541,18 +542,52 @@
         receive_other: "別の駒で受ける",
         other: "その他",
       };
+      const tacticalLabels = {
+        attacker_relation: {ally: "味方から", enemy: "敵から", self: "自分から", none: "相手不明"},
+        attack_stage: {first: "攻め1枚目", later: "攻め2枚目以降"},
+        attack_piece: {"1": "し", "2": "香", "3": "馬", "4": "銀", "5": "金", "6": "角", "7": "飛", "8": "玉", "9": "王", none: "駒不明"},
+        hand_stage: {early: "残り7枚以上", middle: "残り5〜6枚", late: "残り3〜4枚", reach: "残り2枚以下"},
+        same_piece: {none: "同種なし", one: "同種1枚", multiple: "同種2枚以上"},
+        followup_strength: {fourth: "4枚目候補あり", scarce: "相手に少ない攻めあり", pair: "ペア攻めあり", open: "その他の攻め"},
+        reentry_width: {closed: "再参加困難", narrow: "再参加1種類", wide: "再参加2種類以上"},
+        shi_context: {not_shi: "し攻め以外", continue: "し攻め継続", stop: "し攻め中止信号", enemy_rejected: "敵がし攻めを拒否", neutral: "し攻め・中立"},
+        score_pressure: {normal: "通常得点", own_near: "自チームが勝利目前", enemy_near: "敵チームが勝利目前", both_near: "両チームが勝利目前"},
+      };
+      function tacticalLabel(group, value) {
+        const labels = tacticalLabels[group] || {};
+        return labels[value] || String(value || "不明");
+      }
+      function tacticalLines(lines) {
+        return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+      }
       document.getElementById("tacticalMismatchRows").innerHTML = (
         data.tactical_mismatch_details || []
-      ).map((detail, index) => `
-        <tr>
-          <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
-          <td>${escapeHtml(actionLabels[detail.recommended_action] || detail.recommended_action)}</td>
-          <td>${escapeHtml(actionLabels[detail.actual_action] || detail.actual_action)}</td>
-          <td>${Number(detail.count || 0)}回</td>
-          <td>${Number(detail.observations || 0)}件</td>
-          <td>${((Number(detail.dominance) || 0) * 100).toFixed(1)}%</td>
-        </tr>
-      `).join("") || '<tr><td colspan="6" class="muted">導入後の不一致はまだありません。</td></tr>';
+      ).map((detail, index) => {
+        const context = detail.anonymous_context || {};
+        const situation = [
+          `${tacticalLabel("attacker_relation", context.attacker_relation)}・${tacticalLabel("attack_stage", context.attack_stage)}・${tacticalLabel("attack_piece", context.attack_piece)}`,
+          `自分：${tacticalLabel("hand_stage", context.hand_stage)}`,
+          `次の受け手：${tacticalLabel("hand_stage", context.next_receiver_stage)}`,
+          `${tacticalLabel("same_piece", context.same_piece)}／${context.royal_receive ? "王・玉受け可" : "王・玉受け不可"}`,
+        ];
+        const outlook = [
+          tacticalLabel("followup_strength", context.followup_strength),
+          tacticalLabel("reentry_width", context.reentry_width),
+          tacticalLabel("shi_context", context.shi_context),
+          tacticalLabel("score_pressure", context.score_pressure),
+        ];
+        return `
+          <tr>
+            <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
+            <td>${tacticalLines(situation)}</td>
+            <td>${tacticalLines(outlook)}</td>
+            <td>${escapeHtml(actionLabels[detail.recommended_action] || detail.recommended_action)}</td>
+            <td>${escapeHtml(actionLabels[detail.actual_action] || detail.actual_action)}</td>
+            <td>${Number(detail.count || 0)}回</td>
+            <td>${Number(detail.observations || 0)}件<br>${((Number(detail.dominance) || 0) * 100).toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join("") || '<tr><td colspan="7" class="muted">導入後の不一致はまだありません。</td></tr>';
     }
 
     async function loadResponseMetrics() {

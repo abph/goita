@@ -1432,6 +1432,24 @@ class GenericResponsePatternStore:
                         raw.get("support", 0),
                     )),
                 )
+                pattern_features = dict(pattern.get("features", {}) or {})
+                anonymous_context = {
+                    key: pattern_features.get(key)
+                    for key in (
+                        "attacker_relation",
+                        "attack_piece",
+                        "attack_stage",
+                        "hand_stage",
+                        "next_receiver_stage",
+                        "same_piece",
+                        "royal_receive",
+                        "followup_strength",
+                        "reentry_width",
+                        "shi_context",
+                        "score_pressure",
+                    )
+                    if key in pattern_features
+                }
                 tactical_mismatch_details.append({
                     "pattern_id": pattern_key[:10],
                     "recommended_action": recommended_action,
@@ -1443,6 +1461,7 @@ class GenericResponsePatternStore:
                         support / max(1, observations),
                         5,
                     ),
+                    "anonymous_context": anonymous_context,
                     "last_seen_at": float(raw.get("last_seen_at", 0.0)),
                     "detail_id": detail_key[:10],
                 })

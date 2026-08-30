@@ -320,6 +320,19 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
             "observations": 10,
             "support": 10,
             "dominance": 1.0,
+            "anonymous_context": {
+                "attacker_relation": "enemy",
+                "attack_piece": "none",
+                "attack_stage": "first",
+                "hand_stage": "middle",
+                "next_receiver_stage": "middle",
+                "same_piece": "none",
+                "royal_receive": False,
+                "followup_strength": "open",
+                "reentry_width": "closed",
+                "shi_context": "not_shi",
+                "score_pressure": "normal",
+            },
             "last_seen_at": snapshot["tactical_mismatch_details"][0][
                 "last_seen_at"
             ],
@@ -345,6 +358,9 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
         assert restored_snapshot["tactical_mismatch_details"][0][
             "actual_action"
         ] == "pass"
+        assert restored_snapshot["tactical_mismatch_details"][0][
+            "anonymous_context"
+        ]["attacker_relation"] == "enemy"
         assert restored_pattern is not None
         assert restored_pattern["observations"] == 10
 
