@@ -267,6 +267,17 @@ def test_generic_narrowing_reserves_one_second_within_hard_limit() -> None:
     assert round(extension, 6) == 0.2
 
 
+def test_generic_narrowing_adds_twenty_five_percent_nodes() -> None:
+    maximum_nodes, added_nodes = (
+        RuleBasedAgent._timed_search_extend_narrowing_nodes(
+            maximum_nodes=10_000,
+            extension_ratio=0.25,
+        )
+    )
+    assert maximum_nodes == 12_500
+    assert added_nodes == 2_500
+
+
 def _search_result(
     *,
     depth: int = 7,
@@ -999,6 +1010,7 @@ if __name__ == "__main__":
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()
     test_generic_narrowing_records_when_dictionary_move_is_outside_top_two()
     test_generic_narrowing_reserves_one_second_within_hard_limit()
+    test_generic_narrowing_adds_twenty_five_percent_nodes()
     test_rule_search_authority_separates_proven_and_strategic_rules()
     test_strong_rule_requires_deep_agreed_search_before_override()
     test_strong_rule_runs_search_instead_of_stopping_it()

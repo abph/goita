@@ -155,6 +155,16 @@ class TimedSearchMixin:
         )
         return extended, max(0.0, extended - float(deadline))
 
+    @staticmethod
+    def _timed_search_extend_narrowing_nodes(
+        maximum_nodes: int,
+        extension_ratio: float,
+    ) -> Tuple[int, int]:
+        """Add a bounded percentage of nodes after safe narrowing."""
+        base = max(1, int(maximum_nodes))
+        added = max(0, int(round(base * max(0.0, float(extension_ratio)))))
+        return base + added, added
+
     def _timed_search_kyosha_pass_compare_is_decisive(
         self,
         *,
@@ -1416,6 +1426,7 @@ class TimedSearchMixin:
         active_narrowing_full_candidates = 0
         active_narrowing_kept_candidates = 0
         active_narrowing_continuation_extension_seconds = 0.0
+        active_narrowing_added_nodes = 0
         active_narrowing_stop_reason = ""
         active_narrowing_depth = int(
             getattr(self, "GENERIC_RESPONSE_NARROWING_DEPTH", 3)
@@ -1666,6 +1677,20 @@ class TimedSearchMixin:
                             active_narrowing_continuation_extension_seconds += (
                                 extension
                             )
+                            extended_nodes, added_nodes = (
+                                self._timed_search_extend_narrowing_nodes(
+                                    int(stats["max_nodes"]),
+                                    float(
+                                        getattr(
+                                            self,
+                                            "GENERIC_RESPONSE_NARROWING_NODE_EXTENSION_RATIO",
+                                            0.25,
+                                        )
+                                    ),
+                                )
+                            )
+                            stats["max_nodes"] = extended_nodes
+                            active_narrowing_added_nodes += added_nodes
 
             if depth == 1 and len(root_actions) > self.TIME_SEARCH_ROOT_BEAM:
                 narrowed = sorted(
@@ -1952,6 +1977,7 @@ class TimedSearchMixin:
                     continuation_extension_seconds=(
                         active_narrowing_continuation_extension_seconds
                     ),
+                    added_nodes=active_narrowing_added_nodes,
                     no_deepening_reason=(
                         active_narrowing_stop_reason
                         if live_status == "no_deepening"

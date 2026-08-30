@@ -315,6 +315,7 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
             elapsed_seconds=2.5,
             priority_selected=True,
             continuation_extension_seconds=0.8,
+            added_nodes=2500,
         )
         store.record_priority_effect(
             reordered=True,
@@ -366,6 +367,8 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert snapshot["active_narrowing_average_elapsed_seconds"] == 1.25
         assert snapshot["active_narrowing_continuation_extensions"] == 1
         assert snapshot["active_narrowing_continuation_extension_seconds"] == 0.8
+        assert snapshot["active_narrowing_node_extensions"] == 1
+        assert snapshot["active_narrowing_added_nodes"] == 2500
 
         assert store.checkpoint("priority-effect") is True
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -384,6 +387,8 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert restored["active_narrowing_no_deepening_node_limit"] == 1
         assert restored["active_narrowing_continuation_extensions"] == 1
         assert restored["active_narrowing_continuation_extension_seconds"] == 0.8
+        assert restored["active_narrowing_node_extensions"] == 1
+        assert restored["active_narrowing_added_nodes"] == 2500
 
 
 if __name__ == "__main__":

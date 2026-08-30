@@ -167,6 +167,8 @@ class GenericResponsePatternStore:
             "active_narrowing_no_deepening_other": 0,
             "active_narrowing_priority_selected": 0,
             "active_narrowing_continuation_extensions": 0,
+            "active_narrowing_node_extensions": 0,
+            "active_narrowing_added_nodes_sum": 0,
             "active_narrowing_full_candidates_sum": 0.0,
             "active_narrowing_kept_candidates_sum": 0.0,
             "active_narrowing_depth_sum": 0.0,
@@ -626,6 +628,8 @@ class GenericResponsePatternStore:
                 "active_narrowing_no_deepening_other",
                 "active_narrowing_priority_selected",
                 "active_narrowing_continuation_extensions",
+                "active_narrowing_node_extensions",
+                "active_narrowing_added_nodes_sum",
             ):
                 restored_counters[name] = max(0, int(counters.get(name, 0)))
             for name in (
@@ -987,6 +991,7 @@ class GenericResponsePatternStore:
         elapsed_seconds: float = 0.0,
         priority_selected: bool = False,
         continuation_extension_seconds: float = 0.0,
+        added_nodes: int = 0,
         no_deepening_reason: str = "",
     ) -> None:
         """Aggregate live narrowing without retaining hands or actions."""
@@ -1048,6 +1053,12 @@ class GenericResponsePatternStore:
                 counters[
                     "active_narrowing_continuation_extension_seconds_sum"
                 ] += extension_seconds
+            normalized_added_nodes = max(0, int(added_nodes))
+            if normalized_added_nodes > 0:
+                counters["active_narrowing_node_extensions"] += 1
+                counters["active_narrowing_added_nodes_sum"] += (
+                    normalized_added_nodes
+                )
             counters["active_narrowing_full_candidates_sum"] += full_count
             counters["active_narrowing_kept_candidates_sum"] += kept_count
             counters["active_narrowing_depth_sum"] += max(
@@ -1396,6 +1407,12 @@ class GenericResponsePatternStore:
                         ]
                     ),
                     5,
+                ),
+                "active_narrowing_node_extensions": int(
+                    counters["active_narrowing_node_extensions"]
+                ),
+                "active_narrowing_added_nodes": int(
+                    counters["active_narrowing_added_nodes_sum"]
                 ),
                 "active_narrowing_average_full_candidates": round(
                     float(counters["active_narrowing_full_candidates_sum"])

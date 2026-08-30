@@ -37,6 +37,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_NARROWING_MIN_CONFIDENCE = 0.45
     GENERIC_RESPONSE_NARROWING_MIN_EXCLUDED_MARGIN = 450.0
     GENERIC_RESPONSE_NARROWING_MIN_CONTINUATION_SECONDS = 1.0
+    GENERIC_RESPONSE_NARROWING_NODE_EXTENSION_RATIO = 0.25
 
     @staticmethod
     def _generic_count_bucket(value: int) -> str:
@@ -689,6 +690,7 @@ class GenericResponsePatternMixin:
         elapsed_seconds: float = 0.0,
         priority_selected: bool = False,
         continuation_extension_seconds: float = 0.0,
+        added_nodes: int = 0,
         no_deepening_reason: str = "",
     ) -> None:
         """Record aggregate-only results from live candidate narrowing."""
@@ -700,6 +702,7 @@ class GenericResponsePatternMixin:
             elapsed_seconds=elapsed_seconds,
             priority_selected=priority_selected,
             continuation_extension_seconds=continuation_extension_seconds,
+            added_nodes=added_nodes,
             no_deepening_reason=no_deepening_reason,
         )
 
