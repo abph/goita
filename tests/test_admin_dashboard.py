@@ -43,8 +43,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "判断別：人間" in admin
     assert "人間棋譜ルートの型別比較" in admin
     assert "評価差は「人間ルート − AIルート」" in admin
-    assert "同じ型で5回以上比較し、平均評価差がプラスで、確定負けが増えない型" in admin
+    assert "人間側が3勝以上・勝率60%以上でAI側より多く勝ち" in admin
     assert "人間棋譜・採用候補" in admin
+    assert "候補外・人間3勝未満" in admin
+    assert "候補外・人間勝率60%未満" in admin
     assert "候補外・確定負け増加" in admin
     assert 'id="humanRootPatternRows"' in admin
     assert "型別比較の型" in admin

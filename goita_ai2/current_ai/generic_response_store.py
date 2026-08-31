@@ -23,6 +23,8 @@ TACTICAL_MISMATCH_DETAIL_LIMIT = 250
 HUMAN_MISMATCH_DETAIL_LIMIT = 250
 HUMAN_ROOT_PATTERN_DETAIL_LIMIT = 750
 HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS = 5
+HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WINS = 3
+HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WIN_RATE = 0.60
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -2364,10 +2366,21 @@ class GenericResponsePatternStore:
                     float(raw.get("human_terminal_loss_rate_sum", 0.0))
                     / max(1, terminal_loss_samples)
                 )
+                human_better = max(0, int(raw.get("human_better", 0)))
+                ai_better = max(0, int(raw.get("ai_better", 0)))
+                human_win_rate = human_better / max(1, completed)
                 if completed < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
                     candidate_reason = "insufficient_comparisons"
                 elif terminal_loss_samples < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
                     candidate_reason = "insufficient_loss_data"
+                elif human_better < HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WINS:
+                    candidate_reason = "insufficient_human_wins"
+                elif (
+                    human_better <= ai_better
+                    or human_win_rate
+                    < HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WIN_RATE
+                ):
+                    candidate_reason = "low_human_win_rate"
                 elif average_value_delta <= 0.0:
                     candidate_reason = "non_positive_value"
                 elif (
@@ -2407,12 +2420,10 @@ class GenericResponsePatternStore:
                     "comparisons": max(0, int(raw.get("comparisons", 0))),
                     "completed": completed,
                     "incomplete": max(0, int(raw.get("incomplete", 0))),
-                    "human_better": max(
-                        0,
-                        int(raw.get("human_better", 0)),
-                    ),
-                    "ai_better": max(0, int(raw.get("ai_better", 0))),
+                    "human_better": human_better,
+                    "ai_better": ai_better,
                     "tied": max(0, int(raw.get("tied", 0))),
+                    "human_win_rate": round(human_win_rate, 5),
                     "average_value_delta": round(
                         average_value_delta,
                         3,
@@ -2807,6 +2818,12 @@ class GenericResponsePatternStore:
                 "human_root_candidate_min_comparisons": (
                     HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS
                 ),
+                "human_root_candidate_min_human_wins": (
+                    HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WINS
+                ),
+                "human_root_candidate_min_human_win_rate": (
+                    HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WIN_RATE
+                ),
                 "human_root_candidate_count": int(
                     human_root_candidate_reason_counts["candidate"]
                 ),
@@ -2818,6 +2835,16 @@ class GenericResponsePatternStore:
                 "human_root_candidate_insufficient_loss_data": int(
                     human_root_candidate_reason_counts[
                         "insufficient_loss_data"
+                    ]
+                ),
+                "human_root_candidate_insufficient_human_wins": int(
+                    human_root_candidate_reason_counts[
+                        "insufficient_human_wins"
+                    ]
+                ),
+                "human_root_candidate_low_human_win_rate": int(
+                    human_root_candidate_reason_counts[
+                        "low_human_win_rate"
                     ]
                 ),
                 "human_root_candidate_non_positive_value": int(

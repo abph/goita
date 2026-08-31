@@ -267,6 +267,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "human_better": 1,
             "ai_better": 0,
             "tied": 0,
+            "human_win_rate": 1.0,
             "average_value_delta": 375.0,
             "minimum_value_delta": 375.0,
             "maximum_value_delta": 375.0,
@@ -388,6 +389,7 @@ def test_human_root_candidate_filter_requires_repeatable_safe_gain() -> None:
     assert snapshot["human_root_candidate_count"] == 1
     assert safe_pattern["candidate"] is True
     assert safe_pattern["candidate_reason"] == "candidate"
+    assert safe_pattern["human_win_rate"] == 1.0
     assert safe_pattern["terminal_loss_samples"] == 5
     assert safe_pattern["average_human_terminal_loss_rate"] == 0.1
     assert safe_pattern["average_ai_terminal_loss_rate"] == 0.2
@@ -410,6 +412,62 @@ def test_human_root_candidate_filter_requires_repeatable_safe_gain() -> None:
     assert snapshot["human_root_candidate_terminal_loss_increased"] == 1
     assert unsafe_pattern["candidate"] is False
     assert unsafe_pattern["candidate_reason"] == "terminal_loss_increased"
+
+
+def test_human_root_candidate_filter_rejects_one_large_outlier() -> None:
+    store = GenericResponsePatternStore()
+    store.record_human_root_pair(
+        comparison_complete=True,
+        pattern_key="outlier-pattern",
+        selected_side="human",
+        common_depth=5,
+        value_delta=8073.2,
+        ai_terminal_loss_rate=0.0,
+        human_terminal_loss_rate=0.0,
+    )
+    for _index in range(8):
+        store.record_human_root_pair(
+            comparison_complete=True,
+            pattern_key="outlier-pattern",
+            selected_side="ai",
+            common_depth=5,
+            value_delta=-300.0,
+            ai_terminal_loss_rate=0.0,
+            human_terminal_loss_rate=0.0,
+        )
+
+    snapshot = store.snapshot()
+    pattern = snapshot["human_root_pattern_details"][0]
+    assert pattern["average_value_delta"] > 0.0
+    assert pattern["human_better"] == 1
+    assert pattern["ai_better"] == 8
+    assert pattern["candidate"] is False
+    assert pattern["candidate_reason"] == "insufficient_human_wins"
+    assert snapshot["human_root_candidate_count"] == 0
+    assert snapshot["human_root_candidate_insufficient_human_wins"] == 1
+
+
+def test_human_root_candidate_filter_requires_sixty_percent_win_rate() -> None:
+    store = GenericResponsePatternStore()
+    for selected_side in ("human", "human", "human", "ai", "ai", "other"):
+        store.record_human_root_pair(
+            comparison_complete=True,
+            pattern_key="low-win-rate-pattern",
+            selected_side=selected_side,
+            common_depth=5,
+            value_delta=100.0,
+            ai_terminal_loss_rate=0.1,
+            human_terminal_loss_rate=0.1,
+        )
+
+    snapshot = store.snapshot()
+    pattern = snapshot["human_root_pattern_details"][0]
+    assert pattern["human_better"] == 3
+    assert pattern["ai_better"] == 2
+    assert pattern["human_win_rate"] == 0.5
+    assert pattern["candidate"] is False
+    assert pattern["candidate_reason"] == "low_human_win_rate"
+    assert snapshot["human_root_candidate_low_human_win_rate"] == 1
 
 
 def test_restored_root_patterns_wait_for_new_terminal_loss_samples() -> None:
@@ -509,6 +567,8 @@ if __name__ == "__main__":
     test_deployable_dictionary_contains_only_aggregate_fields()
     test_human_shadow_metrics_survive_checkpoint()
     test_human_root_candidate_filter_requires_repeatable_safe_gain()
+    test_human_root_candidate_filter_rejects_one_large_outlier()
+    test_human_root_candidate_filter_requires_sixty_percent_win_rate()
     test_restored_root_patterns_wait_for_new_terminal_loss_samples()
     test_old_root_comparison_metrics_reset_without_losing_other_data()
     test_new_root_diagnostics_start_clean_without_resetting_root_totals()
