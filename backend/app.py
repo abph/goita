@@ -109,6 +109,12 @@ PRIVATE_ROOM_DEFINITIONS = (
     {"gid": "room-iron-05", "pass": None, "admin": "admin-e", "owner": "プライベートE"},
     {"gid": "room-platinum-06", "pass": None, "admin": "admin-f", "owner": "プライベートF"},
 )
+DIRECT_ACCESS_PRIVATE_ROOM_IDS = frozenset({"room-bronze-03"})
+LOBBY_PRIVATE_ROOM_IDS = tuple(
+    room["gid"]
+    for room in PRIVATE_ROOM_DEFINITIONS
+    if room["gid"] not in DIRECT_ACCESS_PRIVATE_ROOM_IDS
+)
 PRIVATE_ROOM_NAMES = {
     room["gid"]: room["owner"] for room in PRIVATE_ROOM_DEFINITIONS
 }
@@ -153,7 +159,7 @@ LOBBY_ROOM_SETTINGS = {
         "LOBBY_MAIN_ROOM_COUNT", 4, 1, len(LOBBY_MAIN_ROOM_IDS)
     ),
     "private_room_count": _initial_room_count(
-        "LOBBY_PRIVATE_ROOM_COUNT", 4, 0, len(PRIVATE_ROOM_DEFINITIONS)
+        "LOBBY_PRIVATE_ROOM_COUNT", 4, 0, len(LOBBY_PRIVATE_ROOM_IDS)
     ),
 }
 LOBBY_SETTINGS_STORAGE_KEY = "__lobby__"
@@ -2057,7 +2063,7 @@ class PrivateRoomAdSettingsRequest(BaseModel):
 class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
-    private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
+    private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     # Legacy fields remain accepted while older clients are being replaced.
     private_ad_enabled: bool = False
@@ -2072,7 +2078,7 @@ class LobbySettingsUpdateRequest(BaseModel):
 
 class AdminLobbySettingsUpdateRequest(BaseModel):
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
-    private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
+    private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     private_ad_enabled: bool = False
     private_ad_title: str = Field(default="お知らせ", max_length=40)
@@ -2812,7 +2818,8 @@ def setup_main_rooms() -> None:
 
 def setup_supporter_rooms():
     visible_count = LOBBY_ROOM_SETTINGS["private_room_count"]
-    for index, data in enumerate(PRIVATE_ROOM_DEFINITIONS):
+    visible_room_ids = set(LOBBY_PRIVATE_ROOM_IDS[:visible_count])
+    for data in PRIVATE_ROOM_DEFINITIONS:
         if data["gid"] not in GAMES:
             d = random.choice(["A", "B", "C", "D"])
             room = _create_game_obj(dealer=d)
@@ -2820,7 +2827,7 @@ def setup_supporter_rooms():
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
             GAMES[data["gid"]] = room
-        GAMES[data["gid"]]["hidden_from_lobby"] = index >= visible_count
+        GAMES[data["gid"]]["hidden_from_lobby"] = data["gid"] not in visible_room_ids
 
 
 def setup_debug_room() -> None:
@@ -2935,7 +2942,7 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
         )
     if isinstance(private_count, int):
         LOBBY_ROOM_SETTINGS["private_room_count"] = max(
-            0, min(len(PRIVATE_ROOM_DEFINITIONS), private_count)
+            0, min(len(LOBBY_PRIVATE_ROOM_IDS), private_count)
         )
     private_ads = settings.get("private_room_ads")
     if isinstance(private_ads, dict):
@@ -3563,7 +3570,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
-        "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
+        "private_room_max": len(LOBBY_PRIVATE_ROOM_IDS),
         "private_rooms": [
             {
                 "game_id": room["gid"],

@@ -202,7 +202,7 @@
             </div>
             <div class="field">
               <label for="privateRoomCount">表示するプライベート数</label>
-              <input id="privateRoomCount" type="number" min="0" max="6" step="1" required>
+              <input id="privateRoomCount" type="number" min="0" max="5" step="1" required>
             </div>
           </div>
           <p class="muted">部屋を減らしても、進行中の対局は中断されません。</p>
@@ -436,7 +436,7 @@
       document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
-      document.getElementById("privateRoomCount").max = data.private_room_max ?? 6;
+      document.getElementById("privateRoomCount").max = data.private_room_max ?? 5;
       const rooms = Array.isArray(data.private_rooms) ? data.private_rooms : [];
       privateRooms = rooms;
       const savedAds = data.private_room_ads || {};

@@ -99,10 +99,21 @@ def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
     assert room["password"] == "saitama1011"
     assert room["admin_password"] == "1011made"
     assert room["owner_name"] == "金沢大会チーム埼玉"
-    assert room["hidden_from_lobby"] is False
+    assert room["hidden_from_lobby"] is True
+    assert room_definition["gid"] in app_module.DIRECT_ACCESS_PRIVATE_ROOM_IDS
+    assert room_definition["gid"] not in app_module.LOBBY_PRIVATE_ROOM_IDS
     assert app_module.GAMES["room-copper-04"]["hidden_from_lobby"] is False
-    assert app_module.GAMES["room-iron-05"]["hidden_from_lobby"] is True
+    assert app_module.GAMES["room-iron-05"]["hidden_from_lobby"] is False
     assert app_module.GAMES["room-platinum-06"]["hidden_from_lobby"] is True
+
+    listed_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
+    assert room_definition["gid"] not in listed_ids
+    assert app_module.verify_password(room_definition["gid"], "saitama1011") == {"ok": True}
+
+    html = (app_module.FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    assert '["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
+    assert '["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
+    assert "autoEnterDirectPrivateRoomFromUrl" in html
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
@@ -424,9 +435,9 @@ def test_lobby_admin_can_change_visible_room_counts() -> None:
         payload = app_module.verify_lobby_admin(app_module.LOBBY_ADMIN_PASSWORD)
         assert payload["main_room_max"] == len(app_module.LOBBY_MAIN_ROOM_IDS)
         assert payload["private_room_max"] == len(
-            app_module.PRIVATE_ROOM_DEFINITIONS
+            app_module.LOBBY_PRIVATE_ROOM_IDS
         )
-        assert payload["private_room_max"] == 6
+        assert payload["private_room_max"] == 5
         assert len(payload["private_rooms"]) == 6
         assert all("admin_password" not in room for room in payload["private_rooms"])
 
@@ -523,7 +534,7 @@ def test_room_list_counts_human_players_and_spectators_without_ai() -> None:
 
 def test_private_total_includes_hidden_private_rooms_but_not_debug_room() -> None:
     app_module.setup_supporter_rooms()
-    hidden_game_id = "room-iron-05"
+    hidden_game_id = "room-bronze-03"
     hidden_game = app_module.GAMES[hidden_game_id]
     old_human_seats = hidden_game.get("human_seats")
 

@@ -7267,6 +7267,23 @@ function isDebugRoomRequested() {
     return params.get("room") === DEBUG_GID;
 }
 
+const DIRECT_ACCESS_PRIVATE_ROOMS = new Map([
+    ["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
+    ["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
+]);
+
+function directPrivateRoomRequestFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const roomAlias = params.get("room") || "";
+    const room = DIRECT_ACCESS_PRIVATE_ROOMS.get(roomAlias);
+    if (!room) return null;
+    return {
+        roomId: room.roomId,
+        roomName: room.roomName,
+        password: params.get("password") || "",
+    };
+}
+
 function debugRoomPasswordFromUrl() {
     const params = new URLSearchParams(window.location.search);
     return params.get("password") || "";
@@ -7443,6 +7460,45 @@ async function enterRoom(targetGid, roomName) {
     trackAnalytics("room_enter", {}, analyticsRoomType(targetGid));
 }
 
+function clearDirectPrivateRoomUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("room");
+    url.searchParams.delete("password");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function autoEnterDirectPrivateRoomFromUrl(request) {
+    let password = request.password;
+    if (password) {
+        clearDebugRoomPasswordUrl();
+    } else {
+        password = prompt("合言葉（パスワード）を入力してください");
+    }
+    if (!password) {
+        clearDirectPrivateRoomUrl();
+        return false;
+    }
+
+    try {
+        const res = await fetch(`${API}/games/${request.roomId}/verify_password`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password})
+        });
+        if (!res.ok) {
+            alert(res.status === 404 ? "部屋が存在しません。" : "合言葉が正しくありません。");
+            clearDirectPrivateRoomUrl();
+            return false;
+        }
+        await enterRoom(request.roomId, request.roomName);
+        return true;
+    } catch (e) {
+        alert("通信エラーが発生しました。");
+        clearDirectPrivateRoomUrl();
+        return false;
+    }
+}
+
 async function returnToLobby() {
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
@@ -7477,6 +7533,8 @@ async function returnToLobby() {
 
     if (gid === DEBUG_GID) {
         clearDebugRoomUrl();
+    } else if (DIRECT_ACCESS_PRIVATE_ROOMS.has(gid)) {
+        clearDirectPrivateRoomUrl();
     }
     
     if (socket) {
@@ -13341,6 +13399,11 @@ window.addEventListener("load", async ()=>{
       return;
     }
     openDebugRoomAccess();
+    return;
+  }
+
+  const directPrivateRoom = directPrivateRoomRequestFromUrl();
+  if (directPrivateRoom && await autoEnterDirectPrivateRoomFromUrl(directPrivateRoom)) {
     return;
   }
 
