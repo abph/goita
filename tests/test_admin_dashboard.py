@@ -31,6 +31,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "人間棋譜・影響なし比較" in admin
     assert "人間棋譜・現在AIと不一致" in admin
     assert "戦術分類の不一致内訳" in admin
+    assert "人間棋譜辞書の不一致内訳" in admin
     assert "匿名の局面" in admin
     assert "受け後の見通し" in admin
     assert "再参加困難" in admin
@@ -39,6 +40,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "戦術あり・なしを比較" in admin
     assert "戦術比較・判断一致率" in admin
     assert 'id="tacticalMismatchRows"' in admin
+    assert 'id="humanMismatchRows"' in admin
+    assert "棋譜観測・支持" in admin
     assert "観測・支持" in admin
     assert "戦術分類はデバッグルームだけで" in admin
     assert "中分類から優先" in admin

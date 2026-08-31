@@ -262,6 +262,16 @@
               <tbody id="tacticalMismatchRows"></tbody>
             </table>
           </div>
+          <h3 class="subheading">人間棋譜辞書の不一致内訳</h3>
+          <p class="muted">名前・手駒・棋譜は保存せず、導入後に人間棋譜の推薦と現在AIが異なった匿名の局面型だけを集計します。</p>
+          <div class="table-scroll">
+            <table class="tactical-mismatch-table">
+              <thead>
+                <tr><th>型</th><th>匿名の局面</th><th>受け後の見通し</th><th>人間棋譜</th><th>現在AI</th><th>発生</th><th>棋譜観測・支持</th></tr>
+              </thead>
+              <tbody id="humanMismatchRows"></tbody>
+            </table>
+          </div>
         </section>
       </section>
 
@@ -658,7 +668,7 @@
         same_piece: {none: "同種なし", one: "同種1枚", multiple: "同種2枚以上"},
         followup_strength: {fourth: "4枚目候補あり", scarce: "相手に少ない攻めあり", pair: "ペア攻めあり", open: "その他の攻め"},
         reentry_width: {closed: "再参加困難", narrow: "再参加1種類", wide: "再参加2種類以上"},
-        shi_context: {not_shi: "し攻め以外", continue: "し攻め継続", stop: "し攻め中止信号", enemy_rejected: "敵がし攻めを拒否", neutral: "し攻め・中立"},
+        shi_context: {shi: "し攻め", not_shi: "し攻め以外", continue: "し攻め継続", stop: "し攻め中止信号", enemy_rejected: "敵がし攻めを拒否", neutral: "し攻め・中立"},
         score_pressure: {normal: "通常得点", own_near: "自チームが勝利目前", enemy_near: "敵チームが勝利目前", both_near: "両チームが勝利目前"},
       };
       function tacticalLabel(group, value) {
@@ -693,6 +703,35 @@
             <td>${escapeHtml(actionLabels[detail.actual_action] || detail.actual_action)}</td>
             <td>${Number(detail.count || 0)}回</td>
             <td>${Number(detail.observations || 0)}件<br>${((Number(detail.dominance) || 0) * 100).toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join("") || '<tr><td colspan="7" class="muted">導入後の不一致はまだありません。</td></tr>';
+      document.getElementById("humanMismatchRows").innerHTML = (
+        data.human_mismatch_details || []
+      ).map((detail, index) => {
+        const context = detail.anonymous_context || {};
+        const situation = [
+          `${tacticalLabel("attacker_relation", context.attacker_relation)}・${tacticalLabel("attack_stage", context.attack_stage)}・${tacticalLabel("attack_piece", context.attack_piece)}`,
+          `自分：${tacticalLabel("hand_stage", context.hand_stage)}`,
+          `次の受け手：${tacticalLabel("hand_stage", context.next_receiver_stage)}`,
+          `${tacticalLabel("same_piece", context.same_piece)}／${context.royal_receive ? "王・玉受け可" : "王・玉受け不可"}`,
+        ];
+        const outlook = [
+          tacticalLabel("followup_strength", context.followup_strength),
+          tacticalLabel("reentry_width", context.reentry_width),
+          tacticalLabel("shi_context", context.shi_context),
+          tacticalLabel("score_pressure", context.score_pressure),
+        ];
+        const distinctMatches = Number(detail.distinct_matches_lower_bound || 0);
+        return `
+          <tr>
+            <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
+            <td>${tacticalLines(situation)}</td>
+            <td>${tacticalLines(outlook)}</td>
+            <td>${escapeHtml(actionLabels[detail.recommended_action] || detail.recommended_action)}</td>
+            <td>${escapeHtml(actionLabels[detail.actual_action] || detail.actual_action)}</td>
+            <td>${Number(detail.count || 0)}回</td>
+            <td>${Number(detail.observations || 0)}件<br>${((Number(detail.dominance) || 0) * 100).toFixed(1)}%${distinctMatches ? `<br>対局${distinctMatches}件以上` : ""}</td>
           </tr>
         `;
       }).join("") || '<tr><td colspan="7" class="muted">導入後の不一致はまだありません。</td></tr>';

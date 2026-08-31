@@ -184,11 +184,14 @@ class HumanResponseDictionary:
 
     def recommendation(self, tactical: Mapping[str, object]) -> dict:
         features = human_response_pattern_payload(tactical)
-        raw = self._patterns.get(_digest_payload(features))
+        pattern_key = _digest_payload(features)
+        raw = self._patterns.get(pattern_key)
         if raw is None:
             return {"status": "no_pattern"}
         return {
             "status": "recommended",
+            "pattern_key": pattern_key,
+            "anonymous_context": features,
             "recommended_action": str(raw.get("recommended_action", "other")),
             "observations": max(0, int(raw.get("observations", 0))),
             "support": max(0, int(raw.get("support", 0))),

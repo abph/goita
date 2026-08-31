@@ -20,6 +20,7 @@ from goita_ai2.current_ai.search_cache import _digest_payload
 GENERIC_RESPONSE_STORE_SCHEMA_VERSION = 1
 GENERIC_RESPONSE_STORE_FILENAME = "generic-response-patterns.json"
 TACTICAL_MISMATCH_DETAIL_LIMIT = 250
+HUMAN_MISMATCH_DETAIL_LIMIT = 250
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -188,6 +189,7 @@ class GenericResponsePatternStore:
         self._tactical_patterns: Dict[str, dict] = {}
         self._medium_patterns: Dict[str, dict] = {}
         self._tactical_mismatch_details: Dict[str, dict] = {}
+        self._human_mismatch_details: Dict[str, dict] = {}
         self._counters = self._empty_counters()
         self._last_checkpoint_error = ""
         self._restore()
@@ -323,6 +325,7 @@ class GenericResponsePatternStore:
             self._tactical_patterns = {}
             self._medium_patterns = {}
             self._tactical_mismatch_details = {}
+            self._human_mismatch_details = {}
             self._counters = self._empty_counters()
             self._last_checkpoint_error = ""
 
@@ -632,6 +635,7 @@ class GenericResponsePatternStore:
             "tactical_patterns": serialize_patterns(self._tactical_patterns),
             "medium_patterns": serialize_patterns(self._medium_patterns),
             "tactical_mismatch_details": self._tactical_mismatch_details,
+            "human_mismatch_details": self._human_mismatch_details,
         }
 
     def checkpoint(self, reason: str = "manual") -> bool:
@@ -689,12 +693,16 @@ class GenericResponsePatternStore:
         counters = payload.get("counters", {})
         patterns = payload.get("patterns", {})
         mismatch_details = payload.get("tactical_mismatch_details", {})
+        human_mismatch_details = payload.get("human_mismatch_details", {})
         if not isinstance(counters, dict) or not isinstance(patterns, dict):
             return False
         if not isinstance(mismatch_details, dict):
             mismatch_details = {}
+        if not isinstance(human_mismatch_details, dict):
+            human_mismatch_details = {}
         restored_patterns = {}
         restored_mismatch_details = {}
+        restored_human_mismatch_details = {}
         try:
             for key, raw in patterns.items():
                 if not isinstance(key, str) or not isinstance(raw, dict):
@@ -765,6 +773,38 @@ class GenericResponsePatternStore:
                     "dominance": max(
                         0.0,
                         min(1.0, float(raw.get("dominance", 0.0))),
+                    ),
+                    "first_seen_at": float(raw.get("first_seen_at", 0.0)),
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                }
+            for key, raw in human_mismatch_details.items():
+                if not isinstance(key, str) or not isinstance(raw, dict):
+                    continue
+                pattern_key = str(raw.get("pattern_key", ""))
+                if not pattern_key:
+                    continue
+                restored_human_mismatch_details[key] = {
+                    "pattern_key": pattern_key,
+                    "anonymous_context": dict(
+                        raw.get("anonymous_context", {}) or {}
+                    ),
+                    "recommended_action": str(
+                        raw.get("recommended_action", "other")
+                    ),
+                    "actual_action": str(raw.get("actual_action", "other")),
+                    "count": max(0, int(raw.get("count", 0))),
+                    "observations": max(
+                        0,
+                        int(raw.get("observations", 0)),
+                    ),
+                    "support": max(0, int(raw.get("support", 0))),
+                    "dominance": max(
+                        0.0,
+                        min(1.0, float(raw.get("dominance", 0.0))),
+                    ),
+                    "distinct_matches_lower_bound": max(
+                        0,
+                        int(raw.get("distinct_matches_lower_bound", 0)),
                     ),
                     "first_seen_at": float(raw.get("first_seen_at", 0.0)),
                     "last_seen_at": float(raw.get("last_seen_at", 0.0)),
@@ -908,6 +948,7 @@ class GenericResponsePatternStore:
             self._rebuild_tactical_patterns_locked()
             self._rebuild_medium_patterns_locked()
             self._tactical_mismatch_details = restored_mismatch_details
+            self._human_mismatch_details = restored_human_mismatch_details
             self._counters = restored_counters
             self._started_at = float(payload.get("started_at", time.time()))
             self._last_checkpoint_error = ""
@@ -1578,6 +1619,85 @@ class GenericResponsePatternStore:
                 counters["human_shadow_matches"] += 1
             else:
                 counters["human_shadow_mismatches"] += 1
+                anonymous_context = {
+                    key: value
+                    for key, value in dict(
+                        recommendation.get("anonymous_context", {}) or {}
+                    ).items()
+                    if key in (
+                        "attacker_relation",
+                        "attack_piece",
+                        "attack_stage",
+                        "hand_stage",
+                        "next_receiver_stage",
+                        "same_piece",
+                        "royal_receive",
+                        "followup_strength",
+                        "reentry_width",
+                        "shi_context",
+                        "score_pressure",
+                    )
+                }
+                pattern_key = str(
+                    recommendation.get("pattern_key", "")
+                    or _digest_payload(anonymous_context)
+                )
+                detail_key = _digest_payload({
+                    "pattern_key": pattern_key,
+                    "recommended_action": recommended,
+                    "actual_action": actual,
+                })
+                detail = self._human_mismatch_details.get(detail_key)
+                now = time.time()
+                if detail is None:
+                    if (
+                        len(self._human_mismatch_details)
+                        >= HUMAN_MISMATCH_DETAIL_LIMIT
+                    ):
+                        evicted_key = min(
+                            self._human_mismatch_details,
+                            key=lambda key: (
+                                int(self._human_mismatch_details[key].get(
+                                    "count",
+                                    0,
+                                )),
+                                float(self._human_mismatch_details[key].get(
+                                    "last_seen_at",
+                                    0.0,
+                                )),
+                            ),
+                        )
+                        self._human_mismatch_details.pop(evicted_key, None)
+                    detail = {
+                        "pattern_key": pattern_key,
+                        "anonymous_context": anonymous_context,
+                        "recommended_action": recommended,
+                        "actual_action": actual,
+                        "count": 0,
+                        "first_seen_at": now,
+                    }
+                    self._human_mismatch_details[detail_key] = detail
+                detail["count"] = int(detail.get("count", 0)) + 1
+                detail["observations"] = max(
+                    0,
+                    int(recommendation.get("observations", 0)),
+                )
+                detail["support"] = max(
+                    0,
+                    int(recommendation.get("support", 0)),
+                )
+                detail["dominance"] = max(
+                    0.0,
+                    min(1.0, float(recommendation.get("dominance", 0.0))),
+                )
+                detail["distinct_matches_lower_bound"] = max(
+                    0,
+                    int(recommendation.get(
+                        "distinct_matches_lower_bound",
+                        0,
+                    )),
+                )
+                detail["last_seen_at"] = now
             return {
                 **recommendation,
                 "status": "match" if matched else "mismatch",
@@ -1655,6 +1775,44 @@ class GenericResponsePatternStore:
                     "detail_id": detail_key[:10],
                 })
             tactical_mismatch_details.sort(
+                key=lambda item: (
+                    -int(item["count"]),
+                    -float(item["last_seen_at"]),
+                    str(item["detail_id"]),
+                )
+            )
+            human_mismatch_details = []
+            for detail_key, raw in self._human_mismatch_details.items():
+                human_mismatch_details.append({
+                    "pattern_id": str(raw.get("pattern_key", ""))[:10],
+                    "recommended_action": str(
+                        raw.get("recommended_action", "other")
+                    ),
+                    "actual_action": str(raw.get("actual_action", "other")),
+                    "count": max(0, int(raw.get("count", 0))),
+                    "observations": max(
+                        0,
+                        int(raw.get("observations", 0)),
+                    ),
+                    "support": max(0, int(raw.get("support", 0))),
+                    "dominance": round(
+                        max(
+                            0.0,
+                            min(1.0, float(raw.get("dominance", 0.0))),
+                        ),
+                        5,
+                    ),
+                    "distinct_matches_lower_bound": max(
+                        0,
+                        int(raw.get("distinct_matches_lower_bound", 0)),
+                    ),
+                    "anonymous_context": dict(
+                        raw.get("anonymous_context", {}) or {}
+                    ),
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                    "detail_id": detail_key[:10],
+                })
+            human_mismatch_details.sort(
                 key=lambda item: (
                     -int(item["count"]),
                     -float(item["last_seen_at"]),
@@ -1777,6 +1935,10 @@ class GenericResponsePatternStore:
                         int(counters["human_shadow_recommendations"]),
                     ),
                     5,
+                ),
+                "human_mismatch_details": human_mismatch_details[:50],
+                "human_mismatch_detail_count": len(
+                    self._human_mismatch_details
                 ),
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]

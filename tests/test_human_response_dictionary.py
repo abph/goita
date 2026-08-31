@@ -125,20 +125,68 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         result = store.compare_human_shadow(
             recommendation={
                 "status": "recommended",
+                "pattern_key": "human-pattern-1",
+                "anonymous_context": {
+                    "attacker_relation": "enemy",
+                    "attack_piece": "2",
+                    "attack_stage": "first",
+                    "hand_stage": "early",
+                    "next_receiver_stage": "middle",
+                    "same_piece": "one",
+                    "royal_receive": False,
+                    "followup_strength": "pair",
+                    "reentry_width": "wide",
+                    "shi_context": "not_shi",
+                    "score_pressure": "normal",
+                },
                 "recommended_action": "receive_same",
                 "observations": 20,
                 "support": 18,
                 "dominance": 0.9,
+                "distinct_matches_lower_bound": 8,
             },
             actual_action="pass",
         )
         assert result["status"] == "mismatch"
+        snapshot = store.snapshot()
+        assert snapshot["human_mismatch_detail_count"] == 1
+        assert snapshot["human_mismatch_details"][0]["pattern_id"] == (
+            "human-pattern-1"[:10]
+        )
+        assert snapshot["human_mismatch_details"][0][
+            "recommended_action"
+        ] == "receive_same"
+        assert snapshot["human_mismatch_details"][0]["actual_action"] == "pass"
+        assert snapshot["human_mismatch_details"][0]["observations"] == 20
+        assert snapshot["human_mismatch_details"][0]["support"] == 18
+        assert snapshot["human_mismatch_details"][0]["dominance"] == 0.9
+        assert snapshot["human_mismatch_details"][0][
+            "distinct_matches_lower_bound"
+        ] == 8
+        assert snapshot["human_mismatch_details"][0]["anonymous_context"] == {
+            "attacker_relation": "enemy",
+            "attack_piece": "2",
+            "attack_stage": "first",
+            "hand_stage": "early",
+            "next_receiver_stage": "middle",
+            "same_piece": "one",
+            "royal_receive": False,
+            "followup_strength": "pair",
+            "reentry_width": "wide",
+            "shi_context": "not_shi",
+            "score_pressure": "normal",
+        }
         assert store.checkpoint("human-shadow-test") is True
 
         restored = GenericResponsePatternStore(path=path).snapshot()
         assert restored["human_shadow_lookups"] == 1
         assert restored["human_shadow_recommendations"] == 1
         assert restored["human_shadow_mismatches"] == 1
+        assert restored["human_mismatch_detail_count"] == 1
+        assert restored["human_mismatch_details"][0]["count"] == 1
+        assert restored["human_mismatch_details"][0][
+            "anonymous_context"
+        ]["attack_piece"] == "2"
 
 
 if __name__ == "__main__":
