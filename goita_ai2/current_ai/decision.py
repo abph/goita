@@ -594,6 +594,7 @@ class DecisionMixin:
         self.last_search_skip_reason = ""
         self.last_generic_response_shadow = {}
         self.last_generic_response_tactical_shadow = {}
+        self.last_generic_response_human_shadow = {}
         self.last_generic_response_priority = {}
         if self.me is None:
             self.me = player

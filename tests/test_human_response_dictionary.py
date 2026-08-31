@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from goita_ai2.current_ai.generic_response_store import (
+    GenericResponsePatternStore,
+    generic_response_pattern_snapshot,
+    reset_generic_response_patterns,
+)
+from goita_ai2.current_ai.human_response_dictionary import (
+    DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH,
+    build_human_response_dictionary,
+    reload_human_response_dictionary,
+)
+from goita_ai2.rule_based import RuleBasedAgent
+from goita_ai2.state import GoitaState
+
+
+def _receive_state() -> GoitaState:
+    state = GoitaState(
+        hands={
+            "A": list("11234678"),
+            "B": list("11122345"),
+            "C": list("11123459"),
+            "D": list("11234567"),
+        },
+        dealer="B",
+    )
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "2"
+    return state
+
+
+def test_human_dictionary_shadow_does_not_change_live_action() -> None:
+    state = _receive_state()
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    selected = ("receive", "2", None)
+    tactical = agent._tactical_response_pattern_payload(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    audit = {
+        "response_summary": {
+            "thresholds": {
+                "minimum_observations": 15,
+                "minimum_distinct_matches": 8,
+                "minimum_dominance": 0.70,
+            },
+        },
+        "patterns": [{
+            "features": tactical,
+            "observations": 20,
+            "distinct_matches": 10,
+            "action_counts": {"receive_same": 18, "pass": 2},
+        }],
+    }
+    dictionary = build_human_response_dictionary(audit)
+
+    with TemporaryDirectory() as temporary:
+        path = Path(temporary) / "human-response-patterns.json"
+        path.write_text(
+            json.dumps(dictionary, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        reload_human_response_dictionary(path)
+        try:
+            reset_generic_response_patterns()
+            hand_before = list(state.hands["A"])
+            agent._compare_generic_response_shadow(
+                state,
+                "A",
+                actions,
+                baseline,
+                selected,
+            )
+            snapshot = generic_response_pattern_snapshot()
+
+            assert agent.last_generic_response_human_shadow["status"] == "match"
+            assert snapshot["human_dictionary_patterns"] == 1
+            assert snapshot["human_shadow_lookups"] == 1
+            assert snapshot["human_shadow_recommendations"] == 1
+            assert snapshot["human_shadow_matches"] == 1
+            assert list(state.hands["A"]) == hand_before
+            assert state.phase == "receive"
+            assert selected == ("receive", "2", None)
+        finally:
+            reload_human_response_dictionary(
+                DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH
+            )
+
+
+def test_deployable_dictionary_contains_only_aggregate_fields() -> None:
+    payload = json.loads(
+        DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH.read_text(encoding="utf-8")
+    )
+    encoded = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["pattern_count"] == 738
+    assert payload["live_ai_affected"] is False
+    assert payload["privacy"]["names_retained"] is False
+    for private_key in (
+        "played_at",
+        "initial_hands",
+        '"history"',
+        '"match_id"',
+        '"players"',
+    ):
+        assert private_key not in encoded
+
+
+def test_human_shadow_metrics_survive_checkpoint() -> None:
+    with TemporaryDirectory() as temporary:
+        path = Path(temporary) / "generic-response-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        result = store.compare_human_shadow(
+            recommendation={
+                "status": "recommended",
+                "recommended_action": "receive_same",
+                "observations": 20,
+                "support": 18,
+                "dominance": 0.9,
+            },
+            actual_action="pass",
+        )
+        assert result["status"] == "mismatch"
+        assert store.checkpoint("human-shadow-test") is True
+
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        assert restored["human_shadow_lookups"] == 1
+        assert restored["human_shadow_recommendations"] == 1
+        assert restored["human_shadow_mismatches"] == 1
+
+
+if __name__ == "__main__":
+    test_human_dictionary_shadow_does_not_change_live_action()
+    test_deployable_dictionary_contains_only_aggregate_fields()
+    test_human_shadow_metrics_survive_checkpoint()
+    print("HUMAN_RESPONSE_DICTIONARY_TEST_OK")

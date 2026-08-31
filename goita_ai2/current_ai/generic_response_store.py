@@ -212,6 +212,11 @@ class GenericResponsePatternStore:
             "tactical_shadow_recommendations": 0,
             "tactical_shadow_matches": 0,
             "tactical_shadow_mismatches": 0,
+            "human_shadow_lookups": 0,
+            "human_shadow_no_pattern": 0,
+            "human_shadow_recommendations": 0,
+            "human_shadow_matches": 0,
+            "human_shadow_mismatches": 0,
             "tactical_priority_lookups": 0,
             "tactical_priority_no_recommendation": 0,
             "tactical_priority_rejected_action": 0,
@@ -783,6 +788,11 @@ class GenericResponsePatternStore:
                 "tactical_shadow_recommendations",
                 "tactical_shadow_matches",
                 "tactical_shadow_mismatches",
+                "human_shadow_lookups",
+                "human_shadow_no_pattern",
+                "human_shadow_recommendations",
+                "human_shadow_matches",
+                "human_shadow_mismatches",
                 "tactical_priority_lookups",
                 "tactical_priority_no_recommendation",
                 "tactical_priority_rejected_action",
@@ -1543,6 +1553,37 @@ class GenericResponsePatternStore:
                 "actual_action": actual,
             }
 
+    def compare_human_shadow(
+        self,
+        *,
+        recommendation: Mapping[str, object],
+        actual_action: str,
+    ) -> dict:
+        """Compare aggregate human advice without affecting the live action."""
+        with self._lock:
+            counters = self._counters
+            counters["human_shadow_lookups"] += 1
+            status = str(recommendation.get("status", "no_pattern"))
+            if status != "recommended":
+                counters["human_shadow_no_pattern"] += 1
+                return dict(recommendation)
+
+            actual = str(actual_action)
+            recommended = str(
+                recommendation.get("recommended_action", "other")
+            )
+            matched = actual == recommended
+            counters["human_shadow_recommendations"] += 1
+            if matched:
+                counters["human_shadow_matches"] += 1
+            else:
+                counters["human_shadow_mismatches"] += 1
+            return {
+                **recommendation,
+                "status": "match" if matched else "mismatch",
+                "actual_action": actual,
+            }
+
     def snapshot(self) -> dict:
         with self._lock:
             counters = self._counters
@@ -1713,6 +1754,29 @@ class GenericResponsePatternStore:
                 "tactical_mismatch_details": tactical_mismatch_details[:50],
                 "tactical_mismatch_detail_count": len(
                     self._tactical_mismatch_details
+                ),
+                "human_shadow_lookups": int(
+                    counters["human_shadow_lookups"]
+                ),
+                "human_shadow_no_pattern": int(
+                    counters["human_shadow_no_pattern"]
+                ),
+                "human_shadow_recommendations": int(
+                    counters["human_shadow_recommendations"]
+                ),
+                "human_shadow_matches": int(
+                    counters["human_shadow_matches"]
+                ),
+                "human_shadow_mismatches": int(
+                    counters["human_shadow_mismatches"]
+                ),
+                "human_shadow_match_rate": round(
+                    int(counters["human_shadow_matches"])
+                    / max(
+                        1,
+                        int(counters["human_shadow_recommendations"]),
+                    ),
+                    5,
                 ),
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]
@@ -2107,7 +2171,13 @@ def generic_response_pattern_store() -> GenericResponsePatternStore:
 
 
 def generic_response_pattern_snapshot() -> dict:
-    return _GENERIC_RESPONSE_PATTERN_STORE.snapshot()
+    snapshot = _GENERIC_RESPONSE_PATTERN_STORE.snapshot()
+    from goita_ai2.current_ai.human_response_dictionary import (
+        human_response_dictionary,
+    )
+
+    snapshot.update(human_response_dictionary().snapshot())
+    return snapshot
 
 
 def checkpoint_generic_response_patterns(reason: str = "manual") -> bool:

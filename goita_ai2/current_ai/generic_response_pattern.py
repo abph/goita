@@ -14,6 +14,9 @@ from goita_ai2.current_ai.generic_response_store import (
     medium_response_pattern_payload,
     tactical_response_pattern_payload,
 )
+from goita_ai2.current_ai.human_response_dictionary import (
+    human_response_dictionary,
+)
 from goita_ai2.current_ai.search_cache import _digest_payload
 
 
@@ -570,13 +573,15 @@ class GenericResponsePatternMixin:
             ),
         )
         self.last_generic_response_shadow = dict(result)
-        tactical_result = generic_response_pattern_store().compare_tactical_shadow(
-            pattern_key=self._tactical_response_pattern_key(
-                state,
-                player,
-                actions_list,
-                baseline_action,
-            ),
+        tactical_payload = self._tactical_response_pattern_payload(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+        )
+        store = generic_response_pattern_store()
+        tactical_result = store.compare_tactical_shadow(
+            pattern_key=_digest_payload(tactical_payload),
             actual_action=self._generic_response_action_label(
                 actual_action,
                 state.current_attack,
@@ -589,6 +594,17 @@ class GenericResponsePatternMixin:
             ),
         )
         self.last_generic_response_tactical_shadow = dict(tactical_result)
+        actual_label = self._generic_response_action_label(
+            actual_action,
+            state.current_attack,
+        )
+        human_result = store.compare_human_shadow(
+            recommendation=human_response_dictionary().recommendation(
+                tactical_payload
+            ),
+            actual_action=actual_label,
+        )
+        self.last_generic_response_human_shadow = dict(human_result)
         return result
 
     def _generic_response_priority_action(
