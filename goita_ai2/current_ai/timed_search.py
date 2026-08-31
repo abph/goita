@@ -1523,6 +1523,20 @@ class TimedSearchMixin:
                                 5.0,
                             )
                         )
+                        comparison_min_depth = int(
+                            getattr(
+                                self,
+                                "GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_MIN_DEPTH",
+                                5,
+                            )
+                        )
+                        comparison_node_multiplier = float(
+                            getattr(
+                                self,
+                                "GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_NODE_MULTIPLIER",
+                                1.5,
+                            )
+                        )
                         if ai_actions:
                             ai_baseline = (
                                 result.action
@@ -1541,6 +1555,10 @@ class TimedSearchMixin:
                                 run_context=ai_context,
                                 forced_priority_action=ai_baseline,
                                 max_seconds_override=comparison_seconds,
+                                min_depth_override=comparison_min_depth,
+                                max_nodes_multiplier_override=(
+                                    comparison_node_multiplier
+                                ),
                                 disable_stable_stop=True,
                             )
                         human_baseline = (
@@ -1567,6 +1585,10 @@ class TimedSearchMixin:
                             run_context=human_context,
                             forced_priority_action=human_baseline,
                             max_seconds_override=comparison_seconds,
+                            min_depth_override=comparison_min_depth,
+                            max_nodes_multiplier_override=(
+                                comparison_node_multiplier
+                            ),
                             disable_stable_stop=True,
                         )
                     except Exception:
@@ -1785,6 +1807,8 @@ class TimedSearchMixin:
         run_context: Optional[Dict[str, object]] = None,
         forced_priority_action: Optional[Action] = None,
         max_seconds_override: Optional[float] = None,
+        min_depth_override: Optional[int] = None,
+        max_nodes_multiplier_override: Optional[float] = None,
         disable_stable_stop: bool = False,
     ) -> Optional[TimedSearchResult]:
         start = time.perf_counter()
@@ -1808,15 +1832,26 @@ class TimedSearchMixin:
             "AC": int(state.team_score.get("AC", 0)),
             "BD": int(state.team_score.get("BD", 0)),
         }
+        effective_max_nodes = int(
+            self._effective_time_search_setting(
+                "effective_nodes",
+                self.TIME_SEARCH_MAX_NODES,
+            )
+        )
+        if max_nodes_multiplier_override is not None:
+            effective_max_nodes = max(
+                effective_max_nodes,
+                int(
+                    effective_max_nodes
+                    * max(1.0, float(max_nodes_multiplier_override))
+                ),
+            )
         stats = {
             "nodes": 0,
-            "max_nodes": int(
-                self._effective_time_search_setting(
-                    "effective_nodes",
-                    self.TIME_SEARCH_MAX_NODES,
-                )
-            ),
+            "max_nodes": effective_max_nodes,
         }
+        if run_context is not None:
+            run_context["configured_max_nodes"] = effective_max_nodes
         information_set = None
         information_worlds = tuple()
         information_tracker = self._track.get(id(state))
@@ -1966,6 +2001,13 @@ class TimedSearchMixin:
                 maximum_depth,
                 int(self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH),
             )
+        if min_depth_override is not None:
+            maximum_depth = max(
+                maximum_depth,
+                max(1, int(min_depth_override)),
+            )
+        if run_context is not None:
+            run_context["configured_max_depth"] = maximum_depth
         for depth in range(1, maximum_depth + 1, 2):
             iteration: Dict[Action, List[float]] = {action: [] for action in root_actions}
             iteration_world_values: Dict[Action, Dict[int, float]] = {}

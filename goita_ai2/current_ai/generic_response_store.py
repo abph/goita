@@ -259,7 +259,7 @@ class GenericResponsePatternStore:
             "human_root_human_terminal_loss_rate_sum": 0.0,
             "human_root_ai_terminal_point_swing_sum": 0.0,
             "human_root_human_terminal_point_swing_sum": 0.0,
-            "human_root_diagnostic_version": 1,
+            "human_root_diagnostic_version": 2,
             "human_root_diag_comparisons": 0,
             "human_root_diag_completed": 0,
             "human_root_diag_incomplete": 0,
@@ -1062,12 +1062,12 @@ class GenericResponsePatternStore:
                 for name, value in root_defaults.items():
                     if name.startswith("human_root_"):
                         restored_counters[name] = value
-            if int(counters.get("human_root_diagnostic_version", 0)) != 1:
+            if int(counters.get("human_root_diagnostic_version", 0)) != 2:
                 diagnostic_defaults = self._empty_counters()
                 for name, value in diagnostic_defaults.items():
                     if name.startswith("human_root_diag_"):
                         restored_counters[name] = value
-                restored_counters["human_root_diagnostic_version"] = 1
+                restored_counters["human_root_diagnostic_version"] = 2
         except (TypeError, ValueError):
             return False
 

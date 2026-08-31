@@ -268,6 +268,8 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
             tuple(_actions),
             forced_priority_action,
             _kwargs.get("max_seconds_override"),
+            _kwargs.get("min_depth_override"),
+            _kwargs.get("max_nodes_multiplier_override"),
             _kwargs.get("disable_stable_stop", False),
         ))
         if forced_priority_action is None:
@@ -376,8 +378,10 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert calls[1][2] == ai_action
     assert calls[2][2] == baseline
     assert calls[1][3] == calls[2][3] == 5.0
-    assert calls[1][4] is True
-    assert calls[2][4] is True
+    assert calls[1][4] == calls[2][4] == 5
+    assert calls[1][5] == calls[2][5] == 1.5
+    assert calls[1][6] is True
+    assert calls[2][6] is True
     assert snapshot["human_pair_comparisons"] == 0
     assert snapshot["human_root_comparisons"] == 1
     assert snapshot["human_root_completed"] == 1
@@ -762,6 +766,40 @@ def test_time_limited_search_returns_a_completed_legal_result() -> None:
     assert result.samples == 4
     assert result.nodes > 0
     assert result.elapsed_seconds <= 0.8
+
+
+def test_comparison_search_applies_depth_and_node_overrides() -> None:
+    state = _initial_state()
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_INFORMATION_SET_ENABLED = False
+    agent._effective_time_search_setting = (
+        lambda name, default: {
+            "effective_depth": 1,
+            "effective_nodes": 100,
+        }.get(name, default)
+    )
+    actions = state.legal_actions("A")
+    baseline = agent._select_rule_based_action(state, "A", actions)
+    run_context = {}
+
+    agent._time_limited_search_from_samples(
+        state,
+        "A",
+        actions,
+        baseline,
+        [state],
+        run_context=run_context,
+        max_seconds_override=0.01,
+        min_depth_override=5,
+        max_nodes_multiplier_override=1.5,
+        disable_stable_stop=True,
+    )
+
+    assert run_context["configured_max_depth"] == 5
+    assert run_context["configured_max_nodes"] == 150
 
 
 def test_select_action_records_search_without_changing_public_state() -> None:
@@ -1319,6 +1357,7 @@ if __name__ == "__main__":
     test_proven_rule_still_skips_search()
     test_hidden_hand_sampling_does_not_read_actual_opponent_hands()
     test_time_limited_search_returns_a_completed_legal_result()
+    test_comparison_search_applies_depth_and_node_overrides()
     test_select_action_records_search_without_changing_public_state()
     test_enemy_second_attack_wait_requires_a_robust_inferred_win()
     test_kyosha_pass_compare_requires_a_completed_depth_seven_result()
