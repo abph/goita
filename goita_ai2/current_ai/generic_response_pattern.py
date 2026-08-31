@@ -32,6 +32,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_OBSERVATIONS = 8
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
+    GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_OBSERVATIONS = 15
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_DOMINANCE = 0.90
     GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
@@ -672,9 +673,12 @@ class GenericResponsePatternMixin:
         else:
             priority = None
 
-        store.record_priority_query(
-            recommendation if priority is not None else None
-        )
+        if not bool(
+            getattr(self, "_suppress_response_dictionary_metrics", False)
+        ):
+            store.record_priority_query(
+                recommendation if priority is not None else None
+            )
         self.last_generic_response_priority = {
             **recommendation,
             "priority_action": priority,
@@ -775,6 +779,37 @@ class GenericResponsePatternMixin:
             baseline_disagreed=baseline_disagreed,
             selected=selected,
             completed_depth=completed_depth,
+        )
+
+    def _record_tactical_response_paired_comparison(
+        self,
+        *,
+        comparison_complete: bool,
+        action_matched: bool = False,
+        with_priority_selected: bool = False,
+        without_priority_selected: bool = False,
+        with_depth: int = 0,
+        without_depth: int = 0,
+        with_elapsed_seconds: float = 0.0,
+        without_elapsed_seconds: float = 0.0,
+        with_nodes: int = 0,
+        without_nodes: int = 0,
+        value_delta: float = 0.0,
+        margin_delta: float = 0.0,
+    ) -> None:
+        generic_response_pattern_store().record_tactical_priority_pair(
+            comparison_complete=comparison_complete,
+            action_matched=action_matched,
+            with_priority_selected=with_priority_selected,
+            without_priority_selected=without_priority_selected,
+            with_depth=with_depth,
+            without_depth=without_depth,
+            with_elapsed_seconds=with_elapsed_seconds,
+            without_elapsed_seconds=without_elapsed_seconds,
+            with_nodes=with_nodes,
+            without_nodes=without_nodes,
+            value_delta=value_delta,
+            margin_delta=margin_delta,
         )
 
     def _record_generic_response_priority_effect(

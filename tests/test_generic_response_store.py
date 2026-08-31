@@ -306,6 +306,20 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
             selected=True,
             completed_depth=7,
         )
+        store.record_tactical_priority_pair(
+            comparison_complete=True,
+            action_matched=False,
+            with_priority_selected=True,
+            without_priority_selected=False,
+            with_depth=7,
+            without_depth=5,
+            with_elapsed_seconds=1.25,
+            without_elapsed_seconds=1.75,
+            with_nodes=1200,
+            without_nodes=1800,
+            value_delta=250.0,
+            margin_delta=75.0,
+        )
         snapshot = store.snapshot()
         assert matched["status"] == "match"
         assert mismatched["status"] == "mismatch"
@@ -327,6 +341,22 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
         assert snapshot["tactical_priority_selected"] == 1
         assert snapshot["tactical_priority_selected_rate"] == 1.0
         assert snapshot["tactical_priority_average_depth"] == 7.0
+        assert snapshot["tactical_pair_comparisons"] == 1
+        assert snapshot["tactical_pair_completed"] == 1
+        assert snapshot["tactical_pair_incomplete"] == 0
+        assert snapshot["tactical_pair_action_matches"] == 0
+        assert snapshot["tactical_pair_action_changes"] == 1
+        assert snapshot["tactical_pair_action_match_rate"] == 0.0
+        assert snapshot["tactical_pair_with_priority_selected"] == 1
+        assert snapshot["tactical_pair_without_priority_selected"] == 0
+        assert snapshot["tactical_pair_average_with_depth"] == 7.0
+        assert snapshot["tactical_pair_average_without_depth"] == 5.0
+        assert snapshot["tactical_pair_average_with_elapsed_seconds"] == 1.25
+        assert snapshot["tactical_pair_average_without_elapsed_seconds"] == 1.75
+        assert snapshot["tactical_pair_average_with_nodes"] == 1200.0
+        assert snapshot["tactical_pair_average_without_nodes"] == 1800.0
+        assert snapshot["tactical_pair_average_value_delta"] == 250.0
+        assert snapshot["tactical_pair_average_margin_delta"] == 75.0
         assert snapshot["tactical_mismatch_details"] == [{
             "pattern_id": tactical_key[:10],
             "recommended_action": "receive_same",
@@ -368,6 +398,9 @@ def test_tactical_patterns_backfill_and_compare_without_affecting_priority() -> 
         assert restored_snapshot["tactical_mismatch_detail_count"] == 1
         assert restored_snapshot["tactical_priority_offered"] == 1
         assert restored_snapshot["tactical_priority_selected"] == 1
+        assert restored_snapshot["tactical_pair_completed"] == 1
+        assert restored_snapshot["tactical_pair_action_changes"] == 1
+        assert restored_snapshot["tactical_pair_average_with_depth"] == 7.0
         assert restored_snapshot["tactical_mismatch_details"][0]["count"] == 2
         assert restored_snapshot["tactical_mismatch_details"][0][
             "recommended_action"

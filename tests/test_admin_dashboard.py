@@ -31,6 +31,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "再参加困難" in admin
     assert "戦術優先・候補に使用" in admin
     assert "戦術優先・最終採用" in admin
+    assert "戦術あり・なしを比較" in admin
+    assert "戦術比較・判断一致率" in admin
     assert 'id="tacticalMismatchRows"' in admin
     assert "観測・支持" in admin
     assert "戦術分類はデバッグルームだけで" in admin

@@ -223,6 +223,21 @@ class GenericResponsePatternStore:
             "tactical_priority_baseline_disagreements": 0,
             "tactical_priority_selected": 0,
             "tactical_priority_depth_sum": 0,
+            "tactical_pair_comparisons": 0,
+            "tactical_pair_completed": 0,
+            "tactical_pair_incomplete": 0,
+            "tactical_pair_action_matches": 0,
+            "tactical_pair_action_changes": 0,
+            "tactical_pair_with_priority_selected": 0,
+            "tactical_pair_without_priority_selected": 0,
+            "tactical_pair_with_depth_sum": 0.0,
+            "tactical_pair_without_depth_sum": 0.0,
+            "tactical_pair_with_elapsed_sum": 0.0,
+            "tactical_pair_without_elapsed_sum": 0.0,
+            "tactical_pair_with_nodes_sum": 0,
+            "tactical_pair_without_nodes_sum": 0,
+            "tactical_pair_value_delta_sum": 0.0,
+            "tactical_pair_margin_delta_sum": 0.0,
             "priority_queries": 0,
             "priority_hits": 0,
             "priority_effect_comparisons": 0,
@@ -779,6 +794,15 @@ class GenericResponsePatternStore:
                 "tactical_priority_baseline_disagreements",
                 "tactical_priority_selected",
                 "tactical_priority_depth_sum",
+                "tactical_pair_comparisons",
+                "tactical_pair_completed",
+                "tactical_pair_incomplete",
+                "tactical_pair_action_matches",
+                "tactical_pair_action_changes",
+                "tactical_pair_with_priority_selected",
+                "tactical_pair_without_priority_selected",
+                "tactical_pair_with_nodes_sum",
+                "tactical_pair_without_nodes_sum",
                 "priority_queries",
                 "priority_hits",
                 "priority_effect_comparisons",
@@ -830,6 +854,12 @@ class GenericResponsePatternStore:
                 "priority_effect_without_elapsed_sum",
                 "priority_effect_saved_seconds_sum",
                 "priority_effect_value_delta_sum",
+                "tactical_pair_with_depth_sum",
+                "tactical_pair_without_depth_sum",
+                "tactical_pair_with_elapsed_sum",
+                "tactical_pair_without_elapsed_sum",
+                "tactical_pair_value_delta_sum",
+                "tactical_pair_margin_delta_sum",
                 "narrowing_shadow_full_candidates_sum",
                 "narrowing_shadow_kept_candidates_sum",
                 "narrowing_shadow_removed_candidates_sum",
@@ -1098,6 +1128,66 @@ class GenericResponsePatternStore:
                 0,
                 int(completed_depth),
             )
+
+    def record_tactical_priority_pair(
+        self,
+        *,
+        comparison_complete: bool,
+        action_matched: bool = False,
+        with_priority_selected: bool = False,
+        without_priority_selected: bool = False,
+        with_depth: int = 0,
+        without_depth: int = 0,
+        with_elapsed_seconds: float = 0.0,
+        without_elapsed_seconds: float = 0.0,
+        with_nodes: int = 0,
+        without_nodes: int = 0,
+        value_delta: float = 0.0,
+        margin_delta: float = 0.0,
+    ) -> None:
+        """Record a tactical-on/off comparison without storing its position."""
+        with self._lock:
+            counters = self._counters
+            counters["tactical_pair_comparisons"] += 1
+            if not comparison_complete:
+                counters["tactical_pair_incomplete"] += 1
+                return
+
+            counters["tactical_pair_completed"] += 1
+            if action_matched:
+                counters["tactical_pair_action_matches"] += 1
+            else:
+                counters["tactical_pair_action_changes"] += 1
+            if with_priority_selected:
+                counters["tactical_pair_with_priority_selected"] += 1
+            if without_priority_selected:
+                counters["tactical_pair_without_priority_selected"] += 1
+            counters["tactical_pair_with_depth_sum"] += max(
+                0,
+                int(with_depth),
+            )
+            counters["tactical_pair_without_depth_sum"] += max(
+                0,
+                int(without_depth),
+            )
+            counters["tactical_pair_with_elapsed_sum"] += max(
+                0.0,
+                float(with_elapsed_seconds),
+            )
+            counters["tactical_pair_without_elapsed_sum"] += max(
+                0.0,
+                float(without_elapsed_seconds),
+            )
+            counters["tactical_pair_with_nodes_sum"] += max(
+                0,
+                int(with_nodes),
+            )
+            counters["tactical_pair_without_nodes_sum"] += max(
+                0,
+                int(without_nodes),
+            )
+            counters["tactical_pair_value_delta_sum"] += float(value_delta)
+            counters["tactical_pair_margin_delta_sum"] += float(margin_delta)
 
     def record_priority_effect(
         self,
@@ -1662,6 +1752,72 @@ class GenericResponsePatternStore:
                 "tactical_priority_average_depth": round(
                     int(counters["tactical_priority_depth_sum"])
                     / max(1, int(counters["tactical_priority_effects"])),
+                    3,
+                ),
+                "tactical_pair_comparisons": int(
+                    counters["tactical_pair_comparisons"]
+                ),
+                "tactical_pair_completed": int(
+                    counters["tactical_pair_completed"]
+                ),
+                "tactical_pair_incomplete": int(
+                    counters["tactical_pair_incomplete"]
+                ),
+                "tactical_pair_action_matches": int(
+                    counters["tactical_pair_action_matches"]
+                ),
+                "tactical_pair_action_changes": int(
+                    counters["tactical_pair_action_changes"]
+                ),
+                "tactical_pair_action_match_rate": round(
+                    int(counters["tactical_pair_action_matches"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    5,
+                ),
+                "tactical_pair_with_priority_selected": int(
+                    counters["tactical_pair_with_priority_selected"]
+                ),
+                "tactical_pair_without_priority_selected": int(
+                    counters["tactical_pair_without_priority_selected"]
+                ),
+                "tactical_pair_average_with_depth": round(
+                    float(counters["tactical_pair_with_depth_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    3,
+                ),
+                "tactical_pair_average_without_depth": round(
+                    float(counters["tactical_pair_without_depth_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    3,
+                ),
+                "tactical_pair_average_with_elapsed_seconds": round(
+                    float(counters["tactical_pair_with_elapsed_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    5,
+                ),
+                "tactical_pair_average_without_elapsed_seconds": round(
+                    float(counters["tactical_pair_without_elapsed_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    5,
+                ),
+                "tactical_pair_average_with_nodes": round(
+                    int(counters["tactical_pair_with_nodes_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    1,
+                ),
+                "tactical_pair_average_without_nodes": round(
+                    int(counters["tactical_pair_without_nodes_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    1,
+                ),
+                "tactical_pair_average_value_delta": round(
+                    float(counters["tactical_pair_value_delta_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
+                    3,
+                ),
+                "tactical_pair_average_margin_delta": round(
+                    float(counters["tactical_pair_margin_delta_sum"])
+                    / max(1, int(counters["tactical_pair_completed"])),
                     3,
                 ),
                 "priority_queries": int(counters["priority_queries"]),

@@ -153,6 +153,61 @@ def test_tactical_hint_takes_priority_and_records_the_final_search_choice() -> N
     assert snapshot["priority_effect_comparisons"] == 0
 
 
+def test_tactical_hint_runs_an_isolated_paired_comparison() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_INFORMATION_SET_ENABLED = False
+    agent.TIME_SEARCH_MAX_SECONDS = 0.3
+    agent.TIME_SEARCH_SAMPLE_COUNT = 2
+    agent.TIME_SEARCH_MAX_DEPTH = 1
+    agent.TIME_SEARCH_MAX_NODES = 10_000
+    agent.GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = True
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    agent._tactical_response_priority_action = (
+        lambda _state, _player, _actions, _baseline: priority
+    )
+    generic_calls = []
+
+    def no_generic_priority(*_args, **_kwargs):
+        generic_calls.append(True)
+        return None
+
+    agent._generic_response_priority_action = no_generic_priority
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action in actions
+    assert generic_calls == [True]
+    assert snapshot["tactical_priority_effects"] == 1
+    assert snapshot["tactical_pair_comparisons"] == 1
+    assert snapshot["tactical_pair_completed"] == 1
+    assert snapshot["tactical_pair_incomplete"] == 0
+    assert (
+        snapshot["tactical_pair_action_matches"]
+        + snapshot["tactical_pair_action_changes"]
+        == 1
+    )
+    assert snapshot["tactical_pair_average_with_depth"] == 1.0
+    assert snapshot["tactical_pair_average_without_depth"] == 1.0
+
+
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
     reset_generic_response_patterns()
     state = _initial_state()

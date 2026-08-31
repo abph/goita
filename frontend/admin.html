@@ -422,6 +422,9 @@
       const tacticalPrioritySelectedRate = (
         Number(data.tactical_priority_selected_rate) || 0
       ) * 100;
+      const tacticalPairActionMatchRate = (
+        Number(data.tactical_pair_action_match_rate) || 0
+      ) * 100;
       const priorityHitRate = (Number(data.priority_hit_rate) || 0) * 100;
       const priorityEffectChangeRate = (
         Number(data.priority_effect_change_rate) || 0
@@ -473,6 +476,22 @@
         ["戦術優先・最終採用", `${data.tactical_priority_selected || 0}回`],
         ["戦術優先・最終採用率", `${tacticalPrioritySelectedRate.toFixed(1)}%`],
         ["戦術優先・平均探索深さ", `${Number(data.tactical_priority_average_depth || 0).toFixed(2)}`],
+        ["戦術あり・なしを比較", `${data.tactical_pair_comparisons || 0}回`],
+        ["戦術比較・完了", `${data.tactical_pair_completed || 0}回`],
+        ["戦術比較・未完了", `${data.tactical_pair_incomplete || 0}回`],
+        ["戦術比較・同じ判断", `${data.tactical_pair_action_matches || 0}回`],
+        ["戦術比較・判断が変化", `${data.tactical_pair_action_changes || 0}回`],
+        ["戦術比較・判断一致率", `${tacticalPairActionMatchRate.toFixed(1)}%`],
+        ["戦術ありで推薦手を採用", `${data.tactical_pair_with_priority_selected || 0}回`],
+        ["戦術なしでも推薦手を採用", `${data.tactical_pair_without_priority_selected || 0}回`],
+        ["戦術あり平均深さ", `${Number(data.tactical_pair_average_with_depth || 0).toFixed(2)}`],
+        ["戦術なし平均深さ", `${Number(data.tactical_pair_average_without_depth || 0).toFixed(2)}`],
+        ["戦術あり平均時間", `${Number(data.tactical_pair_average_with_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["戦術なし平均時間", `${Number(data.tactical_pair_average_without_elapsed_seconds || 0).toFixed(3)}秒`],
+        ["戦術あり平均探索局面", `${Number(data.tactical_pair_average_with_nodes || 0).toFixed(0)}`],
+        ["戦術なし平均探索局面", `${Number(data.tactical_pair_average_without_nodes || 0).toFixed(0)}`],
+        ["戦術比較・平均評価差", `${Number(data.tactical_pair_average_value_delta || 0).toFixed(1)}`],
+        ["戦術比較・平均差の変化", `${Number(data.tactical_pair_average_margin_delta || 0).toFixed(1)}`],
         ["影響なし比較", `${data.shadow_lookups || 0}回`],
         ["辞書の推奨あり", `${data.shadow_recommendations || 0}回`],
         ["現在AIと一致", `${data.shadow_matches || 0}回`],

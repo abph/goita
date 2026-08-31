@@ -3167,6 +3167,11 @@ def _apply_agent_turn(
             game.get("is_debug_room", False)
             and game.get("debug_dictionary_narrowing", False)
         )
+    if hasattr(agent, "GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED"):
+        agent.GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = bool(
+            game.get("is_debug_room", False)
+            and game.get("debug_dictionary_narrowing", False)
+        )
     if forced_action is not None and forced_action in acts:
         agent_action = forced_action
     else:
