@@ -907,7 +907,9 @@ class GenericResponsePatternMixin:
         self,
         *,
         comparison_complete: bool,
+        incomplete_reason: str = "",
         selected_side: str = "other",
+        common_depth: int = 0,
         ai_depth: int = 0,
         human_depth: int = 0,
         ai_elapsed_seconds: float = 0.0,
@@ -925,7 +927,9 @@ class GenericResponsePatternMixin:
         """Record an equal-budget, root-constrained diagnostic comparison."""
         generic_response_pattern_store().record_human_root_pair(
             comparison_complete=comparison_complete,
+            incomplete_reason=incomplete_reason,
             selected_side=selected_side,
+            common_depth=common_depth,
             ai_depth=ai_depth,
             human_depth=human_depth,
             ai_elapsed_seconds=ai_elapsed_seconds,

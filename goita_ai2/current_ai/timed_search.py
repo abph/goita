@@ -1023,6 +1023,56 @@ class TimedSearchMixin:
             return 100000.0 + root_gain * 500.0
         return -100000.0 - enemy_gain * 500.0
 
+    @staticmethod
+    def _timed_search_aggregate_sample_values(values: Sequence[float]) -> float:
+        """Aggregate one root action's sampled values without a move prior."""
+        ordered_values = sorted(float(value) for value in values)
+        if not ordered_values:
+            return -float("inf")
+        lower_index = max(0, (len(ordered_values) - 1) // 4)
+        lower_quartile = ordered_values[lower_index]
+        mean_value = sum(ordered_values) / len(ordered_values)
+        return mean_value * 0.78 + lower_quartile * 0.22
+
+    @staticmethod
+    def _timed_search_terminal_summary(
+        weighted_values: Sequence[Tuple[float, float]],
+    ) -> Dict[str, float]:
+        """Summarize only terminal outcomes reached inside one search depth."""
+        total_weight = sum(float(weight) for _value, weight in weighted_values)
+        if total_weight <= 0.0:
+            return {
+                "terminal_win_rate": 0.0,
+                "terminal_loss_rate": 0.0,
+                "terminal_point_swing": 0.0,
+            }
+        terminal_win_rate = sum(
+            float(weight)
+            for value, weight in weighted_values
+            if float(value) >= 100000.0
+        ) / total_weight
+        terminal_loss_rate = sum(
+            float(weight)
+            for value, weight in weighted_values
+            if float(value) <= -100000.0
+        ) / total_weight
+        terminal_point_swing = sum(
+            (
+                (float(value) - 100000.0) / 500.0
+                if float(value) >= 100000.0
+                else (float(value) + 100000.0) / 500.0
+                if float(value) <= -100000.0
+                else 0.0
+            )
+            * float(weight)
+            for value, weight in weighted_values
+        ) / total_weight
+        return {
+            "terminal_win_rate": terminal_win_rate,
+            "terminal_loss_rate": terminal_loss_rate,
+            "terminal_point_swing": terminal_point_swing,
+        }
+
     def _timed_search_static_value(
         self,
         state,
@@ -1452,6 +1502,7 @@ class TimedSearchMixin:
                                 run_context=ai_context,
                                 forced_priority_action=ai_baseline,
                                 max_seconds_override=comparison_seconds,
+                                disable_stable_stop=True,
                             )
                         human_baseline = (
                             baseline_action
@@ -1477,6 +1528,7 @@ class TimedSearchMixin:
                             run_context=human_context,
                             forced_priority_action=human_baseline,
                             max_seconds_override=comparison_seconds,
+                            disable_stable_stop=True,
                         )
                     except Exception:
                         # Comparison-only work must never interrupt the move.
@@ -1492,26 +1544,48 @@ class TimedSearchMixin:
                             else:
                                 setattr(self, name, previous)
 
+                    human_depth_results = dict(
+                        human_context.get("depth_results", {}) or {}
+                    )
+                    ai_depth_results = dict(
+                        ai_context.get("depth_results", {}) or {}
+                    )
+                    common_depths = sorted(
+                        int(depth)
+                        for depth in (
+                            set(human_depth_results) & set(ai_depth_results)
+                        )
+                        if int(depth) >= 5
+                    )
                     comparison_complete = bool(
                         human_result is not None
                         and ai_result is not None
+                        and common_depths
                     )
                     if not comparison_complete:
+                        if human_result is None or ai_result is None:
+                            incomplete_reason = "missing_result"
+                        elif not (
+                            set(human_depth_results) & set(ai_depth_results)
+                        ):
+                            incomplete_reason = "no_common_depth"
+                        else:
+                            incomplete_reason = "common_depth_below_five"
                         self._record_human_response_root_comparison(
                             comparison_complete=False,
+                            incomplete_reason=incomplete_reason,
                         )
                     else:
+                        common_depth = common_depths[-1]
+                        human_common = dict(
+                            human_depth_results[common_depth]
+                        )
+                        ai_common = dict(ai_depth_results[common_depth])
                         human_value = float(
-                            human_context.get(
-                                "evaluation_value",
-                                human_result.value,
-                            )
+                            human_common.get("evaluation_value", 0.0)
                         )
                         ai_value = float(
-                            ai_context.get(
-                                "evaluation_value",
-                                ai_result.value,
-                            )
+                            ai_common.get("evaluation_value", 0.0)
                         )
                         value_delta = human_value - ai_value
                         if value_delta > 1e-6:
@@ -1523,6 +1597,7 @@ class TimedSearchMixin:
                         self._record_human_response_root_comparison(
                             comparison_complete=True,
                             selected_side=selected_side,
+                            common_depth=common_depth,
                             ai_depth=ai_result.depth,
                             human_depth=human_result.depth,
                             ai_elapsed_seconds=ai_result.elapsed_seconds,
@@ -1533,22 +1608,22 @@ class TimedSearchMixin:
                             human_nodes=human_result.nodes,
                             value_delta=value_delta,
                             ai_terminal_win_rate=float(
-                                ai_context.get("terminal_win_rate", 0.0)
+                                ai_common.get("terminal_win_rate", 0.0)
                             ),
                             human_terminal_win_rate=float(
-                                human_context.get("terminal_win_rate", 0.0)
+                                human_common.get("terminal_win_rate", 0.0)
                             ),
                             ai_terminal_loss_rate=float(
-                                ai_context.get("terminal_loss_rate", 0.0)
+                                ai_common.get("terminal_loss_rate", 0.0)
                             ),
                             human_terminal_loss_rate=float(
-                                human_context.get("terminal_loss_rate", 0.0)
+                                human_common.get("terminal_loss_rate", 0.0)
                             ),
                             ai_terminal_point_swing=float(
-                                ai_context.get("terminal_point_swing", 0.0)
+                                ai_common.get("terminal_point_swing", 0.0)
                             ),
                             human_terminal_point_swing=float(
-                                human_context.get(
+                                human_common.get(
                                     "terminal_point_swing",
                                     0.0,
                                 )
@@ -1609,6 +1684,7 @@ class TimedSearchMixin:
         run_context: Optional[Dict[str, object]] = None,
         forced_priority_action: Optional[Action] = None,
         max_seconds_override: Optional[float] = None,
+        disable_stable_stop: bool = False,
     ) -> Optional[TimedSearchResult]:
         start = time.perf_counter()
         if max_seconds_override is None:
@@ -1876,6 +1952,58 @@ class TimedSearchMixin:
             }
             if not aggregate:
                 break
+            if run_context is not None:
+                depth_raw_values = {
+                    action: (
+                        float(iteration_robust_values[action])
+                        if information_enabled
+                        else self._timed_search_aggregate_sample_values(values)
+                    )
+                    for action, values in iteration.items()
+                    if values
+                }
+                depth_scored_values = {
+                    action: value + rule_rank_bonus.get(action, 0.0)
+                    for action, value in depth_raw_values.items()
+                }
+                if depth_scored_values:
+                    depth_best_action = max(
+                        depth_scored_values,
+                        key=depth_scored_values.get,
+                    )
+                    if information_enabled:
+                        depth_world_values = iteration_world_values.get(
+                            depth_best_action,
+                            {},
+                        )
+                        depth_weighted_values = [
+                            (
+                                float(depth_world_values[world.index]),
+                                float(world.probability),
+                            )
+                            for world in information_worlds
+                            if world.index in depth_world_values
+                        ]
+                    else:
+                        depth_values = iteration.get(depth_best_action, [])
+                        depth_weight = 1.0 / max(1, len(depth_values))
+                        depth_weighted_values = [
+                            (float(value), depth_weight)
+                            for value in depth_values
+                        ]
+                    depth_summary = self._timed_search_terminal_summary(
+                        depth_weighted_values
+                    )
+                    depth_results = run_context.setdefault(
+                        "depth_results",
+                        {},
+                    )
+                    depth_results[depth] = {
+                        "evaluation_value": float(
+                            depth_raw_values[depth_best_action]
+                        ),
+                        **depth_summary,
+                    }
             best = max(aggregate, key=aggregate.get)
             if best == stable_best:
                 stable_count += 1
@@ -2020,7 +2148,11 @@ class TimedSearchMixin:
                     set(narrowed) == set(control_narrowed)
                 )
                 root_actions = narrowed
-            if depth >= minimum_override_depth and stable_count >= 2:
+            if (
+                not disable_stable_stop
+                and depth >= minimum_override_depth
+                and stable_count >= 2
+            ):
                 ordered = sorted(aggregate.values(), reverse=True)
                 if len(ordered) == 1 or ordered[0] - ordered[1] >= self.TIME_SEARCH_STABLE_MARGIN:
                     break

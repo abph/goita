@@ -235,14 +235,19 @@ class GenericResponsePatternStore:
             "human_pair_normal_nodes_sum": 0,
             "human_pair_priority_nodes_sum": 0,
             "human_pair_value_delta_sum": 0.0,
+            "human_root_comparison_version": 2,
             "human_root_comparisons": 0,
             "human_root_completed": 0,
             "human_root_incomplete": 0,
+            "human_root_incomplete_missing_result": 0,
+            "human_root_incomplete_no_common_depth": 0,
+            "human_root_incomplete_shallow": 0,
             "human_root_human_better": 0,
             "human_root_ai_better": 0,
             "human_root_tied": 0,
             "human_root_ai_depth_sum": 0.0,
             "human_root_human_depth_sum": 0.0,
+            "human_root_common_depth_sum": 0.0,
             "human_root_ai_elapsed_sum": 0.0,
             "human_root_human_elapsed_sum": 0.0,
             "human_root_ai_nodes_sum": 0,
@@ -882,6 +887,9 @@ class GenericResponsePatternStore:
                 "human_root_comparisons",
                 "human_root_completed",
                 "human_root_incomplete",
+                "human_root_incomplete_missing_result",
+                "human_root_incomplete_no_common_depth",
+                "human_root_incomplete_shallow",
                 "human_root_human_better",
                 "human_root_ai_better",
                 "human_root_tied",
@@ -971,6 +979,7 @@ class GenericResponsePatternStore:
                 "human_pair_value_delta_sum",
                 "human_root_ai_depth_sum",
                 "human_root_human_depth_sum",
+                "human_root_common_depth_sum",
                 "human_root_ai_elapsed_sum",
                 "human_root_human_elapsed_sum",
                 "human_root_value_delta_sum",
@@ -1010,6 +1019,11 @@ class GenericResponsePatternStore:
                 restored_counters[name] = Counter(
                     self._counter_dict(counters.get(name, {}))
                 )
+            if int(counters.get("human_root_comparison_version", 0)) != 2:
+                root_defaults = self._empty_counters()
+                for name, value in root_defaults.items():
+                    if name.startswith("human_root_"):
+                        restored_counters[name] = value
         except (TypeError, ValueError):
             return False
 
@@ -1376,7 +1390,9 @@ class GenericResponsePatternStore:
         self,
         *,
         comparison_complete: bool,
+        incomplete_reason: str = "",
         selected_side: str = "other",
+        common_depth: int = 0,
         ai_depth: int = 0,
         human_depth: int = 0,
         ai_elapsed_seconds: float = 0.0,
@@ -1397,6 +1413,13 @@ class GenericResponsePatternStore:
             counters["human_root_comparisons"] += 1
             if not comparison_complete:
                 counters["human_root_incomplete"] += 1
+                reason = str(incomplete_reason)
+                if reason == "missing_result":
+                    counters["human_root_incomplete_missing_result"] += 1
+                elif reason == "no_common_depth":
+                    counters["human_root_incomplete_no_common_depth"] += 1
+                else:
+                    counters["human_root_incomplete_shallow"] += 1
                 return
 
             counters["human_root_completed"] += 1
@@ -1411,6 +1434,10 @@ class GenericResponsePatternStore:
             counters["human_root_human_depth_sum"] += max(
                 0,
                 int(human_depth),
+            )
+            counters["human_root_common_depth_sum"] += max(
+                0,
+                int(common_depth),
             )
             counters["human_root_ai_elapsed_sum"] += max(
                 0.0,
@@ -2220,6 +2247,15 @@ class GenericResponsePatternStore:
                 "human_root_incomplete": int(
                     counters["human_root_incomplete"]
                 ),
+                "human_root_incomplete_missing_result": int(
+                    counters["human_root_incomplete_missing_result"]
+                ),
+                "human_root_incomplete_no_common_depth": int(
+                    counters["human_root_incomplete_no_common_depth"]
+                ),
+                "human_root_incomplete_shallow": int(
+                    counters["human_root_incomplete_shallow"]
+                ),
                 "human_root_human_better": int(
                     counters["human_root_human_better"]
                 ),
@@ -2234,6 +2270,11 @@ class GenericResponsePatternStore:
                 ),
                 "human_root_average_human_depth": round(
                     float(counters["human_root_human_depth_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    3,
+                ),
+                "human_root_average_common_depth": round(
+                    float(counters["human_root_common_depth_sum"])
                     / max(1, int(counters["human_root_completed"])),
                     3,
                 ),

@@ -205,6 +205,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         store.record_human_root_pair(
             comparison_complete=True,
             selected_side="human",
+            common_depth=7,
             ai_depth=7,
             human_depth=9,
             ai_elapsed_seconds=4.8,
@@ -226,6 +227,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_root_ai_better"] == 0
         assert snapshot["human_root_average_ai_depth"] == 7.0
         assert snapshot["human_root_average_human_depth"] == 9.0
+        assert snapshot["human_root_average_common_depth"] == 7.0
         assert snapshot["human_root_average_value_delta"] == 375.0
         assert snapshot["human_root_average_ai_terminal_win_rate"] == 0.25
         assert snapshot["human_root_average_human_terminal_win_rate"] == 0.5
@@ -233,6 +235,14 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_root_average_human_terminal_loss_rate"] == 0.1
         assert snapshot["human_root_average_ai_terminal_point_swing"] == 2.5
         assert snapshot["human_root_average_human_terminal_point_swing"] == 7.5
+        store.record_human_root_pair(
+            comparison_complete=False,
+            incomplete_reason="common_depth_below_five",
+        )
+        snapshot = store.snapshot()
+        assert snapshot["human_root_comparisons"] == 2
+        assert snapshot["human_root_incomplete"] == 1
+        assert snapshot["human_root_incomplete_shallow"] == 1
         assert store.checkpoint("human-shadow-test") is True
 
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -250,11 +260,42 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_root_completed"] == 1
         assert restored["human_root_human_better"] == 1
         assert restored["human_root_average_value_delta"] == 375.0
+        assert restored["human_root_average_common_depth"] == 7.0
         assert restored["human_root_average_human_terminal_win_rate"] == 0.5
+
+
+def test_old_root_comparison_metrics_reset_without_losing_other_data() -> None:
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-response-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        store.record_human_priority_pair(
+            comparison_complete=True,
+            selected_side="ai",
+        )
+        store.record_human_root_pair(
+            comparison_complete=True,
+            selected_side="ai",
+            common_depth=5,
+        )
+        assert store.checkpoint("old-root-comparison") is True
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["counters"].pop("human_root_comparison_version", None)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        assert restored["human_pair_completed"] == 1
+        assert restored["human_root_comparisons"] == 0
+        assert restored["human_root_completed"] == 0
+        assert restored["human_root_average_common_depth"] == 0.0
 
 
 if __name__ == "__main__":
     test_human_dictionary_shadow_does_not_change_live_action()
     test_deployable_dictionary_contains_only_aggregate_fields()
     test_human_shadow_metrics_survive_checkpoint()
+    test_old_root_comparison_metrics_reset_without_losing_other_data()
     print("HUMAN_RESPONSE_DICTIONARY_TEST_OK")

@@ -250,7 +250,7 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIと推薦が異なる場合に、人間の受け方とAIの受け方を初手で分け、同じ推定手駒・各5秒で比較します。比較結果はAIの実戦判断には影響しません。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIと推薦が異なる場合に、人間の受け方とAIの受け方を初手で分け、同じ推定手駒・各5秒で探索します。両方が到達した深さ5以上の最深地点だけを比較し、比較結果はAIの実戦判断には影響しません。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">戦術分類の不一致内訳</h3>
           <p class="muted">手駒や棋譜は保存せず、この機能の導入後に発生した匿名の判断差だけを集計します。</p>
@@ -551,12 +551,16 @@
         ["初手固定ルートを比較", `${data.human_root_comparisons || 0}回`],
         ["初手固定比較・完了", `${data.human_root_completed || 0}回`],
         ["初手固定比較・未完了", `${data.human_root_incomplete || 0}回`],
+        ["未完了・探索結果なし", `${data.human_root_incomplete_missing_result || 0}回`],
+        ["未完了・共通深さなし", `${data.human_root_incomplete_no_common_depth || 0}回`],
+        ["未完了・共通深さ5未満", `${data.human_root_incomplete_shallow || 0}回`],
         ["人間棋譜ルートの評価が上", `${data.human_root_human_better || 0}回`],
         ["現在AIルートの評価が上", `${data.human_root_ai_better || 0}回`],
         ["両ルートの評価が同じ", `${data.human_root_tied || 0}回`],
         ["人間ルート−AIルートの平均評価差", `${Number(data.human_root_average_value_delta || 0).toFixed(1)}`],
         ["人間ルートの平均深さ", `${Number(data.human_root_average_human_depth || 0).toFixed(2)}`],
         ["AIルートの平均深さ", `${Number(data.human_root_average_ai_depth || 0).toFixed(2)}`],
+        ["比較に使った平均共通深さ", `${Number(data.human_root_average_common_depth || 0).toFixed(2)}`],
         ["人間ルートの平均時間", `${Number(data.human_root_average_human_elapsed_seconds || 0).toFixed(3)}秒`],
         ["AIルートの平均時間", `${Number(data.human_root_average_ai_elapsed_seconds || 0).toFixed(3)}秒`],
         ["人間ルートの平均局面数", `${Number(data.human_root_average_human_nodes || 0).toFixed(0)}`],

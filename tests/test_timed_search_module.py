@@ -252,6 +252,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
             tuple(_actions),
             forced_priority_action,
             _kwargs.get("max_seconds_override"),
+            _kwargs.get("disable_stable_stop", False),
         ))
         if forced_priority_action is None:
             return TimedSearchResult(
@@ -266,9 +267,20 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                 decisive=False,
             )
         if forced_priority_action == ai_action:
-            run_context["terminal_win_rate"] = 0.25
-            run_context["terminal_loss_rate"] = 0.10
-            run_context["terminal_point_swing"] = 5.0
+            run_context["depth_results"] = {
+                5: {
+                    "evaluation_value": 90.0,
+                    "terminal_win_rate": 0.20,
+                    "terminal_loss_rate": 0.10,
+                    "terminal_point_swing": 4.0,
+                },
+                7: {
+                    "evaluation_value": 100.0,
+                    "terminal_win_rate": 0.25,
+                    "terminal_loss_rate": 0.10,
+                    "terminal_point_swing": 5.0,
+                },
+            }
             return TimedSearchResult(
                 action=ai_action,
                 depth=7,
@@ -280,16 +292,33 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                 agreement=1.0,
                 decisive=False,
             )
-        run_context["terminal_win_rate"] = 0.50
-        run_context["terminal_loss_rate"] = 0.05
-        run_context["terminal_point_swing"] = 12.5
+        run_context["depth_results"] = {
+            5: {
+                "evaluation_value": 110.0,
+                "terminal_win_rate": 0.40,
+                "terminal_loss_rate": 0.05,
+                "terminal_point_swing": 10.0,
+            },
+            7: {
+                "evaluation_value": 125.0,
+                "terminal_win_rate": 0.50,
+                "terminal_loss_rate": 0.05,
+                "terminal_point_swing": 12.5,
+            },
+            9: {
+                "evaluation_value": 999.0,
+                "terminal_win_rate": 0.90,
+                "terminal_loss_rate": 0.01,
+                "terminal_point_swing": 30.0,
+            },
+        }
         return TimedSearchResult(
             action=baseline,
-            depth=7,
+            depth=9,
             samples=1,
             nodes=1800,
             elapsed_seconds=1.75,
-            value=125.0,
+            value=999.0,
             margin=25.0,
             agreement=1.0,
             decisive=False,
@@ -311,6 +340,8 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert calls[1][2] == ai_action
     assert calls[2][2] == baseline
     assert calls[1][3] == calls[2][3] == 5.0
+    assert calls[1][4] is True
+    assert calls[2][4] is True
     assert snapshot["human_pair_comparisons"] == 0
     assert snapshot["human_root_comparisons"] == 1
     assert snapshot["human_root_completed"] == 1
@@ -318,7 +349,8 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert snapshot["human_root_human_better"] == 1
     assert snapshot["human_root_ai_better"] == 0
     assert snapshot["human_root_average_ai_depth"] == 7.0
-    assert snapshot["human_root_average_human_depth"] == 7.0
+    assert snapshot["human_root_average_human_depth"] == 9.0
+    assert snapshot["human_root_average_common_depth"] == 7.0
     assert snapshot["human_root_average_value_delta"] == 25.0
     assert snapshot["human_root_average_ai_terminal_win_rate"] == 0.25
     assert snapshot["human_root_average_human_terminal_win_rate"] == 0.5
