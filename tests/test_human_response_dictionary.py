@@ -219,6 +219,12 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             human_terminal_loss_rate=0.1,
             ai_terminal_point_swing=2.5,
             human_terminal_point_swing=7.5,
+            human_action_label="pass",
+            ai_action_label="receive_same",
+            mean_value_delta=300.0,
+            terminal_outcome_delta=125.0,
+            terminal_score_delta=25.0,
+            nonterminal_delta=150.0,
         )
         snapshot = store.snapshot()
         assert snapshot["human_root_comparisons"] == 1
@@ -235,14 +241,35 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_root_average_human_terminal_loss_rate"] == 0.1
         assert snapshot["human_root_average_ai_terminal_point_swing"] == 2.5
         assert snapshot["human_root_average_human_terminal_point_swing"] == 7.5
+        assert snapshot["human_root_diag_completed"] == 1
+        assert snapshot["human_root_diag_average_mean_value_delta"] == 300.0
+        assert snapshot[
+            "human_root_diag_average_terminal_outcome_delta"
+        ] == 125.0
+        assert snapshot[
+            "human_root_diag_average_terminal_score_delta"
+        ] == 25.0
+        assert snapshot["human_root_diag_average_nonterminal_delta"] == 150.0
+        assert snapshot["human_root_diag_action_pairs"] == [{
+            "human_action": "pass",
+            "ai_action": "receive_same",
+            "comparisons": 1,
+            "human_better": 1,
+            "ai_better": 0,
+        }]
         store.record_human_root_pair(
             comparison_complete=False,
             incomplete_reason="common_depth_below_five",
+            human_stop_reason="node_limit",
+            ai_stop_reason="time_limit",
         )
         snapshot = store.snapshot()
         assert snapshot["human_root_comparisons"] == 2
         assert snapshot["human_root_incomplete"] == 1
         assert snapshot["human_root_incomplete_shallow"] == 1
+        assert snapshot["human_root_diag_incomplete"] == 1
+        assert snapshot["human_root_diag_human_stop_nodes"] == 1
+        assert snapshot["human_root_diag_ai_stop_time"] == 1
         assert store.checkpoint("human-shadow-test") is True
 
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -262,6 +289,12 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_root_average_value_delta"] == 375.0
         assert restored["human_root_average_common_depth"] == 7.0
         assert restored["human_root_average_human_terminal_win_rate"] == 0.5
+        assert restored["human_root_diag_completed"] == 1
+        assert restored["human_root_diag_incomplete"] == 1
+        assert restored["human_root_diag_human_stop_nodes"] == 1
+        assert restored["human_root_diag_action_pairs"][0][
+            "human_action"
+        ] == "pass"
 
 
 def test_old_root_comparison_metrics_reset_without_losing_other_data() -> None:
@@ -293,9 +326,39 @@ def test_old_root_comparison_metrics_reset_without_losing_other_data() -> None:
         assert restored["human_root_average_common_depth"] == 0.0
 
 
+def test_new_root_diagnostics_start_clean_without_resetting_root_totals() -> None:
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-response-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        store.record_human_root_pair(
+            comparison_complete=True,
+            selected_side="ai",
+            common_depth=5,
+            human_action_label="pass",
+            ai_action_label="receive_same",
+            mean_value_delta=-50.0,
+        )
+        assert store.checkpoint("pre-diagnostic-version") is True
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["counters"].pop("human_root_diagnostic_version", None)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        assert restored["human_root_completed"] == 1
+        assert restored["human_root_ai_better"] == 1
+        assert restored["human_root_diag_comparisons"] == 0
+        assert restored["human_root_diag_completed"] == 0
+        assert restored["human_root_diag_action_pairs"] == []
+
+
 if __name__ == "__main__":
     test_human_dictionary_shadow_does_not_change_live_action()
     test_deployable_dictionary_contains_only_aggregate_fields()
     test_human_shadow_metrics_survive_checkpoint()
     test_old_root_comparison_metrics_reset_without_losing_other_data()
+    test_new_root_diagnostics_start_clean_without_resetting_root_totals()
     print("HUMAN_RESPONSE_DICTIONARY_TEST_OK")

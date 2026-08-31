@@ -923,6 +923,14 @@ class GenericResponsePatternMixin:
         human_terminal_loss_rate: float = 0.0,
         ai_terminal_point_swing: float = 0.0,
         human_terminal_point_swing: float = 0.0,
+        ai_stop_reason: str = "",
+        human_stop_reason: str = "",
+        human_action_label: str = "other",
+        ai_action_label: str = "other",
+        mean_value_delta: float = 0.0,
+        terminal_outcome_delta: float = 0.0,
+        terminal_score_delta: float = 0.0,
+        nonterminal_delta: float = 0.0,
     ) -> None:
         """Record an equal-budget, root-constrained diagnostic comparison."""
         generic_response_pattern_store().record_human_root_pair(
@@ -943,6 +951,14 @@ class GenericResponsePatternMixin:
             human_terminal_loss_rate=human_terminal_loss_rate,
             ai_terminal_point_swing=ai_terminal_point_swing,
             human_terminal_point_swing=human_terminal_point_swing,
+            ai_stop_reason=ai_stop_reason,
+            human_stop_reason=human_stop_reason,
+            human_action_label=human_action_label,
+            ai_action_label=ai_action_label,
+            mean_value_delta=mean_value_delta,
+            terminal_outcome_delta=terminal_outcome_delta,
+            terminal_score_delta=terminal_score_delta,
+            nonterminal_delta=nonterminal_delta,
         )
 
     def _record_generic_response_priority_effect(

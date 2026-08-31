@@ -35,6 +35,12 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "両方が到達した深さ5以上の最深地点だけを比較" in admin
     assert "比較に使った平均共通深さ" in admin
     assert "人間ルート−AIルートの平均評価差" in admin
+    assert "詳細診断・比較対象" in admin
+    assert "深さ不足・人間側の探索量上限" in admin
+    assert "深さ不足・AI側の時間上限" in admin
+    assert "内訳：確定勝敗部分の差" in admin
+    assert "内訳：途中局面評価の差" in admin
+    assert "判断別：人間" in admin
     assert "戦術分類の不一致内訳" in admin
     assert "人間棋譜辞書の不一致内訳" in admin
     assert "匿名の局面" in admin

@@ -46,6 +46,22 @@ def test_rule_based_agent_uses_timed_search_mixin() -> None:
     assert issubclass(RuleBasedAgent, TimedSearchMixin)
 
 
+def test_terminal_summary_separates_leaf_value_components() -> None:
+    summary = TimedSearchMixin._timed_search_terminal_summary([
+        (110000.0, 0.25),
+        (-105000.0, 0.25),
+        (200.0, 0.50),
+    ])
+
+    assert summary["terminal_win_rate"] == 0.25
+    assert summary["terminal_loss_rate"] == 0.25
+    assert summary["terminal_point_swing"] == 2.5
+    assert summary["mean_value"] == 1350.0
+    assert summary["terminal_outcome_component"] == 0.0
+    assert summary["terminal_score_component"] == 1250.0
+    assert summary["nonterminal_component"] == 100.0
+
+
 def test_generic_hint_only_reorders_root_actions() -> None:
     actions = [
         ("pass", None, None),
@@ -273,12 +289,20 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                     "terminal_win_rate": 0.20,
                     "terminal_loss_rate": 0.10,
                     "terminal_point_swing": 4.0,
+                    "mean_value": 80.0,
+                    "terminal_outcome_component": 10.0,
+                    "terminal_score_component": 5.0,
+                    "nonterminal_component": 65.0,
                 },
                 7: {
                     "evaluation_value": 100.0,
                     "terminal_win_rate": 0.25,
                     "terminal_loss_rate": 0.10,
                     "terminal_point_swing": 5.0,
+                    "mean_value": 90.0,
+                    "terminal_outcome_component": 15.0,
+                    "terminal_score_component": 5.0,
+                    "nonterminal_component": 70.0,
                 },
             }
             return TimedSearchResult(
@@ -298,18 +322,30 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                 "terminal_win_rate": 0.40,
                 "terminal_loss_rate": 0.05,
                 "terminal_point_swing": 10.0,
+                "mean_value": 100.0,
+                "terminal_outcome_component": 20.0,
+                "terminal_score_component": 10.0,
+                "nonterminal_component": 70.0,
             },
             7: {
                 "evaluation_value": 125.0,
                 "terminal_win_rate": 0.50,
                 "terminal_loss_rate": 0.05,
                 "terminal_point_swing": 12.5,
+                "mean_value": 120.0,
+                "terminal_outcome_component": 30.0,
+                "terminal_score_component": 15.0,
+                "nonterminal_component": 75.0,
             },
             9: {
                 "evaluation_value": 999.0,
                 "terminal_win_rate": 0.90,
                 "terminal_loss_rate": 0.01,
                 "terminal_point_swing": 30.0,
+                "mean_value": 990.0,
+                "terminal_outcome_component": 90.0,
+                "terminal_score_component": 30.0,
+                "nonterminal_component": 870.0,
             },
         }
         return TimedSearchResult(
@@ -356,6 +392,19 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert snapshot["human_root_average_human_terminal_win_rate"] == 0.5
     assert snapshot["human_root_average_ai_terminal_point_swing"] == 5.0
     assert snapshot["human_root_average_human_terminal_point_swing"] == 12.5
+    assert snapshot["human_root_diag_completed"] == 1
+    assert snapshot["human_root_diag_average_mean_value_delta"] == 30.0
+    assert snapshot[
+        "human_root_diag_average_terminal_outcome_delta"
+    ] == 15.0
+    assert snapshot[
+        "human_root_diag_average_terminal_score_delta"
+    ] == 10.0
+    assert snapshot["human_root_diag_average_nonterminal_delta"] == 5.0
+    assert snapshot["human_root_diag_action_pairs"][0]["human_action"] == "pass"
+    assert snapshot["human_root_diag_action_pairs"][0][
+        "ai_action"
+    ] == "receive_same"
 
 
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
@@ -1252,6 +1301,7 @@ def test_receive_branch_compares_followup_attacks_through_the_final_score() -> N
 
 if __name__ == "__main__":
     test_rule_based_agent_uses_timed_search_mixin()
+    test_terminal_summary_separates_leaf_value_components()
     test_generic_hint_only_reorders_root_actions()
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
     test_tactical_hint_takes_priority_and_records_the_final_search_choice()

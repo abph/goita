@@ -1038,13 +1038,17 @@ class TimedSearchMixin:
     def _timed_search_terminal_summary(
         weighted_values: Sequence[Tuple[float, float]],
     ) -> Dict[str, float]:
-        """Summarize only terminal outcomes reached inside one search depth."""
+        """Summarize terminal outcomes and the weighted leaf-value components."""
         total_weight = sum(float(weight) for _value, weight in weighted_values)
         if total_weight <= 0.0:
             return {
                 "terminal_win_rate": 0.0,
                 "terminal_loss_rate": 0.0,
                 "terminal_point_swing": 0.0,
+                "mean_value": 0.0,
+                "terminal_outcome_component": 0.0,
+                "terminal_score_component": 0.0,
+                "nonterminal_component": 0.0,
             }
         terminal_win_rate = sum(
             float(weight)
@@ -1067,10 +1071,45 @@ class TimedSearchMixin:
             * float(weight)
             for value, weight in weighted_values
         ) / total_weight
+        mean_value = sum(
+            float(value) * float(weight)
+            for value, weight in weighted_values
+        ) / total_weight
+        terminal_outcome_component = sum(
+            (
+                100000.0
+                if float(value) >= 100000.0
+                else -100000.0
+                if float(value) <= -100000.0
+                else 0.0
+            )
+            * float(weight)
+            for value, weight in weighted_values
+        ) / total_weight
+        terminal_score_component = sum(
+            (
+                float(value) - 100000.0
+                if float(value) >= 100000.0
+                else float(value) + 100000.0
+                if float(value) <= -100000.0
+                else 0.0
+            )
+            * float(weight)
+            for value, weight in weighted_values
+        ) / total_weight
+        nonterminal_component = sum(
+            float(value) * float(weight)
+            for value, weight in weighted_values
+            if -100000.0 < float(value) < 100000.0
+        ) / total_weight
         return {
             "terminal_win_rate": terminal_win_rate,
             "terminal_loss_rate": terminal_loss_rate,
             "terminal_point_swing": terminal_point_swing,
+            "mean_value": mean_value,
+            "terminal_outcome_component": terminal_outcome_component,
+            "terminal_score_component": terminal_score_component,
+            "nonterminal_component": nonterminal_component,
         }
 
     def _timed_search_static_value(
@@ -1574,6 +1613,14 @@ class TimedSearchMixin:
                         self._record_human_response_root_comparison(
                             comparison_complete=False,
                             incomplete_reason=incomplete_reason,
+                            ai_stop_reason=str(
+                                ai_context.get("stop_reason", "")
+                            ),
+                            human_stop_reason=str(
+                                human_context.get("stop_reason", "")
+                            ),
+                            human_action_label=human_label,
+                            ai_action_label=result_label,
                         )
                     else:
                         common_depth = common_depths[-1]
@@ -1626,6 +1673,60 @@ class TimedSearchMixin:
                                 human_common.get(
                                     "terminal_point_swing",
                                     0.0,
+                                )
+                            ),
+                            ai_stop_reason=str(
+                                ai_context.get("stop_reason", "")
+                            ),
+                            human_stop_reason=str(
+                                human_context.get("stop_reason", "")
+                            ),
+                            human_action_label=human_label,
+                            ai_action_label=result_label,
+                            mean_value_delta=(
+                                float(human_common.get("mean_value", 0.0))
+                                - float(ai_common.get("mean_value", 0.0))
+                            ),
+                            terminal_outcome_delta=(
+                                float(
+                                    human_common.get(
+                                        "terminal_outcome_component",
+                                        0.0,
+                                    )
+                                )
+                                - float(
+                                    ai_common.get(
+                                        "terminal_outcome_component",
+                                        0.0,
+                                    )
+                                )
+                            ),
+                            terminal_score_delta=(
+                                float(
+                                    human_common.get(
+                                        "terminal_score_component",
+                                        0.0,
+                                    )
+                                )
+                                - float(
+                                    ai_common.get(
+                                        "terminal_score_component",
+                                        0.0,
+                                    )
+                                )
+                            ),
+                            nonterminal_delta=(
+                                float(
+                                    human_common.get(
+                                        "nonterminal_component",
+                                        0.0,
+                                    )
+                                )
+                                - float(
+                                    ai_common.get(
+                                        "nonterminal_component",
+                                        0.0,
+                                    )
                                 )
                             ),
                         )
@@ -1924,6 +2025,8 @@ class TimedSearchMixin:
                             )
                             iteration[action].append(value)
             except (_SearchCancelled, InformationSetSearchCancelled):
+                if run_context is not None:
+                    run_context["stop_reason"] = "cancelled"
                 return None
             except (_SearchDeadline, InformationSetSearchDeadline) as exc:
                 active_narrowing_stop_reason = (
@@ -2156,6 +2259,16 @@ class TimedSearchMixin:
                 ordered = sorted(aggregate.values(), reverse=True)
                 if len(ordered) == 1 or ordered[0] - ordered[1] >= self.TIME_SEARCH_STABLE_MARGIN:
                     break
+
+        if run_context is not None:
+            if active_narrowing_stop_reason:
+                run_context["stop_reason"] = active_narrowing_stop_reason
+            elif completed_depth >= maximum_depth:
+                run_context["stop_reason"] = "depth_limit"
+            elif completed_depth <= 0:
+                run_context["stop_reason"] = "no_completed_depth"
+            else:
+                run_context["stop_reason"] = "other"
 
         if completed_values is None or completed_depth <= 0:
             return None

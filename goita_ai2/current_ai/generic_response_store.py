@@ -259,6 +259,25 @@ class GenericResponsePatternStore:
             "human_root_human_terminal_loss_rate_sum": 0.0,
             "human_root_ai_terminal_point_swing_sum": 0.0,
             "human_root_human_terminal_point_swing_sum": 0.0,
+            "human_root_diagnostic_version": 1,
+            "human_root_diag_comparisons": 0,
+            "human_root_diag_completed": 0,
+            "human_root_diag_incomplete": 0,
+            "human_root_diag_human_stop_time": 0,
+            "human_root_diag_human_stop_nodes": 0,
+            "human_root_diag_human_stop_depth": 0,
+            "human_root_diag_human_stop_other": 0,
+            "human_root_diag_ai_stop_time": 0,
+            "human_root_diag_ai_stop_nodes": 0,
+            "human_root_diag_ai_stop_depth": 0,
+            "human_root_diag_ai_stop_other": 0,
+            "human_root_diag_mean_value_delta_sum": 0.0,
+            "human_root_diag_terminal_outcome_delta_sum": 0.0,
+            "human_root_diag_terminal_score_delta_sum": 0.0,
+            "human_root_diag_nonterminal_delta_sum": 0.0,
+            "human_root_diag_action_pair_counts": Counter(),
+            "human_root_diag_action_pair_human_better": Counter(),
+            "human_root_diag_action_pair_ai_better": Counter(),
             "tactical_priority_lookups": 0,
             "tactical_priority_no_recommendation": 0,
             "tactical_priority_rejected_action": 0,
@@ -895,6 +914,18 @@ class GenericResponsePatternStore:
                 "human_root_tied",
                 "human_root_ai_nodes_sum",
                 "human_root_human_nodes_sum",
+                "human_root_diagnostic_version",
+                "human_root_diag_comparisons",
+                "human_root_diag_completed",
+                "human_root_diag_incomplete",
+                "human_root_diag_human_stop_time",
+                "human_root_diag_human_stop_nodes",
+                "human_root_diag_human_stop_depth",
+                "human_root_diag_human_stop_other",
+                "human_root_diag_ai_stop_time",
+                "human_root_diag_ai_stop_nodes",
+                "human_root_diag_ai_stop_depth",
+                "human_root_diag_ai_stop_other",
                 "tactical_priority_lookups",
                 "tactical_priority_no_recommendation",
                 "tactical_priority_rejected_action",
@@ -989,6 +1020,10 @@ class GenericResponsePatternStore:
                 "human_root_human_terminal_loss_rate_sum",
                 "human_root_ai_terminal_point_swing_sum",
                 "human_root_human_terminal_point_swing_sum",
+                "human_root_diag_mean_value_delta_sum",
+                "human_root_diag_terminal_outcome_delta_sum",
+                "human_root_diag_terminal_score_delta_sum",
+                "human_root_diag_nonterminal_delta_sum",
                 "narrowing_shadow_full_candidates_sum",
                 "narrowing_shadow_kept_candidates_sum",
                 "narrowing_shadow_removed_candidates_sum",
@@ -1015,6 +1050,9 @@ class GenericResponsePatternStore:
                 "shadow_granularity_counts",
                 "priority_action_counts",
                 "priority_granularity_counts",
+                "human_root_diag_action_pair_counts",
+                "human_root_diag_action_pair_human_better",
+                "human_root_diag_action_pair_ai_better",
             ):
                 restored_counters[name] = Counter(
                     self._counter_dict(counters.get(name, {}))
@@ -1024,6 +1062,12 @@ class GenericResponsePatternStore:
                 for name, value in root_defaults.items():
                     if name.startswith("human_root_"):
                         restored_counters[name] = value
+            if int(counters.get("human_root_diagnostic_version", 0)) != 1:
+                diagnostic_defaults = self._empty_counters()
+                for name, value in diagnostic_defaults.items():
+                    if name.startswith("human_root_diag_"):
+                        restored_counters[name] = value
+                restored_counters["human_root_diagnostic_version"] = 1
         except (TypeError, ValueError):
             return False
 
@@ -1406,13 +1450,38 @@ class GenericResponsePatternStore:
         human_terminal_loss_rate: float = 0.0,
         ai_terminal_point_swing: float = 0.0,
         human_terminal_point_swing: float = 0.0,
+        ai_stop_reason: str = "",
+        human_stop_reason: str = "",
+        human_action_label: str = "other",
+        ai_action_label: str = "other",
+        mean_value_delta: float = 0.0,
+        terminal_outcome_delta: float = 0.0,
+        terminal_score_delta: float = 0.0,
+        nonterminal_delta: float = 0.0,
     ) -> None:
         """Record a root-fixed comparison without retaining its position."""
         with self._lock:
             counters = self._counters
             counters["human_root_comparisons"] += 1
+            counters["human_root_diag_comparisons"] += 1
             if not comparison_complete:
                 counters["human_root_incomplete"] += 1
+                counters["human_root_diag_incomplete"] += 1
+
+                def record_stop(route: str, reason: str) -> None:
+                    normalized = str(reason or "other")
+                    if normalized == "time_limit":
+                        suffix = "time"
+                    elif normalized == "node_limit":
+                        suffix = "nodes"
+                    elif normalized == "depth_limit":
+                        suffix = "depth"
+                    else:
+                        suffix = "other"
+                    counters[f"human_root_diag_{route}_stop_{suffix}"] += 1
+
+                record_stop("human", human_stop_reason)
+                record_stop("ai", ai_stop_reason)
                 reason = str(incomplete_reason)
                 if reason == "missing_result":
                     counters["human_root_incomplete_missing_result"] += 1
@@ -1423,6 +1492,7 @@ class GenericResponsePatternStore:
                 return
 
             counters["human_root_completed"] += 1
+            counters["human_root_diag_completed"] += 1
             side = str(selected_side)
             if side == "human":
                 counters["human_root_human_better"] += 1
@@ -1475,6 +1545,31 @@ class GenericResponsePatternStore:
             counters["human_root_human_terminal_point_swing_sum"] += float(
                 human_terminal_point_swing
             )
+            counters["human_root_diag_mean_value_delta_sum"] += float(
+                mean_value_delta
+            )
+            counters["human_root_diag_terminal_outcome_delta_sum"] += float(
+                terminal_outcome_delta
+            )
+            counters["human_root_diag_terminal_score_delta_sum"] += float(
+                terminal_score_delta
+            )
+            counters["human_root_diag_nonterminal_delta_sum"] += float(
+                nonterminal_delta
+            )
+            pair_key = (
+                f"{str(human_action_label or 'other')}|"
+                f"{str(ai_action_label or 'other')}"
+            )
+            counters["human_root_diag_action_pair_counts"][pair_key] += 1
+            if side == "human":
+                counters[
+                    "human_root_diag_action_pair_human_better"
+                ][pair_key] += 1
+            elif side == "ai":
+                counters[
+                    "human_root_diag_action_pair_ai_better"
+                ][pair_key] += 1
 
     def record_priority_effect(
         self,
@@ -2055,6 +2150,37 @@ class GenericResponsePatternStore:
                     str(item["detail_id"]),
                 )
             )
+            human_root_action_pairs = []
+            for pair_key, count in counters[
+                "human_root_diag_action_pair_counts"
+            ].items():
+                human_action, separator, ai_action = str(pair_key).partition("|")
+                if not separator:
+                    human_action, ai_action = str(pair_key), "other"
+                human_root_action_pairs.append({
+                    "human_action": human_action,
+                    "ai_action": ai_action,
+                    "comparisons": max(0, int(count)),
+                    "human_better": max(
+                        0,
+                        int(counters[
+                            "human_root_diag_action_pair_human_better"
+                        ].get(pair_key, 0)),
+                    ),
+                    "ai_better": max(
+                        0,
+                        int(counters[
+                            "human_root_diag_action_pair_ai_better"
+                        ].get(pair_key, 0)),
+                    ),
+                })
+            human_root_action_pairs.sort(
+                key=lambda item: (
+                    -int(item["comparisons"]),
+                    str(item["human_action"]),
+                    str(item["ai_action"]),
+                )
+            )
             return {
                 "considered": int(counters["considered"]),
                 "recorded": recorded,
@@ -2343,6 +2469,64 @@ class GenericResponsePatternStore:
                     / max(1, int(counters["human_root_completed"])),
                     3,
                 ),
+                "human_root_diag_comparisons": int(
+                    counters["human_root_diag_comparisons"]
+                ),
+                "human_root_diag_completed": int(
+                    counters["human_root_diag_completed"]
+                ),
+                "human_root_diag_incomplete": int(
+                    counters["human_root_diag_incomplete"]
+                ),
+                "human_root_diag_human_stop_time": int(
+                    counters["human_root_diag_human_stop_time"]
+                ),
+                "human_root_diag_human_stop_nodes": int(
+                    counters["human_root_diag_human_stop_nodes"]
+                ),
+                "human_root_diag_human_stop_depth": int(
+                    counters["human_root_diag_human_stop_depth"]
+                ),
+                "human_root_diag_human_stop_other": int(
+                    counters["human_root_diag_human_stop_other"]
+                ),
+                "human_root_diag_ai_stop_time": int(
+                    counters["human_root_diag_ai_stop_time"]
+                ),
+                "human_root_diag_ai_stop_nodes": int(
+                    counters["human_root_diag_ai_stop_nodes"]
+                ),
+                "human_root_diag_ai_stop_depth": int(
+                    counters["human_root_diag_ai_stop_depth"]
+                ),
+                "human_root_diag_ai_stop_other": int(
+                    counters["human_root_diag_ai_stop_other"]
+                ),
+                "human_root_diag_average_mean_value_delta": round(
+                    float(counters[
+                        "human_root_diag_mean_value_delta_sum"
+                    ]) / max(1, int(counters["human_root_diag_completed"])),
+                    3,
+                ),
+                "human_root_diag_average_terminal_outcome_delta": round(
+                    float(counters[
+                        "human_root_diag_terminal_outcome_delta_sum"
+                    ]) / max(1, int(counters["human_root_diag_completed"])),
+                    3,
+                ),
+                "human_root_diag_average_terminal_score_delta": round(
+                    float(counters[
+                        "human_root_diag_terminal_score_delta_sum"
+                    ]) / max(1, int(counters["human_root_diag_completed"])),
+                    3,
+                ),
+                "human_root_diag_average_nonterminal_delta": round(
+                    float(counters[
+                        "human_root_diag_nonterminal_delta_sum"
+                    ]) / max(1, int(counters["human_root_diag_completed"])),
+                    3,
+                ),
+                "human_root_diag_action_pairs": human_root_action_pairs,
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]
                 ),
