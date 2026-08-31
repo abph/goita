@@ -37,6 +37,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = False
+    GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_SECONDS = 5.0
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_OBSERVATIONS = 15
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_DOMINANCE = 0.90
     GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
@@ -633,15 +634,28 @@ class GenericResponsePatternMixin:
         recommended_label = str(
             recommendation.get("recommended_action", "other")
         )
-        candidates = tuple(
+        candidates = self._generic_response_actions_for_label(
+            state,
+            actions_list,
+            recommended_label,
+        )
+        return recommendation, candidates
+
+    def _generic_response_actions_for_label(
+        self,
+        state,
+        actions: Iterable[Action],
+        label: str,
+    ) -> Tuple[Action, ...]:
+        """Return every legal concrete action represented by one route label."""
+        return tuple(
             action
-            for action in actions_list
+            for action in actions
             if self._generic_response_action_label(
                 action,
                 state.current_attack,
-            ) == recommended_label
+            ) == str(label)
         )
-        return recommendation, candidates
 
     def _generic_response_priority_action(
         self,
@@ -887,6 +901,44 @@ class GenericResponsePatternMixin:
             normal_nodes=normal_nodes,
             priority_nodes=priority_nodes,
             value_delta=value_delta,
+        )
+
+    def _record_human_response_root_comparison(
+        self,
+        *,
+        comparison_complete: bool,
+        selected_side: str = "other",
+        ai_depth: int = 0,
+        human_depth: int = 0,
+        ai_elapsed_seconds: float = 0.0,
+        human_elapsed_seconds: float = 0.0,
+        ai_nodes: int = 0,
+        human_nodes: int = 0,
+        value_delta: float = 0.0,
+        ai_terminal_win_rate: float = 0.0,
+        human_terminal_win_rate: float = 0.0,
+        ai_terminal_loss_rate: float = 0.0,
+        human_terminal_loss_rate: float = 0.0,
+        ai_terminal_point_swing: float = 0.0,
+        human_terminal_point_swing: float = 0.0,
+    ) -> None:
+        """Record an equal-budget, root-constrained diagnostic comparison."""
+        generic_response_pattern_store().record_human_root_pair(
+            comparison_complete=comparison_complete,
+            selected_side=selected_side,
+            ai_depth=ai_depth,
+            human_depth=human_depth,
+            ai_elapsed_seconds=ai_elapsed_seconds,
+            human_elapsed_seconds=human_elapsed_seconds,
+            ai_nodes=ai_nodes,
+            human_nodes=human_nodes,
+            value_delta=value_delta,
+            ai_terminal_win_rate=ai_terminal_win_rate,
+            human_terminal_win_rate=human_terminal_win_rate,
+            ai_terminal_loss_rate=ai_terminal_loss_rate,
+            human_terminal_loss_rate=human_terminal_loss_rate,
+            ai_terminal_point_swing=ai_terminal_point_swing,
+            human_terminal_point_swing=human_terminal_point_swing,
         )
 
     def _record_generic_response_priority_effect(

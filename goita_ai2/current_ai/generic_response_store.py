@@ -235,6 +235,25 @@ class GenericResponsePatternStore:
             "human_pair_normal_nodes_sum": 0,
             "human_pair_priority_nodes_sum": 0,
             "human_pair_value_delta_sum": 0.0,
+            "human_root_comparisons": 0,
+            "human_root_completed": 0,
+            "human_root_incomplete": 0,
+            "human_root_human_better": 0,
+            "human_root_ai_better": 0,
+            "human_root_tied": 0,
+            "human_root_ai_depth_sum": 0.0,
+            "human_root_human_depth_sum": 0.0,
+            "human_root_ai_elapsed_sum": 0.0,
+            "human_root_human_elapsed_sum": 0.0,
+            "human_root_ai_nodes_sum": 0,
+            "human_root_human_nodes_sum": 0,
+            "human_root_value_delta_sum": 0.0,
+            "human_root_ai_terminal_win_rate_sum": 0.0,
+            "human_root_human_terminal_win_rate_sum": 0.0,
+            "human_root_ai_terminal_loss_rate_sum": 0.0,
+            "human_root_human_terminal_loss_rate_sum": 0.0,
+            "human_root_ai_terminal_point_swing_sum": 0.0,
+            "human_root_human_terminal_point_swing_sum": 0.0,
             "tactical_priority_lookups": 0,
             "tactical_priority_no_recommendation": 0,
             "tactical_priority_rejected_action": 0,
@@ -860,6 +879,14 @@ class GenericResponsePatternStore:
                 "human_pair_value_tied",
                 "human_pair_normal_nodes_sum",
                 "human_pair_priority_nodes_sum",
+                "human_root_comparisons",
+                "human_root_completed",
+                "human_root_incomplete",
+                "human_root_human_better",
+                "human_root_ai_better",
+                "human_root_tied",
+                "human_root_ai_nodes_sum",
+                "human_root_human_nodes_sum",
                 "tactical_priority_lookups",
                 "tactical_priority_no_recommendation",
                 "tactical_priority_rejected_action",
@@ -942,6 +969,17 @@ class GenericResponsePatternStore:
                 "human_pair_normal_elapsed_sum",
                 "human_pair_priority_elapsed_sum",
                 "human_pair_value_delta_sum",
+                "human_root_ai_depth_sum",
+                "human_root_human_depth_sum",
+                "human_root_ai_elapsed_sum",
+                "human_root_human_elapsed_sum",
+                "human_root_value_delta_sum",
+                "human_root_ai_terminal_win_rate_sum",
+                "human_root_human_terminal_win_rate_sum",
+                "human_root_ai_terminal_loss_rate_sum",
+                "human_root_human_terminal_loss_rate_sum",
+                "human_root_ai_terminal_point_swing_sum",
+                "human_root_human_terminal_point_swing_sum",
                 "narrowing_shadow_full_candidates_sum",
                 "narrowing_shadow_kept_candidates_sum",
                 "narrowing_shadow_removed_candidates_sum",
@@ -1333,6 +1371,83 @@ class GenericResponsePatternStore:
                 int(priority_nodes),
             )
             counters["human_pair_value_delta_sum"] += delta
+
+    def record_human_root_pair(
+        self,
+        *,
+        comparison_complete: bool,
+        selected_side: str = "other",
+        ai_depth: int = 0,
+        human_depth: int = 0,
+        ai_elapsed_seconds: float = 0.0,
+        human_elapsed_seconds: float = 0.0,
+        ai_nodes: int = 0,
+        human_nodes: int = 0,
+        value_delta: float = 0.0,
+        ai_terminal_win_rate: float = 0.0,
+        human_terminal_win_rate: float = 0.0,
+        ai_terminal_loss_rate: float = 0.0,
+        human_terminal_loss_rate: float = 0.0,
+        ai_terminal_point_swing: float = 0.0,
+        human_terminal_point_swing: float = 0.0,
+    ) -> None:
+        """Record a root-fixed comparison without retaining its position."""
+        with self._lock:
+            counters = self._counters
+            counters["human_root_comparisons"] += 1
+            if not comparison_complete:
+                counters["human_root_incomplete"] += 1
+                return
+
+            counters["human_root_completed"] += 1
+            side = str(selected_side)
+            if side == "human":
+                counters["human_root_human_better"] += 1
+            elif side == "ai":
+                counters["human_root_ai_better"] += 1
+            else:
+                counters["human_root_tied"] += 1
+            counters["human_root_ai_depth_sum"] += max(0, int(ai_depth))
+            counters["human_root_human_depth_sum"] += max(
+                0,
+                int(human_depth),
+            )
+            counters["human_root_ai_elapsed_sum"] += max(
+                0.0,
+                float(ai_elapsed_seconds),
+            )
+            counters["human_root_human_elapsed_sum"] += max(
+                0.0,
+                float(human_elapsed_seconds),
+            )
+            counters["human_root_ai_nodes_sum"] += max(0, int(ai_nodes))
+            counters["human_root_human_nodes_sum"] += max(
+                0,
+                int(human_nodes),
+            )
+            counters["human_root_value_delta_sum"] += float(value_delta)
+            counters["human_root_ai_terminal_win_rate_sum"] += max(
+                0.0,
+                min(1.0, float(ai_terminal_win_rate)),
+            )
+            counters["human_root_human_terminal_win_rate_sum"] += max(
+                0.0,
+                min(1.0, float(human_terminal_win_rate)),
+            )
+            counters["human_root_ai_terminal_loss_rate_sum"] += max(
+                0.0,
+                min(1.0, float(ai_terminal_loss_rate)),
+            )
+            counters["human_root_human_terminal_loss_rate_sum"] += max(
+                0.0,
+                min(1.0, float(human_terminal_loss_rate)),
+            )
+            counters["human_root_ai_terminal_point_swing_sum"] += float(
+                ai_terminal_point_swing
+            )
+            counters["human_root_human_terminal_point_swing_sum"] += float(
+                human_terminal_point_swing
+            )
 
     def record_priority_effect(
         self,
@@ -2094,6 +2209,97 @@ class GenericResponsePatternStore:
                 "human_pair_average_value_delta": round(
                     float(counters["human_pair_value_delta_sum"])
                     / max(1, int(counters["human_pair_completed"])),
+                    3,
+                ),
+                "human_root_comparisons": int(
+                    counters["human_root_comparisons"]
+                ),
+                "human_root_completed": int(
+                    counters["human_root_completed"]
+                ),
+                "human_root_incomplete": int(
+                    counters["human_root_incomplete"]
+                ),
+                "human_root_human_better": int(
+                    counters["human_root_human_better"]
+                ),
+                "human_root_ai_better": int(
+                    counters["human_root_ai_better"]
+                ),
+                "human_root_tied": int(counters["human_root_tied"]),
+                "human_root_average_ai_depth": round(
+                    float(counters["human_root_ai_depth_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    3,
+                ),
+                "human_root_average_human_depth": round(
+                    float(counters["human_root_human_depth_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    3,
+                ),
+                "human_root_average_ai_elapsed_seconds": round(
+                    float(counters["human_root_ai_elapsed_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_human_elapsed_seconds": round(
+                    float(counters["human_root_human_elapsed_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_ai_nodes": round(
+                    int(counters["human_root_ai_nodes_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    2,
+                ),
+                "human_root_average_human_nodes": round(
+                    int(counters["human_root_human_nodes_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    2,
+                ),
+                "human_root_average_value_delta": round(
+                    float(counters["human_root_value_delta_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    3,
+                ),
+                "human_root_average_ai_terminal_win_rate": round(
+                    float(counters["human_root_ai_terminal_win_rate_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_human_terminal_win_rate": round(
+                    float(
+                        counters["human_root_human_terminal_win_rate_sum"]
+                    )
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_ai_terminal_loss_rate": round(
+                    float(counters["human_root_ai_terminal_loss_rate_sum"])
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_human_terminal_loss_rate": round(
+                    float(
+                        counters["human_root_human_terminal_loss_rate_sum"]
+                    )
+                    / max(1, int(counters["human_root_completed"])),
+                    5,
+                ),
+                "human_root_average_ai_terminal_point_swing": round(
+                    float(
+                        counters["human_root_ai_terminal_point_swing_sum"]
+                    )
+                    / max(1, int(counters["human_root_completed"])),
+                    3,
+                ),
+                "human_root_average_human_terminal_point_swing": round(
+                    float(
+                        counters[
+                            "human_root_human_terminal_point_swing_sum"
+                        ]
+                    )
+                    / max(1, int(counters["human_root_completed"])),
                     3,
                 ),
                 "tactical_priority_lookups": int(

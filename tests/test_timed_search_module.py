@@ -208,7 +208,7 @@ def test_tactical_hint_runs_an_isolated_paired_comparison() -> None:
     assert snapshot["tactical_pair_average_without_depth"] == 1.0
 
 
-def test_human_hint_runs_an_isolated_paired_comparison() -> None:
+def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     reset_generic_response_patterns()
     state = _initial_state()
     state.phase = "receive"
@@ -247,7 +247,12 @@ def test_human_hint_runs_an_isolated_paired_comparison() -> None:
         forced_priority_action=None,
         **_kwargs,
     ):
-        calls.append((id(samples), forced_priority_action))
+        calls.append((
+            id(samples),
+            tuple(_actions),
+            forced_priority_action,
+            _kwargs.get("max_seconds_override"),
+        ))
         if forced_priority_action is None:
             return TimedSearchResult(
                 action=ai_action,
@@ -260,10 +265,24 @@ def test_human_hint_runs_an_isolated_paired_comparison() -> None:
                 agreement=1.0,
                 decisive=False,
             )
-        run_context["root_values"] = {
-            baseline: 125.0,
-            ai_action: 100.0,
-        }
+        if forced_priority_action == ai_action:
+            run_context["terminal_win_rate"] = 0.25
+            run_context["terminal_loss_rate"] = 0.10
+            run_context["terminal_point_swing"] = 5.0
+            return TimedSearchResult(
+                action=ai_action,
+                depth=7,
+                samples=1,
+                nodes=1700,
+                elapsed_seconds=1.65,
+                value=100.0,
+                margin=0.0,
+                agreement=1.0,
+                decisive=False,
+            )
+        run_context["terminal_win_rate"] = 0.50
+        run_context["terminal_loss_rate"] = 0.05
+        run_context["terminal_point_swing"] = 12.5
         return TimedSearchResult(
             action=baseline,
             depth=7,
@@ -287,18 +306,24 @@ def test_human_hint_runs_an_isolated_paired_comparison() -> None:
 
     assert result is not None
     assert result.action == ai_action
-    assert len(calls) == 2
-    assert calls[0][0] == calls[1][0]
-    assert calls[1][1] == baseline
-    assert snapshot["human_pair_comparisons"] == 1
-    assert snapshot["human_pair_completed"] == 1
-    assert snapshot["human_pair_incomplete"] == 0
-    assert snapshot["human_pair_human_selected"] == 1
-    assert snapshot["human_pair_ai_selected"] == 0
-    assert snapshot["human_pair_human_value_better"] == 1
-    assert snapshot["human_pair_average_normal_depth"] == 5.0
-    assert snapshot["human_pair_average_priority_depth"] == 7.0
-    assert snapshot["human_pair_average_value_delta"] == 25.0
+    assert len(calls) == 3
+    assert calls[0][0] == calls[1][0] == calls[2][0]
+    assert calls[1][2] == ai_action
+    assert calls[2][2] == baseline
+    assert calls[1][3] == calls[2][3] == 5.0
+    assert snapshot["human_pair_comparisons"] == 0
+    assert snapshot["human_root_comparisons"] == 1
+    assert snapshot["human_root_completed"] == 1
+    assert snapshot["human_root_incomplete"] == 0
+    assert snapshot["human_root_human_better"] == 1
+    assert snapshot["human_root_ai_better"] == 0
+    assert snapshot["human_root_average_ai_depth"] == 7.0
+    assert snapshot["human_root_average_human_depth"] == 7.0
+    assert snapshot["human_root_average_value_delta"] == 25.0
+    assert snapshot["human_root_average_ai_terminal_win_rate"] == 0.25
+    assert snapshot["human_root_average_human_terminal_win_rate"] == 0.5
+    assert snapshot["human_root_average_ai_terminal_point_swing"] == 5.0
+    assert snapshot["human_root_average_human_terminal_point_swing"] == 12.5
 
 
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
@@ -1199,7 +1224,7 @@ if __name__ == "__main__":
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
     test_tactical_hint_takes_priority_and_records_the_final_search_choice()
     test_tactical_hint_runs_an_isolated_paired_comparison()
-    test_human_hint_runs_an_isolated_paired_comparison()
+    test_human_hint_runs_equal_budget_root_fixed_comparisons()
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
     test_generic_narrowing_requires_a_clear_depth_three_gap()
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()

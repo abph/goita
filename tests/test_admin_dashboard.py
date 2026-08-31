@@ -30,9 +30,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "人間棋譜辞書は、現在AIと推薦が異なる場合" in admin
     assert "人間棋譜・影響なし比較" in admin
     assert "人間棋譜・現在AIと不一致" in admin
-    assert "人間推薦と深い探索を比較" in admin
-    assert "深い探索が人間推薦を選択" in admin
-    assert "人間推薦−現在AIの平均評価差" in admin
+    assert "初手固定ルートを比較" in admin
+    assert "人間ルートで勝ちを確認" in admin
+    assert "同じ推定手駒・各5秒で比較します" in admin
+    assert "人間ルート−AIルートの平均評価差" in admin
     assert "戦術分類の不一致内訳" in admin
     assert "人間棋譜辞書の不一致内訳" in admin
     assert "匿名の局面" in admin

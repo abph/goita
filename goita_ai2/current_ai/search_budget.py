@@ -388,7 +388,11 @@ class SearchBudgetMixin:
         _SEARCH_BUDGET_CONTROLLER.observe(
             plan,
             sample_ms=float(active.get("sample_generation", 0.0)) * 1000.0,
-            search_ms=float(active.get("search", 0.0)) * 1000.0,
+            search_ms=(
+                float(result.elapsed_seconds) * 1000.0
+                if result is not None
+                else float(active.get("search", 0.0)) * 1000.0
+            ),
             samples=(
                 int(result.samples)
                 if result is not None

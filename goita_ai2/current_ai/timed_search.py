@@ -1405,6 +1405,11 @@ class TimedSearchMixin:
                     and human_label != result_label
                 )
                 if should_compare_human_priority:
+                    ai_actions = self._generic_response_actions_for_label(
+                        state,
+                        actions,
+                        result_label,
+                    )
                     saved_attributes = {}
                     missing = object()
                     for name in (
@@ -1416,25 +1421,67 @@ class TimedSearchMixin:
                     ):
                         saved_attributes[name] = getattr(self, name, missing)
                     human_result = None
+                    ai_result = None
                     human_context: Dict[str, object] = {}
+                    ai_context: Dict[str, object] = {}
                     try:
                         self._suppress_response_dictionary_metrics = True
                         self.GENERIC_RESPONSE_NARROWING_ENABLED = False
+                        comparison_seconds = float(
+                            getattr(
+                                self,
+                                "GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_SECONDS",
+                                5.0,
+                            )
+                        )
+                        if ai_actions:
+                            ai_baseline = (
+                                result.action
+                                if result.action in ai_actions
+                                else ai_actions[0]
+                            )
+                            ai_result = self._time_limited_search_from_samples(
+                                state,
+                                player,
+                                list(ai_actions),
+                                ai_baseline,
+                                samples,
+                                cancel_event=None,
+                                tactical_priority_enabled=False,
+                                record_priority_metrics=False,
+                                run_context=ai_context,
+                                forced_priority_action=ai_baseline,
+                                max_seconds_override=comparison_seconds,
+                            )
+                        human_baseline = (
+                            baseline_action
+                            if baseline_action in human_actions
+                            else max(
+                                human_actions,
+                                key=lambda action: self._timed_search_rule_prior(
+                                    state,
+                                    player,
+                                    action,
+                                ),
+                            )
+                        )
                         human_result = self._time_limited_search_from_samples(
                             state,
                             player,
-                            actions,
-                            baseline_action,
+                            list(human_actions),
+                            human_baseline,
                             samples,
                             cancel_event=None,
                             tactical_priority_enabled=False,
                             record_priority_metrics=False,
                             run_context=human_context,
-                            forced_priority_action=human_actions[0],
+                            forced_priority_action=human_baseline,
+                            max_seconds_override=comparison_seconds,
                         )
                     except Exception:
                         # Comparison-only work must never interrupt the move.
                         human_result = None
+                        ai_result = None
                     finally:
                         for name, previous in saved_attributes.items():
                             if previous is missing:
@@ -1445,48 +1492,66 @@ class TimedSearchMixin:
                             else:
                                 setattr(self, name, previous)
 
-                    root_values = dict(
-                        human_context.get("root_values", {}) or {}
-                    )
-                    human_values = [
-                        float(root_values[action])
-                        for action in human_actions
-                        if action in root_values
-                    ]
-                    ai_value = root_values.get(result.action)
                     comparison_complete = bool(
                         human_result is not None
-                        and human_values
-                        and ai_value is not None
+                        and ai_result is not None
                     )
                     if not comparison_complete:
-                        self._record_human_response_paired_comparison(
+                        self._record_human_response_root_comparison(
                             comparison_complete=False,
                         )
                     else:
-                        selected_label = self._generic_response_action_label(
-                            human_result.action,
-                            state.current_attack,
+                        human_value = float(
+                            human_context.get(
+                                "evaluation_value",
+                                human_result.value,
+                            )
                         )
-                        if selected_label == human_label:
+                        ai_value = float(
+                            ai_context.get(
+                                "evaluation_value",
+                                ai_result.value,
+                            )
+                        )
+                        value_delta = human_value - ai_value
+                        if value_delta > 1e-6:
                             selected_side = "human"
-                        elif selected_label == result_label:
+                        elif value_delta < -1e-6:
                             selected_side = "ai"
                         else:
                             selected_side = "other"
-                        self._record_human_response_paired_comparison(
+                        self._record_human_response_root_comparison(
                             comparison_complete=True,
                             selected_side=selected_side,
-                            normal_depth=result.depth,
-                            priority_depth=human_result.depth,
-                            normal_elapsed_seconds=result.elapsed_seconds,
-                            priority_elapsed_seconds=(
+                            ai_depth=ai_result.depth,
+                            human_depth=human_result.depth,
+                            ai_elapsed_seconds=ai_result.elapsed_seconds,
+                            human_elapsed_seconds=(
                                 human_result.elapsed_seconds
                             ),
-                            normal_nodes=result.nodes,
-                            priority_nodes=human_result.nodes,
-                            value_delta=(
-                                max(human_values) - float(ai_value)
+                            ai_nodes=ai_result.nodes,
+                            human_nodes=human_result.nodes,
+                            value_delta=value_delta,
+                            ai_terminal_win_rate=float(
+                                ai_context.get("terminal_win_rate", 0.0)
+                            ),
+                            human_terminal_win_rate=float(
+                                human_context.get("terminal_win_rate", 0.0)
+                            ),
+                            ai_terminal_loss_rate=float(
+                                ai_context.get("terminal_loss_rate", 0.0)
+                            ),
+                            human_terminal_loss_rate=float(
+                                human_context.get("terminal_loss_rate", 0.0)
+                            ),
+                            ai_terminal_point_swing=float(
+                                ai_context.get("terminal_point_swing", 0.0)
+                            ),
+                            human_terminal_point_swing=float(
+                                human_context.get(
+                                    "terminal_point_swing",
+                                    0.0,
+                                )
                             ),
                         )
             return result
@@ -1497,7 +1562,11 @@ class TimedSearchMixin:
                         active_metrics = self._active_performance_metrics or {}
                         compute_seconds = float(
                             active_metrics.get("sample_generation", 0.0)
-                        ) + float(active_metrics.get("search", 0.0))
+                        ) + (
+                            float(result.elapsed_seconds)
+                            if result is not None
+                            else float(active_metrics.get("search", 0.0))
+                        )
                         self._finish_timed_search_compute(
                             cache_key,
                             result,
@@ -1539,14 +1608,18 @@ class TimedSearchMixin:
         record_priority_metrics: bool = True,
         run_context: Optional[Dict[str, object]] = None,
         forced_priority_action: Optional[Action] = None,
+        max_seconds_override: Optional[float] = None,
     ) -> Optional[TimedSearchResult]:
         start = time.perf_counter()
-        effective_seconds = float(
-            self._effective_time_search_setting(
-                "effective_seconds",
-                self.TIME_SEARCH_MAX_SECONDS,
+        if max_seconds_override is None:
+            effective_seconds = float(
+                self._effective_time_search_setting(
+                    "effective_seconds",
+                    self.TIME_SEARCH_MAX_SECONDS,
+                )
             )
-        )
+        else:
+            effective_seconds = max(0.01, float(max_seconds_override))
         hard_deadline = start + float(
             getattr(self, "TIME_SEARCH_HARD_MAX_SECONDS", 20.0)
         )
@@ -1984,6 +2057,61 @@ class TimedSearchMixin:
         best_value = aggregate[best_action]
         second_value = aggregate[ordered_actions[1]] if len(ordered_actions) > 1 else best_value
         margin = best_value - second_value
+
+        if run_context is not None:
+            run_context["evaluation_value"] = (
+                best_value - rule_rank_bonus.get(best_action, 0.0)
+            )
+            if information_enabled and completed_world_values is not None:
+                best_world_values = completed_world_values.get(
+                    best_action,
+                    {},
+                )
+                weighted_values = [
+                    (
+                        float(best_world_values[world.index]),
+                        float(world.probability),
+                    )
+                    for world in information_worlds
+                    if world.index in best_world_values
+                ]
+            else:
+                best_values = completed_values.get(best_action, [])
+                equal_weight = 1.0 / max(1, len(best_values))
+                weighted_values = [
+                    (float(value), equal_weight)
+                    for value in best_values
+                ]
+            total_weight = sum(weight for _value, weight in weighted_values)
+            if total_weight > 0.0:
+                terminal_win_rate = sum(
+                    weight
+                    for value, weight in weighted_values
+                    if value >= 100000.0
+                ) / total_weight
+                terminal_loss_rate = sum(
+                    weight
+                    for value, weight in weighted_values
+                    if value <= -100000.0
+                ) / total_weight
+                terminal_point_swing = sum(
+                    (
+                        (value - 100000.0) / 500.0
+                        if value >= 100000.0
+                        else (value + 100000.0) / 500.0
+                        if value <= -100000.0
+                        else 0.0
+                    )
+                    * weight
+                    for value, weight in weighted_values
+                ) / total_weight
+            else:
+                terminal_win_rate = 0.0
+                terminal_loss_rate = 0.0
+                terminal_point_swing = 0.0
+            run_context["terminal_win_rate"] = terminal_win_rate
+            run_context["terminal_loss_rate"] = terminal_loss_rate
+            run_context["terminal_point_swing"] = terminal_point_swing
 
         if information_enabled and completed_world_values is not None:
             agreement_mass = 0.0

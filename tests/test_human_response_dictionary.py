@@ -202,6 +202,37 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_pair_average_normal_nodes"] == 1200.0
         assert snapshot["human_pair_average_priority_nodes"] == 1800.0
         assert snapshot["human_pair_average_value_delta"] == 250.0
+        store.record_human_root_pair(
+            comparison_complete=True,
+            selected_side="human",
+            ai_depth=7,
+            human_depth=9,
+            ai_elapsed_seconds=4.8,
+            human_elapsed_seconds=4.9,
+            ai_nodes=12000,
+            human_nodes=12500,
+            value_delta=375.0,
+            ai_terminal_win_rate=0.25,
+            human_terminal_win_rate=0.5,
+            ai_terminal_loss_rate=0.2,
+            human_terminal_loss_rate=0.1,
+            ai_terminal_point_swing=2.5,
+            human_terminal_point_swing=7.5,
+        )
+        snapshot = store.snapshot()
+        assert snapshot["human_root_comparisons"] == 1
+        assert snapshot["human_root_completed"] == 1
+        assert snapshot["human_root_human_better"] == 1
+        assert snapshot["human_root_ai_better"] == 0
+        assert snapshot["human_root_average_ai_depth"] == 7.0
+        assert snapshot["human_root_average_human_depth"] == 9.0
+        assert snapshot["human_root_average_value_delta"] == 375.0
+        assert snapshot["human_root_average_ai_terminal_win_rate"] == 0.25
+        assert snapshot["human_root_average_human_terminal_win_rate"] == 0.5
+        assert snapshot["human_root_average_ai_terminal_loss_rate"] == 0.2
+        assert snapshot["human_root_average_human_terminal_loss_rate"] == 0.1
+        assert snapshot["human_root_average_ai_terminal_point_swing"] == 2.5
+        assert snapshot["human_root_average_human_terminal_point_swing"] == 7.5
         assert store.checkpoint("human-shadow-test") is True
 
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -216,6 +247,10 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_pair_completed"] == 1
         assert restored["human_pair_human_selected"] == 1
         assert restored["human_pair_average_value_delta"] == 250.0
+        assert restored["human_root_completed"] == 1
+        assert restored["human_root_human_better"] == 1
+        assert restored["human_root_average_value_delta"] == 375.0
+        assert restored["human_root_average_human_terminal_win_rate"] == 0.5
 
 
 if __name__ == "__main__":
