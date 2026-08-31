@@ -252,6 +252,16 @@
           <h3 class="subheading">汎用パターンの収集</h3>
           <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIと推薦が異なる場合に、人間の受け方とAIの受け方を初手で分け、同じ推定手駒・各5秒で探索します。両方が到達した深さ5以上の最深地点だけを比較し、比較結果はAIの実戦判断には影響しません。詳細診断では、深さ不足の停止理由と、終局結果・得点・途中局面評価の差をデプロイ後から別集計します。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
+          <h3 class="subheading">人間棋譜ルートの型別比較</h3>
+          <p class="muted">局面そのものは保存せず、匿名の型IDごとに、人間棋譜ルートと現在AIルートの比較結果だけを集計します。評価差は「人間ルート − AIルート」です。</p>
+          <div class="table-scroll">
+            <table class="tactical-mismatch-table">
+              <thead>
+                <tr><th>型</th><th>比較した判断</th><th>比較</th><th>結果</th><th>平均評価差</th><th>評価差の範囲</th><th>平均共通深さ</th></tr>
+              </thead>
+              <tbody id="humanRootPatternRows"></tbody>
+            </table>
+          </div>
           <h3 class="subheading">戦術分類の不一致内訳</h3>
           <p class="muted">手駒や棋譜は保存せず、この機能の導入後に発生した匿名の判断差だけを集計します。</p>
           <div class="table-scroll">
@@ -593,6 +603,7 @@
         ["詳細診断・比較対象", `${data.human_root_diag_comparisons || 0}回`],
         ["詳細診断・比較完了", `${data.human_root_diag_completed || 0}回`],
         ["詳細診断・比較未完了", `${data.human_root_diag_incomplete || 0}回`],
+        ["型別比較の型", `${data.human_root_pattern_detail_count || 0}種類`],
         ["深さ不足・人間側の時間上限", `${data.human_root_diag_human_stop_time || 0}回`],
         ["深さ不足・人間側の探索量上限", `${data.human_root_diag_human_stop_nodes || 0}回`],
         ["深さ不足・人間側の深さ上限", `${data.human_root_diag_human_stop_depth || 0}回`],
@@ -736,6 +747,31 @@
       function tacticalLines(lines) {
         return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
       }
+      document.getElementById("humanRootPatternRows").innerHTML = (
+        data.human_root_pattern_details || []
+      ).slice(0, 20).map((detail, index) => {
+        const actionPairs = (detail.action_pairs || []).map((pair) => {
+          const humanAction = actionLabels[pair.human_action] || pair.human_action;
+          const aiAction = actionLabels[pair.ai_action] || pair.ai_action;
+          return `人間 ${humanAction}／AI ${aiAction}（${Number(pair.comparisons || 0)}回）`;
+        });
+        const minimum = detail.minimum_value_delta;
+        const maximum = detail.maximum_value_delta;
+        const range = minimum == null || maximum == null
+          ? "−"
+          : `${Number(minimum).toFixed(1)} 〜 ${Number(maximum).toFixed(1)}`;
+        return `
+          <tr>
+            <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
+            <td>${tacticalLines(actionPairs.length ? actionPairs : ["記録なし"])}</td>
+            <td>${Number(detail.completed || 0)}完了<br>${Number(detail.incomplete || 0)}未完了</td>
+            <td>人間${Number(detail.human_better || 0)}<br>AI${Number(detail.ai_better || 0)}<br>同じ${Number(detail.tied || 0)}</td>
+            <td>${Number(detail.average_value_delta || 0).toFixed(1)}</td>
+            <td>${range}</td>
+            <td>${Number(detail.average_common_depth || 0).toFixed(2)}</td>
+          </tr>
+        `;
+      }).join("") || '<tr><td colspan="7" class="muted">デプロイ後の型別比較はまだありません。</td></tr>';
       document.getElementById("tacticalMismatchRows").innerHTML = (
         data.tactical_mismatch_details || []
       ).map((detail, index) => {

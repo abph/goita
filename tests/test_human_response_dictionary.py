@@ -204,6 +204,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_pair_average_value_delta"] == 250.0
         store.record_human_root_pair(
             comparison_complete=True,
+            pattern_key="human-pattern-1",
             selected_side="human",
             common_depth=7,
             ai_depth=7,
@@ -257,11 +258,36 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "human_better": 1,
             "ai_better": 0,
         }]
+        assert snapshot["human_root_pattern_detail_count"] == 1
+        assert snapshot["human_root_pattern_details"] == [{
+            "pattern_id": "human-pattern-1"[:10],
+            "comparisons": 1,
+            "completed": 1,
+            "incomplete": 0,
+            "human_better": 1,
+            "ai_better": 0,
+            "tied": 0,
+            "average_value_delta": 375.0,
+            "minimum_value_delta": 375.0,
+            "maximum_value_delta": 375.0,
+            "average_common_depth": 7.0,
+            "action_pairs": [{
+                "human_action": "pass",
+                "ai_action": "receive_same",
+                "comparisons": 1,
+            }],
+            "last_seen_at": snapshot["human_root_pattern_details"][0][
+                "last_seen_at"
+            ],
+        }]
         store.record_human_root_pair(
             comparison_complete=False,
+            pattern_key="human-pattern-1",
             incomplete_reason="common_depth_below_five",
             human_stop_reason="node_limit",
             ai_stop_reason="time_limit",
+            human_action_label="pass",
+            ai_action_label="receive_same",
         )
         snapshot = store.snapshot()
         assert snapshot["human_root_comparisons"] == 2
@@ -270,7 +296,33 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_root_diag_incomplete"] == 1
         assert snapshot["human_root_diag_human_stop_nodes"] == 1
         assert snapshot["human_root_diag_ai_stop_time"] == 1
+        assert snapshot["human_root_pattern_details"][0]["comparisons"] == 2
+        assert snapshot["human_root_pattern_details"][0]["completed"] == 1
+        assert snapshot["human_root_pattern_details"][0]["incomplete"] == 1
+        assert snapshot["human_root_pattern_details"][0]["action_pairs"][0][
+            "comparisons"
+        ] == 2
         assert store.checkpoint("human-shadow-test") is True
+        saved_payload = json.loads(path.read_text(encoding="utf-8"))
+        saved_pattern = saved_payload["human_root_pattern_details"][
+            "human-pattern-1"
+        ]
+        assert set(saved_pattern) == {
+            "pattern_key",
+            "comparisons",
+            "completed",
+            "incomplete",
+            "human_better",
+            "ai_better",
+            "tied",
+            "value_delta_sum",
+            "value_delta_min",
+            "value_delta_max",
+            "common_depth_sum",
+            "action_pair_counts",
+            "first_seen_at",
+            "last_seen_at",
+        }
 
         restored = GenericResponsePatternStore(path=path).snapshot()
         assert restored["human_shadow_lookups"] == 1
@@ -295,6 +347,12 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_root_diag_action_pairs"][0][
             "human_action"
         ] == "pass"
+        assert restored["human_root_pattern_detail_count"] == 1
+        assert restored["human_root_pattern_details"][0]["comparisons"] == 2
+        assert restored["human_root_pattern_details"][0]["human_better"] == 1
+        assert restored["human_root_pattern_details"][0][
+            "average_value_delta"
+        ] == 375.0
 
 
 def test_old_root_comparison_metrics_reset_without_losing_other_data() -> None:

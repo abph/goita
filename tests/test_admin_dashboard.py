@@ -41,6 +41,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "内訳：確定勝敗部分の差" in admin
     assert "内訳：途中局面評価の差" in admin
     assert "判断別：人間" in admin
+    assert "人間棋譜ルートの型別比較" in admin
+    assert "評価差は「人間ルート − AIルート」" in admin
+    assert 'id="humanRootPatternRows"' in admin
+    assert "型別比較の型" in admin
     assert "戦術分類の不一致内訳" in admin
     assert "人間棋譜辞書の不一致内訳" in admin
     assert "匿名の局面" in admin

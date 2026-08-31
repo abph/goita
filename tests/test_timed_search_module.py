@@ -246,6 +246,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
         lambda *_args, **_kwargs: (
             {
                 "status": "recommended",
+                "pattern_key": "human-pattern-root-test",
                 "recommended_action": "pass",
             },
             (baseline,),
@@ -409,6 +410,15 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert snapshot["human_root_diag_action_pairs"][0][
         "ai_action"
     ] == "receive_same"
+    assert snapshot["human_root_pattern_detail_count"] == 1
+    assert snapshot["human_root_pattern_details"][0]["pattern_id"] == (
+        "human-pattern-root-test"[:10]
+    )
+    assert snapshot["human_root_pattern_details"][0]["human_better"] == 1
+    assert snapshot["human_root_pattern_details"][0]["ai_better"] == 0
+    assert snapshot["human_root_pattern_details"][0][
+        "average_value_delta"
+    ] == 25.0
 
 
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:

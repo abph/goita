@@ -1484,6 +1484,9 @@ class TimedSearchMixin:
                 human_label = str(
                     human_recommendation.get("recommended_action", "other")
                 )
+                human_pattern_key = str(
+                    human_recommendation.get("pattern_key", "")
+                )
                 result_label = self._generic_response_action_label(
                     result.action,
                     state.current_attack,
@@ -1634,6 +1637,7 @@ class TimedSearchMixin:
                             incomplete_reason = "common_depth_below_five"
                         self._record_human_response_root_comparison(
                             comparison_complete=False,
+                            pattern_key=human_pattern_key,
                             incomplete_reason=incomplete_reason,
                             ai_stop_reason=str(
                                 ai_context.get("stop_reason", "")
@@ -1665,6 +1669,7 @@ class TimedSearchMixin:
                             selected_side = "other"
                         self._record_human_response_root_comparison(
                             comparison_complete=True,
+                            pattern_key=human_pattern_key,
                             selected_side=selected_side,
                             common_depth=common_depth,
                             ai_depth=ai_result.depth,

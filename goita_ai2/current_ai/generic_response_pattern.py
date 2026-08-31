@@ -909,6 +909,7 @@ class GenericResponsePatternMixin:
         self,
         *,
         comparison_complete: bool,
+        pattern_key: str = "",
         incomplete_reason: str = "",
         selected_side: str = "other",
         common_depth: int = 0,
@@ -937,6 +938,7 @@ class GenericResponsePatternMixin:
         """Record an equal-budget, root-constrained diagnostic comparison."""
         generic_response_pattern_store().record_human_root_pair(
             comparison_complete=comparison_complete,
+            pattern_key=pattern_key,
             incomplete_reason=incomplete_reason,
             selected_side=selected_side,
             common_depth=common_depth,

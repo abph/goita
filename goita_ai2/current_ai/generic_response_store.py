@@ -21,6 +21,7 @@ GENERIC_RESPONSE_STORE_SCHEMA_VERSION = 1
 GENERIC_RESPONSE_STORE_FILENAME = "generic-response-patterns.json"
 TACTICAL_MISMATCH_DETAIL_LIMIT = 250
 HUMAN_MISMATCH_DETAIL_LIMIT = 250
+HUMAN_ROOT_PATTERN_DETAIL_LIMIT = 750
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -190,6 +191,7 @@ class GenericResponsePatternStore:
         self._medium_patterns: Dict[str, dict] = {}
         self._tactical_mismatch_details: Dict[str, dict] = {}
         self._human_mismatch_details: Dict[str, dict] = {}
+        self._human_root_pattern_details: Dict[str, dict] = {}
         self._counters = self._empty_counters()
         self._last_checkpoint_error = ""
         self._restore()
@@ -385,6 +387,7 @@ class GenericResponsePatternStore:
             self._medium_patterns = {}
             self._tactical_mismatch_details = {}
             self._human_mismatch_details = {}
+            self._human_root_pattern_details = {}
             self._counters = self._empty_counters()
             self._last_checkpoint_error = ""
 
@@ -695,6 +698,13 @@ class GenericResponsePatternStore:
             "medium_patterns": serialize_patterns(self._medium_patterns),
             "tactical_mismatch_details": self._tactical_mismatch_details,
             "human_mismatch_details": self._human_mismatch_details,
+            "human_root_pattern_details": {
+                key: {
+                    **raw,
+                    "action_pair_counts": dict(raw["action_pair_counts"]),
+                }
+                for key, raw in self._human_root_pattern_details.items()
+            },
         }
 
     def checkpoint(self, reason: str = "manual") -> bool:
@@ -753,15 +763,22 @@ class GenericResponsePatternStore:
         patterns = payload.get("patterns", {})
         mismatch_details = payload.get("tactical_mismatch_details", {})
         human_mismatch_details = payload.get("human_mismatch_details", {})
+        human_root_pattern_details = payload.get(
+            "human_root_pattern_details",
+            {},
+        )
         if not isinstance(counters, dict) or not isinstance(patterns, dict):
             return False
         if not isinstance(mismatch_details, dict):
             mismatch_details = {}
         if not isinstance(human_mismatch_details, dict):
             human_mismatch_details = {}
+        if not isinstance(human_root_pattern_details, dict):
+            human_root_pattern_details = {}
         restored_patterns = {}
         restored_mismatch_details = {}
         restored_human_mismatch_details = {}
+        restored_human_root_pattern_details = {}
         try:
             for key, raw in patterns.items():
                 if not isinstance(key, str) or not isinstance(raw, dict):
@@ -864,6 +881,48 @@ class GenericResponsePatternStore:
                     "distinct_matches_lower_bound": max(
                         0,
                         int(raw.get("distinct_matches_lower_bound", 0)),
+                    ),
+                    "first_seen_at": float(raw.get("first_seen_at", 0.0)),
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                }
+            for key, raw in human_root_pattern_details.items():
+                if not isinstance(key, str) or not isinstance(raw, dict):
+                    continue
+                pattern_key = str(raw.get("pattern_key", ""))
+                if not pattern_key:
+                    continue
+                restored_human_root_pattern_details[key] = {
+                    "pattern_key": pattern_key,
+                    "comparisons": max(0, int(raw.get("comparisons", 0))),
+                    "completed": max(0, int(raw.get("completed", 0))),
+                    "incomplete": max(0, int(raw.get("incomplete", 0))),
+                    "human_better": max(
+                        0,
+                        int(raw.get("human_better", 0)),
+                    ),
+                    "ai_better": max(0, int(raw.get("ai_better", 0))),
+                    "tied": max(0, int(raw.get("tied", 0))),
+                    "value_delta_sum": float(
+                        raw.get("value_delta_sum", 0.0)
+                    ),
+                    "value_delta_min": (
+                        None
+                        if raw.get("value_delta_min") is None
+                        else float(raw.get("value_delta_min"))
+                    ),
+                    "value_delta_max": (
+                        None
+                        if raw.get("value_delta_max") is None
+                        else float(raw.get("value_delta_max"))
+                    ),
+                    "common_depth_sum": max(
+                        0.0,
+                        float(raw.get("common_depth_sum", 0.0)),
+                    ),
+                    "action_pair_counts": Counter(
+                        self._counter_dict(
+                            raw.get("action_pair_counts", {})
+                        )
                     ),
                     "first_seen_at": float(raw.get("first_seen_at", 0.0)),
                     "last_seen_at": float(raw.get("last_seen_at", 0.0)),
@@ -1077,6 +1136,9 @@ class GenericResponsePatternStore:
             self._rebuild_medium_patterns_locked()
             self._tactical_mismatch_details = restored_mismatch_details
             self._human_mismatch_details = restored_human_mismatch_details
+            self._human_root_pattern_details = (
+                restored_human_root_pattern_details
+            )
             self._counters = restored_counters
             self._started_at = float(payload.get("started_at", time.time()))
             self._last_checkpoint_error = ""
@@ -1434,6 +1496,7 @@ class GenericResponsePatternStore:
         self,
         *,
         comparison_complete: bool,
+        pattern_key: str = "",
         incomplete_reason: str = "",
         selected_side: str = "other",
         common_depth: int = 0,
@@ -1464,9 +1527,62 @@ class GenericResponsePatternStore:
             counters = self._counters
             counters["human_root_comparisons"] += 1
             counters["human_root_diag_comparisons"] += 1
+            normalized_pattern_key = str(pattern_key or "")
+            pattern_detail = None
+            pair_key = (
+                f"{str(human_action_label or 'other')}|"
+                f"{str(ai_action_label or 'other')}"
+            )
+            if normalized_pattern_key:
+                if (
+                    normalized_pattern_key
+                    not in self._human_root_pattern_details
+                    and len(self._human_root_pattern_details)
+                    >= HUMAN_ROOT_PATTERN_DETAIL_LIMIT
+                ):
+                    oldest_key = min(
+                        self._human_root_pattern_details,
+                        key=lambda key: (
+                            int(self._human_root_pattern_details[key].get(
+                                "comparisons",
+                                0,
+                            )),
+                            float(self._human_root_pattern_details[key].get(
+                                "last_seen_at",
+                                0.0,
+                            )),
+                            key,
+                        ),
+                    )
+                    self._human_root_pattern_details.pop(oldest_key, None)
+                now = time.time()
+                pattern_detail = self._human_root_pattern_details.setdefault(
+                    normalized_pattern_key,
+                    {
+                        "pattern_key": normalized_pattern_key,
+                        "comparisons": 0,
+                        "completed": 0,
+                        "incomplete": 0,
+                        "human_better": 0,
+                        "ai_better": 0,
+                        "tied": 0,
+                        "value_delta_sum": 0.0,
+                        "value_delta_min": None,
+                        "value_delta_max": None,
+                        "common_depth_sum": 0.0,
+                        "action_pair_counts": Counter(),
+                        "first_seen_at": now,
+                        "last_seen_at": now,
+                    },
+                )
+                pattern_detail["comparisons"] += 1
+                pattern_detail["action_pair_counts"][pair_key] += 1
+                pattern_detail["last_seen_at"] = now
             if not comparison_complete:
                 counters["human_root_incomplete"] += 1
                 counters["human_root_diag_incomplete"] += 1
+                if pattern_detail is not None:
+                    pattern_detail["incomplete"] += 1
 
                 def record_stop(route: str, reason: str) -> None:
                     normalized = str(reason or "other")
@@ -1494,12 +1610,38 @@ class GenericResponsePatternStore:
             counters["human_root_completed"] += 1
             counters["human_root_diag_completed"] += 1
             side = str(selected_side)
+            if pattern_detail is not None:
+                pattern_detail["completed"] += 1
+                pattern_detail["common_depth_sum"] += max(
+                    0,
+                    int(common_depth),
+                )
+                delta = float(value_delta)
+                pattern_detail["value_delta_sum"] += delta
+                current_min = pattern_detail.get("value_delta_min")
+                current_max = pattern_detail.get("value_delta_max")
+                pattern_detail["value_delta_min"] = (
+                    delta
+                    if current_min is None
+                    else min(float(current_min), delta)
+                )
+                pattern_detail["value_delta_max"] = (
+                    delta
+                    if current_max is None
+                    else max(float(current_max), delta)
+                )
             if side == "human":
                 counters["human_root_human_better"] += 1
+                if pattern_detail is not None:
+                    pattern_detail["human_better"] += 1
             elif side == "ai":
                 counters["human_root_ai_better"] += 1
+                if pattern_detail is not None:
+                    pattern_detail["ai_better"] += 1
             else:
                 counters["human_root_tied"] += 1
+                if pattern_detail is not None:
+                    pattern_detail["tied"] += 1
             counters["human_root_ai_depth_sum"] += max(0, int(ai_depth))
             counters["human_root_human_depth_sum"] += max(
                 0,
@@ -1556,10 +1698,6 @@ class GenericResponsePatternStore:
             )
             counters["human_root_diag_nonterminal_delta_sum"] += float(
                 nonterminal_delta
-            )
-            pair_key = (
-                f"{str(human_action_label or 'other')}|"
-                f"{str(ai_action_label or 'other')}"
             )
             counters["human_root_diag_action_pair_counts"][pair_key] += 1
             if side == "human":
@@ -2181,6 +2319,75 @@ class GenericResponsePatternStore:
                     str(item["ai_action"]),
                 )
             )
+            human_root_pattern_details = []
+            for pattern_key, raw in self._human_root_pattern_details.items():
+                completed = max(0, int(raw.get("completed", 0)))
+                action_pairs = []
+                for pair_key, count in raw.get(
+                    "action_pair_counts",
+                    {},
+                ).items():
+                    human_action, separator, ai_action = str(pair_key).partition(
+                        "|"
+                    )
+                    if not separator:
+                        human_action, ai_action = str(pair_key), "other"
+                    action_pairs.append({
+                        "human_action": human_action,
+                        "ai_action": ai_action,
+                        "comparisons": max(0, int(count)),
+                    })
+                action_pairs.sort(
+                    key=lambda item: (
+                        -int(item["comparisons"]),
+                        str(item["human_action"]),
+                        str(item["ai_action"]),
+                    )
+                )
+                value_delta_min = raw.get("value_delta_min")
+                value_delta_max = raw.get("value_delta_max")
+                human_root_pattern_details.append({
+                    "pattern_id": str(pattern_key)[:10],
+                    "comparisons": max(0, int(raw.get("comparisons", 0))),
+                    "completed": completed,
+                    "incomplete": max(0, int(raw.get("incomplete", 0))),
+                    "human_better": max(
+                        0,
+                        int(raw.get("human_better", 0)),
+                    ),
+                    "ai_better": max(0, int(raw.get("ai_better", 0))),
+                    "tied": max(0, int(raw.get("tied", 0))),
+                    "average_value_delta": round(
+                        float(raw.get("value_delta_sum", 0.0))
+                        / max(1, completed),
+                        3,
+                    ),
+                    "minimum_value_delta": (
+                        None
+                        if value_delta_min is None
+                        else round(float(value_delta_min), 3)
+                    ),
+                    "maximum_value_delta": (
+                        None
+                        if value_delta_max is None
+                        else round(float(value_delta_max), 3)
+                    ),
+                    "average_common_depth": round(
+                        float(raw.get("common_depth_sum", 0.0))
+                        / max(1, completed),
+                        3,
+                    ),
+                    "action_pairs": action_pairs[:4],
+                    "last_seen_at": float(raw.get("last_seen_at", 0.0)),
+                })
+            human_root_pattern_details.sort(
+                key=lambda item: (
+                    -int(item["human_better"]),
+                    -float(item["average_value_delta"]),
+                    -int(item["completed"]),
+                    str(item["pattern_id"]),
+                )
+            )
             return {
                 "considered": int(counters["considered"]),
                 "recorded": recorded,
@@ -2527,6 +2734,12 @@ class GenericResponsePatternStore:
                     3,
                 ),
                 "human_root_diag_action_pairs": human_root_action_pairs,
+                "human_root_pattern_detail_count": len(
+                    self._human_root_pattern_details
+                ),
+                "human_root_pattern_details": (
+                    human_root_pattern_details[:50]
+                ),
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]
                 ),
