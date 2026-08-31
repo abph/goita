@@ -157,12 +157,14 @@ LOBBY_ROOM_SETTINGS = {
     ),
 }
 LOBBY_SETTINGS_STORAGE_KEY = "__lobby__"
-PRIVATE_ROOM_AD_SETTINGS: Dict[str, Any] = {
-    "enabled": False,
-    "title": "お知らせ",
-    "message": "",
-    "url": "",
-    "room_ids": list(PRIVATE_ROOM_NAMES),
+PRIVATE_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
+    game_id: {
+        "enabled": False,
+        "title": "お知らせ",
+        "message": "",
+        "url": "",
+    }
+    for game_id in PRIVATE_ROOM_NAMES
 }
 NAME_MAX_LEN = 9
 ROOM_NAME_MAX_LEN = 12
@@ -2045,10 +2047,19 @@ class AdminVacateSeatRequest(BaseModel):
     occupancy_token: str = Field(min_length=1, max_length=128)
 
 
+class PrivateRoomAdSettingsRequest(BaseModel):
+    enabled: bool = False
+    title: str = Field(default="お知らせ", max_length=40)
+    message: str = Field(default="", max_length=200)
+    url: str = Field(default="", max_length=2048)
+
+
 class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
+    private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
+    # Legacy fields remain accepted while older clients are being replaced.
     private_ad_enabled: bool = False
     private_ad_title: str = Field(default="お知らせ", max_length=40)
     private_ad_message: str = Field(default="", max_length=200)
@@ -2062,6 +2073,7 @@ class LobbySettingsUpdateRequest(BaseModel):
 class AdminLobbySettingsUpdateRequest(BaseModel):
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(PRIVATE_ROOM_DEFINITIONS))
+    private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     private_ad_enabled: bool = False
     private_ad_title: str = Field(default="お知らせ", max_length=40)
     private_ad_message: str = Field(default="", max_length=200)
@@ -2846,40 +2858,63 @@ def _normalize_private_room_ad_settings(settings: Dict[str, Any]) -> Dict[str, A
                 status_code=400,
                 detail="URLはhttp://またはhttps://から入力してください",
             )
-    raw_room_ids = settings.get("room_ids", [])
-    if not isinstance(raw_room_ids, (list, tuple, set)):
-        raw_room_ids = []
-    room_ids = [
-        game_id
-        for game_id in dict.fromkeys(raw_room_ids)
-        if game_id in PRIVATE_ROOM_NAMES
-    ]
     enabled = bool(settings.get("enabled", False))
     if enabled and not message:
         raise HTTPException(status_code=400, detail="広告の文章を入力してください")
-    if enabled and not room_ids:
-        raise HTTPException(status_code=400, detail="表示するルームを選択してください")
     return {
         "enabled": enabled,
         "title": title,
         "message": message,
         "url": raw_url,
-        "room_ids": room_ids,
+    }
+
+
+def _normalize_private_room_ads(settings: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(settings, dict):
+        settings = {}
+    unknown_room_ids = set(settings) - set(PRIVATE_ROOM_NAMES)
+    if unknown_room_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="存在しないプライベートルームが指定されています",
+        )
+    return {
+        game_id: _normalize_private_room_ad_settings(
+            settings.get(game_id, {})
+            if isinstance(settings.get(game_id, {}), dict)
+            else {}
+        )
+        for game_id in PRIVATE_ROOM_NAMES
+    }
+
+
+def _migrate_legacy_private_room_ad(
+    settings: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    normalized = _normalize_private_room_ad_settings(settings)
+    room_ids = settings.get("room_ids", [])
+    selected = {
+        game_id
+        for game_id in room_ids
+        if game_id in PRIVATE_ROOM_NAMES
+    } if isinstance(room_ids, (list, tuple, set)) else set()
+    return {
+        game_id: {
+            **normalized,
+            "enabled": bool(normalized["enabled"] and game_id in selected),
+        }
+        for game_id in PRIVATE_ROOM_NAMES
     }
 
 
 def _private_room_ad_public_payload(game_id: str) -> Dict[str, Any]:
-    room_ids = PRIVATE_ROOM_AD_SETTINGS.get("room_ids", [])
-    enabled = bool(
-        PRIVATE_ROOM_AD_SETTINGS.get("enabled", False)
-        and game_id in room_ids
-        and game_id in PRIVATE_ROOM_NAMES
-    )
+    settings = PRIVATE_ROOM_AD_SETTINGS.get(game_id, {})
+    enabled = bool(settings.get("enabled", False) and game_id in PRIVATE_ROOM_NAMES)
     return {
         "enabled": enabled,
-        "label": str(PRIVATE_ROOM_AD_SETTINGS.get("title", "お知らせ")) if enabled else "",
-        "message": str(PRIVATE_ROOM_AD_SETTINGS.get("message", "")) if enabled else "",
-        "url": str(PRIVATE_ROOM_AD_SETTINGS.get("url", "")) if enabled else "",
+        "label": str(settings.get("title", "お知らせ")) if enabled else "",
+        "message": str(settings.get("message", "")) if enabled else "",
+        "url": str(settings.get("url", "")) if enabled else "",
     }
 
 
@@ -2887,7 +2922,7 @@ def _lobby_management_settings() -> Dict[str, Any]:
     return {
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
-        "private_room_ad": dict(PRIVATE_ROOM_AD_SETTINGS),
+        "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
     }
 
 
@@ -2902,14 +2937,23 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
         LOBBY_ROOM_SETTINGS["private_room_count"] = max(
             0, min(len(PRIVATE_ROOM_DEFINITIONS), private_count)
         )
-    private_ad = settings.get("private_room_ad")
-    if isinstance(private_ad, dict):
+    private_ads = settings.get("private_room_ads")
+    if isinstance(private_ads, dict):
         try:
-            PRIVATE_ROOM_AD_SETTINGS.update(
-                _normalize_private_room_ad_settings(private_ad)
-            )
+            normalized_ads = _normalize_private_room_ads(private_ads)
+            PRIVATE_ROOM_AD_SETTINGS.clear()
+            PRIVATE_ROOM_AD_SETTINGS.update(normalized_ads)
         except HTTPException:
-            LOGGER.warning("Ignoring invalid persisted private-room advertisement")
+            LOGGER.warning("Ignoring invalid persisted private-room advertisements")
+    else:
+        private_ad = settings.get("private_room_ad")
+        if isinstance(private_ad, dict):
+            try:
+                migrated_ads = _migrate_legacy_private_room_ad(private_ad)
+                PRIVATE_ROOM_AD_SETTINGS.clear()
+                PRIVATE_ROOM_AD_SETTINGS.update(migrated_ads)
+            except HTTPException:
+                LOGGER.warning("Ignoring invalid persisted private-room advertisement")
 
 
 def _room_management_settings(game: Dict[str, Any]) -> Dict[str, Any]:
@@ -3512,7 +3556,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ok": True,
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
-        "private_room_ad": dict(PRIVATE_ROOM_AD_SETTINGS),
+        "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
         "private_room_max": len(PRIVATE_ROOM_DEFINITIONS),
         "private_rooms": [
@@ -3549,16 +3593,23 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="管理用パスワードが違います")
 
     previous_settings = _lobby_management_settings()
-    next_private_ad = _normalize_private_room_ad_settings({
-        "enabled": req.private_ad_enabled,
-        "title": req.private_ad_title,
-        "message": req.private_ad_message,
-        "url": req.private_ad_url,
-        "room_ids": req.private_ad_room_ids,
-    })
+    if req.private_room_ads is not None:
+        next_private_ads = _normalize_private_room_ads({
+            game_id: item.model_dump()
+            for game_id, item in req.private_room_ads.items()
+        })
+    else:
+        next_private_ads = _migrate_legacy_private_room_ad({
+            "enabled": req.private_ad_enabled,
+            "title": req.private_ad_title,
+            "message": req.private_ad_message,
+            "url": req.private_ad_url,
+            "room_ids": req.private_ad_room_ids,
+        })
     LOBBY_ROOM_SETTINGS["main_room_count"] = req.main_room_count
     LOBBY_ROOM_SETTINGS["private_room_count"] = req.private_room_count
-    PRIVATE_ROOM_AD_SETTINGS.update(next_private_ad)
+    PRIVATE_ROOM_AD_SETTINGS.clear()
+    PRIVATE_ROOM_AD_SETTINGS.update(next_private_ads)
     setup_main_rooms()
     setup_supporter_rooms()
     if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():

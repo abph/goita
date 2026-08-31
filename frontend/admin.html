@@ -99,6 +99,17 @@
     .room-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
     .room-options label { display: flex; align-items: center; gap: 7px; }
     .room-options input { width: auto; }
+    .notice-summary { display: grid; gap: 4px; margin-top: 8px; }
+    .notice-summary-row {
+      display: grid;
+      grid-template-columns: minmax(120px, .7fr) 72px 1fr;
+      gap: 8px;
+      padding: 7px 0;
+      border-top: 1px solid var(--line);
+    }
+    .notice-summary-row:first-child { border-top: 0; }
+    .notice-state { color: var(--muted); }
+    .notice-state.enabled { color: var(--accent); font-weight: 800; }
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .password-row {
       display: grid;
@@ -198,6 +209,10 @@
 
           <h3 class="subheading">プライベートルームのお知らせ</h3>
           <div class="field">
+            <label for="privateAdRoomSelect">編集するルーム</label>
+            <select id="privateAdRoomSelect"></select>
+          </div>
+          <div class="field">
             <label><input id="privateAdEnabled" type="checkbox" style="width:auto"> お知らせを表示する</label>
           </div>
           <div class="form-grid">
@@ -214,10 +229,7 @@
             <label for="privateAdMessage">表示する文章</label>
             <textarea id="privateAdMessage" maxlength="200"></textarea>
           </div>
-          <div class="field">
-            <label>表示するルーム</label>
-            <div id="privateAdRooms" class="room-options"></div>
-          </div>
+          <div id="privateAdSummary" class="notice-summary"></div>
           <div class="actions">
             <button class="button primary" type="submit">設定を保存</button>
           </div>
@@ -321,6 +333,9 @@
       none: "",
     };
     let settingsPayload = null;
+    let privateRooms = [];
+    let privateRoomAds = {};
+    let activePrivateAdRoomId = "";
 
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -355,21 +370,69 @@
       document.getElementById("logoutButton").hidden = true;
     }
 
+    function normalizedPrivateAd(value = {}) {
+      return {
+        enabled: value.enabled === true,
+        title: String(value.title || "お知らせ"),
+        message: String(value.message || ""),
+        url: String(value.url || ""),
+      };
+    }
+
+    function capturePrivateAdSettings() {
+      if (!activePrivateAdRoomId) return;
+      privateRoomAds[activePrivateAdRoomId] = {
+        enabled: document.getElementById("privateAdEnabled").checked,
+        title: document.getElementById("privateAdTitle").value.trim() || "お知らせ",
+        message: document.getElementById("privateAdMessage").value.trim(),
+        url: document.getElementById("privateAdUrl").value.trim(),
+      };
+    }
+
+    function renderPrivateAdSummary() {
+      document.getElementById("privateAdSummary").innerHTML = privateRooms.map(room => {
+        const ad = normalizedPrivateAd(privateRoomAds[room.game_id]);
+        return `
+          <div class="notice-summary-row">
+            <strong>${escapeHtml(room.owner_name)}</strong>
+            <span class="notice-state${ad.enabled ? " enabled" : ""}">${ad.enabled ? "表示中" : "非表示"}</span>
+            <span>${escapeHtml(ad.enabled ? ad.title : "")}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function loadPrivateAdSettings(gameId) {
+      activePrivateAdRoomId = gameId || "";
+      const ad = normalizedPrivateAd(privateRoomAds[activePrivateAdRoomId]);
+      document.getElementById("privateAdEnabled").checked = ad.enabled;
+      document.getElementById("privateAdTitle").value = ad.title;
+      document.getElementById("privateAdMessage").value = ad.message;
+      document.getElementById("privateAdUrl").value = ad.url;
+      renderPrivateAdSummary();
+    }
+
     function applySettings(data) {
       document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
       document.getElementById("privateRoomCount").max = data.private_room_max ?? 6;
-      const ad = data.private_room_ad || {};
-      document.getElementById("privateAdEnabled").checked = ad.enabled === true;
-      document.getElementById("privateAdTitle").value = ad.title || "お知らせ";
-      document.getElementById("privateAdMessage").value = ad.message || "";
-      document.getElementById("privateAdUrl").value = ad.url || "";
-      const selected = new Set(Array.isArray(ad.room_ids) ? ad.room_ids : []);
       const rooms = Array.isArray(data.private_rooms) ? data.private_rooms : [];
-      document.getElementById("privateAdRooms").innerHTML = rooms.map(room => `
-        <label><input class="ad-room" type="checkbox" value="${escapeHtml(room.game_id)}"${selected.has(room.game_id) ? " checked" : ""}> ${escapeHtml(room.owner_name)}</label>
+      privateRooms = rooms;
+      const savedAds = data.private_room_ads || {};
+      privateRoomAds = Object.fromEntries(rooms.map(room => [
+        room.game_id,
+        normalizedPrivateAd(savedAds[room.game_id]),
+      ]));
+      const roomSelect = document.getElementById("privateAdRoomSelect");
+      roomSelect.innerHTML = rooms.map(room => `
+        <option value="${escapeHtml(room.game_id)}">${escapeHtml(room.owner_name)}</option>
       `).join("");
+      const selectedRoomId = rooms.some(room => room.game_id === activePrivateAdRoomId)
+        ? activePrivateAdRoomId
+        : (rooms[0]?.game_id || "");
+      roomSelect.value = selectedRoomId;
+      loadPrivateAdSettings(selectedRoomId);
       document.getElementById("privateRoomPasswords").innerHTML = rooms.map(room => `
         <div class="password-row" data-room="${escapeHtml(room.game_id)}">
           <div class="password-name">${escapeHtml(room.owner_name)}</div>
@@ -785,18 +848,18 @@
     document.getElementById("settingsForm").addEventListener("submit", async event => {
       event.preventDefault();
       const status = document.getElementById("settingsStatus");
-      const roomIds = Array.from(document.querySelectorAll(".ad-room:checked"), input => input.value);
+      capturePrivateAdSettings();
       const payload = {
         main_room_count: Number(document.getElementById("mainRoomCount").value),
         private_room_count: Number(document.getElementById("privateRoomCount").value),
-        private_ad_enabled: document.getElementById("privateAdEnabled").checked,
-        private_ad_title: document.getElementById("privateAdTitle").value.trim() || "お知らせ",
-        private_ad_message: document.getElementById("privateAdMessage").value.trim(),
-        private_ad_url: document.getElementById("privateAdUrl").value.trim(),
-        private_ad_room_ids: roomIds,
+        private_room_ads: privateRoomAds,
       };
-      if (payload.private_ad_enabled && (!payload.private_ad_message || !roomIds.length)) {
-        status.textContent = !payload.private_ad_message ? "表示する文章を入力してください。" : "表示するルームを選択してください。";
+      const invalidRoom = privateRooms.find(room => {
+        const ad = normalizedPrivateAd(privateRoomAds[room.game_id]);
+        return ad.enabled && !ad.message;
+      });
+      if (invalidRoom) {
+        status.textContent = `${invalidRoom.owner_name}の表示する文章を入力してください。`;
         return;
       }
       status.textContent = "保存しています...";
@@ -807,6 +870,17 @@
       } catch (error) {
         status.textContent = error.message;
       }
+    });
+
+    document.getElementById("privateAdRoomSelect").addEventListener("change", event => {
+      capturePrivateAdSettings();
+      loadPrivateAdSettings(event.target.value);
+    });
+    ["privateAdEnabled", "privateAdTitle", "privateAdMessage", "privateAdUrl"].forEach(id => {
+      document.getElementById(id).addEventListener("input", () => {
+        capturePrivateAdSettings();
+        renderPrivateAdSummary();
+      });
     });
 
     document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {

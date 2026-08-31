@@ -14,6 +14,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'data-tab="settings"' in admin
     assert 'data-tab="analytics"' in admin
     assert 'id="privateRoomPasswords"' in admin
+    assert 'id="privateAdRoomSelect"' in admin
+    assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
     assert 'id="regionRows"' in admin
     assert "地域（推定）" in admin
