@@ -176,6 +176,32 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "shi_context": "not_shi",
             "score_pressure": "normal",
         }
+        store.record_human_priority_pair(
+            comparison_complete=True,
+            selected_side="human",
+            normal_depth=5,
+            priority_depth=7,
+            normal_elapsed_seconds=1.25,
+            priority_elapsed_seconds=1.75,
+            normal_nodes=1200,
+            priority_nodes=1800,
+            value_delta=250.0,
+        )
+        snapshot = store.snapshot()
+        assert snapshot["human_pair_comparisons"] == 1
+        assert snapshot["human_pair_completed"] == 1
+        assert snapshot["human_pair_incomplete"] == 0
+        assert snapshot["human_pair_human_selected"] == 1
+        assert snapshot["human_pair_ai_selected"] == 0
+        assert snapshot["human_pair_human_value_better"] == 1
+        assert snapshot["human_pair_ai_value_better"] == 0
+        assert snapshot["human_pair_average_normal_depth"] == 5.0
+        assert snapshot["human_pair_average_priority_depth"] == 7.0
+        assert snapshot["human_pair_average_normal_elapsed_seconds"] == 1.25
+        assert snapshot["human_pair_average_priority_elapsed_seconds"] == 1.75
+        assert snapshot["human_pair_average_normal_nodes"] == 1200.0
+        assert snapshot["human_pair_average_priority_nodes"] == 1800.0
+        assert snapshot["human_pair_average_value_delta"] == 250.0
         assert store.checkpoint("human-shadow-test") is True
 
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -187,6 +213,9 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_mismatch_details"][0][
             "anonymous_context"
         ]["attack_piece"] == "2"
+        assert restored["human_pair_completed"] == 1
+        assert restored["human_pair_human_selected"] == 1
+        assert restored["human_pair_average_value_delta"] == 250.0
 
 
 if __name__ == "__main__":

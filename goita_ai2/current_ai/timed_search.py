@@ -1372,6 +1372,123 @@ class TimedSearchMixin:
                             value_delta=result.value - control_result.value,
                             margin_delta=result.margin - control_result.margin,
                         )
+                human_pair_enabled = bool(
+                    result is not None
+                    and cancel_event is None
+                    and getattr(
+                        self,
+                        "GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED",
+                        False,
+                    )
+                )
+                if human_pair_enabled:
+                    human_recommendation, human_actions = (
+                        self._human_response_comparison_actions(
+                            state,
+                            player,
+                            actions,
+                            baseline_action,
+                        )
+                    )
+                else:
+                    human_recommendation, human_actions = ({}, tuple())
+                human_label = str(
+                    human_recommendation.get("recommended_action", "other")
+                )
+                result_label = self._generic_response_action_label(
+                    result.action,
+                    state.current_attack,
+                ) if result is not None else "other"
+                should_compare_human_priority = bool(
+                    human_pair_enabled
+                    and human_actions
+                    and human_label != result_label
+                )
+                if should_compare_human_priority:
+                    saved_attributes = {}
+                    missing = object()
+                    for name in (
+                        "_suppress_response_dictionary_metrics",
+                        "last_generic_response_priority",
+                        "last_generic_response_tactical_priority",
+                        "last_information_set_search",
+                        "GENERIC_RESPONSE_NARROWING_ENABLED",
+                    ):
+                        saved_attributes[name] = getattr(self, name, missing)
+                    human_result = None
+                    human_context: Dict[str, object] = {}
+                    try:
+                        self._suppress_response_dictionary_metrics = True
+                        self.GENERIC_RESPONSE_NARROWING_ENABLED = False
+                        human_result = self._time_limited_search_from_samples(
+                            state,
+                            player,
+                            actions,
+                            baseline_action,
+                            samples,
+                            cancel_event=None,
+                            tactical_priority_enabled=False,
+                            record_priority_metrics=False,
+                            run_context=human_context,
+                            forced_priority_action=human_actions[0],
+                        )
+                    except Exception:
+                        # Comparison-only work must never interrupt the move.
+                        human_result = None
+                    finally:
+                        for name, previous in saved_attributes.items():
+                            if previous is missing:
+                                try:
+                                    delattr(self, name)
+                                except AttributeError:
+                                    pass
+                            else:
+                                setattr(self, name, previous)
+
+                    root_values = dict(
+                        human_context.get("root_values", {}) or {}
+                    )
+                    human_values = [
+                        float(root_values[action])
+                        for action in human_actions
+                        if action in root_values
+                    ]
+                    ai_value = root_values.get(result.action)
+                    comparison_complete = bool(
+                        human_result is not None
+                        and human_values
+                        and ai_value is not None
+                    )
+                    if not comparison_complete:
+                        self._record_human_response_paired_comparison(
+                            comparison_complete=False,
+                        )
+                    else:
+                        selected_label = self._generic_response_action_label(
+                            human_result.action,
+                            state.current_attack,
+                        )
+                        if selected_label == human_label:
+                            selected_side = "human"
+                        elif selected_label == result_label:
+                            selected_side = "ai"
+                        else:
+                            selected_side = "other"
+                        self._record_human_response_paired_comparison(
+                            comparison_complete=True,
+                            selected_side=selected_side,
+                            normal_depth=result.depth,
+                            priority_depth=human_result.depth,
+                            normal_elapsed_seconds=result.elapsed_seconds,
+                            priority_elapsed_seconds=(
+                                human_result.elapsed_seconds
+                            ),
+                            normal_nodes=result.nodes,
+                            priority_nodes=human_result.nodes,
+                            value_delta=(
+                                max(human_values) - float(ai_value)
+                            ),
+                        )
             return result
         finally:
             try:
@@ -1421,6 +1538,7 @@ class TimedSearchMixin:
         tactical_priority_enabled: bool = True,
         record_priority_metrics: bool = True,
         run_context: Optional[Dict[str, object]] = None,
+        forced_priority_action: Optional[Action] = None,
     ) -> Optional[TimedSearchResult]:
         start = time.perf_counter()
         effective_seconds = float(
@@ -1480,7 +1598,7 @@ class TimedSearchMixin:
         control_root_actions = list(actions)
         root_actions = list(control_root_actions)
         tactical_priority_action = None
-        if tactical_priority_enabled:
+        if tactical_priority_enabled and forced_priority_action is None:
             tactical_priority_action = self._tactical_response_priority_action(
                 state,
                 player,
@@ -1489,7 +1607,9 @@ class TimedSearchMixin:
             )
         if run_context is not None:
             run_context["tactical_priority_action"] = tactical_priority_action
-        generic_priority_action = tactical_priority_action
+        generic_priority_action = forced_priority_action
+        if generic_priority_action is None:
+            generic_priority_action = tactical_priority_action
         if generic_priority_action is None:
             generic_priority_action = self._generic_response_priority_action(
                 state,
@@ -1856,6 +1976,9 @@ class TimedSearchMixin:
                 )
         if not aggregate:
             return None
+        if run_context is not None:
+            run_context["root_values"] = dict(aggregate)
+            run_context["completed_depth"] = completed_depth
         ordered_actions = sorted(aggregate, key=aggregate.get, reverse=True)
         best_action = ordered_actions[0]
         best_value = aggregate[best_action]

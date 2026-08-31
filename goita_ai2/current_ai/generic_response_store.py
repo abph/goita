@@ -219,6 +219,22 @@ class GenericResponsePatternStore:
             "human_shadow_recommendations": 0,
             "human_shadow_matches": 0,
             "human_shadow_mismatches": 0,
+            "human_pair_comparisons": 0,
+            "human_pair_completed": 0,
+            "human_pair_incomplete": 0,
+            "human_pair_human_selected": 0,
+            "human_pair_ai_selected": 0,
+            "human_pair_other_selected": 0,
+            "human_pair_human_value_better": 0,
+            "human_pair_ai_value_better": 0,
+            "human_pair_value_tied": 0,
+            "human_pair_normal_depth_sum": 0.0,
+            "human_pair_priority_depth_sum": 0.0,
+            "human_pair_normal_elapsed_sum": 0.0,
+            "human_pair_priority_elapsed_sum": 0.0,
+            "human_pair_normal_nodes_sum": 0,
+            "human_pair_priority_nodes_sum": 0,
+            "human_pair_value_delta_sum": 0.0,
             "tactical_priority_lookups": 0,
             "tactical_priority_no_recommendation": 0,
             "tactical_priority_rejected_action": 0,
@@ -833,6 +849,17 @@ class GenericResponsePatternStore:
                 "human_shadow_recommendations",
                 "human_shadow_matches",
                 "human_shadow_mismatches",
+                "human_pair_comparisons",
+                "human_pair_completed",
+                "human_pair_incomplete",
+                "human_pair_human_selected",
+                "human_pair_ai_selected",
+                "human_pair_other_selected",
+                "human_pair_human_value_better",
+                "human_pair_ai_value_better",
+                "human_pair_value_tied",
+                "human_pair_normal_nodes_sum",
+                "human_pair_priority_nodes_sum",
                 "tactical_priority_lookups",
                 "tactical_priority_no_recommendation",
                 "tactical_priority_rejected_action",
@@ -910,6 +937,11 @@ class GenericResponsePatternStore:
                 "tactical_pair_without_elapsed_sum",
                 "tactical_pair_value_delta_sum",
                 "tactical_pair_margin_delta_sum",
+                "human_pair_normal_depth_sum",
+                "human_pair_priority_depth_sum",
+                "human_pair_normal_elapsed_sum",
+                "human_pair_priority_elapsed_sum",
+                "human_pair_value_delta_sum",
                 "narrowing_shadow_full_candidates_sum",
                 "narrowing_shadow_kept_candidates_sum",
                 "narrowing_shadow_removed_candidates_sum",
@@ -1239,6 +1271,68 @@ class GenericResponsePatternStore:
             )
             counters["tactical_pair_value_delta_sum"] += float(value_delta)
             counters["tactical_pair_margin_delta_sum"] += float(margin_delta)
+
+    def record_human_priority_pair(
+        self,
+        *,
+        comparison_complete: bool,
+        selected_side: str = "other",
+        normal_depth: int = 0,
+        priority_depth: int = 0,
+        normal_elapsed_seconds: float = 0.0,
+        priority_elapsed_seconds: float = 0.0,
+        normal_nodes: int = 0,
+        priority_nodes: int = 0,
+        value_delta: float = 0.0,
+    ) -> None:
+        """Record a human-hint comparison without retaining its position."""
+        with self._lock:
+            counters = self._counters
+            counters["human_pair_comparisons"] += 1
+            if not comparison_complete:
+                counters["human_pair_incomplete"] += 1
+                return
+
+            counters["human_pair_completed"] += 1
+            side = str(selected_side)
+            if side == "human":
+                counters["human_pair_human_selected"] += 1
+            elif side == "ai":
+                counters["human_pair_ai_selected"] += 1
+            else:
+                counters["human_pair_other_selected"] += 1
+            delta = float(value_delta)
+            if delta > 1e-6:
+                counters["human_pair_human_value_better"] += 1
+            elif delta < -1e-6:
+                counters["human_pair_ai_value_better"] += 1
+            else:
+                counters["human_pair_value_tied"] += 1
+            counters["human_pair_normal_depth_sum"] += max(
+                0,
+                int(normal_depth),
+            )
+            counters["human_pair_priority_depth_sum"] += max(
+                0,
+                int(priority_depth),
+            )
+            counters["human_pair_normal_elapsed_sum"] += max(
+                0.0,
+                float(normal_elapsed_seconds),
+            )
+            counters["human_pair_priority_elapsed_sum"] += max(
+                0.0,
+                float(priority_elapsed_seconds),
+            )
+            counters["human_pair_normal_nodes_sum"] += max(
+                0,
+                int(normal_nodes),
+            )
+            counters["human_pair_priority_nodes_sum"] += max(
+                0,
+                int(priority_nodes),
+            )
+            counters["human_pair_value_delta_sum"] += delta
 
     def record_priority_effect(
         self,
@@ -1939,6 +2033,68 @@ class GenericResponsePatternStore:
                 "human_mismatch_details": human_mismatch_details[:50],
                 "human_mismatch_detail_count": len(
                     self._human_mismatch_details
+                ),
+                "human_pair_comparisons": int(
+                    counters["human_pair_comparisons"]
+                ),
+                "human_pair_completed": int(
+                    counters["human_pair_completed"]
+                ),
+                "human_pair_incomplete": int(
+                    counters["human_pair_incomplete"]
+                ),
+                "human_pair_human_selected": int(
+                    counters["human_pair_human_selected"]
+                ),
+                "human_pair_ai_selected": int(
+                    counters["human_pair_ai_selected"]
+                ),
+                "human_pair_other_selected": int(
+                    counters["human_pair_other_selected"]
+                ),
+                "human_pair_human_value_better": int(
+                    counters["human_pair_human_value_better"]
+                ),
+                "human_pair_ai_value_better": int(
+                    counters["human_pair_ai_value_better"]
+                ),
+                "human_pair_value_tied": int(
+                    counters["human_pair_value_tied"]
+                ),
+                "human_pair_average_normal_depth": round(
+                    float(counters["human_pair_normal_depth_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    3,
+                ),
+                "human_pair_average_priority_depth": round(
+                    float(counters["human_pair_priority_depth_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    3,
+                ),
+                "human_pair_average_normal_elapsed_seconds": round(
+                    float(counters["human_pair_normal_elapsed_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    5,
+                ),
+                "human_pair_average_priority_elapsed_seconds": round(
+                    float(counters["human_pair_priority_elapsed_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    5,
+                ),
+                "human_pair_average_normal_nodes": round(
+                    int(counters["human_pair_normal_nodes_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    2,
+                ),
+                "human_pair_average_priority_nodes": round(
+                    int(counters["human_pair_priority_nodes_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    2,
+                ),
+                "human_pair_average_value_delta": round(
+                    float(counters["human_pair_value_delta_sum"])
+                    / max(1, int(counters["human_pair_completed"])),
+                    3,
                 ),
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]

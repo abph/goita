@@ -36,6 +36,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = False
+    GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_OBSERVATIONS = 15
     GENERIC_RESPONSE_TACTICAL_PRIORITY_MIN_DOMINANCE = 0.90
     GENERIC_RESPONSE_MEDIUM_SHADOW_MIN_OBSERVATIONS = 5
@@ -607,6 +608,41 @@ class GenericResponsePatternMixin:
         self.last_generic_response_human_shadow = dict(human_result)
         return result
 
+    def _human_response_comparison_actions(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> Tuple[dict, Tuple[Action, ...]]:
+        """Return legal root actions represented by the aggregate human hint."""
+        if state.phase != "receive":
+            return {"status": "not_applicable"}, tuple()
+        actions_list = list(actions)
+        tactical_payload = self._tactical_response_pattern_payload(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+        )
+        recommendation = human_response_dictionary().recommendation(
+            tactical_payload
+        )
+        if recommendation.get("status") != "recommended":
+            return recommendation, tuple()
+        recommended_label = str(
+            recommendation.get("recommended_action", "other")
+        )
+        candidates = tuple(
+            action
+            for action in actions_list
+            if self._generic_response_action_label(
+                action,
+                state.current_attack,
+            ) == recommended_label
+        )
+        return recommendation, candidates
+
     def _generic_response_priority_action(
         self,
         state,
@@ -826,6 +862,31 @@ class GenericResponsePatternMixin:
             without_nodes=without_nodes,
             value_delta=value_delta,
             margin_delta=margin_delta,
+        )
+
+    def _record_human_response_paired_comparison(
+        self,
+        *,
+        comparison_complete: bool,
+        selected_side: str = "other",
+        normal_depth: int = 0,
+        priority_depth: int = 0,
+        normal_elapsed_seconds: float = 0.0,
+        priority_elapsed_seconds: float = 0.0,
+        normal_nodes: int = 0,
+        priority_nodes: int = 0,
+        value_delta: float = 0.0,
+    ) -> None:
+        generic_response_pattern_store().record_human_priority_pair(
+            comparison_complete=comparison_complete,
+            selected_side=selected_side,
+            normal_depth=normal_depth,
+            priority_depth=priority_depth,
+            normal_elapsed_seconds=normal_elapsed_seconds,
+            priority_elapsed_seconds=priority_elapsed_seconds,
+            normal_nodes=normal_nodes,
+            priority_nodes=priority_nodes,
+            value_delta=value_delta,
         )
 
     def _record_generic_response_priority_effect(
