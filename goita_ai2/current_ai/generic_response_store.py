@@ -22,6 +22,7 @@ GENERIC_RESPONSE_STORE_FILENAME = "generic-response-patterns.json"
 TACTICAL_MISMATCH_DETAIL_LIMIT = 250
 HUMAN_MISMATCH_DETAIL_LIMIT = 250
 HUMAN_ROOT_PATTERN_DETAIL_LIMIT = 750
+HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS = 5
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -919,6 +920,18 @@ class GenericResponsePatternStore:
                         0.0,
                         float(raw.get("common_depth_sum", 0.0)),
                     ),
+                    "terminal_loss_samples": max(
+                        0,
+                        int(raw.get("terminal_loss_samples", 0)),
+                    ),
+                    "ai_terminal_loss_rate_sum": max(
+                        0.0,
+                        float(raw.get("ai_terminal_loss_rate_sum", 0.0)),
+                    ),
+                    "human_terminal_loss_rate_sum": max(
+                        0.0,
+                        float(raw.get("human_terminal_loss_rate_sum", 0.0)),
+                    ),
                     "action_pair_counts": Counter(
                         self._counter_dict(
                             raw.get("action_pair_counts", {})
@@ -1570,6 +1583,9 @@ class GenericResponsePatternStore:
                         "value_delta_min": None,
                         "value_delta_max": None,
                         "common_depth_sum": 0.0,
+                        "terminal_loss_samples": 0,
+                        "ai_terminal_loss_rate_sum": 0.0,
+                        "human_terminal_loss_rate_sum": 0.0,
                         "action_pair_counts": Counter(),
                         "first_seen_at": now,
                         "last_seen_at": now,
@@ -1615,6 +1631,15 @@ class GenericResponsePatternStore:
                 pattern_detail["common_depth_sum"] += max(
                     0,
                     int(common_depth),
+                )
+                pattern_detail["terminal_loss_samples"] += 1
+                pattern_detail["ai_terminal_loss_rate_sum"] += max(
+                    0.0,
+                    min(1.0, float(ai_terminal_loss_rate)),
+                )
+                pattern_detail["human_terminal_loss_rate_sum"] += max(
+                    0.0,
+                    min(1.0, float(human_terminal_loss_rate)),
                 )
                 delta = float(value_delta)
                 pattern_detail["value_delta_sum"] += delta
@@ -2320,8 +2345,39 @@ class GenericResponsePatternStore:
                 )
             )
             human_root_pattern_details = []
+            human_root_candidate_reason_counts = Counter()
             for pattern_key, raw in self._human_root_pattern_details.items():
                 completed = max(0, int(raw.get("completed", 0)))
+                terminal_loss_samples = max(
+                    0,
+                    int(raw.get("terminal_loss_samples", 0)),
+                )
+                average_value_delta = (
+                    float(raw.get("value_delta_sum", 0.0))
+                    / max(1, completed)
+                )
+                average_ai_terminal_loss_rate = (
+                    float(raw.get("ai_terminal_loss_rate_sum", 0.0))
+                    / max(1, terminal_loss_samples)
+                )
+                average_human_terminal_loss_rate = (
+                    float(raw.get("human_terminal_loss_rate_sum", 0.0))
+                    / max(1, terminal_loss_samples)
+                )
+                if completed < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
+                    candidate_reason = "insufficient_comparisons"
+                elif terminal_loss_samples < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
+                    candidate_reason = "insufficient_loss_data"
+                elif average_value_delta <= 0.0:
+                    candidate_reason = "non_positive_value"
+                elif (
+                    average_human_terminal_loss_rate
+                    > average_ai_terminal_loss_rate + 1e-9
+                ):
+                    candidate_reason = "terminal_loss_increased"
+                else:
+                    candidate_reason = "candidate"
+                human_root_candidate_reason_counts[candidate_reason] += 1
                 action_pairs = []
                 for pair_key, count in raw.get(
                     "action_pair_counts",
@@ -2358,8 +2414,7 @@ class GenericResponsePatternStore:
                     "ai_better": max(0, int(raw.get("ai_better", 0))),
                     "tied": max(0, int(raw.get("tied", 0))),
                     "average_value_delta": round(
-                        float(raw.get("value_delta_sum", 0.0))
-                        / max(1, completed),
+                        average_value_delta,
                         3,
                     ),
                     "minimum_value_delta": (
@@ -2377,11 +2432,23 @@ class GenericResponsePatternStore:
                         / max(1, completed),
                         3,
                     ),
+                    "terminal_loss_samples": terminal_loss_samples,
+                    "average_ai_terminal_loss_rate": round(
+                        average_ai_terminal_loss_rate,
+                        5,
+                    ),
+                    "average_human_terminal_loss_rate": round(
+                        average_human_terminal_loss_rate,
+                        5,
+                    ),
+                    "candidate": candidate_reason == "candidate",
+                    "candidate_reason": candidate_reason,
                     "action_pairs": action_pairs[:4],
                     "last_seen_at": float(raw.get("last_seen_at", 0.0)),
                 })
             human_root_pattern_details.sort(
                 key=lambda item: (
+                    not bool(item["candidate"]),
                     -int(item["human_better"]),
                     -float(item["average_value_delta"]),
                     -int(item["completed"]),
@@ -2736,6 +2803,32 @@ class GenericResponsePatternStore:
                 "human_root_diag_action_pairs": human_root_action_pairs,
                 "human_root_pattern_detail_count": len(
                     self._human_root_pattern_details
+                ),
+                "human_root_candidate_min_comparisons": (
+                    HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS
+                ),
+                "human_root_candidate_count": int(
+                    human_root_candidate_reason_counts["candidate"]
+                ),
+                "human_root_candidate_insufficient_comparisons": int(
+                    human_root_candidate_reason_counts[
+                        "insufficient_comparisons"
+                    ]
+                ),
+                "human_root_candidate_insufficient_loss_data": int(
+                    human_root_candidate_reason_counts[
+                        "insufficient_loss_data"
+                    ]
+                ),
+                "human_root_candidate_non_positive_value": int(
+                    human_root_candidate_reason_counts[
+                        "non_positive_value"
+                    ]
+                ),
+                "human_root_candidate_terminal_loss_increased": int(
+                    human_root_candidate_reason_counts[
+                        "terminal_loss_increased"
+                    ]
                 ),
                 "human_root_pattern_details": (
                     human_root_pattern_details[:50]

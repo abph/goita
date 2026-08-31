@@ -271,6 +271,11 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "minimum_value_delta": 375.0,
             "maximum_value_delta": 375.0,
             "average_common_depth": 7.0,
+            "terminal_loss_samples": 1,
+            "average_ai_terminal_loss_rate": 0.2,
+            "average_human_terminal_loss_rate": 0.1,
+            "candidate": False,
+            "candidate_reason": "insufficient_comparisons",
             "action_pairs": [{
                 "human_action": "pass",
                 "ai_action": "receive_same",
@@ -319,6 +324,9 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "value_delta_min",
             "value_delta_max",
             "common_depth_sum",
+            "terminal_loss_samples",
+            "ai_terminal_loss_rate_sum",
+            "human_terminal_loss_rate_sum",
             "action_pair_counts",
             "first_seen_at",
             "last_seen_at",
@@ -353,6 +361,89 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_root_pattern_details"][0][
             "average_value_delta"
         ] == 375.0
+        assert restored["human_root_pattern_details"][0][
+            "terminal_loss_samples"
+        ] == 1
+
+
+def test_human_root_candidate_filter_requires_repeatable_safe_gain() -> None:
+    store = GenericResponsePatternStore()
+
+    for _index in range(5):
+        store.record_human_root_pair(
+            comparison_complete=True,
+            pattern_key="safe-human-pattern",
+            selected_side="human",
+            common_depth=5,
+            value_delta=100.0,
+            ai_terminal_loss_rate=0.2,
+            human_terminal_loss_rate=0.1,
+            human_action_label="pass",
+            ai_action_label="receive_same",
+        )
+
+    snapshot = store.snapshot()
+    safe_pattern = snapshot["human_root_pattern_details"][0]
+    assert snapshot["human_root_candidate_min_comparisons"] == 5
+    assert snapshot["human_root_candidate_count"] == 1
+    assert safe_pattern["candidate"] is True
+    assert safe_pattern["candidate_reason"] == "candidate"
+    assert safe_pattern["terminal_loss_samples"] == 5
+    assert safe_pattern["average_human_terminal_loss_rate"] == 0.1
+    assert safe_pattern["average_ai_terminal_loss_rate"] == 0.2
+
+    store.record_human_root_pair(
+        comparison_complete=True,
+        pattern_key="safe-human-pattern",
+        selected_side="human",
+        common_depth=5,
+        value_delta=100.0,
+        ai_terminal_loss_rate=0.0,
+        human_terminal_loss_rate=1.0,
+        human_action_label="pass",
+        ai_action_label="receive_same",
+    )
+
+    snapshot = store.snapshot()
+    unsafe_pattern = snapshot["human_root_pattern_details"][0]
+    assert snapshot["human_root_candidate_count"] == 0
+    assert snapshot["human_root_candidate_terminal_loss_increased"] == 1
+    assert unsafe_pattern["candidate"] is False
+    assert unsafe_pattern["candidate_reason"] == "terminal_loss_increased"
+
+
+def test_restored_root_patterns_wait_for_new_terminal_loss_samples() -> None:
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-response-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        for _index in range(5):
+            store.record_human_root_pair(
+                comparison_complete=True,
+                pattern_key="legacy-positive-pattern",
+                selected_side="human",
+                common_depth=5,
+                value_delta=100.0,
+                ai_terminal_loss_rate=0.2,
+                human_terminal_loss_rate=0.1,
+            )
+        assert store.checkpoint("before-candidate-safety") is True
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        legacy = payload["human_root_pattern_details"][
+            "legacy-positive-pattern"
+        ]
+        legacy.pop("terminal_loss_samples")
+        legacy.pop("ai_terminal_loss_rate_sum")
+        legacy.pop("human_terminal_loss_rate_sum")
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        detail = restored["human_root_pattern_details"][0]
+        assert restored["human_root_candidate_count"] == 0
+        assert restored["human_root_candidate_insufficient_loss_data"] == 1
+        assert detail["completed"] == 5
+        assert detail["terminal_loss_samples"] == 0
+        assert detail["candidate_reason"] == "insufficient_loss_data"
 
 
 def test_old_root_comparison_metrics_reset_without_losing_other_data() -> None:
@@ -417,6 +508,8 @@ if __name__ == "__main__":
     test_human_dictionary_shadow_does_not_change_live_action()
     test_deployable_dictionary_contains_only_aggregate_fields()
     test_human_shadow_metrics_survive_checkpoint()
+    test_human_root_candidate_filter_requires_repeatable_safe_gain()
+    test_restored_root_patterns_wait_for_new_terminal_loss_samples()
     test_old_root_comparison_metrics_reset_without_losing_other_data()
     test_new_root_diagnostics_start_clean_without_resetting_root_totals()
     print("HUMAN_RESPONSE_DICTIONARY_TEST_OK")

@@ -253,11 +253,11 @@
           <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIと推薦が異なる場合に、人間の受け方とAIの受け方を初手で分け、同じ推定手駒・各5秒で探索します。両方が到達した深さ5以上の最深地点だけを比較し、比較結果はAIの実戦判断には影響しません。詳細診断では、深さ不足の停止理由と、終局結果・得点・途中局面評価の差をデプロイ後から別集計します。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">人間棋譜ルートの型別比較</h3>
-          <p class="muted">局面そのものは保存せず、匿名の型IDごとに、人間棋譜ルートと現在AIルートの比較結果だけを集計します。評価差は「人間ルート − AIルート」です。</p>
+          <p class="muted">局面そのものは保存せず、匿名の型IDごとに、人間棋譜ルートと現在AIルートの比較結果だけを集計します。評価差は「人間ルート − AIルート」です。同じ型で5回以上比較し、平均評価差がプラスで、確定負けが増えない型だけを採用候補として表示します。候補は現在、AIの判断には使用しません。</p>
           <div class="table-scroll">
             <table class="tactical-mismatch-table">
               <thead>
-                <tr><th>型</th><th>比較した判断</th><th>比較</th><th>結果</th><th>平均評価差</th><th>評価差の範囲</th><th>平均共通深さ</th></tr>
+                <tr><th>型</th><th>比較した判断</th><th>比較</th><th>結果</th><th>平均評価差</th><th>確定負け率</th><th>候補判定</th><th>評価差の範囲</th><th>平均共通深さ</th></tr>
               </thead>
               <tbody id="humanRootPatternRows"></tbody>
             </table>
@@ -604,6 +604,11 @@
         ["詳細診断・比較完了", `${data.human_root_diag_completed || 0}回`],
         ["詳細診断・比較未完了", `${data.human_root_diag_incomplete || 0}回`],
         ["型別比較の型", `${data.human_root_pattern_detail_count || 0}種類`],
+        ["人間棋譜・採用候補", `${data.human_root_candidate_count || 0}種類`],
+        ["候補外・比較5回未満", `${data.human_root_candidate_insufficient_comparisons || 0}種類`],
+        ["候補外・勝敗安全性5回未満", `${data.human_root_candidate_insufficient_loss_data || 0}種類`],
+        ["候補外・平均評価差0以下", `${data.human_root_candidate_non_positive_value || 0}種類`],
+        ["候補外・確定負け増加", `${data.human_root_candidate_terminal_loss_increased || 0}種類`],
         ["深さ不足・人間側の時間上限", `${data.human_root_diag_human_stop_time || 0}回`],
         ["深さ不足・人間側の探索量上限", `${data.human_root_diag_human_stop_nodes || 0}回`],
         ["深さ不足・人間側の深さ上限", `${data.human_root_diag_human_stop_depth || 0}回`],
@@ -760,6 +765,17 @@
         const range = minimum == null || maximum == null
           ? "−"
           : `${Number(minimum).toFixed(1)} 〜 ${Number(maximum).toFixed(1)}`;
+        const candidateLabels = {
+          candidate: "採用候補",
+          insufficient_comparisons: `比較 ${Number(detail.completed || 0)}/5`,
+          insufficient_loss_data: `勝敗 ${Number(detail.terminal_loss_samples || 0)}/5`,
+          non_positive_value: "評価差0以下",
+          terminal_loss_increased: "確定負け増加",
+        };
+        const lossSamples = Number(detail.terminal_loss_samples || 0);
+        const terminalLoss = lossSamples
+          ? `人間${(Number(detail.average_human_terminal_loss_rate || 0) * 100).toFixed(1)}%<br>AI${(Number(detail.average_ai_terminal_loss_rate || 0) * 100).toFixed(1)}%`
+          : "未集計";
         return `
           <tr>
             <td>型${index + 1}<br><span class="muted">${escapeHtml(detail.pattern_id || "")}</span></td>
@@ -767,11 +783,13 @@
             <td>${Number(detail.completed || 0)}完了<br>${Number(detail.incomplete || 0)}未完了</td>
             <td>人間${Number(detail.human_better || 0)}<br>AI${Number(detail.ai_better || 0)}<br>同じ${Number(detail.tied || 0)}</td>
             <td>${Number(detail.average_value_delta || 0).toFixed(1)}</td>
+            <td>${terminalLoss}<br><span class="muted">${lossSamples}回</span></td>
+            <td>${escapeHtml(candidateLabels[detail.candidate_reason] || "判定待ち")}</td>
             <td>${range}</td>
             <td>${Number(detail.average_common_depth || 0).toFixed(2)}</td>
           </tr>
         `;
-      }).join("") || '<tr><td colspan="7" class="muted">デプロイ後の型別比較はまだありません。</td></tr>';
+      }).join("") || '<tr><td colspan="9" class="muted">デプロイ後の型別比較はまだありません。</td></tr>';
       document.getElementById("tacticalMismatchRows").innerHTML = (
         data.tactical_mismatch_details || []
       ).map((detail, index) => {
