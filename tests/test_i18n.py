@@ -74,7 +74,9 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert 'language: window.goitaI18n?.getLanguage?.() || "ja"' in ask_lobby_chat_block
     assert 'window.addEventListener("goita-language-change"' in html
     assert "function shouldTranslateChatItem(item)" in html
-    assert "function localizedChatSender(item)" in html
+    assert "function localizedChatSender(item, viewerKind = chatViewerKind())" in html
+    assert '"同じ部屋": "Same room"' in english
+    assert '"プライベート": "Private room"' in english
     assert "window.goitaI18n?.translate?.(text)" in board_3d
     assert "window.goitaI18n?.translate?.(text)" in board_pixel
     assert '"そろうごいた": "Solo Goita"' in english

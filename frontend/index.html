@@ -10458,28 +10458,57 @@ function shouldTranslateChatItem(item){
   return item?.local_notice === true || item?.ai_answer === true || item?.seat === "notice";
 }
 
-function localizedChatSender(item){
+function chatSenderDisplayName(item){
+  const explicitName = String(item?.sender_name || "").trim();
+  if(explicitName){
+    return shouldTranslateChatItem(item) || explicitName === "観戦" || explicitName === "ゲスト"
+      ? uiText(explicitName)
+      : explicitName;
+  }
   const raw = String(item?.sender || item?.seat || "観戦");
-  let sender = raw;
-  if(shouldTranslateChatItem(item) || raw === "観戦" || raw === "ゲスト"){
-    sender = uiText(raw);
+  const seat = String(item?.seat || "").toUpperCase();
+  if(["A", "B", "C", "D"].includes(seat) && raw.startsWith(`${seat}: `)){
+    return raw.slice(`${seat}: `.length) || seat;
   }
   if(raw.startsWith("観戦: ")){
-    sender = `${uiText("観戦")}：${raw.slice("観戦: ".length)}`;
+    return raw.slice("観戦: ".length) || uiText("観戦");
   }
-  if(item?.origin === "lobby"){
-    return `${uiText("ロビー")}｜${sender}`;
+  if(shouldTranslateChatItem(item) || raw === "観戦" || raw === "ゲスト"){
+    return uiText(raw);
   }
-  if((item?.origin === "public_room" || item?.origin === "room") && item?.room_name){
-    return `${uiText(String(item.room_name))}｜${sender}`;
-  }
-  return sender;
+  return raw;
 }
 
-function localizedChatSenderWithTag(item){
-  const sender = localizedChatSender(item);
-  const tag = playerTagLabel(item?.tag);
-  return tag ? `${sender} [${tag}]` : sender;
+function chatViewerKind(){
+  return document.getElementById("lobbyView")?.style.display !== "none"
+    ? "lobby"
+    : "room";
+}
+
+function chatLocationLabel(item, viewerKind = chatViewerKind()){
+  const origin = String(item?.origin || "");
+  if(origin === "lobby") return uiText("ロビー");
+  if(origin !== "public_room" && origin !== "room") return "";
+
+  const sameRoom = viewerKind === "room"
+    && String(item?.room_id || "")
+    && String(item.room_id) === String(gid);
+  if(sameRoom){
+    const seat = String(item?.seat || "").toUpperCase();
+    if(["A", "B", "C", "D"].includes(seat)){
+      return `${uiText("同じ部屋")} (${uiText(`${seat}席`)})`;
+    }
+    return uiText("同じ部屋");
+  }
+  return origin === "public_room" ? uiText("公開部屋") : uiText("プライベート");
+}
+
+function localizedChatSender(item, viewerKind = chatViewerKind()){
+  const privateOutsideRoom = item?.origin === "room"
+    && !(viewerKind === "room" && String(item?.room_id || "") === String(gid));
+  const sender = privateOutsideRoom ? "＊＊＊＊" : chatSenderDisplayName(item);
+  const location = chatLocationLabel(item, viewerKind);
+  return location ? `${sender}　${location}` : sender;
 }
 
 function showChatToast(item){
@@ -10495,7 +10524,7 @@ function showChatToast(item){
   }
 
   sender.setAttribute("data-i18n-ignore", "");
-  sender.textContent = localizedChatSenderWithTag(item);
+  sender.textContent = localizedChatSender(item);
   const stamp = item?.message_type === "stamp"
     ? chatStampDefinition(item?.stamp_id)
     : null;
@@ -10645,12 +10674,12 @@ function mergedChatMessages(serverMessages){
 }
 
 function renderChatItems(box, messages, isMine = null){
+  const viewerKind = box?.id === "lobbyChatMessages" ? "lobby" : "room";
   const renderKey = JSON.stringify([
     currentUiLanguage(),
     messages.map((item) => [
       chatItemTimeValue(item),
-      localizedChatSender(item),
-      item?.tag || "",
+      localizedChatSender(item, viewerKind),
       item?.message || "",
       item?.message_type || "",
       item?.stamp_id || "",
@@ -10682,13 +10711,11 @@ function renderChatItems(box, messages, isMine = null){
 
     const sender = document.createElement("div");
     sender.className = "chat-sender";
-    sender.textContent = localizedChatSender(item);
+    sender.textContent = localizedChatSender(item, viewerKind);
 
     const meta = document.createElement("div");
     meta.className = "chat-meta";
     meta.appendChild(sender);
-    const tagBadge = buildPlayerTagBadge(item?.tag, "chat-player-tag");
-    if(tagBadge) meta.appendChild(tagBadge);
 
     row.appendChild(meta);
     const stampCard = item?.message_type === "stamp"

@@ -58,7 +58,9 @@ async def _run() -> None:
         )
         room_item = room_result["chat_messages"][-1]
         assert room_item["origin"] == "public_room"
+        assert room_item["room_id"] == main_id
         assert room_item["room_name"] == app_module.MAIN_ROOM_NAMES[main_id]
+        assert room_item["sender_name"] == "Room User"
         assert room_item["message"] == "hello from room"
         assert room_item["tag"] == "human_match"
         assert broadcasts == [main_id]
@@ -80,7 +82,8 @@ async def _run() -> None:
         )
         private_item = private_result["chat_messages"][-1]
         assert private_item["message"] == "private only"
-        assert "origin" not in private_item
+        assert private_item["origin"] == "room"
+        assert private_item["room_id"] == private_id
         assert broadcasts == [private_id]
         assert all(
             item.get("message") != "private only"
@@ -134,6 +137,7 @@ async def _run() -> None:
         everyone_item = everyone_result["chat_messages"][-1]
         assert everyone_item["mention_scope"] == "everyone"
         assert everyone_item["origin"] == "room"
+        assert everyone_item["room_id"] == private_id
         assert everyone_item["room_name"] == app_module.GAMES[private_id]["owner_name"]
         assert set(broadcasts) == {"lobby", *app_module.GAMES.keys()}
         assert everyone_item in app_module._chat_messages_for_lobby()

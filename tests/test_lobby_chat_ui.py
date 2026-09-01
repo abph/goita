@@ -33,6 +33,12 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert 'id="lobbyChatUnread"' in html
     assert "function toggleLobbyChatPanel(open)" in html
     assert "function renderLobbyChat(serverMessages)" in html
+    assert "function chatSenderDisplayName(item)" in html
+    assert "function chatLocationLabel(item, viewerKind = chatViewerKind())" in html
+    assert 'return `${uiText("同じ部屋")} (${uiText(`${seat}席`)})`;' in html
+    assert 'return origin === "public_room" ? uiText("公開部屋") : uiText("プライベート");' in html
+    assert 'const sender = privateOutsideRoom ? "＊＊＊＊" : chatSenderDisplayName(item);' in html
+    assert 'buildPlayerTagBadge(item?.tag, "chat-player-tag")' not in html
     assert "function setLobbyChatComposeMode(mode, focusInput = true)" in html
     assert "function submitLobbyChatInput(event)" in html
     assert "async function sendLobbyChatMessage(event)" in html

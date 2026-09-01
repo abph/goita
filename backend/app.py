@@ -1182,6 +1182,16 @@ def _chat_sender_label(game_obj: Dict[str, Any], seat: str, spectator_name: str 
     return f"観戦: {name}" if name else "観戦"
 
 
+def _chat_sender_name(game_obj: Dict[str, Any], seat: str, spectator_name: str = "") -> str:
+    if seat in ALL_SEATS:
+        name = _sanitize_player_name(
+            (game_obj.get("player_names") or {}).get(seat, "")
+        )
+        return name or seat
+    name = _sanitize_player_name(spectator_name)
+    return name or "観戦"
+
+
 def _chat_sender_tag(game_obj: Dict[str, Any], seat: str, spectator_tag: str = "") -> str:
     if seat in ALL_SEATS:
         return _sanitize_player_tag((game_obj.get("player_tags") or {}).get(seat, ""))
@@ -4544,6 +4554,7 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     chat_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
+        "sender_name": _chat_sender_name(game, seat, req.name),
         "tag": _chat_sender_tag(game, seat, req.tag),
         "message": message,
         "ts": _next_chat_timestamp(),
@@ -4558,11 +4569,13 @@ async def post_chat_message(game_id: str, req: ChatRequest):
     if is_public_chat:
         chat_item.update({
             "origin": "public_room",
+            "room_id": game_id,
             "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
         })
-    elif mention_scope == "everyone":
+    else:
         chat_item.update({
             "origin": "room",
+            "room_id": game_id,
             "room_name": game.get("owner_name") or game_id,
         })
 
@@ -4596,6 +4609,7 @@ async def post_lobby_chat_message(req: ChatRequest):
     chat_item = {
         "seat": "W",
         "sender": name or "ゲスト",
+        "sender_name": name or "ゲスト",
         "tag": _sanitize_player_tag(req.tag),
         "message": message,
         "ts": _next_chat_timestamp(),
@@ -4705,6 +4719,7 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     question_item = {
         "seat": seat,
         "sender": _chat_sender_label(game, seat, req.name),
+        "sender_name": _chat_sender_name(game, seat, req.name),
         "tag": _chat_sender_tag(game, seat, req.tag),
         "message": question,
         "ts": ts,
@@ -4712,6 +4727,7 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     answer_item = {
         "seat": "AI",
         "sender": "案内AI",
+        "sender_name": "案内AI",
         "message": answer,
         "ts": ts + 1,
         "ai_answer": True,
@@ -4719,10 +4735,17 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
     if is_public_chat:
         origin = {
             "origin": "public_room",
+            "room_id": game_id,
             "room_name": MAIN_ROOM_NAMES.get(game_id, game_id),
         }
-        question_item.update(origin)
-        answer_item.update(origin)
+    else:
+        origin = {
+            "origin": "room",
+            "room_id": game_id,
+            "room_name": game.get("owner_name") or game_id,
+        }
+    question_item.update(origin)
+    answer_item.update(origin)
     chat_messages.extend([question_item, answer_item])
     if len(chat_messages) > 100:
         del chat_messages[:-100]

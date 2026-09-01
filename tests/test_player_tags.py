@@ -31,7 +31,7 @@ def test_player_tag_controls_and_transport_are_present() -> None:
     assert 'wsParams.set("tag", personalSettings.playerTag)' in html
     assert 'tag: normalizePlayerTag(personalSettings.playerTag)' in html
     assert 'const playerTags = state.player_tags' in html
-    assert 'buildPlayerTagBadge(item?.tag, "chat-player-tag")' in html
+    assert 'buildPlayerTagBadge(item?.tag, "chat-player-tag")' not in html
     assert 'buildPlayerTagBadge(person?.tag, "lobby-player-tag")' in html
 
 
