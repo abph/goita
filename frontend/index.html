@@ -16,6 +16,7 @@
       --chat-people-width: 168px;
       --mobile-chat-height: 430px;
       --mobile-chat-top-height: 138px;
+      --lobby-chat-top: 230px;
     }
     * , *::before, *::after { box-sizing: border-box; }
     
@@ -1609,6 +1610,10 @@
       transform: translateX(0);
       opacity: 1;
     }
+    #lobbyChatPanel {
+      top: var(--lobby-chat-top);
+      height: min(var(--chat-panel-height), calc(100dvh - var(--lobby-chat-top) - 12px));
+    }
     .room-chat-people {
       display: none;
       min-width: 0;
@@ -2289,9 +2294,12 @@
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
       }
-      #chatPanel,
-      #lobbyChatPanel {
+      #chatPanel {
         top: 54px;
+      }
+      #lobbyChatPanel {
+        top: var(--lobby-chat-top);
+        height: min(var(--chat-panel-height), calc(100dvh - var(--lobby-chat-top) - 10px));
       }
       .chat-toast {
         top: 8px;
@@ -6840,6 +6848,7 @@ let isGameStarted = false;
 let activeRoomId = null;
 let chatOpen = false;
 let lobbyChatOpen = false;
+let initialLobbyChatAutoOpenHandled = false;
 let mobileChatLockedScrollY = 0;
 let lobbyChatMessages = [];
 let lobbyChatNotices = [];
@@ -10308,11 +10317,23 @@ function closeChatPanelOnPointerDown(event, kind){
   closeChatPanel(kind);
 }
 
-function toggleLobbyChatPanel(open){
+function positionLobbyChatBelowIntro(){
+  const panel = document.getElementById("lobbyChatPanel");
+  const intro = document.querySelector("#lobbyView .lobby-intro");
+  if(!panel || !intro) return;
+  const minimumTop = window.innerWidth <= 701 ? 54 : 94;
+  const introBottom = Math.ceil(intro.getBoundingClientRect().bottom + 10);
+  const maximumTop = Math.max(minimumTop, window.innerHeight - 150);
+  const top = Math.min(Math.max(minimumTop, introBottom), maximumTop);
+  panel.style.setProperty("--lobby-chat-top", `${top}px`);
+}
+
+function toggleLobbyChatPanel(open, focusComposer = true){
   lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
   const panel = document.getElementById("lobbyChatPanel");
   const btn = document.getElementById("lobbyChatToggle");
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
+  if(inLobby && lobbyChatOpen) positionLobbyChatBelowIntro();
   if(panel){
     panel.classList.toggle("open", inLobby && lobbyChatOpen);
     panel.hidden = !inLobby || !lobbyChatOpen;
@@ -10334,11 +10355,21 @@ function toggleLobbyChatPanel(open){
       const box = document.getElementById("lobbyChatMessages");
       const input = document.getElementById("lobbyChatInput");
       if(box) box.scrollTop = box.scrollHeight;
-      if(input) input.focus();
+      if(input && focusComposer) input.focus();
     }, 0);
   }
   updateMobileChatPageScrollLock();
 }
+
+function openInitialLobbyChatOnce(){
+  if(initialLobbyChatAutoOpenHandled) return;
+  initialLobbyChatAutoOpenHandled = true;
+  toggleLobbyChatPanel(true, false);
+}
+
+window.addEventListener("resize", () => {
+  if(lobbyChatOpen) positionLobbyChatBelowIntro();
+}, { passive: true });
 
 function formatLobbyPersonLocation(person){
   const location = uiText(String(person?.location || "トップページ"));
@@ -13441,6 +13472,7 @@ window.addEventListener("load", async ()=>{
 
   connectWS("lobby");
   await fetchRoomList();
+  openInitialLobbyChatOnce();
   showLobbyWelcomeToast();
 });
 </script>

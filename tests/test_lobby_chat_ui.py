@@ -31,7 +31,14 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "grid-template-columns: minmax(0, 1fr) auto;" in html
     assert "composeEntry?.classList.toggle(\"ai-mode\", isAiMode);" in html
     assert 'id="lobbyChatUnread"' in html
-    assert "function toggleLobbyChatPanel(open)" in html
+    assert "function toggleLobbyChatPanel(open, focusComposer = true)" in html
+    assert "let initialLobbyChatAutoOpenHandled = false;" in html
+    assert "function openInitialLobbyChatOnce()" in html
+    assert "toggleLobbyChatPanel(true, false);" in html
+    assert "if(input && focusComposer) input.focus();" in html
+    assert "function positionLobbyChatBelowIntro()" in html
+    assert 'document.querySelector("#lobbyView .lobby-intro")' in html
+    assert 'intro.getBoundingClientRect().bottom + 10' in html
     assert "function renderLobbyChat(serverMessages)" in html
     assert "function chatSenderDisplayName(item)" in html
     assert "function chatLocationLabel(item, viewerKind = chatViewerKind())" in html
@@ -49,7 +56,7 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "lobbyChatNotices = [notice];" in html
     assert "renderLobbyChat(lobbyChatMessages);" in html
     assert "lobbyChatMessages = [...sharedMessages, ...lobbyChatNotices.filter(shouldDisplayChatNotice)]" in html
-    assert "await fetchRoomList();\n  showLobbyWelcomeToast();" in html
+    assert "await fetchRoomList();\n  openInitialLobbyChatOnce();\n  showLobbyWelcomeToast();" in html
     assert "`${API}/lobby/chat`" in html
     assert "`${API}/lobby/chat/ask_ai`" in html
     assert "data.public_chat_messages" in html
@@ -66,6 +73,8 @@ def test_lobby_chat_reuses_mobile_chat_appearance_settings() -> None:
     assert "right: 14px;\n      top: 142px;\n      bottom: auto;" in html
     assert "--mobile-chat-width" in html
     assert "--mobile-chat-opacity" in html
+    assert "--lobby-chat-top: 230px;" in html
+    assert "height: min(var(--chat-panel-height), calc(100dvh - var(--lobby-chat-top) - 10px));" in html
     assert "body.mobile-chat-placement-top .chat-panel" in html
     assert "top: 142px;\n        bottom: auto;" in html
 
