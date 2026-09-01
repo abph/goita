@@ -99,6 +99,11 @@
     .room-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
     .room-options label { display: flex; align-items: center; gap: 7px; }
     .room-options input { width: auto; }
+    .public-room-name-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0 14px;
+    }
     .notice-summary { display: grid; gap: 4px; margin-top: 8px; }
     .notice-summary-row {
       display: grid;
@@ -157,7 +162,7 @@
     [hidden] { display: none !important; }
     @media (max-width: 900px) {
       .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .analytics-grid, .form-grid { grid-template-columns: 1fr; }
+      .analytics-grid, .form-grid, .public-room-name-grid { grid-template-columns: 1fr; }
       .password-row { grid-template-columns: 1fr; }
       .room-options { grid-template-columns: 1fr; }
     }
@@ -207,6 +212,10 @@
             </div>
           </div>
           <p class="muted">部屋を減らしても、進行中の対局は中断されません。</p>
+
+          <h3 class="subheading">公開部屋の名前</h3>
+          <p class="muted">各ルーム名は12文字以内で入力してください。</p>
+          <div id="publicRoomNames" class="public-room-name-grid"></div>
 
           <h3 class="subheading">プライベートルームのお知らせ</h3>
           <div class="field">
@@ -359,6 +368,7 @@
       none: "",
     };
     let settingsPayload = null;
+    let publicRooms = [];
     let privateRooms = [];
     let privateRoomAds = {};
     let activePrivateAdRoomId = "";
@@ -443,6 +453,14 @@
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
       document.getElementById("privateRoomCount").max = data.private_room_max ?? 5;
+      publicRooms = Array.isArray(data.main_rooms) ? data.main_rooms : [];
+      document.getElementById("publicRoomNames").innerHTML = publicRooms.map((room, index) => `
+        <div class="field">
+          <label for="publicRoomName${index}">公開部屋${index + 1}</label>
+          <input id="publicRoomName${index}" class="public-room-name" type="text" maxlength="12" required
+            data-room="${escapeHtml(room.game_id)}" value="${escapeHtml(room.owner_name)}">
+        </div>
+      `).join("");
       const rooms = Array.isArray(data.private_rooms) ? data.private_rooms : [];
       privateRooms = rooms;
       const savedAds = data.private_room_ads || {};
@@ -1088,11 +1106,22 @@
       event.preventDefault();
       const status = document.getElementById("settingsStatus");
       capturePrivateAdSettings();
+      const mainRoomNames = Object.fromEntries(
+        [...document.querySelectorAll(".public-room-name")].map(input => [
+          input.dataset.room,
+          input.value.trim(),
+        ]),
+      );
       const payload = {
         main_room_count: Number(document.getElementById("mainRoomCount").value),
         private_room_count: Number(document.getElementById("privateRoomCount").value),
+        main_room_names: mainRoomNames,
         private_room_ads: privateRoomAds,
       };
+      if (Object.values(mainRoomNames).some(name => !name)) {
+        status.textContent = "公開部屋名を入力してください。";
+        return;
+      }
       const invalidRoom = privateRooms.find(room => {
         const ad = normalizedPrivateAd(privateRoomAds[room.game_id]);
         return ad.enabled && !ad.message;

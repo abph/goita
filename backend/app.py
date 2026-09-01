@@ -78,7 +78,7 @@ from backend.analytics_geo import infer_prefecture
 LOGGER = logging.getLogger(__name__)
 
 MAIN_GID = "main"
-MAIN_ROOM_NAMES: Dict[str, str] = {
+DEFAULT_MAIN_ROOM_NAMES: Dict[str, str] = {
     MAIN_GID: "みんなでごいたA",
     "main-b": "みんなでごいたB",
     "main-c": "みんなでごいたC",
@@ -86,6 +86,7 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     "main-d": "どこかの集会室",
     "main-f": "AIとごいたB",
 }
+MAIN_ROOM_NAMES: Dict[str, str] = dict(DEFAULT_MAIN_ROOM_NAMES)
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 MEETING_ROOM_GID = "main-d"
 LOBBY_MAIN_ROOM_IDS = (
@@ -2086,6 +2087,7 @@ class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
+    main_room_names: Optional[Dict[str, str]] = None
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     # Legacy fields remain accepted while older clients are being replaced.
     private_ad_enabled: bool = False
@@ -2101,6 +2103,7 @@ class LobbySettingsUpdateRequest(BaseModel):
 class AdminLobbySettingsUpdateRequest(BaseModel):
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
+    main_room_names: Optional[Dict[str, str]] = None
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     private_ad_enabled: bool = False
     private_ad_title: str = Field(default="お知らせ", max_length=40)
@@ -2947,10 +2950,42 @@ def _private_room_ad_public_payload(game_id: str) -> Dict[str, Any]:
     }
 
 
+def _normalize_main_room_names(settings: Dict[str, Any]) -> Dict[str, str]:
+    if not isinstance(settings, dict):
+        raise HTTPException(status_code=400, detail="公開部屋名の形式が正しくありません")
+    unknown_room_ids = set(settings) - set(MAIN_ROOM_NAMES)
+    if unknown_room_ids:
+        raise HTTPException(status_code=400, detail="存在しない公開部屋が指定されています")
+    normalized: Dict[str, str] = {}
+    for game_id, value in settings.items():
+        if not isinstance(value, str):
+            raise HTTPException(status_code=400, detail="公開部屋名の形式が正しくありません")
+        room_name = value.strip().replace("\r", "").replace("\n", "")
+        if not room_name:
+            raise HTTPException(status_code=400, detail="公開部屋名を入力してください")
+        if len(room_name) > ROOM_NAME_MAX_LEN:
+            raise HTTPException(
+                status_code=400,
+                detail=f"公開部屋名は{ROOM_NAME_MAX_LEN}文字以内で入力してください",
+            )
+        normalized[game_id] = room_name
+    return normalized
+
+
+def _apply_main_room_names(settings: Dict[str, Any]) -> None:
+    normalized = _normalize_main_room_names(settings)
+    MAIN_ROOM_NAMES.update(normalized)
+    for game_id, room_name in normalized.items():
+        game = GAMES.get(game_id)
+        if game is not None:
+            game["owner_name"] = room_name
+
+
 def _lobby_management_settings() -> Dict[str, Any]:
     return {
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
+        "main_room_names": copy.deepcopy(MAIN_ROOM_NAMES),
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
     }
 
@@ -2966,6 +3001,12 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
         LOBBY_ROOM_SETTINGS["private_room_count"] = max(
             0, min(len(LOBBY_PRIVATE_ROOM_IDS), private_count)
         )
+    main_room_names = settings.get("main_room_names")
+    if isinstance(main_room_names, dict):
+        try:
+            _apply_main_room_names(main_room_names)
+        except HTTPException:
+            LOGGER.warning("Ignoring invalid persisted public-room names")
     private_ads = settings.get("private_room_ads")
     if isinstance(private_ads, dict):
         try:
@@ -3613,6 +3654,13 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
         "private_room_max": len(LOBBY_PRIVATE_ROOM_IDS),
+        "main_rooms": [
+            {
+                "game_id": game_id,
+                "owner_name": MAIN_ROOM_NAMES[game_id],
+            }
+            for game_id in LOBBY_MAIN_ROOM_IDS
+        ],
         "private_rooms": [
             {
                 "game_id": room["gid"],
@@ -3680,6 +3728,11 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
         raise HTTPException(status_code=401, detail="管理用パスワードが違います")
 
     previous_settings = _lobby_management_settings()
+    next_main_room_names = (
+        _normalize_main_room_names(req.main_room_names)
+        if req.main_room_names is not None
+        else None
+    )
     if req.private_room_ads is not None:
         next_private_ads = _normalize_private_room_ads({
             game_id: item.model_dump()
@@ -3695,6 +3748,8 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
         })
     LOBBY_ROOM_SETTINGS["main_room_count"] = req.main_room_count
     LOBBY_ROOM_SETTINGS["private_room_count"] = req.private_room_count
+    if next_main_room_names is not None:
+        _apply_main_room_names(next_main_room_names)
     PRIVATE_ROOM_AD_SETTINGS.clear()
     PRIVATE_ROOM_AD_SETTINGS.update(next_private_ads)
     setup_main_rooms()
@@ -3708,7 +3763,7 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
             detail="トップページ設定を永続保存できませんでした",
         )
     await manager.broadcast_update("lobby")
-    for game_id in PRIVATE_ROOM_NAMES:
+    for game_id in (*MAIN_ROOM_NAMES, *PRIVATE_ROOM_NAMES):
         await manager.broadcast_update(game_id)
     return _lobby_admin_payload()
 

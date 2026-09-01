@@ -170,9 +170,55 @@ def test_lobby_admin_password_change_rolls_back_when_save_fails() -> None:
         app_module.ROOM_SETTINGS_PATH = original_path
 
 
+def test_lobby_admin_changes_and_persists_public_room_names() -> None:
+    original_path = app_module.ROOM_SETTINGS_PATH
+    original_lobby = app_module._lobby_management_settings()
+    renamed = dict(app_module.MAIN_ROOM_NAMES)
+    renamed[app_module.MAIN_GID] = "交流ごいた"
+    ads = {
+        game_id: app_module.PrivateRoomAdSettingsRequest(**settings)
+        for game_id, settings in app_module.PRIVATE_ROOM_AD_SETTINGS.items()
+    }
+
+    with TemporaryDirectory() as directory:
+        app_module.ROOM_SETTINGS_PATH = Path(directory) / "goita-room-settings.json"
+        try:
+            result = asyncio.run(app_module.update_lobby_admin_settings(
+                app_module.LobbySettingsUpdateRequest(
+                    admin_password=app_module.LOBBY_ADMIN_PASSWORD,
+                    main_room_count=original_lobby["main_room_count"],
+                    private_room_count=original_lobby["private_room_count"],
+                    main_room_names=renamed,
+                    private_room_ads=ads,
+                )
+            ))
+
+            assert app_module.MAIN_ROOM_NAMES[app_module.MAIN_GID] == "交流ごいた"
+            assert app_module.GAMES[app_module.MAIN_GID]["owner_name"] == "交流ごいた"
+            assert result["main_rooms"][0] == {
+                "game_id": app_module.MAIN_GID,
+                "owner_name": "交流ごいた",
+            }
+            stored = load_room_settings(app_module.ROOM_SETTINGS_PATH)
+            assert stored[app_module.LOBBY_SETTINGS_STORAGE_KEY]["main_room_names"][
+                app_module.MAIN_GID
+            ] == "交流ごいた"
+
+            app_module._apply_main_room_names(app_module.DEFAULT_MAIN_ROOM_NAMES)
+            app_module._load_persisted_room_management_settings()
+            assert app_module.MAIN_ROOM_NAMES[app_module.MAIN_GID] == "交流ごいた"
+            assert app_module.GAMES[app_module.MAIN_GID]["owner_name"] == "交流ごいた"
+        finally:
+            app_module.ROOM_SETTINGS_PATH = original_path
+            app_module._apply_lobby_management_settings(original_lobby)
+            app_module.setup_main_rooms()
+            app_module.setup_supporter_rooms()
+
+
 if __name__ == "__main__":
     test_update_settings_persists_and_restores_room_management_values()
     test_update_settings_rolls_back_when_persistent_write_fails()
     test_lobby_admin_changes_and_resets_private_room_admin_password()
     test_lobby_admin_password_change_rolls_back_when_save_fails()
+    test_lobby_admin_changes_and_persists_public_room_names()
     print("ROOM_SETTINGS_PERSISTENCE_INTEGRATION_TEST_OK")

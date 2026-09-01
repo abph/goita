@@ -20,6 +20,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert '"/admin/api/ai-metrics/export"' in admin
     assert "goita-ai-metrics-" in admin
     assert 'id="privateRoomPasswords"' in admin
+    assert 'id="publicRoomNames"' in admin
+    assert "公開部屋の名前" in admin
+    assert 'class="public-room-name"' in admin
+    assert "main_room_names: mainRoomNames" in admin
     assert 'id="privateAdRoomSelect"' in admin
     assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
