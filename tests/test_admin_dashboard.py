@@ -56,6 +56,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "集中再検証を通過した2型" in admin
     assert "人間候補優先・候補に使用" in admin
     assert "人間候補優先・最終採用" in admin
+    assert "人間候補あり・なしを比較" in admin
+    assert "人間候補比較・判断一致率" in admin
+    assert "人間候補比較・平均評価差" in admin
     assert "候補外・重点対象ではない" in admin
     assert "候補外・人間3勝未満" in admin
     assert "候補外・人間勝率60%未満" in admin

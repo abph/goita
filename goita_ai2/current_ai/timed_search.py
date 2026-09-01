@@ -1461,6 +1461,88 @@ class TimedSearchMixin:
                             value_delta=result.value - control_result.value,
                             margin_delta=result.margin - control_result.margin,
                         )
+                human_targeted_priority_action = actual_context.get(
+                    "human_targeted_priority_action"
+                )
+                should_compare_human_targeted_priority = bool(
+                    result is not None
+                    and cancel_event is None
+                    and getattr(
+                        self,
+                        (
+                            "GENERIC_RESPONSE_HUMAN_TARGETED_"
+                            "PAIRED_COMPARISON_ENABLED"
+                        ),
+                        False,
+                    )
+                    and human_targeted_priority_action is not None
+                    and human_targeted_priority_action != baseline_action
+                )
+                if should_compare_human_targeted_priority:
+                    saved_attributes = {}
+                    missing = object()
+                    for name in (
+                        "_suppress_response_dictionary_metrics",
+                        "last_generic_response_priority",
+                        "last_generic_response_tactical_priority",
+                        "last_generic_response_human_targeted_priority",
+                        "last_information_set_search",
+                    ):
+                        saved_attributes[name] = getattr(self, name, missing)
+                    control_result = None
+                    try:
+                        self._suppress_response_dictionary_metrics = True
+                        control_result = self._time_limited_search_from_samples(
+                            state,
+                            player,
+                            actions,
+                            baseline_action,
+                            samples,
+                            cancel_event=None,
+                            human_targeted_priority_enabled=False,
+                            record_priority_metrics=False,
+                        )
+                    except Exception:
+                        # Diagnostic comparison must never interrupt the move.
+                        control_result = None
+                    finally:
+                        for name, previous in saved_attributes.items():
+                            if previous is missing:
+                                try:
+                                    delattr(self, name)
+                                except AttributeError:
+                                    pass
+                            else:
+                                setattr(self, name, previous)
+
+                    if control_result is None:
+                        self._record_human_targeted_response_paired_comparison(
+                            comparison_complete=False,
+                        )
+                    else:
+                        self._record_human_targeted_response_paired_comparison(
+                            comparison_complete=True,
+                            action_matched=(
+                                result.action == control_result.action
+                            ),
+                            with_priority_selected=(
+                                result.action == human_targeted_priority_action
+                            ),
+                            without_priority_selected=(
+                                control_result.action
+                                == human_targeted_priority_action
+                            ),
+                            with_depth=result.depth,
+                            without_depth=control_result.depth,
+                            with_elapsed_seconds=result.elapsed_seconds,
+                            without_elapsed_seconds=(
+                                control_result.elapsed_seconds
+                            ),
+                            with_nodes=result.nodes,
+                            without_nodes=control_result.nodes,
+                            value_delta=result.value - control_result.value,
+                            margin_delta=result.margin - control_result.margin,
+                        )
                 human_pair_enabled = bool(
                     result is not None
                     and cancel_event is None

@@ -38,6 +38,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = False
+    GENERIC_RESPONSE_HUMAN_TARGETED_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_SECONDS = 5.0
     GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_MIN_DEPTH = 5
@@ -779,6 +780,14 @@ class GenericResponsePatternMixin:
             return None
 
         store = generic_response_pattern_store()
+        suppress_metrics = bool(
+            getattr(self, "_suppress_response_dictionary_metrics", False)
+        )
+
+        def record_query(status: str) -> None:
+            if not suppress_metrics:
+                store.record_tactical_priority_query(status)
+
         tactical_payload = self._tactical_response_pattern_payload(
             state,
             player,
@@ -796,13 +805,13 @@ class GenericResponsePatternMixin:
             ),
         )
         if recommendation.get("status") != "recommended":
-            store.record_tactical_priority_query("no_recommendation")
+            record_query("no_recommendation")
             return None
         if recommendation.get("recommended_action") != "receive_same":
-            store.record_tactical_priority_query("rejected_action")
+            record_query("rejected_action")
             return None
         if tactical_payload.get("same_piece") == "none":
-            store.record_tactical_priority_query("rejected_context")
+            record_query("rejected_context")
             return None
 
         priority = next(
@@ -815,19 +824,19 @@ class GenericResponsePatternMixin:
             None,
         )
         if priority is None:
-            store.record_tactical_priority_query("rejected_context")
+            record_query("rejected_context")
             return None
         try:
             after_receive = self._timed_search_apply(state, player, priority)
             followups = after_receive.legal_actions(player)
         except (AttributeError, TypeError, ValueError):
-            store.record_tactical_priority_query("no_legal_followup")
+            record_query("no_legal_followup")
             return None
         if not any(action[0] == "attack" for action in followups):
-            store.record_tactical_priority_query("no_legal_followup")
+            record_query("no_legal_followup")
             return None
 
-        store.record_tactical_priority_query("offered")
+        record_query("offered")
         self.last_generic_response_tactical_priority = {
             **recommendation,
             "priority_action": priority,
@@ -928,6 +937,37 @@ class GenericResponsePatternMixin:
             baseline_disagreed=baseline_disagreed,
             selected=selected,
             completed_depth=completed_depth,
+        )
+
+    def _record_human_targeted_response_paired_comparison(
+        self,
+        *,
+        comparison_complete: bool,
+        action_matched: bool = False,
+        with_priority_selected: bool = False,
+        without_priority_selected: bool = False,
+        with_depth: int = 0,
+        without_depth: int = 0,
+        with_elapsed_seconds: float = 0.0,
+        without_elapsed_seconds: float = 0.0,
+        with_nodes: int = 0,
+        without_nodes: int = 0,
+        value_delta: float = 0.0,
+        margin_delta: float = 0.0,
+    ) -> None:
+        generic_response_pattern_store().record_human_targeted_priority_pair(
+            comparison_complete=comparison_complete,
+            action_matched=action_matched,
+            with_priority_selected=with_priority_selected,
+            without_priority_selected=without_priority_selected,
+            with_depth=with_depth,
+            without_depth=without_depth,
+            with_elapsed_seconds=with_elapsed_seconds,
+            without_elapsed_seconds=without_elapsed_seconds,
+            with_nodes=with_nodes,
+            without_nodes=without_nodes,
+            value_delta=value_delta,
+            margin_delta=margin_delta,
         )
 
     def _record_tactical_response_priority_effect(

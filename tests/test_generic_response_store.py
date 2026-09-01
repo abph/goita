@@ -551,6 +551,20 @@ def test_human_targeted_priority_metrics_survive_checkpoint() -> None:
             selected=True,
             completed_depth=7,
         )
+        store.record_human_targeted_priority_pair(
+            comparison_complete=True,
+            action_matched=False,
+            with_priority_selected=True,
+            without_priority_selected=False,
+            with_depth=7,
+            without_depth=5,
+            with_elapsed_seconds=1.2,
+            without_elapsed_seconds=1.5,
+            with_nodes=1200,
+            without_nodes=1500,
+            value_delta=200.0,
+            margin_delta=50.0,
+        )
 
         snapshot = store.snapshot()
         assert snapshot["human_targeted_priority_lookups"] == 1
@@ -563,6 +577,13 @@ def test_human_targeted_priority_metrics_survive_checkpoint() -> None:
         assert snapshot["human_targeted_priority_selected"] == 1
         assert snapshot["human_targeted_priority_selected_rate"] == 1.0
         assert snapshot["human_targeted_priority_average_depth"] == 7.0
+        assert snapshot["human_targeted_pair_comparisons"] == 1
+        assert snapshot["human_targeted_pair_completed"] == 1
+        assert snapshot["human_targeted_pair_action_changes"] == 1
+        assert snapshot["human_targeted_pair_with_priority_selected"] == 1
+        assert snapshot["human_targeted_pair_average_with_depth"] == 7.0
+        assert snapshot["human_targeted_pair_average_without_depth"] == 5.0
+        assert snapshot["human_targeted_pair_average_value_delta"] == 200.0
 
         assert store.checkpoint("human-targeted-priority") is True
         restored = GenericResponsePatternStore(path=path).snapshot()
@@ -570,6 +591,10 @@ def test_human_targeted_priority_metrics_survive_checkpoint() -> None:
         assert restored["human_targeted_priority_offered"] == 1
         assert restored["human_targeted_priority_selected"] == 1
         assert restored["human_targeted_priority_average_depth"] == 7.0
+        assert restored["human_targeted_pair_comparisons"] == 1
+        assert restored["human_targeted_pair_completed"] == 1
+        assert restored["human_targeted_pair_action_changes"] == 1
+        assert restored["human_targeted_pair_average_margin_delta"] == 50.0
 
 
 if __name__ == "__main__":

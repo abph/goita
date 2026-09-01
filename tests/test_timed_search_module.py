@@ -276,6 +276,88 @@ def test_tactical_hint_runs_an_isolated_paired_comparison() -> None:
     assert snapshot["tactical_pair_average_without_depth"] == 1.0
 
 
+def test_reviewed_human_hint_runs_an_isolated_paired_comparison() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.GENERIC_RESPONSE_HUMAN_TARGETED_PAIRED_COMPARISON_ENABLED = True
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    samples = [state]
+    calls = []
+
+    agent._timed_search_sample_states = lambda *_args, **_kwargs: samples
+
+    def paired_search(
+        _state,
+        _player,
+        _actions,
+        _baseline,
+        received_samples,
+        **kwargs,
+    ):
+        targeted_enabled = kwargs.get("human_targeted_priority_enabled", True)
+        calls.append((received_samples, targeted_enabled))
+        if targeted_enabled:
+            kwargs["run_context"]["human_targeted_priority_action"] = priority
+            action = priority
+            depth = 7
+            nodes = 1200
+            elapsed = 1.2
+            value = 200.0
+            margin = 80.0
+        else:
+            action = baseline
+            depth = 5
+            nodes = 1500
+            elapsed = 1.5
+            value = 0.0
+            margin = 30.0
+        return TimedSearchResult(
+            action=action,
+            depth=depth,
+            samples=1,
+            nodes=nodes,
+            elapsed_seconds=elapsed,
+            value=value,
+            margin=margin,
+            agreement=1.0,
+            decisive=False,
+        )
+
+    agent._time_limited_search_from_samples = paired_search
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action == priority
+    assert calls == [(samples, True), (samples, False)]
+    assert snapshot["human_targeted_pair_comparisons"] == 1
+    assert snapshot["human_targeted_pair_completed"] == 1
+    assert snapshot["human_targeted_pair_incomplete"] == 0
+    assert snapshot["human_targeted_pair_action_changes"] == 1
+    assert snapshot["human_targeted_pair_with_priority_selected"] == 1
+    assert snapshot["human_targeted_pair_without_priority_selected"] == 0
+    assert snapshot["human_targeted_pair_average_with_depth"] == 7.0
+    assert snapshot["human_targeted_pair_average_without_depth"] == 5.0
+    assert snapshot["human_targeted_pair_average_value_delta"] == 200.0
+    assert snapshot["human_targeted_pair_average_margin_delta"] == 50.0
+
+
 def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     reset_generic_response_patterns()
     state = _initial_state()
@@ -1473,6 +1555,7 @@ if __name__ == "__main__":
     test_tactical_hint_takes_priority_and_records_the_final_search_choice()
     test_reviewed_human_hint_precedes_other_dictionary_hints()
     test_tactical_hint_runs_an_isolated_paired_comparison()
+    test_reviewed_human_hint_runs_an_isolated_paired_comparison()
     test_human_hint_runs_equal_budget_root_fixed_comparisons()
     test_human_pass_hint_skips_expensive_root_comparison()
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
