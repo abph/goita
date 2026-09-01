@@ -2230,8 +2230,13 @@ class GenericResponsePatternStore:
                 "actual_action": actual,
             }
 
-    def snapshot(self) -> dict:
+    def snapshot(self, *, detail_limit: Optional[int] = 50) -> dict:
         with self._lock:
+            def limited(items):
+                if detail_limit is None:
+                    return list(items)
+                return list(items)[:max(0, int(detail_limit))]
+
             counters = self._counters
             recorded = int(counters["recorded"])
             observation_counts = [
@@ -2601,7 +2606,9 @@ class GenericResponsePatternStore:
                     ),
                     5,
                 ),
-                "tactical_mismatch_details": tactical_mismatch_details[:50],
+                "tactical_mismatch_details": limited(
+                    tactical_mismatch_details
+                ),
                 "tactical_mismatch_detail_count": len(
                     self._tactical_mismatch_details
                 ),
@@ -2628,7 +2635,7 @@ class GenericResponsePatternStore:
                     ),
                     5,
                 ),
-                "human_mismatch_details": human_mismatch_details[:50],
+                "human_mismatch_details": limited(human_mismatch_details),
                 "human_mismatch_detail_count": len(
                     self._human_mismatch_details
                 ),
@@ -2914,8 +2921,8 @@ class GenericResponsePatternStore:
                         "terminal_loss_increased"
                     ]
                 ),
-                "human_root_pattern_details": (
-                    human_root_pattern_details[:50]
+                "human_root_pattern_details": limited(
+                    human_root_pattern_details
                 ),
                 "tactical_priority_lookups": int(
                     counters["tactical_priority_lookups"]
@@ -3309,8 +3316,13 @@ def generic_response_pattern_store() -> GenericResponsePatternStore:
     return _GENERIC_RESPONSE_PATTERN_STORE
 
 
-def generic_response_pattern_snapshot() -> dict:
-    snapshot = _GENERIC_RESPONSE_PATTERN_STORE.snapshot()
+def generic_response_pattern_snapshot(
+    *,
+    detail_limit: Optional[int] = 50,
+) -> dict:
+    snapshot = _GENERIC_RESPONSE_PATTERN_STORE.snapshot(
+        detail_limit=detail_limit
+    )
     from goita_ai2.current_ai.human_response_dictionary import (
         human_response_dictionary,
     )

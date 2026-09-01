@@ -16,6 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set
 
@@ -46,8 +47,12 @@ from goita_ai2.current_ai.conditional_response import (
     conditional_response_runtime_snapshot,
 )
 from goita_ai2.current_ai.generic_response_store import (
+    GENERIC_RESPONSE_STORE_SCHEMA_VERSION,
     checkpoint_generic_response_patterns,
     generic_response_pattern_snapshot,
+)
+from goita_ai2.current_ai.human_response_dictionary import (
+    HUMAN_RESPONSE_DICTIONARY_SCHEMA_VERSION,
 )
 
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, PIECE_KANJI, PLAYER_IDX
@@ -3541,8 +3546,7 @@ def list_public_tables(exclude: str = MEETING_ROOM_GID):
     }
 
 
-def _lobby_admin_payload() -> Dict[str, Any]:
-    room_data = list_rooms()
+def _conditional_response_admin_snapshot() -> Dict[str, object]:
     response_snapshots = []
     seen_dictionaries = set()
     for game in GAMES.values():
@@ -3564,6 +3568,11 @@ def _lobby_admin_payload() -> Dict[str, Any]:
                 continue
             seen_dictionaries.add(id(dictionary))
             response_snapshots.append(snapshotter())
+    return conditional_response_runtime_snapshot(response_snapshots)
+
+
+def _lobby_admin_payload() -> Dict[str, Any]:
+    room_data = list_rooms()
     return {
         "ok": True,
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
@@ -3585,10 +3594,43 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ai_background_search": background_search_runtime_snapshot(),
         "ai_search_budget": time_search_budget_snapshot(),
         "ai_prediction_cache": prediction_sample_cache_snapshot(),
-        "ai_conditional_response": conditional_response_runtime_snapshot(
-            response_snapshots
-        ),
+        "ai_conditional_response": _conditional_response_admin_snapshot(),
         "ai_generic_response_patterns": generic_response_pattern_snapshot(),
+    }
+
+
+def _ai_metrics_export_payload() -> Dict[str, Any]:
+    """Return only anonymous AI aggregates for an administrator download."""
+    return {
+        "format": "sorou-goita-ai-metrics",
+        "schema_version": 1,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "versions": {
+            "ai_profile": DEFAULT_AI_PROFILE,
+            "ai_profile_label": _ai_profile_label(DEFAULT_AI_PROFILE),
+            "deployment_revision": str(
+                os.environ.get("RENDER_GIT_COMMIT", "")
+            )[:12],
+            "generic_response_store_schema": (
+                GENERIC_RESPONSE_STORE_SCHEMA_VERSION
+            ),
+            "human_response_dictionary_schema": (
+                HUMAN_RESPONSE_DICTIONARY_SCHEMA_VERSION
+            ),
+        },
+        "privacy": {
+            "player_names_included": False,
+            "hands_included": False,
+            "kifu_included": False,
+            "chat_included": False,
+            "passwords_included": False,
+        },
+        "ai_response_dictionary": copy.deepcopy(
+            _conditional_response_admin_snapshot()
+        ),
+        "generic_patterns": copy.deepcopy(
+            generic_response_pattern_snapshot(detail_limit=None)
+        ),
     }
 
 
@@ -3699,6 +3741,12 @@ def admin_logout(response: Response):
 def admin_settings(request: Request):
     _require_site_admin(request)
     return _lobby_admin_payload()
+
+
+@app.get("/admin/api/ai-metrics/export")
+def admin_ai_metrics_export(request: Request):
+    _require_site_admin(request)
+    return _ai_metrics_export_payload()
 
 
 @app.put("/admin/api/settings")

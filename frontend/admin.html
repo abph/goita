@@ -135,7 +135,7 @@
     }
     .metric-label { color: var(--muted); font-size: 12px; }
     .metric-value { margin-top: 8px; font-size: 24px; font-weight: 850; }
-    .analytics-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .analytics-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
     .analytics-toolbar select { width: auto; }
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
@@ -190,6 +190,7 @@
       <nav class="tabs" aria-label="管理項目">
         <button class="tab active" type="button" data-tab="settings">サイト設定</button>
         <button class="tab" type="button" data-tab="analytics">利用状況</button>
+        <button class="tab" type="button" data-tab="aiMetrics">AI計測</button>
       </nav>
 
       <section id="settingsView" class="view active">
@@ -242,11 +243,16 @@
           <div id="privateRoomPasswords"></div>
         </section>
 
-        <section class="panel" style="margin-top:16px">
+      </section>
+
+      <section id="aiMetricsView" class="view">
+        <section class="panel">
           <div class="analytics-toolbar">
             <h2 class="section-heading" style="margin:0">AI応答辞書の計測</h2>
             <button id="responseMetricsRefresh" class="button" type="button">更新</button>
+            <button id="aiMetricsDownload" class="button" type="button">計測データDL</button>
           </div>
+          <div id="aiMetricsStatus" class="status" aria-live="polite"></div>
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
@@ -860,11 +866,51 @@
 
     async function loadResponseMetrics() {
       const button = document.getElementById("responseMetricsRefresh");
+      const status = document.getElementById("aiMetricsStatus");
       button.disabled = true;
+      status.textContent = "読み込んでいます...";
       try {
         const data = await api("/admin/api/settings");
+        settingsPayload = data;
         renderResponseMetrics(data.ai_conditional_response || {});
         renderGenericPatternMetrics(data.ai_generic_response_patterns || {});
+        status.textContent = "";
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function aiMetricsFilename(date = new Date()) {
+      const pad = value => String(value).padStart(2, "0");
+      return `goita-ai-metrics-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}.json`;
+    }
+
+    async function downloadAiMetrics() {
+      const button = document.getElementById("aiMetricsDownload");
+      const status = document.getElementById("aiMetricsStatus");
+      button.disabled = true;
+      status.textContent = "出力しています...";
+      try {
+        const data = await api("/admin/api/ai-metrics/export");
+        const blob = new Blob(
+          [`${JSON.stringify(data, null, 2)}\n`],
+          {type: "application/json;charset=utf-8"},
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = aiMetricsFilename();
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        status.textContent = "計測データを出力しました。";
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
       } finally {
         button.disabled = false;
       }
@@ -1048,11 +1094,13 @@
       document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${name}View`));
       if (name === "analytics") loadAnalytics();
+      if (name === "aiMetrics") loadResponseMetrics();
     }));
 
     document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
     document.getElementById("analyticsDays").addEventListener("change", loadAnalytics);
     document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
+    document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
     document.getElementById("logoutButton").addEventListener("click", async () => {
       await api("/admin/api/logout", {method: "POST"}).catch(() => {});
       showLogin();

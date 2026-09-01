@@ -13,6 +13,12 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "そろうごいた 管理者ページ" in admin
     assert 'data-tab="settings"' in admin
     assert 'data-tab="analytics"' in admin
+    assert 'data-tab="aiMetrics"' in admin
+    assert 'id="aiMetricsView"' in admin
+    assert 'id="aiMetricsDownload"' in admin
+    assert 'id="aiMetricsStatus"' in admin
+    assert '"/admin/api/ai-metrics/export"' in admin
+    assert "goita-ai-metrics-" in admin
     assert 'id="privateRoomPasswords"' in admin
     assert 'id="privateAdRoomSelect"' in admin
     assert 'id="privateAdSummary"' in admin
@@ -94,6 +100,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "conditional_response_runtime_snapshot" in backend
     assert '"ai_generic_response_patterns"' in backend
     assert "checkpoint_generic_response_patterns" in backend
+    assert '@app.get("/admin/api/ai-metrics/export")' in backend
+    assert '"passwords_included": False' in backend
 
 
 def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> None:
