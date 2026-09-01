@@ -83,12 +83,19 @@ MAIN_ROOM_NAMES: Dict[str, str] = {
     "main-b": "みんなでごいたB",
     "main-c": "みんなでごいたC",
     "main-e": "AIとごいたA",
-    "main-d": "埼玉的な集会室",
+    "main-d": "どこかの集会室",
     "main-f": "AIとごいたB",
 }
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 MEETING_ROOM_GID = "main-d"
-LOBBY_MAIN_ROOM_IDS = (MAIN_GID, "main-b", "main-c", "main-e")
+LOBBY_MAIN_ROOM_IDS = (
+    MAIN_GID,
+    "main-b",
+    "main-c",
+    "main-e",
+    "main-d",
+    "main-f",
+)
 MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
     "main-e": ("B", "C", "D"),
     "main-f": ("B", "C", "D"),
@@ -2990,7 +2997,10 @@ def _apply_room_management_settings(
     settings: Dict[str, Any],
 ) -> None:
     if isinstance(settings.get("owner_name"), str):
-        game["owner_name"] = _sanitize_room_name(settings["owner_name"])
+        owner_name = _sanitize_room_name(settings["owner_name"])
+        if game_id == MEETING_ROOM_GID and owner_name == "埼玉的な集会室":
+            owner_name = MAIN_ROOM_NAMES[MEETING_ROOM_GID]
+        game["owner_name"] = owner_name
 
     if "password" in settings:
         password = settings.get("password")

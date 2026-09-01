@@ -59,13 +59,15 @@ def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
         "main-b",
         "main-c",
         "main-e",
+        "main-d",
+        "main-f",
     )
     assert list(app_module.MAIN_ROOM_NAMES.values()) == [
         "みんなでごいたA",
         "みんなでごいたB",
         "みんなでごいたC",
         "AIとごいたA",
-        "埼玉的な集会室",
+        "どこかの集会室",
         "AIとごいたB",
     ]
     assert app_module.MAIN_ROOM_DEFAULT_AI_SEATS == {
@@ -82,6 +84,20 @@ def test_public_rooms_default_to_three_people_rooms_and_one_ai_room() -> None:
         if room["is_main_room"]
     ]
     assert visible_main_ids == ["main", "main-b", "main-c", "main-e"]
+
+
+def test_legacy_meeting_room_name_is_migrated() -> None:
+    game = dict(app_module.GAMES[app_module.MEETING_ROOM_GID])
+    settings = app_module._room_management_settings(game)
+    settings["owner_name"] = "埼玉的な集会室"
+
+    app_module._apply_room_management_settings(
+        app_module.MEETING_ROOM_GID,
+        game,
+        settings,
+    )
+
+    assert game["owner_name"] == "どこかの集会室"
 
 
 def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
@@ -434,6 +450,7 @@ def test_lobby_admin_can_change_visible_room_counts() -> None:
     try:
         payload = app_module.verify_lobby_admin(app_module.LOBBY_ADMIN_PASSWORD)
         assert payload["main_room_max"] == len(app_module.LOBBY_MAIN_ROOM_IDS)
+        assert payload["main_room_max"] == 6
         assert payload["private_room_max"] == len(
             app_module.LOBBY_PRIVATE_ROOM_IDS
         )
@@ -455,6 +472,21 @@ def test_lobby_admin_can_change_visible_room_counts() -> None:
         assert expanded["private_room_count"] == 4
         assert len([room for room in expanded_rooms if room["is_main_room"]]) == 4
         assert len([room for room in expanded_rooms if not room["is_main_room"]]) == 4
+
+        all_public = asyncio.run(
+            app_module.update_lobby_admin_settings(
+                app_module.LobbySettingsUpdateRequest(
+                    admin_password=app_module.LOBBY_ADMIN_PASSWORD,
+                    main_room_count=6,
+                    private_room_count=4,
+                )
+            )
+        )
+        all_public_rooms = app_module.list_rooms()["rooms"]
+        assert all_public["main_room_count"] == 6
+        assert len(
+            [room for room in all_public_rooms if room["is_main_room"]]
+        ) == 6
 
         reduced = asyncio.run(
             app_module.update_lobby_admin_settings(
@@ -825,6 +857,7 @@ if __name__ == "__main__":
     test_private_b_uses_updated_entry_password()
     test_room_names_allow_twelve_characters_without_changing_player_name_limit()
     test_public_rooms_default_to_three_people_rooms_and_one_ai_room()
+    test_legacy_meeting_room_name_is_migrated()
     test_private_c_defaults_to_kanazawa_team_saitama_room()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_through_f_exist_but_are_hidden_when_only_two_are_shown()

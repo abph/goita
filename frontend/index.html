@@ -4753,7 +4753,7 @@
               <div class="board-view-segmented" role="group" aria-label="盤面表示">
                 <button id="lobbyBoardView2dButton" class="board-view-option active" type="button" onclick="setLobbyBoardViewControl('2d')">2D</button>
                 <button id="lobbyBoardView3dButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('3d')">3D</button>
-                <button id="lobbyBoardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('meeting-room')">埼玉的な集会室</button>
+                <button id="lobbyBoardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('meeting-room')">どこかの集会室</button>
                 <button id="lobbyBoardViewPixelColorButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
                 <button id="lobbyBoardViewPixelMonoButton" class="board-view-option" type="button" onclick="setLobbyBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
               </div>
@@ -4916,7 +4916,7 @@
             <div class="board-view-segmented" role="group" aria-label="盤面表示">
               <button id="boardView2dButton" class="board-view-option active" type="button" onclick="setBoardViewControl('2d')">2D</button>
               <button id="boardView3dButton" class="board-view-option" type="button" onclick="setBoardViewControl('3d')">3D</button>
-              <button id="boardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setBoardViewControl('meeting-room')">埼玉的な集会室</button>
+              <button id="boardViewMeetingRoomButton" class="board-view-option" type="button" onclick="setBoardViewControl('meeting-room')">どこかの集会室</button>
               <button id="boardViewPixelColorButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-color')"><span>ピクセル</span><span>カラー</span></button>
               <button id="boardViewPixelMonoButton" class="board-view-option" type="button" onclick="setBoardViewControl('pixel-mono')"><span>ピクセル</span><span>モノクロ</span></button>
             </div>
@@ -6223,7 +6223,7 @@ function roomNameForDisplay(value) {
     return Array.from(String(value || "")).slice(0, ROOM_NAME_MAX_CHARACTERS).join("");
 }
 const BUILT_IN_ROOM_NAMES = new Set([
-    "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "埼玉的な集会室",
+    "みんなでごいたA", "みんなでごいたB", "みんなでごいたC", "どこかの集会室",
     "AIとごいたA", "AIとごいたB", "プライベートA", "プライベートB",
     "プライベートC", "プライベートD", "プライベートE", "プライベートF",
     "デバッグルーム"
