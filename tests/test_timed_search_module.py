@@ -238,7 +238,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     agent.GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = True
     actions = state.legal_actions("A")
     baseline = ("pass", None, None)
-    ai_action = ("receive", "5", None)
+    human_action = ("receive", "5", None)
     calls = []
 
     agent._timed_search_sample_states = lambda *_args, **_kwargs: [state]
@@ -247,9 +247,9 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
             {
                 "status": "recommended",
                 "pattern_key": "human-pattern-root-test",
-                "recommended_action": "pass",
+                "recommended_action": "receive_same",
             },
-            (baseline,),
+            (human_action,),
         )
     )
 
@@ -275,7 +275,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
         ))
         if forced_priority_action is None:
             return TimedSearchResult(
-                action=ai_action,
+                action=baseline,
                 depth=5,
                 samples=1,
                 nodes=1200,
@@ -285,7 +285,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                 agreement=1.0,
                 decisive=False,
             )
-        if forced_priority_action == ai_action:
+        if forced_priority_action == baseline:
             run_context["depth_results"] = {
                 5: {
                     "evaluation_value": 90.0,
@@ -309,7 +309,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
                 },
             }
             return TimedSearchResult(
-                action=ai_action,
+                action=baseline,
                 depth=7,
                 samples=1,
                 nodes=1700,
@@ -352,7 +352,7 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
             },
         }
         return TimedSearchResult(
-            action=baseline,
+            action=human_action,
             depth=9,
             samples=1,
             nodes=1800,
@@ -373,17 +373,20 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     snapshot = generic_response_pattern_snapshot()
 
     assert result is not None
-    assert result.action == ai_action
+    assert result.action == baseline
     assert len(calls) == 3
     assert calls[0][0] == calls[1][0] == calls[2][0]
-    assert calls[1][2] == ai_action
-    assert calls[2][2] == baseline
+    assert calls[1][2] == baseline
+    assert calls[2][2] == human_action
     assert calls[1][3] == calls[2][3] == 5.0
     assert calls[1][4] == calls[2][4] == 5
     assert calls[1][5] == calls[2][5] == 1.5
     assert calls[1][6] is True
     assert calls[2][6] is True
     assert snapshot["human_pair_comparisons"] == 0
+    assert snapshot["human_root_focus_considered"] == 1
+    assert snapshot["human_root_focus_eligible"] == 1
+    assert snapshot["human_root_focus_skipped"] == 0
     assert snapshot["human_root_comparisons"] == 1
     assert snapshot["human_root_completed"] == 1
     assert snapshot["human_root_incomplete"] == 0
@@ -406,10 +409,12 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
         "human_root_diag_average_terminal_score_delta"
     ] == 10.0
     assert snapshot["human_root_diag_average_nonterminal_delta"] == 5.0
-    assert snapshot["human_root_diag_action_pairs"][0]["human_action"] == "pass"
+    assert snapshot["human_root_diag_action_pairs"][0][
+        "human_action"
+    ] == "receive_same"
     assert snapshot["human_root_diag_action_pairs"][0][
         "ai_action"
-    ] == "receive_same"
+    ] == "pass"
     assert snapshot["human_root_pattern_detail_count"] == 1
     assert snapshot["human_root_pattern_details"][0]["pattern_id"] == (
         "human-pattern-root-test"[:10]
@@ -419,6 +424,67 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     assert snapshot["human_root_pattern_details"][0][
         "average_value_delta"
     ] == 25.0
+
+
+def test_human_pass_hint_skips_expensive_root_comparison() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = True
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    ai_action = ("receive", "5", None)
+    calls = []
+
+    agent._timed_search_sample_states = lambda *_args, **_kwargs: [state]
+    agent._human_response_comparison_actions = (
+        lambda *_args, **_kwargs: (
+            {
+                "status": "recommended",
+                "pattern_key": "human-pass-root-test",
+                "recommended_action": "pass",
+            },
+            (baseline,),
+        )
+    )
+
+    def fake_search(*_args, **_kwargs):
+        calls.append(_kwargs.get("forced_priority_action"))
+        return TimedSearchResult(
+            action=ai_action,
+            depth=5,
+            samples=1,
+            nodes=1200,
+            elapsed_seconds=1.0,
+            value=100.0,
+            margin=20.0,
+            agreement=1.0,
+            decisive=False,
+        )
+
+    agent._time_limited_search_from_samples = fake_search
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action == ai_action
+    assert calls == [None]
+    assert snapshot["human_root_focus_considered"] == 1
+    assert snapshot["human_root_focus_eligible"] == 0
+    assert snapshot["human_root_focus_skipped"] == 1
+    assert snapshot["human_root_comparisons"] == 0
 
 
 def test_generic_hint_narrowing_shadow_compares_after_depth_three() -> None:
@@ -1355,6 +1421,7 @@ if __name__ == "__main__":
     test_tactical_hint_takes_priority_and_records_the_final_search_choice()
     test_tactical_hint_runs_an_isolated_paired_comparison()
     test_human_hint_runs_equal_budget_root_fixed_comparisons()
+    test_human_pass_hint_skips_expensive_root_comparison()
     test_generic_hint_narrowing_shadow_compares_after_depth_three()
     test_generic_narrowing_requires_a_clear_depth_three_gap()
     test_generic_narrowing_rejects_specialized_or_uncertain_searches()

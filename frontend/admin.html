@@ -250,10 +250,10 @@
           <p class="muted">対局内容や手駒は保存せず、応答計画の利用回数と短縮時間だけを集計します。</p>
           <div id="responseMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">汎用パターンの収集</h3>
-          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIと推薦が異なる場合に、人間の受け方とAIの受け方を初手で分け、同じ推定手駒・各5秒で探索します。両方が到達した深さ5以上の最深地点だけを比較し、比較結果はAIの実戦判断には影響しません。詳細診断では、深さ不足の停止理由と、終局結果・得点・途中局面評価の差をデプロイ後から別集計します。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
+          <p class="muted">深い探索で採用した判断を匿名の型として集計し、十分な支持がある型は探索順の優先候補として使用します。人間棋譜辞書は、現在AIがパスし、人間棋譜が同じ駒または王・玉で受ける場合に重点を置き、同じ推定手駒・各5秒で比較します。対象外の不一致も発生回数は残しますが、比較探索と採用候補から除外します。両方が到達した深さ5以上の最深地点だけを比較し、比較結果はAIの実戦判断には影響しません。詳細診断では、深さ不足の停止理由と、終局結果・得点・途中局面評価の差をデプロイ後から別集計します。戦術分類はデバッグルームだけで、15件以上・支持率90%以上の同種受けを探索の優先候補として使用します。最終手を直接決定するものではありません。辞書あり・なしの比較は同じ探索結果から行い、候補集合が変わった場合は「比較未完了」として数えます。デバッグルームでは、安全条件を満たす場合に限り、深さ3以降を辞書候補と最有力の対抗候補へ実際に絞り込めます。</p>
           <div id="genericPatternMetricGrid" class="metric-grid"></div>
           <h3 class="subheading">人間棋譜ルートの型別比較</h3>
-          <p class="muted">局面そのものは保存せず、匿名の型IDごとに、人間棋譜ルートと現在AIルートの比較結果だけを集計します。評価差は「人間ルート − AIルート」です。同じ型で5回以上比較し、人間側が3勝以上・勝率60%以上でAI側より多く勝ち、平均評価差がプラスで、確定負けが増えない型だけを採用候補として表示します。候補は現在、AIの判断には使用しません。</p>
+          <p class="muted">局面そのものは保存せず、匿名の型IDごとに、人間棋譜ルートと現在AIルートの比較結果だけを集計します。評価差は「人間ルート − AIルート」です。「人間は受ける・現在AIはパス」の型だけを対象に、同じ型で5回以上比較し、人間側が3勝以上・勝率60%以上でAI側より多く勝ち、平均評価差がプラスで、確定負けが増えない型を採用候補として表示します。候補は現在、AIの判断には使用しません。</p>
           <div class="table-scroll">
             <table class="tactical-mismatch-table">
               <thead>
@@ -578,6 +578,9 @@
         ["人間棋譜・一致率", `${humanShadowMatchRate.toFixed(1)}%`],
         ["人間棋譜・該当なし", `${data.human_shadow_no_pattern || 0}回`],
         ["初手固定ルートを比較", `${data.human_root_comparisons || 0}回`],
+        ["重点比較を検討", `${data.human_root_focus_considered || 0}回`],
+        ["重点比較の対象", `${data.human_root_focus_eligible || 0}回`],
+        ["対象外として比較を省略", `${data.human_root_focus_skipped || 0}回`],
         ["初手固定比較・完了", `${data.human_root_completed || 0}回`],
         ["初手固定比較・未完了", `${data.human_root_incomplete || 0}回`],
         ["未完了・探索結果なし", `${data.human_root_incomplete_missing_result || 0}回`],
@@ -605,6 +608,7 @@
         ["詳細診断・比較未完了", `${data.human_root_diag_incomplete || 0}回`],
         ["型別比較の型", `${data.human_root_pattern_detail_count || 0}種類`],
         ["人間棋譜・採用候補", `${data.human_root_candidate_count || 0}種類`],
+        ["候補外・重点対象ではない", `${data.human_root_candidate_out_of_scope || 0}種類`],
         ["候補外・比較5回未満", `${data.human_root_candidate_insufficient_comparisons || 0}種類`],
         ["候補外・勝敗安全性5回未満", `${data.human_root_candidate_insufficient_loss_data || 0}種類`],
         ["候補外・人間3勝未満", `${data.human_root_candidate_insufficient_human_wins || 0}種類`],
@@ -769,6 +773,7 @@
           : `${Number(minimum).toFixed(1)} 〜 ${Number(maximum).toFixed(1)}`;
         const candidateLabels = {
           candidate: "採用候補",
+          out_of_scope: "重点対象外",
           insufficient_comparisons: `比較 ${Number(detail.completed || 0)}/5`,
           insufficient_loss_data: `勝敗 ${Number(detail.terminal_loss_samples || 0)}/5`,
           insufficient_human_wins: `人間 ${Number(detail.human_better || 0)}/3勝`,

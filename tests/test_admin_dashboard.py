@@ -27,10 +27,12 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "中分類パターン" in admin
     assert "戦術分類パターン" in admin
     assert "戦術分類・影響なし比較" in admin
-    assert "人間棋譜辞書は、現在AIと推薦が異なる場合" in admin
+    assert "現在AIがパスし、人間棋譜が同じ駒または王・玉で受ける場合" in admin
     assert "人間棋譜・影響なし比較" in admin
     assert "人間棋譜・現在AIと不一致" in admin
     assert "初手固定ルートを比較" in admin
+    assert "重点比較の対象" in admin
+    assert "対象外として比較を省略" in admin
     assert "人間ルートで勝ちを確認" in admin
     assert "両方が到達した深さ5以上の最深地点だけを比較" in admin
     assert "比較に使った平均共通深さ" in admin
@@ -45,6 +47,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "評価差は「人間ルート − AIルート」" in admin
     assert "人間側が3勝以上・勝率60%以上でAI側より多く勝ち" in admin
     assert "人間棋譜・採用候補" in admin
+    assert "候補外・重点対象ではない" in admin
     assert "候補外・人間3勝未満" in admin
     assert "候補外・人間勝率60%未満" in admin
     assert "候補外・確定負け増加" in admin

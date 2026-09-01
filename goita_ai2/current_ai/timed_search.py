@@ -1497,6 +1497,19 @@ class TimedSearchMixin:
                     and human_label != result_label
                 )
                 if should_compare_human_priority:
+                    human_root_focus_eligible = (
+                        self._human_response_root_focus_eligible(
+                            human_label,
+                            result_label,
+                        )
+                    )
+                    self._record_human_response_root_focus(
+                        eligible=human_root_focus_eligible
+                    )
+                    should_compare_human_priority = bool(
+                        human_root_focus_eligible
+                    )
+                if should_compare_human_priority:
                     ai_actions = self._generic_response_actions_for_label(
                         state,
                         actions,

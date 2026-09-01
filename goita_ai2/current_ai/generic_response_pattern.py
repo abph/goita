@@ -11,6 +11,7 @@ from typing import Dict, Iterable, Optional, Tuple
 from goita_ai2.constants import ALL_SEATS, PIECE_TOTALS, POINTS
 from goita_ai2.current_ai.generic_response_store import (
     generic_response_pattern_store,
+    human_root_pair_is_focus_eligible,
     medium_response_pattern_payload,
     tactical_response_pattern_payload,
 )
@@ -963,6 +964,21 @@ class GenericResponsePatternMixin:
             terminal_outcome_delta=terminal_outcome_delta,
             terminal_score_delta=terminal_score_delta,
             nonterminal_delta=nonterminal_delta,
+        )
+
+    def _human_response_root_focus_eligible(
+        self,
+        human_action_label: str,
+        ai_action_label: str,
+    ) -> bool:
+        return human_root_pair_is_focus_eligible(
+            human_action_label,
+            ai_action_label,
+        )
+
+    def _record_human_response_root_focus(self, *, eligible: bool) -> None:
+        generic_response_pattern_store().record_human_root_focus(
+            eligible=eligible
         )
 
     def _record_generic_response_priority_effect(

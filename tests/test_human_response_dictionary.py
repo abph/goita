@@ -220,8 +220,8 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             human_terminal_loss_rate=0.1,
             ai_terminal_point_swing=2.5,
             human_terminal_point_swing=7.5,
-            human_action_label="pass",
-            ai_action_label="receive_same",
+            human_action_label="receive_same",
+            ai_action_label="pass",
             mean_value_delta=300.0,
             terminal_outcome_delta=125.0,
             terminal_score_delta=25.0,
@@ -252,8 +252,8 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         ] == 25.0
         assert snapshot["human_root_diag_average_nonterminal_delta"] == 150.0
         assert snapshot["human_root_diag_action_pairs"] == [{
-            "human_action": "pass",
-            "ai_action": "receive_same",
+            "human_action": "receive_same",
+            "ai_action": "pass",
             "comparisons": 1,
             "human_better": 1,
             "ai_better": 0,
@@ -268,6 +268,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "ai_better": 0,
             "tied": 0,
             "human_win_rate": 1.0,
+            "candidate_scope_eligible": True,
             "average_value_delta": 375.0,
             "minimum_value_delta": 375.0,
             "maximum_value_delta": 375.0,
@@ -278,8 +279,8 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             "candidate": False,
             "candidate_reason": "insufficient_comparisons",
             "action_pairs": [{
-                "human_action": "pass",
-                "ai_action": "receive_same",
+                "human_action": "receive_same",
+                "ai_action": "pass",
                 "comparisons": 1,
             }],
             "last_seen_at": snapshot["human_root_pattern_details"][0][
@@ -292,8 +293,8 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
             incomplete_reason="common_depth_below_five",
             human_stop_reason="node_limit",
             ai_stop_reason="time_limit",
-            human_action_label="pass",
-            ai_action_label="receive_same",
+            human_action_label="receive_same",
+            ai_action_label="pass",
         )
         snapshot = store.snapshot()
         assert snapshot["human_root_comparisons"] == 2
@@ -308,6 +309,8 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert snapshot["human_root_pattern_details"][0]["action_pairs"][0][
             "comparisons"
         ] == 2
+        store.record_human_root_focus(eligible=True)
+        store.record_human_root_focus(eligible=False)
         assert store.checkpoint("human-shadow-test") is True
         saved_payload = json.loads(path.read_text(encoding="utf-8"))
         saved_pattern = saved_payload["human_root_pattern_details"][
@@ -346,6 +349,9 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_pair_human_selected"] == 1
         assert restored["human_pair_average_value_delta"] == 250.0
         assert restored["human_root_completed"] == 1
+        assert restored["human_root_focus_considered"] == 2
+        assert restored["human_root_focus_eligible"] == 1
+        assert restored["human_root_focus_skipped"] == 1
         assert restored["human_root_human_better"] == 1
         assert restored["human_root_average_value_delta"] == 375.0
         assert restored["human_root_average_common_depth"] == 7.0
@@ -355,7 +361,7 @@ def test_human_shadow_metrics_survive_checkpoint() -> None:
         assert restored["human_root_diag_human_stop_nodes"] == 1
         assert restored["human_root_diag_action_pairs"][0][
             "human_action"
-        ] == "pass"
+        ] == "receive_same"
         assert restored["human_root_pattern_detail_count"] == 1
         assert restored["human_root_pattern_details"][0]["comparisons"] == 2
         assert restored["human_root_pattern_details"][0]["human_better"] == 1
@@ -379,8 +385,8 @@ def test_human_root_candidate_filter_requires_repeatable_safe_gain() -> None:
             value_delta=100.0,
             ai_terminal_loss_rate=0.2,
             human_terminal_loss_rate=0.1,
-            human_action_label="pass",
-            ai_action_label="receive_same",
+            human_action_label="receive_same",
+            ai_action_label="pass",
         )
 
     snapshot = store.snapshot()
@@ -402,8 +408,8 @@ def test_human_root_candidate_filter_requires_repeatable_safe_gain() -> None:
         value_delta=100.0,
         ai_terminal_loss_rate=0.0,
         human_terminal_loss_rate=1.0,
-        human_action_label="pass",
-        ai_action_label="receive_same",
+        human_action_label="receive_same",
+        ai_action_label="pass",
     )
 
     snapshot = store.snapshot()
@@ -424,6 +430,8 @@ def test_human_root_candidate_filter_rejects_one_large_outlier() -> None:
         value_delta=8073.2,
         ai_terminal_loss_rate=0.0,
         human_terminal_loss_rate=0.0,
+        human_action_label="receive_same",
+        ai_action_label="pass",
     )
     for _index in range(8):
         store.record_human_root_pair(
@@ -434,6 +442,8 @@ def test_human_root_candidate_filter_rejects_one_large_outlier() -> None:
             value_delta=-300.0,
             ai_terminal_loss_rate=0.0,
             human_terminal_loss_rate=0.0,
+            human_action_label="receive_same",
+            ai_action_label="pass",
         )
 
     snapshot = store.snapshot()
@@ -458,6 +468,8 @@ def test_human_root_candidate_filter_requires_sixty_percent_win_rate() -> None:
             value_delta=100.0,
             ai_terminal_loss_rate=0.1,
             human_terminal_loss_rate=0.1,
+            human_action_label="receive_same",
+            ai_action_label="pass",
         )
 
     snapshot = store.snapshot()
@@ -468,6 +480,35 @@ def test_human_root_candidate_filter_requires_sixty_percent_win_rate() -> None:
     assert pattern["candidate"] is False
     assert pattern["candidate_reason"] == "low_human_win_rate"
     assert snapshot["human_root_candidate_low_human_win_rate"] == 1
+
+
+def test_human_root_candidate_filter_excludes_human_pass_patterns() -> None:
+    store = GenericResponsePatternStore()
+    for _index in range(5):
+        store.record_human_root_pair(
+            comparison_complete=True,
+            pattern_key="human-pass-pattern",
+            selected_side="human",
+            common_depth=5,
+            value_delta=100.0,
+            ai_terminal_loss_rate=0.1,
+            human_terminal_loss_rate=0.0,
+            human_action_label="pass",
+            ai_action_label="receive_same",
+        )
+    store.record_human_root_focus(eligible=True)
+    store.record_human_root_focus(eligible=False)
+
+    snapshot = store.snapshot()
+    pattern = snapshot["human_root_pattern_details"][0]
+    assert pattern["candidate_scope_eligible"] is False
+    assert pattern["candidate"] is False
+    assert pattern["candidate_reason"] == "out_of_scope"
+    assert snapshot["human_root_candidate_count"] == 0
+    assert snapshot["human_root_candidate_out_of_scope"] == 1
+    assert snapshot["human_root_focus_considered"] == 2
+    assert snapshot["human_root_focus_eligible"] == 1
+    assert snapshot["human_root_focus_skipped"] == 1
 
 
 def test_restored_root_patterns_wait_for_new_terminal_loss_samples() -> None:
@@ -483,6 +524,8 @@ def test_restored_root_patterns_wait_for_new_terminal_loss_samples() -> None:
                 value_delta=100.0,
                 ai_terminal_loss_rate=0.2,
                 human_terminal_loss_rate=0.1,
+                human_action_label="receive_same",
+                ai_action_label="pass",
             )
         assert store.checkpoint("before-candidate-safety") is True
 
@@ -569,6 +612,7 @@ if __name__ == "__main__":
     test_human_root_candidate_filter_requires_repeatable_safe_gain()
     test_human_root_candidate_filter_rejects_one_large_outlier()
     test_human_root_candidate_filter_requires_sixty_percent_win_rate()
+    test_human_root_candidate_filter_excludes_human_pass_patterns()
     test_restored_root_patterns_wait_for_new_terminal_loss_samples()
     test_old_root_comparison_metrics_reset_without_losing_other_data()
     test_new_root_diagnostics_start_clean_without_resetting_root_totals()

@@ -25,7 +25,22 @@ HUMAN_ROOT_PATTERN_DETAIL_LIMIT = 750
 HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS = 5
 HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WINS = 3
 HUMAN_ROOT_CANDIDATE_MIN_HUMAN_WIN_RATE = 0.60
+HUMAN_ROOT_FOCUS_HUMAN_ACTIONS = frozenset({
+    "receive_same",
+    "receive_royal",
+})
 _LOGGER = logging.getLogger(__name__)
+
+
+def human_root_pair_is_focus_eligible(
+    human_action: str,
+    ai_action: str,
+) -> bool:
+    """Focus expensive comparisons on human receives that replace an AI pass."""
+    return (
+        str(human_action) in HUMAN_ROOT_FOCUS_HUMAN_ACTIONS
+        and str(ai_action) == "pass"
+    )
 
 
 def medium_response_pattern_payload(
@@ -241,6 +256,9 @@ class GenericResponsePatternStore:
             "human_pair_priority_nodes_sum": 0,
             "human_pair_value_delta_sum": 0.0,
             "human_root_comparison_version": 2,
+            "human_root_focus_considered": 0,
+            "human_root_focus_eligible": 0,
+            "human_root_focus_skipped": 0,
             "human_root_comparisons": 0,
             "human_root_completed": 0,
             "human_root_incomplete": 0,
@@ -977,6 +995,9 @@ class GenericResponsePatternStore:
                 "human_pair_value_tied",
                 "human_pair_normal_nodes_sum",
                 "human_pair_priority_nodes_sum",
+                "human_root_focus_considered",
+                "human_root_focus_eligible",
+                "human_root_focus_skipped",
                 "human_root_comparisons",
                 "human_root_completed",
                 "human_root_incomplete",
@@ -1736,6 +1757,15 @@ class GenericResponsePatternStore:
                     "human_root_diag_action_pair_ai_better"
                 ][pair_key] += 1
 
+    def record_human_root_focus(self, *, eligible: bool) -> None:
+        """Count comparison focus decisions without retaining the position."""
+        with self._lock:
+            self._counters["human_root_focus_considered"] += 1
+            if eligible:
+                self._counters["human_root_focus_eligible"] += 1
+            else:
+                self._counters["human_root_focus_skipped"] += 1
+
     def record_priority_effect(
         self,
         *,
@@ -2369,7 +2399,24 @@ class GenericResponsePatternStore:
                 human_better = max(0, int(raw.get("human_better", 0)))
                 ai_better = max(0, int(raw.get("ai_better", 0)))
                 human_win_rate = human_better / max(1, completed)
-                if completed < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
+                raw_action_pair_counts = dict(
+                    raw.get("action_pair_counts", {}) or {}
+                )
+                positive_action_pairs = [
+                    str(pair_key)
+                    for pair_key, count in raw_action_pair_counts.items()
+                    if int(count) > 0
+                ]
+                candidate_scope_eligible = bool(positive_action_pairs) and all(
+                    human_root_pair_is_focus_eligible(
+                        pair_key.partition("|")[0],
+                        pair_key.partition("|")[2] or "other",
+                    )
+                    for pair_key in positive_action_pairs
+                )
+                if not candidate_scope_eligible:
+                    candidate_reason = "out_of_scope"
+                elif completed < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
                     candidate_reason = "insufficient_comparisons"
                 elif terminal_loss_samples < HUMAN_ROOT_CANDIDATE_MIN_COMPARISONS:
                     candidate_reason = "insufficient_loss_data"
@@ -2392,10 +2439,7 @@ class GenericResponsePatternStore:
                     candidate_reason = "candidate"
                 human_root_candidate_reason_counts[candidate_reason] += 1
                 action_pairs = []
-                for pair_key, count in raw.get(
-                    "action_pair_counts",
-                    {},
-                ).items():
+                for pair_key, count in raw_action_pair_counts.items():
                     human_action, separator, ai_action = str(pair_key).partition(
                         "|"
                     )
@@ -2424,6 +2468,7 @@ class GenericResponsePatternStore:
                     "ai_better": ai_better,
                     "tied": max(0, int(raw.get("tied", 0))),
                     "human_win_rate": round(human_win_rate, 5),
+                    "candidate_scope_eligible": candidate_scope_eligible,
                     "average_value_delta": round(
                         average_value_delta,
                         3,
@@ -2652,6 +2697,15 @@ class GenericResponsePatternStore:
                 "human_root_comparisons": int(
                     counters["human_root_comparisons"]
                 ),
+                "human_root_focus_considered": int(
+                    counters["human_root_focus_considered"]
+                ),
+                "human_root_focus_eligible": int(
+                    counters["human_root_focus_eligible"]
+                ),
+                "human_root_focus_skipped": int(
+                    counters["human_root_focus_skipped"]
+                ),
                 "human_root_completed": int(
                     counters["human_root_completed"]
                 ),
@@ -2826,6 +2880,9 @@ class GenericResponsePatternStore:
                 ),
                 "human_root_candidate_count": int(
                     human_root_candidate_reason_counts["candidate"]
+                ),
+                "human_root_candidate_out_of_scope": int(
+                    human_root_candidate_reason_counts["out_of_scope"]
                 ),
                 "human_root_candidate_insufficient_comparisons": int(
                     human_root_candidate_reason_counts[
