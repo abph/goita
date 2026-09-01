@@ -540,6 +540,38 @@ def test_priority_effect_metrics_compare_and_restore_without_board_data() -> Non
         assert restored["active_narrowing_added_nodes"] == 2500
 
 
+def test_human_targeted_priority_metrics_survive_checkpoint() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "generic-patterns.json"
+        store = GenericResponsePatternStore(path=path)
+        store.record_human_targeted_priority_query("offered")
+        store.record_human_targeted_priority_effect(
+            reordered=True,
+            baseline_disagreed=True,
+            selected=True,
+            completed_depth=7,
+        )
+
+        snapshot = store.snapshot()
+        assert snapshot["human_targeted_priority_lookups"] == 1
+        assert snapshot["human_targeted_priority_offered"] == 1
+        assert snapshot["human_targeted_priority_effects"] == 1
+        assert snapshot["human_targeted_priority_reordered"] == 1
+        assert snapshot[
+            "human_targeted_priority_baseline_disagreements"
+        ] == 1
+        assert snapshot["human_targeted_priority_selected"] == 1
+        assert snapshot["human_targeted_priority_selected_rate"] == 1.0
+        assert snapshot["human_targeted_priority_average_depth"] == 7.0
+
+        assert store.checkpoint("human-targeted-priority") is True
+        restored = GenericResponsePatternStore(path=path).snapshot()
+        assert restored["human_targeted_priority_lookups"] == 1
+        assert restored["human_targeted_priority_offered"] == 1
+        assert restored["human_targeted_priority_selected"] == 1
+        assert restored["human_targeted_priority_average_depth"] == 7.0
+
+
 if __name__ == "__main__":
     test_store_aggregates_and_restores_anonymous_patterns()
     test_store_path_uses_render_persistent_directory()
@@ -548,4 +580,5 @@ if __name__ == "__main__":
     test_shadow_uses_medium_pattern_when_detail_has_no_support()
     test_tactical_patterns_backfill_and_compare_without_affecting_priority()
     test_priority_effect_metrics_compare_and_restore_without_board_data()
+    test_human_targeted_priority_metrics_survive_checkpoint()
     print("GENERIC_RESPONSE_STORE_TEST_OK")

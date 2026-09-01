@@ -16,6 +16,13 @@ DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH = (
     Path(__file__).with_name("data") / "human-response-patterns.json"
 )
 
+# These two anonymous shapes were rechecked with equal-budget searches against
+# the current AI.  They are hints for search ordering only, never forced moves.
+TARGETED_PRIORITY_PATTERN_KEYS = frozenset({
+    "62a0a4b9b192c4146e3d97943019841fcb81fe9c1bdb6e6e981c74eee87c8dae",
+    "eaec40b232be2a47ba3099d08c41e1605dc2387c4072de0bfd523bfb4781edf6",
+})
+
 
 def human_response_pattern_payload(
     tactical: Mapping[str, object],
@@ -203,6 +210,33 @@ class HumanResponseDictionary:
                 0,
                 int(raw.get("distinct_matches_lower_bound", 0)),
             ),
+        }
+
+    def targeted_priority_recommendation(
+        self,
+        tactical: Mapping[str, object],
+    ) -> dict:
+        """Return a reviewed receive hint eligible for debug search ordering."""
+        recommendation = self.recommendation(tactical)
+        if recommendation.get("status") != "recommended":
+            return recommendation
+        if (
+            recommendation.get("pattern_key")
+            not in TARGETED_PRIORITY_PATTERN_KEYS
+        ):
+            return {
+                **recommendation,
+                "status": "not_targeted",
+            }
+        if recommendation.get("recommended_action") != "receive_same":
+            return {
+                **recommendation,
+                "status": "unsupported_action",
+            }
+        return {
+            **recommendation,
+            "status": "recommended",
+            "priority_source": "human_kifu_targeted_recheck",
         }
 
     def snapshot(self) -> dict:

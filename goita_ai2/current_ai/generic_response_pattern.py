@@ -37,6 +37,7 @@ class GenericResponsePatternMixin:
     GENERIC_RESPONSE_TACTICAL_SHADOW_MIN_DOMINANCE = 0.70
     GENERIC_RESPONSE_TACTICAL_PRIORITY_ENABLED = False
     GENERIC_RESPONSE_TACTICAL_PAIRED_COMPARISON_ENABLED = False
+    GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = False
     GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = False
     GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_SECONDS = 5.0
     GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_MIN_DEPTH = 5
@@ -834,6 +835,100 @@ class GenericResponsePatternMixin:
             "anonymous_context": tactical_payload,
         }
         return priority
+
+    def _human_targeted_response_priority_action(
+        self,
+        state,
+        player: str,
+        actions: Iterable[Action],
+        baseline_action: Action,
+    ) -> Optional[Action]:
+        """Offer a reviewed human-kifu receive as a debug-only search hint."""
+        if (
+            not self.GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED
+            or state.phase != "receive"
+        ):
+            return None
+        actions_list = list(actions)
+        root_choices = {
+            action[0]
+            for action in actions_list
+            if action[0] in ("pass", "receive")
+        }
+        if len(root_choices) < 2:
+            return None
+
+        store = generic_response_pattern_store()
+        tactical_payload = self._tactical_response_pattern_payload(
+            state,
+            player,
+            actions_list,
+            baseline_action,
+        )
+        recommendation = (
+            human_response_dictionary().targeted_priority_recommendation(
+                tactical_payload
+            )
+        )
+        status = str(recommendation.get("status", "no_pattern"))
+        if status in ("no_pattern", "load_error"):
+            store.record_human_targeted_priority_query("no_recommendation")
+            return None
+        if status == "not_targeted":
+            store.record_human_targeted_priority_query("not_targeted")
+            return None
+        if status == "unsupported_action":
+            store.record_human_targeted_priority_query("rejected_action")
+            return None
+        if status != "recommended":
+            store.record_human_targeted_priority_query("rejected_context")
+            return None
+
+        priority = next(
+            (
+                action
+                for action in actions_list
+                if action[0] == "receive"
+                and action[1] == state.current_attack
+            ),
+            None,
+        )
+        if priority is None:
+            store.record_human_targeted_priority_query("rejected_context")
+            return None
+        try:
+            after_receive = self._timed_search_apply(state, player, priority)
+            followups = after_receive.legal_actions(player)
+        except (AttributeError, TypeError, ValueError):
+            store.record_human_targeted_priority_query("no_legal_followup")
+            return None
+        if not any(action[0] == "attack" for action in followups):
+            store.record_human_targeted_priority_query("no_legal_followup")
+            return None
+
+        store.record_human_targeted_priority_query("offered")
+        self.last_generic_response_human_targeted_priority = {
+            **recommendation,
+            "priority_action": priority,
+            "used": True,
+            "anonymous_context": tactical_payload,
+        }
+        return priority
+
+    def _record_human_targeted_response_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        baseline_disagreed: bool,
+        selected: bool,
+        completed_depth: int,
+    ) -> None:
+        generic_response_pattern_store().record_human_targeted_priority_effect(
+            reordered=reordered,
+            baseline_disagreed=baseline_disagreed,
+            selected=selected,
+            completed_depth=completed_depth,
+        )
 
     def _record_tactical_response_priority_effect(
         self,

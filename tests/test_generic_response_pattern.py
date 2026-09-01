@@ -334,6 +334,85 @@ def test_tactical_pattern_safely_prioritizes_same_receive_in_debug_mode() -> Non
     assert agent.last_generic_response_tactical_priority["dominance"] == 1.0
 
 
+def test_reviewed_human_pattern_only_prioritizes_receive_when_enabled() -> None:
+    reset_generic_response_patterns()
+    state = GoitaState(
+        hands={
+            "A": list("344412"),
+            "B": list("11122345"),
+            "C": list("11123459"),
+            "D": list("11234567"),
+        },
+        dealer="B",
+    )
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "3"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+
+    assert agent._human_targeted_response_priority_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    ) is None
+
+    agent.GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = True
+    priority = agent._human_targeted_response_priority_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert priority == ("receive", "3", None)
+    assert snapshot["human_targeted_priority_lookups"] == 1
+    assert snapshot["human_targeted_priority_offered"] == 1
+    assert agent.last_generic_response_human_targeted_priority[
+        "pattern_key"
+    ].startswith("62a0a4b9b1")
+
+
+def test_reviewed_human_silver_pattern_is_also_available() -> None:
+    reset_generic_response_patterns()
+    state = GoitaState(
+        hands={
+            "A": list("4444123"),
+            "B": list("11122345"),
+            "C": list("11123459"),
+            "D": list("11234567"),
+        },
+        dealer="B",
+    )
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "4"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = True
+    actions = state.legal_actions("A")
+
+    priority = agent._human_targeted_response_priority_action(
+        state,
+        "A",
+        actions,
+        ("pass", None, None),
+    )
+
+    assert priority == ("receive", "4", None)
+    assert agent.last_generic_response_human_targeted_priority[
+        "pattern_key"
+    ].startswith("eaec40b232")
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_generic_response_pattern_mixin()
     test_pattern_does_not_read_or_encode_opponent_hands()
@@ -345,4 +424,6 @@ if __name__ == "__main__":
     test_shadow_comparison_observes_but_does_not_change_the_action()
     test_medium_pattern_can_prioritize_search_without_detailed_match()
     test_tactical_pattern_safely_prioritizes_same_receive_in_debug_mode()
+    test_reviewed_human_pattern_only_prioritizes_receive_when_enabled()
+    test_reviewed_human_silver_pattern_is_also_available()
     print("GENERIC_RESPONSE_PATTERN_TEST_OK")

@@ -169,6 +169,58 @@ def test_tactical_hint_takes_priority_and_records_the_final_search_choice() -> N
     assert snapshot["priority_effect_comparisons"] == 0
 
 
+def test_reviewed_human_hint_precedes_other_dictionary_hints() -> None:
+    reset_generic_response_patterns()
+    state = _initial_state()
+    state.phase = "receive"
+    state.turn = "A"
+    state.attacker = "B"
+    state.current_attack = "5"
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_INFORMATION_SET_ENABLED = False
+    agent.TIME_SEARCH_MAX_SECONDS = 0.3
+    agent.TIME_SEARCH_SAMPLE_COUNT = 2
+    agent.TIME_SEARCH_MAX_DEPTH = 1
+    agent.TIME_SEARCH_MAX_NODES = 10_000
+    actions = state.legal_actions("A")
+    baseline = ("pass", None, None)
+    priority = ("receive", "5", None)
+    agent._human_targeted_response_priority_action = (
+        lambda _state, _player, _actions, _baseline: priority
+    )
+    agent._tactical_response_priority_action = (
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("human candidate must precede tactical priority")
+        )
+    )
+    agent._generic_response_priority_action = (
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("human candidate must precede generic priority")
+        )
+    )
+
+    result = agent._time_limited_search_action(
+        state,
+        "A",
+        actions,
+        baseline,
+    )
+    snapshot = generic_response_pattern_snapshot()
+
+    assert result is not None
+    assert result.action in actions
+    assert snapshot["human_targeted_priority_effects"] == 1
+    assert snapshot["human_targeted_priority_reordered"] == 1
+    assert snapshot[
+        "human_targeted_priority_baseline_disagreements"
+    ] == 1
+    assert snapshot["tactical_priority_effects"] == 0
+    assert snapshot["priority_effect_comparisons"] == 0
+
+
 def test_tactical_hint_runs_an_isolated_paired_comparison() -> None:
     reset_generic_response_patterns()
     state = _initial_state()
@@ -1419,6 +1471,7 @@ if __name__ == "__main__":
     test_generic_hint_only_reorders_root_actions()
     test_generic_hint_effect_is_measured_without_changing_legal_actions()
     test_tactical_hint_takes_priority_and_records_the_final_search_choice()
+    test_reviewed_human_hint_precedes_other_dictionary_hints()
     test_tactical_hint_runs_an_isolated_paired_comparison()
     test_human_hint_runs_equal_budget_root_fixed_comparisons()
     test_human_pass_hint_skips_expensive_root_comparison()

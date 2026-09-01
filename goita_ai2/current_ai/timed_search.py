@@ -1821,6 +1821,7 @@ class TimedSearchMixin:
         cancel_event=None,
         *,
         tactical_priority_enabled: bool = True,
+        human_targeted_priority_enabled: bool = True,
         record_priority_metrics: bool = True,
         run_context: Optional[Dict[str, object]] = None,
         forced_priority_action: Optional[Action] = None,
@@ -1900,8 +1901,22 @@ class TimedSearchMixin:
 
         control_root_actions = list(actions)
         root_actions = list(control_root_actions)
+        human_targeted_priority_action = None
+        if human_targeted_priority_enabled and forced_priority_action is None:
+            human_targeted_priority_action = (
+                self._human_targeted_response_priority_action(
+                    state,
+                    player,
+                    root_actions,
+                    baseline_action,
+                )
+            )
         tactical_priority_action = None
-        if tactical_priority_enabled and forced_priority_action is None:
+        if (
+            tactical_priority_enabled
+            and forced_priority_action is None
+            and human_targeted_priority_action is None
+        ):
             tactical_priority_action = self._tactical_response_priority_action(
                 state,
                 player,
@@ -1910,7 +1925,12 @@ class TimedSearchMixin:
             )
         if run_context is not None:
             run_context["tactical_priority_action"] = tactical_priority_action
+            run_context["human_targeted_priority_action"] = (
+                human_targeted_priority_action
+            )
         generic_priority_action = forced_priority_action
+        if generic_priority_action is None:
+            generic_priority_action = human_targeted_priority_action
         if generic_priority_action is None:
             generic_priority_action = tactical_priority_action
         if generic_priority_action is None:
@@ -1921,6 +1941,9 @@ class TimedSearchMixin:
                 baseline_action,
             )
         priority_is_tactical = tactical_priority_action is not None
+        priority_is_human_targeted = (
+            human_targeted_priority_action is not None
+        )
         root_actions = self._timed_search_prioritize_root_actions(
             root_actions,
             generic_priority_action,
@@ -1940,6 +1963,7 @@ class TimedSearchMixin:
         active_narrowing_status: Optional[str] = (
             "insufficient_depth"
             if generic_priority_action is not None
+            and not priority_is_human_targeted
             and bool(getattr(self, "GENERIC_RESPONSE_NARROWING_ENABLED", False))
             else None
         )
@@ -2204,7 +2228,7 @@ class TimedSearchMixin:
 
                 if bool(
                     getattr(self, "GENERIC_RESPONSE_NARROWING_ENABLED", False)
-                ):
+                ) and not priority_is_human_targeted:
                     active_narrowing_full_candidates = len(root_actions)
                     if maximum_depth <= depth:
                         active_narrowing_status = "insufficient_depth"
@@ -2544,7 +2568,16 @@ class TimedSearchMixin:
                 if control_best_action is not None
                 else best_value
             )
-            if priority_is_tactical:
+            if priority_is_human_targeted:
+                self._record_human_targeted_response_priority_effect(
+                    reordered=priority_reordered,
+                    baseline_disagreed=(
+                        generic_priority_action != baseline_action
+                    ),
+                    selected=best_action == generic_priority_action,
+                    completed_depth=completed_depth,
+                )
+            elif priority_is_tactical:
                 self._record_tactical_response_priority_effect(
                     reordered=priority_reordered,
                     baseline_disagreed=(

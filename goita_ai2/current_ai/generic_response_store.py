@@ -312,6 +312,18 @@ class GenericResponsePatternStore:
             "tactical_priority_baseline_disagreements": 0,
             "tactical_priority_selected": 0,
             "tactical_priority_depth_sum": 0,
+            "human_targeted_priority_lookups": 0,
+            "human_targeted_priority_no_recommendation": 0,
+            "human_targeted_priority_not_targeted": 0,
+            "human_targeted_priority_rejected_action": 0,
+            "human_targeted_priority_rejected_context": 0,
+            "human_targeted_priority_no_legal_followup": 0,
+            "human_targeted_priority_offered": 0,
+            "human_targeted_priority_effects": 0,
+            "human_targeted_priority_reordered": 0,
+            "human_targeted_priority_baseline_disagreements": 0,
+            "human_targeted_priority_selected": 0,
+            "human_targeted_priority_depth_sum": 0,
             "tactical_pair_comparisons": 0,
             "tactical_pair_completed": 0,
             "tactical_pair_incomplete": 0,
@@ -1032,6 +1044,18 @@ class GenericResponsePatternStore:
                 "tactical_priority_baseline_disagreements",
                 "tactical_priority_selected",
                 "tactical_priority_depth_sum",
+                "human_targeted_priority_lookups",
+                "human_targeted_priority_no_recommendation",
+                "human_targeted_priority_not_targeted",
+                "human_targeted_priority_rejected_action",
+                "human_targeted_priority_rejected_context",
+                "human_targeted_priority_no_legal_followup",
+                "human_targeted_priority_offered",
+                "human_targeted_priority_effects",
+                "human_targeted_priority_reordered",
+                "human_targeted_priority_baseline_disagreements",
+                "human_targeted_priority_selected",
+                "human_targeted_priority_depth_sum",
                 "tactical_pair_comparisons",
                 "tactical_pair_completed",
                 "tactical_pair_incomplete",
@@ -1402,6 +1426,45 @@ class GenericResponsePatternStore:
             if selected:
                 counters["tactical_priority_selected"] += 1
             counters["tactical_priority_depth_sum"] += max(
+                0,
+                int(completed_depth),
+            )
+
+    def record_human_targeted_priority_query(self, status: str) -> None:
+        """Count one reviewed human-kifu priority lookup."""
+        counter_name = {
+            "no_recommendation": "human_targeted_priority_no_recommendation",
+            "not_targeted": "human_targeted_priority_not_targeted",
+            "rejected_action": "human_targeted_priority_rejected_action",
+            "rejected_context": "human_targeted_priority_rejected_context",
+            "no_legal_followup": "human_targeted_priority_no_legal_followup",
+            "offered": "human_targeted_priority_offered",
+        }.get(str(status), "human_targeted_priority_rejected_context")
+        with self._lock:
+            self._counters["human_targeted_priority_lookups"] += 1
+            self._counters[counter_name] += 1
+
+    def record_human_targeted_priority_effect(
+        self,
+        *,
+        reordered: bool,
+        baseline_disagreed: bool,
+        selected: bool,
+        completed_depth: int,
+    ) -> None:
+        """Record aggregate effects from a reviewed human-kifu hint."""
+        with self._lock:
+            counters = self._counters
+            counters["human_targeted_priority_effects"] += 1
+            if reordered:
+                counters["human_targeted_priority_reordered"] += 1
+            if baseline_disagreed:
+                counters[
+                    "human_targeted_priority_baseline_disagreements"
+                ] += 1
+            if selected:
+                counters["human_targeted_priority_selected"] += 1
+            counters["human_targeted_priority_depth_sum"] += max(
                 0,
                 int(completed_depth),
             )
@@ -2962,6 +3025,57 @@ class GenericResponsePatternStore:
                 "tactical_priority_average_depth": round(
                     int(counters["tactical_priority_depth_sum"])
                     / max(1, int(counters["tactical_priority_effects"])),
+                    3,
+                ),
+                "human_targeted_priority_lookups": int(
+                    counters["human_targeted_priority_lookups"]
+                ),
+                "human_targeted_priority_no_recommendation": int(
+                    counters["human_targeted_priority_no_recommendation"]
+                ),
+                "human_targeted_priority_not_targeted": int(
+                    counters["human_targeted_priority_not_targeted"]
+                ),
+                "human_targeted_priority_rejected_action": int(
+                    counters["human_targeted_priority_rejected_action"]
+                ),
+                "human_targeted_priority_rejected_context": int(
+                    counters["human_targeted_priority_rejected_context"]
+                ),
+                "human_targeted_priority_no_legal_followup": int(
+                    counters["human_targeted_priority_no_legal_followup"]
+                ),
+                "human_targeted_priority_offered": int(
+                    counters["human_targeted_priority_offered"]
+                ),
+                "human_targeted_priority_effects": int(
+                    counters["human_targeted_priority_effects"]
+                ),
+                "human_targeted_priority_reordered": int(
+                    counters["human_targeted_priority_reordered"]
+                ),
+                "human_targeted_priority_baseline_disagreements": int(
+                    counters[
+                        "human_targeted_priority_baseline_disagreements"
+                    ]
+                ),
+                "human_targeted_priority_selected": int(
+                    counters["human_targeted_priority_selected"]
+                ),
+                "human_targeted_priority_selected_rate": round(
+                    int(counters["human_targeted_priority_selected"])
+                    / max(
+                        1,
+                        int(counters["human_targeted_priority_effects"]),
+                    ),
+                    5,
+                ),
+                "human_targeted_priority_average_depth": round(
+                    int(counters["human_targeted_priority_depth_sum"])
+                    / max(
+                        1,
+                        int(counters["human_targeted_priority_effects"]),
+                    ),
                     3,
                 ),
                 "tactical_pair_comparisons": int(

@@ -3228,6 +3228,11 @@ def _apply_agent_turn(
             game.get("is_debug_room", False)
             and game.get("debug_dictionary_narrowing", False)
         )
+    if hasattr(agent, "GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED"):
+        agent.GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = bool(
+            game.get("is_debug_room", False)
+            and game.get("debug_dictionary_narrowing", False)
+        )
     if hasattr(agent, "GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED"):
         agent.GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = bool(
             game.get("is_debug_room", False)
