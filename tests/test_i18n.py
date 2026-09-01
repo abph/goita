@@ -18,10 +18,14 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260823b"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260823b"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260901a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260901a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
+    assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
+    assert "let currentLanguage = urlLanguage || readStoredLanguage()" in i18n
+    assert "if (options.persist !== false)" in i18n
+    assert "setLanguage(currentLanguage, { dispatch: false, persist: false })" in i18n
     assert 'currentLanguage === "en" ? "en" : "ja"' in i18n
     assert "new MutationObserver" in i18n
     assert 'parent.closest(".hand .val, .cell .val, .piece-value")' in i18n

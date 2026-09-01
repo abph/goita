@@ -628,8 +628,19 @@
   const lastRenderedText = new WeakMap();
   const originalAttributes = new WeakMap();
   const lastRenderedAttributes = new WeakMap();
-  let currentLanguage = readStoredLanguage();
+  const urlLanguage = readUrlLanguage();
+  let currentLanguage = urlLanguage || readStoredLanguage();
   let observer = null;
+
+  function readUrlLanguage() {
+    try {
+      const requested = new URLSearchParams(window.location.search).get("lang");
+      const normalized = String(requested || "").trim().toLowerCase();
+      return SUPPORTED_LANGUAGES.has(normalized) ? normalized : null;
+    } catch (_error) {
+      return null;
+    }
+  }
 
   function readStoredLanguage() {
     try {
@@ -776,9 +787,11 @@
     document.documentElement.lang = currentLanguage === "zh"
       ? "zh-CN"
       : (currentLanguage === "en" ? "en" : "ja");
-    try {
-      localStorage.setItem(STORAGE_KEY, currentLanguage);
-    } catch (_error) {}
+    if (options.persist !== false) {
+      try {
+        localStorage.setItem(STORAGE_KEY, currentLanguage);
+      } catch (_error) {}
+    }
     renderTree(document.documentElement);
     updateLanguageButtons();
     if (changed && options.dispatch !== false) {
@@ -828,7 +841,7 @@
   window.setSiteLanguage = (language) => setLanguage(language);
 
   const initialize = () => {
-    setLanguage(currentLanguage, { dispatch: false });
+    setLanguage(currentLanguage, { dispatch: false, persist: false });
     startObserver();
   };
   if (document.readyState === "loading") {
