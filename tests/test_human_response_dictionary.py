@@ -11,6 +11,7 @@ from goita_ai2.current_ai.generic_response_store import (
 )
 from goita_ai2.current_ai.human_response_dictionary import (
     DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH,
+    TARGETED_PRIORITY_PATTERN_KEYS,
     build_human_response_dictionary,
     reload_human_response_dictionary,
 )
@@ -33,6 +34,15 @@ def _receive_state() -> GoitaState:
     state.attacker = "B"
     state.current_attack = "2"
     return state
+
+
+def test_targeted_priority_patterns_are_reviewed_full_keys() -> None:
+    assert len(TARGETED_PRIORITY_PATTERN_KEYS) == 3
+    assert all(len(pattern_key) == 64 for pattern_key in TARGETED_PRIORITY_PATTERN_KEYS)
+    assert any(
+        pattern_key.startswith("1466716612")
+        for pattern_key in TARGETED_PRIORITY_PATTERN_KEYS
+    )
 
 
 def test_human_dictionary_shadow_does_not_change_live_action() -> None:

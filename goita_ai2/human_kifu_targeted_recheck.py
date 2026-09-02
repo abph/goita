@@ -79,6 +79,19 @@ def prioritized_pattern_ids(metrics: Mapping[str, object]) -> list[str]:
     return ordered
 
 
+def _normalized_pattern_ids(pattern_ids: Iterable[str]) -> list[str]:
+    """Return unique anonymous pattern prefixes accepted by the report."""
+    normalized: list[str] = []
+    seen = set()
+    for raw in pattern_ids:
+        pattern_id = str(raw).strip().lower()[:10]
+        if not pattern_id or pattern_id in seen:
+            continue
+        normalized.append(pattern_id)
+        seen.add(pattern_id)
+    return normalized
+
+
 def _round_robin_candidates(
     buckets: Mapping[str, Sequence[dict]],
     pattern_order: Iterable[str],
@@ -262,6 +275,16 @@ def _summarize_direct_comparisons(
 ) -> dict:
     completed = [item for item in comparisons if item.get("completed")]
     values = [float(item.get("value_delta", 0.0)) for item in completed]
+    human_losses = [
+        float(item.get("human_terminal_loss_rate", 0.0))
+        for item in completed
+    ]
+    ai_losses = [
+        float(item.get("ai_terminal_loss_rate", 0.0))
+        for item in completed
+    ]
+    average_human_loss = sum(human_losses) / max(1, len(human_losses))
+    average_ai_loss = sum(ai_losses) / max(1, len(ai_losses))
     return {
         "attempted": len(comparisons),
         "completed": len(completed),
@@ -282,7 +305,35 @@ def _summarize_direct_comparisons(
             sum(values) / max(1, len(values)),
             3,
         ),
+        "average_human_terminal_loss_rate": round(average_human_loss, 5),
+        "average_ai_terminal_loss_rate": round(average_ai_loss, 5),
+        "terminal_loss_rate_delta": round(
+            average_human_loss - average_ai_loss,
+            5,
+        ),
     }
+
+
+def _direct_pattern_candidate(summary: Mapping[str, object]) -> tuple[bool, str]:
+    completed = max(0, int(summary.get("completed", 0)))
+    human_better = max(0, int(summary.get("human_better", 0)))
+    ai_better = max(0, int(summary.get("ai_better", 0)))
+    human_win_rate = human_better / max(1, completed)
+    terminal_loss_safe = bool(
+        float(summary.get("average_human_terminal_loss_rate", 0.0))
+        <= float(summary.get("average_ai_terminal_loss_rate", 0.0)) + 1e-6
+    )
+    if completed < 5:
+        return False, "insufficient_comparisons"
+    if not terminal_loss_safe:
+        return False, "terminal_loss_rate_increased"
+    if human_better < 3 or human_win_rate < 0.60:
+        return False, "insufficient_human_wins"
+    if human_better <= ai_better:
+        return False, "ai_route_not_worse"
+    if float(summary.get("average_value_delta", 0.0)) <= 0.0:
+        return False, "average_value_not_improved"
+    return True, "qualified"
 
 
 def run_targeted_recheck(
@@ -295,9 +346,15 @@ def run_targeted_recheck(
     search_seconds: float = 1.0,
     comparison_seconds: float = 5.0,
     scan_only: bool = False,
+    pattern_ids: Sequence[str] = (),
 ) -> dict:
     metrics = _load_json(metrics_path) if metrics_path is not None else {}
-    priority_ids = prioritized_pattern_ids(metrics)
+    explicit_pattern_ids = _normalized_pattern_ids(pattern_ids)
+    priority_ids = (
+        explicit_pattern_ids
+        if explicit_pattern_ids
+        else prioritized_pattern_ids(metrics)
+    )
 
     # Configure a fresh aggregate store before importing the current AI.  The
     # temporary checkpoint is discarded; only the sanitized report is kept.
@@ -450,26 +507,25 @@ def run_targeted_recheck(
             summary = _summarize_direct_comparisons(comparisons)
             completed = max(0, int(summary["completed"]))
             human_better = max(0, int(summary["human_better"]))
-            ai_better = max(0, int(summary["ai_better"]))
             human_win_rate = human_better / max(1, completed)
-            candidate = bool(
-                completed >= 5
-                and human_better >= 3
-                and human_win_rate >= 0.60
-                and human_better > ai_better
-                and float(summary["average_value_delta"]) > 0.0
+            terminal_loss_safe = bool(
+                float(summary["average_human_terminal_loss_rate"])
+                <= float(summary["average_ai_terminal_loss_rate"]) + 1e-6
             )
+            candidate, candidate_reason = _direct_pattern_candidate(summary)
             direct_patterns.append({
                 "pattern_id": pattern_id,
                 **summary,
                 "human_win_rate": round(human_win_rate, 5),
+                "terminal_loss_safe": terminal_loss_safe,
                 "candidate": candidate,
+                "candidate_reason": candidate_reason,
             })
         direct_patterns.sort(
             key=lambda item: (-int(item["completed"]), item["pattern_id"])
         )
         report = {
-            "schema_version": 1,
+            "schema_version": 2,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "purpose": "offline_human_receive_targeted_recheck",
             "live_ai_affected": False,
@@ -481,6 +537,12 @@ def run_targeted_recheck(
             },
             "settings": {
                 "metrics_priority_used": metrics_path is not None,
+                "explicit_pattern_ids": explicit_pattern_ids,
+                "priority_source": (
+                    "explicit" if explicit_pattern_ids
+                    else "metrics" if metrics_path is not None
+                    else "dictionary"
+                ),
                 "priority_pattern_count": len(priority_ids),
                 "max_evaluations": max(1, int(max_evaluations)),
                 "per_pattern": max(1, int(per_pattern)),
@@ -491,6 +553,10 @@ def run_targeted_recheck(
             "scan_summary": {
                 **scan,
                 "matched_pattern_count": len(buckets),
+                "matched_patterns": {
+                    pattern_id: len(cases)
+                    for pattern_id, cases in sorted(buckets.items())
+                },
                 "selected_for_evaluation": len(selected),
             },
             "evaluation_summary": {
@@ -527,6 +593,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--per-pattern", type=int, default=5)
     parser.add_argument("--search-seconds", type=float, default=1.0)
     parser.add_argument("--comparison-seconds", type=float, default=5.0)
+    parser.add_argument(
+        "--pattern",
+        action="append",
+        default=[],
+        help="Anonymous pattern prefix to recheck (repeatable)",
+    )
     parser.add_argument("--scan-only", action="store_true")
     args = parser.parse_args(argv)
     report = run_targeted_recheck(
@@ -538,6 +610,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         search_seconds=args.search_seconds,
         comparison_seconds=args.comparison_seconds,
         scan_only=args.scan_only,
+        pattern_ids=args.pattern,
     )
     print(json.dumps({
         "output": str(args.output),
@@ -545,6 +618,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "evaluation_summary": report["evaluation_summary"],
         "comparison_summary": report["comparison_summary"],
         "direct_comparison_summary": report["direct_comparison_summary"],
+        "direct_pattern_results": report["direct_pattern_results"],
     }, ensure_ascii=False, indent=2))
     return 0
 

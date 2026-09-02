@@ -16,9 +16,10 @@ DEFAULT_HUMAN_RESPONSE_DICTIONARY_PATH = (
     Path(__file__).with_name("data") / "human-response-patterns.json"
 )
 
-# These two anonymous shapes were rechecked with equal-budget searches against
+# These anonymous shapes were rechecked with equal-budget searches against
 # the current AI.  They are hints for search ordering only, never forced moves.
 TARGETED_PRIORITY_PATTERN_KEYS = frozenset({
+    "14667166127236f469d82a7a73dd1ec712001e27ef0b07abf192fe4534264a1a",
     "62a0a4b9b192c4146e3d97943019841fcb81fe9c1bdb6e6e981c74eee87c8dae",
     "eaec40b232be2a47ba3099d08c41e1605dc2387c4072de0bfd523bfb4781edf6",
 })

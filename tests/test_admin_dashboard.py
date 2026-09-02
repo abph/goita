@@ -57,7 +57,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "評価差は「人間ルート − AIルート」" in admin
     assert "人間側が3勝以上・勝率60%以上でAI側より多く勝ち" in admin
     assert "人間棋譜・採用候補" in admin
-    assert "集中再検証を通過した2型" in admin
+    assert "集中再検証を通過した3型" in admin
     assert "人間候補優先・候補に使用" in admin
     assert "人間候補優先・最終採用" in admin
     assert "人間候補あり・なしを比較" in admin
