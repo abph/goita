@@ -7,6 +7,7 @@ from typing import Mapping
 
 UNKNOWN_PREFECTURE = "不明"
 OVERSEAS_PREFECTURE = "国外"
+UNKNOWN_COUNTRY_CODE = ""
 
 PREFECTURES_BY_CODE = {
     "01": "北海道",
@@ -92,11 +93,24 @@ def normalize_prefecture(value: object) -> str:
     return text if text in ALLOWED_ANALYTICS_REGIONS else UNKNOWN_PREFECTURE
 
 
+def normalize_country_code(value: object) -> str:
+    """Keep only a coarse ISO-style country code, never an address or IP."""
+    code = str(value or "").strip().upper()
+    if len(code) == 2 and code.isalpha() and code not in {"XX", "T1"}:
+        return code
+    return UNKNOWN_COUNTRY_CODE
+
+
+def infer_country_code(headers: Mapping[str, str]) -> str:
+    """Read the Cloudflare country code without retaining the source IP."""
+    return normalize_country_code(headers.get("cf-ipcountry", ""))
+
+
 def infer_prefecture(headers: Mapping[str, str]) -> str:
     """Read Cloudflare location headers without retaining the source IP."""
 
-    country = str(headers.get("cf-ipcountry", "") or "").strip().upper()
-    if country and country not in {"JP", "XX", "T1"}:
+    country = infer_country_code(headers)
+    if country and country != "JP":
         return OVERSEAS_PREFECTURE
 
     region_code = str(headers.get("cf-region-code", "") or "").strip().upper()

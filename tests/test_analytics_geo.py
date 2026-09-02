@@ -1,4 +1,4 @@
-from backend.analytics_geo import infer_prefecture
+from backend.analytics_geo import infer_country_code, infer_prefecture
 
 
 def test_cloudflare_region_code_is_converted_to_prefecture() -> None:
@@ -17,4 +17,7 @@ def test_cloudflare_english_region_name_is_supported() -> None:
 
 def test_overseas_and_missing_locations_are_coarsened() -> None:
     assert infer_prefecture({"cf-ipcountry": "US"}) == "国外"
+    assert infer_country_code({"cf-ipcountry": "US"}) == "US"
+    assert infer_country_code({"cf-ipcountry": "JP"}) == "JP"
+    assert infer_country_code({"cf-ipcountry": "T1"}) == ""
     assert infer_prefecture({}) == "不明"

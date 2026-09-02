@@ -28,7 +28,15 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
     assert 'id="regionRows"' in admin
+    assert 'id="countryRows"' in admin
     assert "地域（推定）" in admin
+    assert "都道府県・不明" in admin
+    assert "国外（国・地域）" in admin
+    assert 'value="custom">指定期間' in admin
+    assert 'id="analyticsStartDate"' in admin
+    assert 'id="analyticsEndDate"' in admin
+    assert 'params.set("start_date", startDate)' in admin
+    assert 'params.set("end_date", endDate)' in admin
     assert 'id="responseMetricGrid"' in admin
     assert 'id="genericPatternMetricGrid"' in admin
     assert "AI応答辞書の計測" in admin
@@ -123,5 +131,5 @@ def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> No
     assert second in lobby
     assert lobby.index(first) < lobby.index(second)
     assert "分析用の記録には、名前、チャット内容、棋譜、手駒、ペア相手、対戦相手の情報を含めません。" in lobby
-    assert "推定した都道府県を記録する場合があります。" in lobby
+    assert "推定した都道府県または国・地域を記録する場合があります。" in lobby
     assert "デバッグルームのボイスチャットは" not in lobby

@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set
 
@@ -73,7 +73,7 @@ from backend.research_kifu_store import (
 )
 from backend.frequent_deal import is_frequent_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
-from backend.analytics_geo import infer_prefecture
+from backend.analytics_geo import infer_country_code, infer_prefecture
 
 LOGGER = logging.getLogger(__name__)
 
@@ -2149,6 +2149,7 @@ class AnalyticsDeleteRequest(BaseModel):
 def record_analytics_event(req: AnalyticsEventRequest, request: Request):
     payload = req.model_dump()
     payload["prefecture"] = infer_prefecture(request.headers)
+    payload["country_code"] = infer_country_code(request.headers)
     if not ANALYTICS_STORE.record_event(payload):
         raise HTTPException(status_code=400, detail="記録できない利用イベントです")
     return {"ok": True}
@@ -3870,9 +3871,24 @@ def admin_analytics(
     request: Request,
     days: int = 30,
     recent_limit: int = 80,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
 ):
     _require_site_admin(request)
-    payload = ANALYTICS_STORE.snapshot(days=days, recent_limit=recent_limit)
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(
+            status_code=400,
+            detail="開始日と終了日を両方指定してください",
+        )
+    try:
+        payload = ANALYTICS_STORE.snapshot(
+            days=days,
+            recent_limit=recent_limit,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     payload["persistent"] = ANALYTICS_PERSISTENT
     return payload
 

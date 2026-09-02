@@ -12,11 +12,11 @@ import re
 import sqlite3
 import threading
 from contextlib import closing
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from backend.analytics_geo import normalize_prefecture
+from backend.analytics_geo import normalize_country_code, normalize_prefecture
 
 
 ANALYTICS_FILENAME = "goita-analytics.sqlite3"
@@ -78,6 +78,49 @@ def resolve_analytics_path(
 
 def _utc_now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+JAPAN_TIMEZONE = timezone(timedelta(hours=9))
+
+
+def analytics_utc_bounds(
+    *,
+    days: int = 30,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    now: Optional[datetime] = None,
+) -> tuple[str, str, date, date]:
+    """Return inclusive Japanese calendar dates as an exclusive UTC range."""
+    local_now = (now or datetime.now(timezone.utc)).astimezone(JAPAN_TIMEZONE)
+    if (start_date is None) != (end_date is None):
+        raise ValueError("start_date and end_date must be specified together")
+    if start_date is None:
+        bounded_days = max(1, min(3650, int(days)))
+        period_end = local_now.date()
+        period_start = period_end - timedelta(days=bounded_days - 1)
+    else:
+        period_start = start_date
+        period_end = end_date
+        if period_end < period_start:
+            raise ValueError("end_date must not be before start_date")
+        if (period_end - period_start).days >= 3650:
+            raise ValueError("analytics range must be 3650 days or fewer")
+    start_local = datetime.combine(
+        period_start,
+        datetime_time.min,
+        tzinfo=JAPAN_TIMEZONE,
+    )
+    end_local = datetime.combine(
+        period_end + timedelta(days=1),
+        datetime_time.min,
+        tzinfo=JAPAN_TIMEZONE,
+    )
+    return (
+        start_local.astimezone(timezone.utc).isoformat(timespec="seconds"),
+        end_local.astimezone(timezone.utc).isoformat(timespec="seconds"),
+        period_start,
+        period_end,
+    )
 
 
 def _clean_text(value: Any, max_length: int) -> str:
@@ -148,6 +191,7 @@ class AnalyticsStore:
                         device TEXT NOT NULL DEFAULT 'unknown',
                         language TEXT NOT NULL DEFAULT 'other',
                         prefecture TEXT NOT NULL DEFAULT '不明',
+                        country_code TEXT NOT NULL DEFAULT '',
                         event_count INTEGER NOT NULL DEFAULT 0,
                         FOREIGN KEY (analytics_id) REFERENCES analytics_visitors(analytics_id)
                     );
@@ -181,6 +225,15 @@ class AnalyticsStore:
                         "ALTER TABLE analytics_sessions "
                         "ADD COLUMN prefecture TEXT NOT NULL DEFAULT '不明'"
                     )
+                if "country_code" not in session_columns:
+                    connection.execute(
+                        "ALTER TABLE analytics_sessions "
+                        "ADD COLUMN country_code TEXT NOT NULL DEFAULT ''"
+                    )
+                    connection.execute(
+                        "UPDATE analytics_sessions SET country_code = 'JP' "
+                        "WHERE prefecture NOT IN ('', '不明', '国外')"
+                    )
                 connection.commit()
             self._schema_ready = True
 
@@ -210,6 +263,7 @@ class AnalyticsStore:
         medium = _clean_text(payload.get("medium"), 80)
         campaign = _clean_text(payload.get("campaign"), 80)
         prefecture = normalize_prefecture(payload.get("prefecture"))
+        country_code = normalize_country_code(payload.get("country_code"))
         properties = _safe_properties(payload.get("properties"))
         now = _utc_now_text()
 
@@ -234,10 +288,20 @@ class AnalyticsStore:
                 INSERT INTO analytics_sessions (
                     session_id, analytics_id, started_at, last_seen,
                     source, medium, campaign, device, language, prefecture,
-                    event_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    country_code, event_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(session_id) DO UPDATE SET
-                    last_seen = excluded.last_seen
+                    last_seen = excluded.last_seen,
+                    prefecture = CASE
+                        WHEN analytics_sessions.prefecture = '不明'
+                        THEN excluded.prefecture
+                        ELSE analytics_sessions.prefecture
+                    END,
+                    country_code = CASE
+                        WHEN analytics_sessions.country_code = ''
+                        THEN excluded.country_code
+                        ELSE analytics_sessions.country_code
+                    END
                 """,
                 (
                     session_id,
@@ -250,6 +314,7 @@ class AnalyticsStore:
                     device,
                     language,
                     prefecture,
+                    country_code,
                 ),
             )
             if event_name != "heartbeat":
@@ -312,40 +377,54 @@ class AnalyticsStore:
             connection.commit()
         return True
 
-    def snapshot(self, days: int = 30, recent_limit: int = 80) -> dict[str, Any]:
+    def snapshot(
+        self,
+        days: int = 30,
+        recent_limit: int = 80,
+        *,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> dict[str, Any]:
         """Return an administrator-safe aggregate and recent anonymous journeys."""
 
         self._ensure_schema()
         days = max(1, min(3650, int(days)))
         recent_limit = max(1, min(250, int(recent_limit)))
-        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+        since, until, period_start, period_end = analytics_utc_bounds(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+        )
         with closing(self._connect()) as connection:
             visitors = int(connection.execute(
-                "SELECT COUNT(DISTINCT analytics_id) FROM analytics_events WHERE occurred_at >= ?",
-                (since,),
+                "SELECT COUNT(DISTINCT analytics_id) FROM analytics_events "
+                "WHERE occurred_at >= ? AND occurred_at < ?",
+                (since, until),
             ).fetchone()[0])
             sessions = int(connection.execute(
-                "SELECT COUNT(*) FROM analytics_sessions WHERE started_at >= ?",
-                (since,),
+                "SELECT COUNT(*) FROM analytics_sessions "
+                "WHERE started_at >= ? AND started_at < ?",
+                (since, until),
             ).fetchone()[0])
             event_rows = connection.execute(
                 """
                 SELECT event_name, COUNT(*) AS total
                 FROM analytics_events
-                WHERE occurred_at >= ?
+                WHERE occurred_at >= ? AND occurred_at < ?
                 GROUP BY event_name
                 """,
-                (since,),
+                (since, until),
             ).fetchall()
             event_counts = {str(row["event_name"]): int(row["total"]) for row in event_rows}
             room_rows = connection.execute(
                 """
                 SELECT room_type, COUNT(*) AS total
                 FROM analytics_events
-                WHERE occurred_at >= ? AND event_name = 'room_enter'
+                WHERE occurred_at >= ? AND occurred_at < ?
+                      AND event_name = 'room_enter'
                 GROUP BY room_type
                 """,
-                (since,),
+                (since, until),
             ).fetchall()
             room_entries = {
                 str(row["room_type"]): int(row["total"])
@@ -355,9 +434,10 @@ class AnalyticsStore:
                 """
                 SELECT properties_json
                 FROM analytics_events
-                WHERE occurred_at >= ? AND event_name = 'game_started'
+                WHERE occurred_at >= ? AND occurred_at < ?
+                      AND event_name = 'game_started'
                 """,
-                (since,),
+                (since, until),
             ).fetchall()
             host_starts = 0
             joined_starts = 0
@@ -373,9 +453,10 @@ class AnalyticsStore:
             average_duration = float(connection.execute(
                 """
                 SELECT COALESCE(AVG((julianday(last_seen) - julianday(started_at)) * 86400.0), 0)
-                FROM analytics_sessions WHERE started_at >= ?
+                FROM analytics_sessions
+                WHERE started_at >= ? AND started_at < ?
                 """,
-                (since,),
+                (since, until),
             ).fetchone()[0] or 0.0)
             source_rows = connection.execute(
                 """
@@ -383,12 +464,12 @@ class AnalyticsStore:
                        COUNT(DISTINCT analytics_id) AS visitors,
                        COUNT(*) AS sessions
                 FROM analytics_sessions
-                WHERE started_at >= ?
+                WHERE started_at >= ? AND started_at < ?
                 GROUP BY source_name
                 ORDER BY visitors DESC, sessions DESC
                 LIMIT 20
                 """,
-                (since,),
+                (since, until),
             ).fetchall()
             region_rows = connection.execute(
                 """
@@ -396,21 +477,37 @@ class AnalyticsStore:
                        COUNT(DISTINCT analytics_id) AS visitors,
                        COUNT(*) AS sessions
                 FROM analytics_sessions
-                WHERE started_at >= ?
+                WHERE started_at >= ? AND started_at < ?
+                      AND (country_code = 'JP'
+                           OR (country_code = '' AND prefecture != '国外'))
                 GROUP BY CASE WHEN prefecture = '' THEN '不明' ELSE prefecture END
                 ORDER BY visitors DESC, sessions DESC
                 """,
-                (since,),
+                (since, until),
+            ).fetchall()
+            country_rows = connection.execute(
+                """
+                SELECT country_code,
+                       COUNT(DISTINCT analytics_id) AS visitors,
+                       COUNT(*) AS sessions
+                FROM analytics_sessions
+                WHERE started_at >= ? AND started_at < ?
+                      AND (country_code NOT IN ('', 'JP') OR prefecture = '国外')
+                GROUP BY country_code
+                ORDER BY visitors DESC, sessions DESC
+                """,
+                (since, until),
             ).fetchall()
             recent_sessions = connection.execute(
                 """
                 SELECT session_id, analytics_id, started_at, last_seen, ended_at,
                        source, campaign, device, language, event_count
                 FROM analytics_sessions
+                WHERE started_at >= ? AND started_at < ?
                 ORDER BY last_seen DESC
                 LIMIT ?
                 """,
-                (recent_limit,),
+                (since, until, recent_limit),
             ).fetchall()
             recent: list[dict[str, Any]] = []
             for row in recent_sessions:
@@ -418,10 +515,10 @@ class AnalyticsStore:
                     """
                     SELECT occurred_at, event_name, room_type, properties_json
                     FROM analytics_events
-                    WHERE session_id = ?
+                    WHERE session_id = ? AND occurred_at >= ? AND occurred_at < ?
                     ORDER BY occurred_at, id
                     """,
-                    (row["session_id"],),
+                    (row["session_id"], since, until),
                 ).fetchall()
                 events = []
                 for event in event_list:
@@ -452,7 +549,9 @@ class AnalyticsStore:
         completed = event_counts.get("game_completed", 0)
         started = event_counts.get("game_started", 0)
         return {
-            "days": days,
+            "days": (period_end - period_start).days + 1,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
             "visitors": visitors,
             "sessions": sessions,
             "average_duration_seconds": round(average_duration, 1),
@@ -466,6 +565,7 @@ class AnalyticsStore:
             "event_counts": event_counts,
             "sources": [dict(row) for row in source_rows],
             "regions": [dict(row) for row in region_rows],
+            "countries": [dict(row) for row in country_rows],
             "recent_sessions": recent,
             "database_bytes": self.path.stat().st_size if self.path.exists() else 0,
         }

@@ -141,7 +141,8 @@
     .metric-label { color: var(--muted); font-size: 12px; }
     .metric-value { margin-top: 8px; font-size: 24px; font-weight: 850; }
     .analytics-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .analytics-toolbar select { width: auto; }
+    .analytics-toolbar select, .analytics-toolbar input { width: auto; }
+    .analytics-custom-range { display: flex; align-items: center; gap: 6px; }
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
     .table-scroll { max-width: 100%; overflow-x: auto; }
@@ -163,6 +164,8 @@
     @media (max-width: 900px) {
       .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .analytics-grid, .form-grid, .public-room-name-grid { grid-template-columns: 1fr; }
+      .analytics-custom-range { width: 100%; }
+      .analytics-custom-range input { min-width: 0; flex: 1; }
       .password-row { grid-template-columns: 1fr; }
       .room-options { grid-template-columns: 1fr; }
     }
@@ -309,7 +312,13 @@
             <option value="30" selected>30日間</option>
             <option value="90">90日間</option>
             <option value="365">1年間</option>
+            <option value="custom">指定期間</option>
           </select>
+          <div id="analyticsCustomRange" class="analytics-custom-range" hidden>
+            <input id="analyticsStartDate" type="date" aria-label="集計開始日">
+            <span>〜</span>
+            <input id="analyticsEndDate" type="date" aria-label="集計終了日">
+          </div>
           <button id="analyticsRefresh" class="button" type="button">更新</button>
         </div>
         <div id="analyticsStatus" class="status" aria-live="polite"></div>
@@ -323,8 +332,13 @@
             </table>
             <h2 class="subheading">地域（推定）</h2>
             <table>
-              <thead><tr><th>都道府県</th><th>利用者</th><th>訪問</th></tr></thead>
+              <thead><tr><th>都道府県・不明</th><th>利用者</th><th>訪問</th></tr></thead>
               <tbody id="regionRows"></tbody>
+            </table>
+            <h2 class="subheading">国外（国・地域）</h2>
+            <table>
+              <thead><tr><th>国・地域</th><th>利用者</th><th>訪問</th></tr></thead>
+              <tbody id="countryRows"></tbody>
             </table>
             <h2 class="subheading">入室先</h2>
             <table>
@@ -1014,6 +1028,36 @@
       ).format(date);
     }
 
+    function countryName(countryCode) {
+      const code = String(countryCode || "").toUpperCase();
+      if (!code) return "国外（国・地域不明）";
+      try {
+        return new Intl.DisplayNames(["ja"], {type: "region"}).of(code) || code;
+      } catch (_error) {
+        return code;
+      }
+    }
+
+    function localDateValue(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function initializeAnalyticsDates() {
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - 29);
+      document.getElementById("analyticsStartDate").value = localDateValue(start);
+      document.getElementById("analyticsEndDate").value = localDateValue(end);
+    }
+
+    function updateAnalyticsRangeVisibility() {
+      const custom = document.getElementById("analyticsDays").value === "custom";
+      document.getElementById("analyticsCustomRange").hidden = !custom;
+    }
+
     function eventDescription(event) {
       const label = EVENT_LABELS[event.event] || event.event;
       const room = ROOM_LABELS[event.room_type] || "";
@@ -1046,6 +1090,9 @@
       document.getElementById("regionRows").innerHTML = (data.regions || []).map(region => `
         <tr><td>${escapeHtml(region.prefecture)}</td><td>${region.visitors}</td><td>${region.sessions}</td></tr>
       `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
+      document.getElementById("countryRows").innerHTML = (data.countries || []).map(country => `
+        <tr><td>${escapeHtml(countryName(country.country_code))}</td><td>${country.visitors}</td><td>${country.sessions}</td></tr>
+      `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
       document.getElementById("roomEntryRows").innerHTML = Object.entries(data.room_entries || {})
         .sort((left, right) => Number(right[1]) - Number(left[1]))
         .map(([roomType, count]) => `<tr><td>${escapeHtml(ROOM_LABELS[roomType] || roomType)}</td><td>${count}回</td></tr>`)
@@ -1076,9 +1123,20 @@
       status.textContent = "読み込んでいます...";
       try {
         const days = document.getElementById("analyticsDays").value;
-        const data = await api(`/admin/api/analytics?days=${encodeURIComponent(days)}&recent_limit=100`);
+        const params = new URLSearchParams({recent_limit: "100"});
+        if (days === "custom") {
+          const startDate = document.getElementById("analyticsStartDate").value;
+          const endDate = document.getElementById("analyticsEndDate").value;
+          if (!startDate || !endDate) throw new Error("開始日と終了日を指定してください。");
+          if (startDate > endDate) throw new Error("終了日は開始日以降にしてください。");
+          params.set("start_date", startDate);
+          params.set("end_date", endDate);
+        } else {
+          params.set("days", days);
+        }
+        const data = await api(`/admin/api/analytics?${params.toString()}`);
         renderAnalytics(data);
-        status.textContent = "";
+        status.textContent = `${data.period_start} 〜 ${data.period_end} の集計`;
       } catch (error) {
         if (error.status === 401) showLogin();
         status.textContent = error.message;
@@ -1160,7 +1218,12 @@
     }));
 
     document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
-    document.getElementById("analyticsDays").addEventListener("change", loadAnalytics);
+    document.getElementById("analyticsDays").addEventListener("change", () => {
+      updateAnalyticsRangeVisibility();
+      if (document.getElementById("analyticsDays").value !== "custom") loadAnalytics();
+    });
+    initializeAnalyticsDates();
+    updateAnalyticsRangeVisibility();
     document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
     document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
     document.getElementById("logoutButton").addEventListener("click", async () => {
