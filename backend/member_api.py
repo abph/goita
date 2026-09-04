@@ -14,6 +14,16 @@ from backend.member_store import MemberError, MemberStore
 MEMBER_COOKIE = "goita_member_session"
 
 
+def require_member_origin(request):
+    if request is None or request.headers.get("X-Goita-Member") != "1" or request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(403, "同じサイトから操作してください。")
+    origin = request.headers.get("origin")
+    if origin:
+        source = urlsplit(origin)
+        if source.scheme != request.url.scheme or source.netloc != request.url.netloc:
+            raise HTTPException(403, "同じサイトから操作してください。")
+
+
 class PrivateRoute(APIRoute):
     def get_route_handler(self):
         handler = super().get_route_handler()
@@ -22,13 +32,7 @@ class PrivateRoute(APIRoute):
             try:
                 # The custom header prevents simple cross-origin form submissions.
                 # Origin validation also protects reads despite the legacy CORS policy.
-                origin = request.headers.get("origin")
-                if request.headers.get("X-Goita-Member") != "1" or request.headers.get("sec-fetch-site") == "cross-site":
-                    raise HTTPException(403, "同じサイトから操作してください。")
-                if origin:
-                    source = urlsplit(origin)
-                    if source.scheme != request.url.scheme or source.netloc != request.url.netloc:
-                        raise HTTPException(403, "同じサイトから操作してください。")
+                require_member_origin(request)
                 response = await handler(request)
             except MemberError as error:
                 response = JSONResponse({"detail": str(error)}, status_code=error.status)
@@ -55,7 +59,7 @@ class LoginInput(MemberInput):
 
 class PasswordInput(MemberInput):
     current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=15, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class CreateInput(MemberInput):
@@ -136,5 +140,11 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
     def reset(request: Request, member_id: str):
         require_admin(request)
         return store.reset_password(member_id)
+
+    @router.delete("/admin/api/members/{member_id}")
+    def delete(request: Request, member_id: str):
+        require_admin(request)
+        store.delete(member_id)
+        return {"ok": True}
 
     return router

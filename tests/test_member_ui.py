@@ -13,7 +13,7 @@ def test_member_page_is_available_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260904a"' in html
+    assert 'src="/static/member.js?v=20260904b"' in html
     assert 'href="/static/member.css?v=20260904a"' in html
 
 
@@ -28,15 +28,17 @@ def test_member_ui_never_uses_browser_credential_storage():
     assert "paid_until:" not in script
 
 
-def test_admin_has_manual_member_issuance_and_no_delete_action():
+def test_admin_has_manual_member_issuance_and_confirmed_delete_action():
     html = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
     script = (ROOT / "frontend" / "admin-members.js").read_text(encoding="utf-8")
     assert 'data-tab="members"' in html
     assert 'id="memberCreateForm"' in html
     assert "会員を発行" in html
     assert "仮パスワード再発行" in script
-    assert 'src="/static/admin-members.js?v=20260904a"' in html
-    assert 'method: "DELETE"' not in script
+    assert 'src="/static/admin-members.js?v=20260904b"' in html
+    assert '"DELETE"' in script
+    assert 'data-delete' in script
+    assert '元に戻せません。' in script
     assert 'credentials: "same-origin"' in script
     assert '"X-Goita-Member": "1"' in script
 
@@ -47,10 +49,17 @@ def test_privacy_policy_discloses_member_storage_and_analytics_separation():
     assert "これらは利用状況の分析用IDとは結び付けません。" in html
 
 
-def test_initial_release_does_not_unlock_stamps_or_kifu_by_client_side_membership():
+def test_paid_stamps_are_public_room_only_and_kifu_remains_unchanged():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID" in html
-    assert "goitaMembers?.paid" not in html
+    assert "MAIN_ROOM_IDS.has(gid) && window.goitaMembers?.canUseAllStamps()" in html
+    assert '"X-Goita-Member": "1"' in html
     assert "研究用棋譜ライブラリはプライベートルーム専用です" in (
         ROOT / "backend" / "app.py"
     ).read_text(encoding="utf-8")
+
+
+def test_member_password_inputs_accept_eight_characters():
+    script = (ROOT / "frontend" / "member.js").read_text(encoding="utf-8")
+    assert script.count('minlength="8"') == 2
+    assert 'minlength="15"' not in script

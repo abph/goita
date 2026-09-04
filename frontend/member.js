@@ -30,15 +30,16 @@
       <input name="username" autocomplete="username" value="${escape(member.member_id)}" hidden>
       <label>${label(initial ? "仮パスワード" : "現在のパスワード")}
         <input name="current_password" type="password" autocomplete="current-password" maxlength="128" required></label>
-      <label>${label("新しいパスワード（15〜128文字）")}
-        <input name="new_password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required></label>
+      <label>${label("新しいパスワード（8〜128文字）")}
+        <input name="new_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
       <label>${label("新しいパスワード（確認）")}
-        <input name="confirm_password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required></label>
+        <input name="confirm_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
       <div class="member-actions"><button class="member-primary" type="submit">${label("パスワードを変更")}</button></div>
     </form>`;
   }
 
   function render() {
+    if (typeof initializeChatStampPickers === "function") initializeChatStampPickers();
     document.querySelectorAll("[data-member-entry]").forEach(button => {
       button.textContent = t(member ? "マイページ" : "ログイン");
     });
@@ -125,7 +126,11 @@
       if (event.target.closest('[data-action="logout"]')) perform("logout");
     });
   });
-  window.goitaMembers = {refresh, clearSecrets};
+  function canUseAllStamps() {
+    if (!member || member.must_change_password || !member.paid_active) return false;
+    return !member.paid_until || Date.now() < Date.parse(`${member.paid_until}T23:59:59.999+09:00`);
+  }
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps};
   render();
   refresh();
 })();

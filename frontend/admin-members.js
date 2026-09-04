@@ -50,7 +50,8 @@
         <label class="member-admin-check"><input type="checkbox" name="paid_enabled" ${member.paid_enabled ? "checked" : ""}>有料権限</label>
         <label>有効期限（JST）<input type="date" name="paid_until" value="${esc(member.paid_until)}" min="2000-01-01" max="9998-12-31"></label>
         <div class="member-admin-actions"><button class="button" type="submit">保存</button>
-          <button class="button" type="button" data-reset>仮パスワード再発行</button></div>
+          <button class="button" type="button" data-reset>仮パスワード再発行</button>
+          <button class="button" type="button" data-delete>削除</button></div>
       </form>`).join("") : '<p class="muted">会員はまだ登録されていません。</p>';
     } catch (error) { status.textContent = error.message; }
   }
@@ -98,6 +99,16 @@
     });
   });
   list.addEventListener("click", event => {
+    if (event.target.closest("[data-delete]")) {
+      const id = event.target.closest("form").dataset.id;
+      if (!window.confirm(`${id}を削除しますか？ 会員情報とすべてのログインが削除され、元に戻せません。`)) return;
+      action(async () => {
+        await request(`/${encodeURIComponent(id)}`, "DELETE");
+        await load();
+        status.textContent = "会員を削除しました。";
+      });
+      return;
+    }
     if (!event.target.closest("[data-reset]")) return;
     const id = event.target.closest("form").dataset.id;
     if (!window.confirm(`${id}の本人確認は済んでいますか？ 再発行すると、すべてのログインと現在のパスワードが無効になります。`)) return;

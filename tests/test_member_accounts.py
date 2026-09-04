@@ -51,6 +51,41 @@ def test_hash_is_salted_and_not_plaintext():
     assert not verify_password(PASSWORD, "invalid")
 
 
+def test_password_change_accepts_eight_but_rejects_seven(client, store):
+    issued = store.create("tester")
+    client.post("/api/member/login", json={"member_id": "tester", "password": issued["temporary_password"]})
+    for invalid in ("1234567", " " * 8):
+        response = client.post("/api/member/password", json={
+            "current_password": issued["temporary_password"], "new_password": invalid,
+        })
+        assert response.status_code in (400, 422)
+    response = client.post("/api/member/password", json={
+        "current_password": issued["temporary_password"], "new_password": "abcd1234",
+    })
+    assert response.status_code == 200
+    assert not response.json()["member"]["must_change_password"]
+    assert store.login("tester", "abcd1234")[0]["member_id"] == "tester"
+
+
+def test_delete_requires_admin_and_revokes_only_target_sessions(client, store):
+    _, token = ready(store)
+    _, other_token = ready(store, "other")
+    client.cookies.set(MEMBER_COOKIE, token)
+    assert client.delete("/admin/api/members/tester").status_code == 401
+    client.cookies.set("test_admin", "authorized")
+    assert client.delete("/admin/api/members/tester", headers={"Origin": "https://evil.example"}).status_code == 403
+    response = client.delete("/admin/api/members/tester")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert client.get("/api/member/me").status_code == 401
+    assert store.authenticate(other_token)["member_id"] == "other"
+    assert [m["member_id"] for m in store.list_members()] == ["other"]
+    assert client.delete("/admin/api/members/tester").status_code == 404
+    store.create("tester")
+    with pytest.raises(MemberError):
+        store.authenticate(token)
+
+
 def test_store_path_precedence(tmp_path):
     fallback = tmp_path / "fallback.sqlite3"
     assert resolve_member_path({}, fallback) == fallback

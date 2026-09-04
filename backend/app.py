@@ -75,8 +75,8 @@ from backend.research_kifu_store import (
 from backend.frequent_deal import is_frequent_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
-from backend.member_store import MemberStore, resolve_member_path
-from backend.member_api import create_member_router
+from backend.member_store import MemberError, MemberStore, resolve_member_path
+from backend.member_api import MEMBER_COOKIE, create_member_router, require_member_origin
 
 LOGGER = logging.getLogger(__name__)
 
@@ -4650,14 +4650,32 @@ async def set_player_name(game_id: str, req: NameRequest):
     return {"ok": True, "game_id": game_id, "player_names": pn, "player_tags": pt}
 
 
+PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice"})
+
+
+def _require_chat_stamp_access(game_id: str, stamp_id: str, request: Request):
+    if not stamp_id or stamp_id in PUBLIC_CHAT_STAMP_IDS:
+        return
+    if game_id in PRIVATE_ROOM_NAMES or game_id == DEBUG_GID:
+        return
+    if not _is_main_game_id(game_id):
+        raise HTTPException(403, "この場所ではこのスタンプは使えません。")
+    require_member_origin(request)
+    try:
+        MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, ""), require_paid=True)
+    except MemberError as error:
+        raise HTTPException(error.status, "公開部屋で全スタンプを使うには、有効な有料会員でログインしてください。") from None
+
+
 @app.post("/games/{game_id}/chat")
-async def post_chat_message(game_id: str, req: ChatRequest):
+async def post_chat_message(game_id: str, req: ChatRequest, request: Request = None):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     game = GAMES.get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     stamp_id, stamp_label = _validated_chat_stamp(req.stamp_id)
+    _require_chat_stamp_access(game_id, stamp_id, request)
     message = _sanitize_chat_message(req.message)
     if stamp_id:
         message = _stamp_chat_message(message, stamp_label)
@@ -4720,6 +4738,7 @@ async def post_chat_message(game_id: str, req: ChatRequest):
 @app.post("/lobby/chat")
 async def post_lobby_chat_message(req: ChatRequest):
     stamp_id, stamp_label = _validated_chat_stamp(req.stamp_id)
+    _require_chat_stamp_access("lobby", stamp_id, None)
     message = _sanitize_chat_message(req.message)
     if stamp_id:
         message = _stamp_chat_message(message, stamp_label)

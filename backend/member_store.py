@@ -43,8 +43,8 @@ def normalize_member_id(value: str) -> str:
 
 
 def validate_password(value: str) -> None:
-    if not 15 <= len(value) <= 128 or len(value.encode("utf-8")) > 512:
-        raise MemberError(400, "パスワードは15〜128文字で入力してください。")
+    if not 8 <= len(value) <= 128 or len(value.encode("utf-8")) > 512:
+        raise MemberError(400, "パスワードは8〜128文字で入力してください。")
     if not value.strip():
         raise MemberError(400, "空白だけのパスワードは使えません。")
 
@@ -159,6 +159,13 @@ class MemberStore:
     def list_members(self):
         with self._db() as db:
             return [self._public(row) for row in db.execute("SELECT * FROM members ORDER BY created_at DESC, member_id")]
+
+    def delete(self, member_id):
+        with self._db(write=True) as db:
+            if not db.execute("SELECT 1 FROM members WHERE member_id = ?", (member_id,)).fetchone():
+                raise MemberError(404, "会員が見つかりません。")
+            db.execute("DELETE FROM member_sessions WHERE member_id = ?", (member_id,))
+            db.execute("DELETE FROM members WHERE member_id = ?", (member_id,))
 
     def create(self, member_id, paid_enabled=True, paid_until=None):
         member_id = normalize_member_id(member_id)

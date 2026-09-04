@@ -2,7 +2,11 @@
 
 This release adds manually issued member accounts, first-login password change,
 a My Page tab in the existing settings dialogs, and administrator resets.
-It does NOT yet enable all stamps or personal kifu storage in public rooms.
+Active paid members can use all stamps in public rooms after changing their
+temporary password. Personal kifu storage in public rooms is not enabled yet.
+The lobby retains four stamps, and private/debug rooms retain all stamps.
+Public-room stamp requests validate current server-side membership, including
+expiry, suspension, password reset and account deletion, on every send.
 Existing private-room management and shared kifu permissions are unchanged.
 
 ## Production configuration
@@ -33,13 +37,16 @@ Existing private-room management and shared kifu permissions are unchanged.
    leaving the tab clears the displayed credential. A lost credential must be
    reset; it cannot be retrieved.
 5. The member selects `ログイン`, then must replace the temporary password with
-   a 15-128 character password. The initial session can only change passwords
+   an 8-128 character password. The initial session can only change passwords
    or log out; it cannot access `/api/member/me` or paid authorization.
 
 Remembered sessions last 30 days, with up to 10 devices per member. Changing
 the password invalidates all existing sessions and issues one new session for
 the current device. A reset invalidates all sessions and the old password.
 Account suspension invalidates all sessions; reenabling does not restore them.
+Deleting an account requires confirmation in the member list, removes its
+credentials and sessions, and cannot be undone. Other members and shared room
+kifu are unchanged. Reissuing the same ID never restores old sessions.
 Paid-access expiry/disable is separate from account suspension and does not
 prevent logging in. This is intentional for future access to saved records.
 The site-administrator login is limited to five failed attempts per 15-minute
@@ -67,7 +74,7 @@ are deliberately conservative for a small manually managed membership.
 Store the database outside version control and public static directories.
 Use SQLite's backup API for backups of a running service, and protect backups
 as credentials. Restore the member database separately from analytics. There
-is no delete-account UI, payment provider integration, or email recovery yet.
+is no payment provider integration or email recovery yet.
 
 ## Verification
 

@@ -32,7 +32,8 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert 'label.textContent = uiText(definition.pickerLabel || definition.label)' in HTML
     assert HTML.count('class="chat-content"') >= 2
     assert 'const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice"]);' in HTML
-    assert 'kind === "room" && (PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID)' in HTML
+    assert 'kind === "room" && (PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID' in HTML
+    assert 'MAIN_ROOM_IDS.has(gid) && window.goitaMembers?.canUseAllStamps()' in HTML
     assert 'CHAT_STAMP_DEFINITIONS.filter((definition) => PUBLIC_CHAT_STAMP_IDS.has(definition.id))' in HTML
     assert "gid = targetGid;\n    initializeChatStampPickers();" in HTML
     assert '? `${uiText(stamp.label)}${stamp.emoji}`' in HTML
