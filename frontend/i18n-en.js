@@ -7,6 +7,7 @@
   const exact = Object.freeze({
     "会員機能では、会員ID、暗号学的に保護したパスワード、ログイン情報、有料権限と有効期限を保存します。これらは利用状況の分析用IDとは結び付けません。": "Member features store your member ID, cryptographically protected password, login sessions, paid-access status and expiry. These are not linked to usage-analytics IDs.",
     "ログイン": "Log In",
+    "メニュー": "Menu",
     "ログアウト": "Log Out",
     "マイページ": "My Page",
     "会員ログイン": "Member Login",

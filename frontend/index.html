@@ -3446,6 +3446,45 @@
       gap: 12px;
       flex: 0 0 auto;
     }
+    .header-menu { position: relative; flex: 0 0 auto; }
+    .header-menu-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      white-space: nowrap;
+    }
+    .header-menu-popup {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 960;
+      width: 164px;
+      max-width: calc(100vw - 24px);
+      padding: 4px;
+      border: 1px solid #b99c77;
+      border-radius: 6px;
+      background: #fffdf7;
+      box-shadow: 0 4px 12px #0002;
+    }
+    .header-menu-popup[hidden] { display: none; }
+    .header-menu-item {
+      display: flex;
+      width: 100%;
+      min-height: 44px;
+      align-items: center;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #5f4935;
+      font: inherit;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+    }
+    .header-menu-item:hover, .header-menu-item:focus-visible { background: #f3df9d; }
     .game-header-title {
       display: flex;
       align-items: center;
@@ -4352,14 +4391,20 @@
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
   <link rel="stylesheet" href="/static/member.css?v=20260904a" />
   <script defer src="/static/member.js?v=20260904b"></script>
+  <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
 
 <div id="lobbyView">
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
   <div class="lobby-toolbar">
-    <button class="lobby-settings-button member-entry-button" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
-    <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
+    <div class="header-menu" data-header-menu>
+      <button class="lobby-settings-button header-menu-trigger" type="button" aria-expanded="false" aria-controls="lobbyHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span>メニュー</span></button>
+      <div id="lobbyHeaderMenu" class="header-menu-popup" hidden>
+        <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
+        <button class="header-menu-item" type="button" onclick="openLobbySettings()">設定</button>
+      </div>
+    </div>
   </div>
   <div class="lobby-intro">
      <h1>そろうごいた</h1>
@@ -4471,8 +4516,13 @@
       </h1>
     </div>
     <div class="game-header-actions">
-      <button class="gear-btn member-entry-button" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
-      <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定"><span class="gear-icon" aria-hidden="true">⚙️</span><span class="gear-label">設定</span></button>
+      <div class="header-menu" data-header-menu>
+        <button class="lobby-settings-button header-menu-trigger" type="button" aria-expanded="false" aria-controls="roomHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span>メニュー</span></button>
+        <div id="roomHeaderMenu" class="header-menu-popup" hidden>
+          <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
+          <button id="roomSettingsBtn" class="header-menu-item" type="button" onclick="openSettingsModal(gid)" style="display:none;">設定</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -5264,8 +5314,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260904b"></script>
-<script src="/static/i18n.js?v=20260904b"></script>
+<script src="/static/i18n-en.js?v=20260904c"></script>
+<script src="/static/i18n.js?v=20260904c"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">

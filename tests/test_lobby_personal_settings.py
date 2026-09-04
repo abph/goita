@@ -40,7 +40,7 @@ def test_lobby_language_switcher_is_inside_personal_settings() -> None:
     personal = html[personal_start:personal_end]
 
     assert "language-switcher" not in toolbar
-    assert 'class="lobby-settings-button"' in toolbar
+    assert 'class="lobby-settings-button header-menu-trigger"' in toolbar
     assert 'data-language-choice="ja"' in personal
     assert 'data-language-choice="zh"' in personal
     assert 'data-language-choice="en"' in personal
