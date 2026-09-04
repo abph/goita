@@ -13,8 +13,8 @@ def test_member_page_is_available_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260904b"' in html
-    assert 'href="/static/member.css?v=20260904a"' in html
+    assert 'src="/static/member.js?v=20260904c"' in html
+    assert 'href="/static/member.css?v=20260904b"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():
@@ -35,7 +35,7 @@ def test_admin_has_manual_member_issuance_and_confirmed_delete_action():
     assert 'id="memberCreateForm"' in html
     assert "会員を発行" in html
     assert "仮パスワード再発行" in script
-    assert 'src="/static/admin-members.js?v=20260904b"' in html
+    assert 'src="/static/admin-members.js?v=20260904c"' in html
     assert '"DELETE"' in script
     assert 'data-delete' in script
     assert '元に戻せません。' in script
@@ -49,14 +49,14 @@ def test_privacy_policy_discloses_member_storage_and_analytics_separation():
     assert "これらは利用状況の分析用IDとは結び付けません。" in html
 
 
-def test_paid_stamps_are_public_room_only_and_kifu_remains_unchanged():
+def test_paid_stamps_and_member_library_are_separate_from_room_admin():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID" in html
     assert "MAIN_ROOM_IDS.has(gid) && window.goitaMembers?.canUseAllStamps()" in html
     assert '"X-Goita-Member": "1"' in html
-    assert "研究用棋譜ライブラリはプライベートルーム専用です" in (
-        ROOT / "backend" / "app.py"
-    ).read_text(encoding="utf-8")
+    assert "researchKifuAdminPassword" not in html
+    assert '/api/member/kifu' in html
+    assert 'function resetMemberKifuLibrary()' in html
 
 
 def test_member_password_inputs_accept_eight_characters():

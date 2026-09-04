@@ -19,7 +19,7 @@ function element() {
 }
 
 async function check(member, gid, roomCount) {
-  const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element() };
+  const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element(), memberKifuParking: element(), researchKifuPanel: element() };
   const context = vm.createContext({
     document: {
       querySelectorAll: () => [],
@@ -29,6 +29,7 @@ async function check(member, gid, roomCount) {
     fetch: async () => ({ ok: true, json: async () => ({ member }) }),
     uiText: text => text,
     buildChatStampVisual: () => element(),
+    resetMemberKifuLibrary() {},
     sendChatStamp() {},
     gid,
     PRIVATE_ROOM_IDS: new Set(["private"]),

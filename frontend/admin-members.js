@@ -101,7 +101,7 @@
   list.addEventListener("click", event => {
     if (event.target.closest("[data-delete]")) {
       const id = event.target.closest("form").dataset.id;
-      if (!window.confirm(`${id}を削除しますか？ 会員情報とすべてのログインが削除され、元に戻せません。`)) return;
+      if (!window.confirm(`${id}を削除しますか？ 会員情報、保存した棋譜、すべてのログインが削除され、元に戻せません。`)) return;
       action(async () => {
         await request(`/${encodeURIComponent(id)}`, "DELETE");
         await load();

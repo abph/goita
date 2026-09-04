@@ -67,9 +67,6 @@ from backend.room_settings_persistence import (
 )
 from backend.research_kifu_store import (
     RESEARCH_KIFU_TAGS,
-    ResearchKifuStore,
-    is_persistent_research_kifu_configured,
-    normalize_research_kifu_tags,
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
@@ -77,6 +74,9 @@ from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, create_member_router, require_member_origin
+from backend.member_kifu import MemberKifuStore
+from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
+from backend.retire_room_kifu import retire_room_kifu
 
 LOGGER = logging.getLogger(__name__)
 
@@ -141,8 +141,7 @@ RESEARCH_KIFU_PATH = resolve_research_kifu_path(
     / "results"
     / "goita-research-kifu.sqlite3",
 )
-RESEARCH_KIFU_STORE = ResearchKifuStore(RESEARCH_KIFU_PATH)
-RESEARCH_KIFU_PERSISTENT = is_persistent_research_kifu_configured(os.environ)
+retire_room_kifu(RESEARCH_KIFU_PATH)
 MEMBER_PATH = resolve_member_path(
     os.environ, Path(__file__).resolve().parents[1] / "results" / "goita-members.sqlite3"
 )
@@ -2210,32 +2209,6 @@ def delete_analytics_history(req: AnalyticsDeleteRequest):
     return {"ok": True}
 
 
-class ResearchKifuAuthRequest(BaseModel):
-    admin_password: str = Field(max_length=128)
-
-
-class ResearchKifuSaveRequest(ResearchKifuAuthRequest):
-    title: str = Field(default="", max_length=80)
-    memo: str = Field(default="", max_length=2000)
-    tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
-    anonymous: bool = False
-
-
-class ResearchKifuImportRequest(ResearchKifuAuthRequest):
-    title: str = Field(default="", max_length=80)
-    memo: str = Field(default="", max_length=2000)
-    tags: List[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
-    kifu_text: str = Field(min_length=1, max_length=200_000)
-
-
-class ResearchKifuMemoUpdateRequest(ResearchKifuAuthRequest):
-    memo: str = Field(default="", max_length=2000)
-
-
-class ResearchKifuUpdateRequest(ResearchKifuAuthRequest):
-    title: str = Field(default="", max_length=80)
-    memo: str = Field(default="", max_length=2000)
-    tags: Optional[List[str]] = Field(default=None, max_length=len(RESEARCH_KIFU_TAGS))
 
 
 def _normalize_room_background_image(game_id: str, value: Optional[str]) -> str:
@@ -3945,11 +3918,13 @@ def admin_analytics(
 
 
 @app.post("/games/{game_id}/verify_password")
-def verify_password(game_id: str, password: str = Body(..., embed=True)):
+def verify_password(game_id: str, password: str = Body(..., embed=True), request: Request = None, response: Response = None):
     if game_id not in GAMES:
         raise HTTPException(status_code=404, detail="部屋が存在しません")
     required_pass = GAMES[game_id].get("password")
     if not required_pass or required_pass == password:
+        if request is not None and response is not None:
+            grant_kifu_room_access(response, request, game_id, required_pass)
         return {"ok": True}
     raise HTTPException(status_code=401, detail="合言葉が違います")
 
@@ -5132,182 +5107,27 @@ def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str 
     }
 
 
-def _require_research_kifu_admin(
-    game_id: str,
-    admin_password: str,
-) -> Dict[str, Any]:
-    if game_id not in PRIVATE_ROOM_NAMES:
-        raise HTTPException(
-            status_code=403,
-            detail="研究用棋譜ライブラリはプライベートルーム専用です",
-        )
+def _member_kifu_snapshot(request: Request, game_id: str, anonymous: bool) -> Dict[str, Any]:
     game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="game not found")
-    if not _room_admin_password_matches(game, admin_password):
-        raise HTTPException(status_code=401, detail="管理用パスワードが違います")
-    return game
-
-
-def _validated_research_kifu_tags(tags: Optional[List[str]]) -> List[str]:
-    requested = [str(tag or "").strip() for tag in (tags or [])]
-    unknown = sorted({tag for tag in requested if tag not in RESEARCH_KIFU_TAGS})
-    if unknown:
-        raise HTTPException(
-            status_code=400,
-            detail=f"使用できないタグです: {', '.join(unknown)}",
-        )
-    return normalize_research_kifu_tags(requested)
-
-
-@app.post("/games/{game_id}/research_kifu/list")
-def list_research_kifu(game_id: str, req: ResearchKifuAuthRequest):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    return {
-        "ok": True,
-        "records": RESEARCH_KIFU_STORE.list(game_id),
-        "persistent": RESEARCH_KIFU_PERSISTENT,
-    }
-
-
-@app.post("/games/{game_id}/research_kifu/save")
-def save_research_kifu(game_id: str, req: ResearchKifuSaveRequest):
-    game = _require_research_kifu_admin(game_id, req.admin_password)
-    snapshot = copy.deepcopy(game.get("last_completed_kifu"))
+    if game is None:
+        raise HTTPException(404, "game not found")
+    require_kifu_room_access(request, game_id, game.get("password"))
+    # Only a finished round may expose its hidden pieces, even when a previous
+    # completed-round snapshot remains in memory during the next round.
     state = game.get("state")
-    if snapshot is None and bool(getattr(state, "finished", False)):
-        snapshot = _research_kifu_snapshot(game, state)
-        game["last_completed_kifu"] = copy.deepcopy(snapshot)
-    if not isinstance(snapshot, dict):
-        raise HTTPException(
-            status_code=409,
-            detail="保存できる終局済みの棋譜がありません",
-        )
-    if req.anonymous:
-        snapshot["player_names"] = {
-            seat: f"プレイヤー{seat}" for seat in ALL_SEATS
-        }
-    elif not isinstance(snapshot.get("player_names"), dict):
-        configured_names = game.get("player_names", {})
-        snapshot["player_names"] = {
-            seat: _sanitize_player_name(
-                configured_names.get(seat, "") if isinstance(configured_names, dict) else ""
-            ) or f"プレイヤー{seat}"
-            for seat in ALL_SEATS
-        }
-    snapshot["anonymous"] = bool(req.anonymous)
-    title = str(req.title or "").strip() or (
-        f"第{int(snapshot.get('round_index', 1))}局"
-    )
-    record = RESEARCH_KIFU_STORE.save(
-        game_id,
-        title=title,
-        memo=str(req.memo or "").strip(),
-        tags=_validated_research_kifu_tags(req.tags),
-        payload=snapshot,
-    )
-    return {
-        "ok": True,
-        "record": record,
-        "persistent": RESEARCH_KIFU_PERSISTENT,
-    }
+    if not bool(getattr(state, "finished", False)):
+        raise HTTPException(409, "棋譜は終局後に保存できます")
+    snapshot = copy.deepcopy(game.get("last_completed_kifu")) or _research_kifu_snapshot(game, state)
+    if anonymous:
+        snapshot["player_names"] = {seat: f"プレイヤー{seat}" for seat in ALL_SEATS}
+    snapshot["anonymous"] = anonymous
+    return snapshot
 
 
-@app.post("/games/{game_id}/research_kifu/import")
-def import_research_kifu(game_id: str, req: ResearchKifuImportRequest):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    try:
-        payload = _parse_research_kifu_text(req.kifu_text)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-    record = RESEARCH_KIFU_STORE.save(
-        game_id,
-        title=str(req.title or "").strip() or "読込棋譜",
-        memo=str(req.memo or "").strip(),
-        tags=_validated_research_kifu_tags(req.tags),
-        payload=payload,
-    )
-    return {
-        "ok": True,
-        "record": record,
-        "persistent": RESEARCH_KIFU_PERSISTENT,
-    }
-
-
-@app.post("/games/{game_id}/research_kifu/{record_id}")
-def get_research_kifu(
-    game_id: str,
-    record_id: str,
-    req: ResearchKifuAuthRequest,
-):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    record = RESEARCH_KIFU_STORE.get(game_id, record_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    return {"ok": True, "record": record}
-
-
-@app.post("/games/{game_id}/research_kifu/{record_id}/delete")
-def delete_research_kifu(
-    game_id: str,
-    record_id: str,
-    req: ResearchKifuAuthRequest,
-):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    if not RESEARCH_KIFU_STORE.delete(game_id, record_id):
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    return {"ok": True}
-
-
-@app.post("/games/{game_id}/research_kifu/{record_id}/memo")
-def update_research_kifu_memo(
-    game_id: str,
-    record_id: str,
-    req: ResearchKifuMemoUpdateRequest,
-):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    record = RESEARCH_KIFU_STORE.update_memo(
-        game_id,
-        record_id,
-        str(req.memo or "").strip(),
-    )
-    if record is None:
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    return {"ok": True, "record": record}
-
-
-@app.post("/games/{game_id}/research_kifu/{record_id}/edit")
-def update_research_kifu(
-    game_id: str,
-    record_id: str,
-    req: ResearchKifuUpdateRequest,
-):
-    _require_research_kifu_admin(game_id, req.admin_password)
-    if not re.fullmatch(r"K-[2-9A-HJ-NP-Z]{10}", record_id):
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    current = RESEARCH_KIFU_STORE.get(game_id, record_id)
-    if current is None:
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    title = str(req.title or "").strip() or str(current.get("title") or record_id)
-    record = RESEARCH_KIFU_STORE.update_details(
-        game_id,
-        record_id,
-        title=title,
-        memo=str(req.memo or "").strip(),
-        tags=(
-            None
-            if req.tags is None
-            else _validated_research_kifu_tags(req.tags)
-        ),
-    )
-    if record is None:
-        raise HTTPException(status_code=404, detail="棋譜が見つかりません")
-    return {"ok": True, "record": record}
+app.include_router(create_member_kifu_router(
+    MemberKifuStore(MEMBER_STORE), _member_kifu_snapshot, _parse_research_kifu_text,
+    persistent=MEMBER_PERSISTENT,
+))
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)

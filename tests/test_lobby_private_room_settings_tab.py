@@ -31,7 +31,7 @@ def test_room_admin_session_and_last_settings_screen_survive_modal_close() -> No
     assert "const sameTarget = settingTargetGid === targetGid;" in html
     assert "sameTarget ? lastSettingsTab : \"personal\"" in html
     assert "unlockRoomManagement(currentAdminPass, true);" in html
-    assert "if (!researchKifuRecords.length) loadResearchKifuList();" in html
+    assert "researchKifuAdminPassword" not in html
     assert "clearRoomAdminSession({clearTarget: true});" in html
     assert "if (response.status === 401) clearRoomAdminSession();" in html
     assert "currentAdminPass = \"\";" not in close_block

@@ -202,130 +202,14 @@ def test_completed_round_snapshot_is_preserved_for_the_next_round():
     assert new_game["last_completed_kifu"]["round_index"] == 4
 
 
-def test_private_room_api_requires_admin_and_round_trips_records():
-    room_id = app_module.PRIVATE_A_GID
-    original_game = app_module.GAMES[room_id]
-    original_store = app_module.RESEARCH_KIFU_STORE
-    with TemporaryDirectory() as directory:
-        app_module.RESEARCH_KIFU_STORE = ResearchKifuStore(
-            Path(directory) / "library.sqlite3"
-        )
-        game = app_module._create_game_obj(dealer="B")
-        game["admin_password"] = "research-secret"
-        game["player_names"] = {
-            "A": "山田",
-            "B": "鈴木",
-            "C": "佐藤",
-            "D": "高橋",
-        }
-        game["last_completed_kifu"] = _payload(round_index=7)
-        app_module.GAMES[room_id] = game
-        try:
-            try:
-                app_module.list_research_kifu(
-                    room_id,
-                    app_module.ResearchKifuAuthRequest(admin_password="wrong"),
-                )
-                raise AssertionError("wrong admin password should be rejected")
-            except HTTPException as error:
-                assert error.status_code == 401
-
-            saved = app_module.save_research_kifu(
-                room_id,
-                app_module.ResearchKifuSaveRequest(
-                    admin_password="research-secret",
-                    title="角を残す",
-                    memo="3つ目の攻めを比較",
-                    tags=["3中駒", "大駒ペア"],
-                ),
-            )["record"]
-            listed = app_module.list_research_kifu(
-                room_id,
-                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
-            )["records"]
-            assert listed[0]["id"] == saved["id"]
-            assert listed[0]["tags"] == ["3中駒", "大駒ペア"]
-            detail = app_module.get_research_kifu(
-                room_id,
-                saved["id"],
-                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
-            )["record"]
-            assert detail["payload"]["round_index"] == 7
-            assert detail["payload"]["player_names"] == game["player_names"]
-            assert detail["payload"]["anonymous"] is False
-            anonymous = app_module.save_research_kifu(
-                room_id,
-                app_module.ResearchKifuSaveRequest(
-                    admin_password="research-secret",
-                    title="匿名の終盤研究",
-                    anonymous=True,
-                ),
-            )["record"]
-            assert anonymous["payload"]["player_names"] == {
-                seat: f"プレイヤー{seat}" for seat in ("A", "B", "C", "D")
-            }
-            assert anonymous["payload"]["anonymous"] is True
-            imported = app_module.import_research_kifu(
-                room_id,
-                app_module.ResearchKifuImportRequest(
-                    admin_password="research-secret",
-                    title="読み込んだ終盤",
-                    memo="外部ファイルから追加",
-                    tags=["4し", "し攻め"],
-                    kifu_text=_valid_kifu_text(),
-                ),
-            )["record"]
-            assert imported["title"] == "読み込んだ終盤"
-            assert imported["tags"] == ["4し", "し攻め"]
-            assert imported["payload"]["winner"] == "B"
-            updated = app_module.update_research_kifu_memo(
-                room_id,
-                saved["id"],
-                app_module.ResearchKifuMemoUpdateRequest(
-                    admin_password="research-secret",
-                    memo="王を残す形も比較する",
-                ),
-            )["record"]
-            assert updated["memo"] == "王を残す形も比較する"
-            assert updated["payload"]["round_index"] == 7
-            edited = app_module.update_research_kifu(
-                room_id,
-                saved["id"],
-                app_module.ResearchKifuUpdateRequest(
-                    admin_password="research-secret",
-                    title="王を残す終盤",
-                    memo="角上がりとの点数比較",
-                    tags=["王玉", "ダブル狙い"],
-                ),
-            )["record"]
-            assert edited["title"] == "王を残す終盤"
-            assert edited["memo"] == "角上がりとの点数比較"
-            assert edited["tags"] == ["王玉", "ダブル狙い"]
-            assert edited["payload"]["round_index"] == 7
-            assert app_module.delete_research_kifu(
-                room_id,
-                saved["id"],
-                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
-            ) == {"ok": True}
-            assert app_module.delete_research_kifu(
-                room_id,
-                anonymous["id"],
-                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
-            ) == {"ok": True}
-            assert app_module.delete_research_kifu(
-                room_id,
-                imported["id"],
-                app_module.ResearchKifuAuthRequest(admin_password="research-secret"),
-            ) == {"ok": True}
-        finally:
-            app_module.GAMES[room_id] = original_game
-            app_module.RESEARCH_KIFU_STORE = original_store
 
 
 def test_settings_popup_contains_the_research_library_workflow():
-    assert 'id="researchKifuTab"' in HTML
+    assert 'id="researchKifuTab"' not in HTML
     assert 'id="researchKifuPanel"' in HTML
-    assert "unlockResearchKifuLibrary()" in HTML
+    assert "unlockResearchKifuLibrary()" not in HTML
+    assert 'id="memberKifuParking"' in HTML
+    assert '/api/member/kifu' in HTML
     assert "saveCurrentResearchKifu(false)" in HTML
     assert "saveCurrentResearchKifu(true)" in HTML
     assert "async function saveCurrentResearchKifu(anonymous = false)" in HTML

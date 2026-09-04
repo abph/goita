@@ -4,6 +4,7 @@
   let member = null;
   let busy = false;
   let revision = 0;
+  let libraryRoot = null;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -39,6 +40,7 @@
   }
 
   function render() {
+    document.getElementById("memberKifuParking").appendChild(document.getElementById("researchKifuPanel"));
     if (typeof initializeChatStampPickers === "function") initializeChatStampPickers();
     document.querySelectorAll("[data-member-entry]").forEach(button => {
       button.textContent = t(member ? "マイページ" : "ログイン");
@@ -60,11 +62,34 @@
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
-        </dl><details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
+        </dl><div class="member-actions"><button type="button" data-action="library">${label("棋譜ライブラリ")}</button></div>
+        <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }
-      root.innerHTML = `${body}<div class="member-status" role="status" aria-live="polite"></div>`;
+      root.innerHTML = `<div data-member-account>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
+        <div data-member-library hidden><button type="button" data-action="account">${label("マイページへ")}</button>
+        <h4>${label("棋譜ライブラリ")}</h4><p class="member-help">${label("保存上限：100件。保存した棋譜は本人だけが閲覧できます。")}</p>
+        ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
+        <div data-member-library-slot></div></div>`;
     });
+    if (libraryRoot && member && !member.must_change_password) showLibrary(libraryRoot, false);
+  }
+
+  function resetLibrary() {
+    libraryRoot = null;
+    resetMemberKifuLibrary();
+  }
+
+  function showLibrary(root, load = true) {
+    if (!member || member.must_change_password) return;
+    libraryRoot = root;
+    root.querySelector("[data-member-account]").hidden = true;
+    root.querySelector("[data-member-library]").hidden = false;
+    mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canUseAllStamps());
+    if (load) {
+      resetMemberKifuLibrary();
+      loadResearchKifuList();
+    }
   }
 
   function status(message) {
@@ -77,6 +102,7 @@
     try {
       const data = await request("session");
       if (ticket !== revision) return;
+      if (member?.member_id !== data.member?.member_id || data.member?.must_change_password) resetLibrary();
       member = data.member;
       render();
     } catch (_error) {
@@ -104,11 +130,12 @@
     status("");
     try {
       const data = await request(action, body);
+      resetLibrary();
       member = data.member || null;
       render();
       if (action === "password") status(t("パスワードを変更しました。"));
     } catch (error) {
-      if (error.status === 401 && action !== "login") { member = null; render(); }
+      if (error.status === 401 && action !== "login") { resetLibrary(); member = null; render(); }
       status(t(error.message));
     } finally {
       clearSecrets();
@@ -124,6 +151,12 @@
     root.addEventListener("submit", event => { event.preventDefault(); perform(event.target.dataset.action, event.target); });
     root.addEventListener("click", event => {
       if (event.target.closest('[data-action="logout"]')) perform("logout");
+      if (event.target.closest('[data-action="library"]')) showLibrary(root);
+      if (event.target.closest('[data-action="account"]')) {
+        libraryRoot = null;
+        stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
+        render();
+      }
     });
   });
   function canUseAllStamps() {

@@ -123,6 +123,16 @@ class MemberStore:
                         key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at REAL NOT NULL
                     );
                     CREATE TABLE IF NOT EXISTS member_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS member_kifu (
+                        id TEXT PRIMARY KEY,
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        created_at TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        memo TEXT NOT NULL,
+                        tags_json TEXT NOT NULL,
+                        payload_json TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS member_kifu_owner ON member_kifu(member_id, created_at DESC);
                 """)
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
