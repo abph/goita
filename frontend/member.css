@@ -1,4 +1,5 @@
 .member-panel { color: inherit; }
+.member-auto-kifu-notice { font-size: 13px; color: #9e2929; background: #fff3f3; padding: 8px; overflow-wrap: anywhere; }
 .member-panel .member-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid #d4d9dd; }
 .member-panel .member-tabs button {
   flex: 1; min-width: 0; margin: 0; padding: 8px 6px;
@@ -9,6 +10,8 @@
 .member-panel .member-tabs button[aria-selected="true"] { border-bottom-color: #176b57; color: #176b57; font-weight: 700; }
 .member-panel .member-tabs button:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
 .member-panel .member-status:empty { display: none; }
+.member-panel .member-auto-kifu { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; margin: 12px 0 18px; }
+.member-panel .member-auto-kifu input { flex: 0 0 auto; width: auto; margin: 2px 0 0; }
 .member-panel h4 { margin: 8px 0 16px; font-size: 15px; }
 .member-panel form { display: grid; gap: 12px; }
 .member-panel form label { display: grid; gap: 5px; font-weight: 700; }

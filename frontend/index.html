@@ -4394,8 +4394,8 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
-  <link rel="stylesheet" href="/static/member.css?v=20260904c" />
-  <script defer src="/static/member.js?v=20260905a"></script>
+  <link rel="stylesheet" href="/static/member.css?v=20260905d" />
+  <script defer src="/static/member.js?v=20260905d"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -4512,6 +4512,7 @@
 </div>
 
 <div id="gameView" style="display: none;">
+  <p id="memberAutoKifuNotice" class="member-auto-kifu-notice" role="status" hidden></p>
 
   <div class="game-header">
     <div class="game-header-title">
@@ -5320,8 +5321,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260905b"></script>
-<script src="/static/i18n.js?v=20260905b"></script>
+<script src="/static/i18n-en.js?v=20260905d"></script>
+<script src="/static/i18n.js?v=20260905d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -7255,7 +7256,9 @@ function connectWS(targetGid) {
     socket.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
-            if (data.type === "update") {
+            if (data.type === "member_kifu_auto") {
+                window.goitaMembers?.automaticKifuResult(data);
+            } else if (data.type === "update") {
                 if (currentWsGid === "lobby") {
                     fetchRoomList();
                 } else {

@@ -5,6 +5,13 @@
  */
 (() => {
   const exact = Object.freeze({
+    "参加した局の棋譜を自動保存する": "Automatically Save Participated Rounds",
+    "棋譜の自動保存をオンにしました。": "Automatic record saving is on.",
+    "棋譜の自動保存をオフにしました。": "Automatic record saving is off.",
+    "棋譜を自動保存しました。": "The record was automatically saved.",
+    "保存上限の1000件に達したため、自動保存を停止しました。": "Automatic saving stopped because the 1,000-record limit was reached.",
+    "棋譜を自動保存できませんでした。会員の有効期限を確認してください。": "Could not save automatically. Check your membership expiry.",
+    "棋譜を自動保存できませんでした。終局画面から手動で保存してください。": "Could not save automatically. Save manually from the completed round.",
     "自分の席": "My Seat",
     "未設定": "Not Set",
     "統計を作る": "Create Statistics",

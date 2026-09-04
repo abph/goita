@@ -133,6 +133,15 @@ class MemberStore:
                         payload_json TEXT NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS member_kifu_owner ON member_kifu(member_id, created_at DESC);
+                    CREATE TABLE IF NOT EXISTS member_kifu_settings (
+                        member_id TEXT PRIMARY KEY REFERENCES members(member_id) ON DELETE CASCADE,
+                        auto_save INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE TABLE IF NOT EXISTS member_kifu_auto_saves (
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        round_id TEXT NOT NULL,
+                        PRIMARY KEY(member_id, round_id)
+                    );
                 """)
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
@@ -169,6 +178,19 @@ class MemberStore:
     def list_members(self):
         with self._db() as db:
             return [self._public(row) for row in db.execute("SELECT * FROM members ORDER BY created_at DESC, member_id")]
+
+    def kifu_auto_save(self, token, enabled=None):
+        with self._db(write=enabled is not None) as db:
+            member = self._public(self._session_row(db, token))
+            if member["must_change_password"]:
+                raise MemberError(403, "先にパスワードを変更してください。")
+            if enabled is True and not member["paid_active"]:
+                raise MemberError(403, "新規保存には有効な有料権限が必要です。")
+            if enabled is not None:
+                db.execute("INSERT INTO member_kifu_settings VALUES (?, ?) ON CONFLICT(member_id) DO UPDATE SET auto_save = excluded.auto_save",
+                           (member["member_id"], int(enabled)))
+            row = db.execute("SELECT auto_save FROM member_kifu_settings WHERE member_id = ?", (member["member_id"],)).fetchone()
+            return bool(row and row["auto_save"])
 
     def delete(self, member_id):
         with self._db(write=True) as db:

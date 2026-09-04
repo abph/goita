@@ -30,7 +30,17 @@ Historical external backups are not modified by this migration.
 - The tag filter does not limit statistics. Edits, saves, imports, deletion, reloading and logout invalidate the displayed statistics; press the button again to recalculate. Requests returning after invalidation cannot restore outdated results.
 - The standard downloadable kifu format remains unchanged; personal seat metadata is not exported.
 
-## Tests
+## Automatic saving
+
+- My Page > Account offers automatic saving with player names, off by default. Consent is stored per member in `member_kifu_settings` and can be disabled after paid access expires. Enabling requires active paid access and a completed initial password change.
+- At round completion, the server checks the current human seat owners against same-origin room WebSocket connections. Only a connected, logged-in, opted-in paid member is saved. Spectators, departed/replaced players and AI seats are excluded. A player who joins during a round and remains seated at the end is eligible; temporary disconnection at the instant of completion is not. There is no retrospective save when turning the setting on after a round.
+- Login, logout and password changes reconnect the room WebSocket so its HttpOnly member cookie reflects the current session. Revoked sessions and expired/disabled memberships are rechecked at save time.
+- Save runs during completion, before another round can replace the snapshot. It records the seat occupied at completion, retains the player names from the completed round, and titles the record with a JST date/time and round number. No client ID or session credential is stored in the kifu. Existing anonymously saved records are not changed.
+- The opt-in/capacity/insert/deduplication checks share one write transaction. `member_kifu_auto_saves` stores only a member-scoped random round nonce as a receipt. Receipts survive reconnects/restarts and record deletion to prevent recreation. Different rounds (including identical deals/new matches) get different nonces. Manual saves/imports remain independent copies.
+- At 1000 records, automatic saving is disabled; no existing record is removed. Other storage failures do not interrupt play. Private status notifications display failure/limit messages in the room and My Page; missed notifications do not undo a committed save. There is no background retry queue storing unsaved kifu.
+- This feature does not save observers' sessions, change marketing analytics, or feed records to AI training. The existing member DB must remain on persistent storage.
+
+## Test commands
 
 Run `tests/test_member_kifu.py` for ownership, locked-room entry, live-round refusal, subscription expiry, concurrency, persistence, and cleanup scope.
 Existing record parsing/viewer tests and membership/stamp tests remain part of the regression suite.

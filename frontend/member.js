@@ -69,6 +69,9 @@
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
+        <label class="member-auto-kifu"><input type="checkbox" data-auto-kifu
+          ${member.auto_save_kifu ? "checked" : ""} ${!member.paid_active && !member.auto_save_kifu ? "disabled" : ""}>
+          ${label("参加した局の棋譜を自動保存する")}</label>
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }
@@ -87,6 +90,8 @@
   function resetLibrary() {
     libraryRoot = null;
     resetMemberKifuLibrary();
+    const notice = document.getElementById("memberAutoKifuNotice");
+    if (notice) { notice.hidden = true; notice.textContent = ""; }
   }
 
   function showLibrary(root, load = true) {
@@ -129,9 +134,9 @@
     }
   }
 
-  async function perform(action, form) {
+  async function perform(action, form, values = {}) {
     if (busy) return;
-    let body = {};
+    let body = values;
     if (form) {
       body = Object.fromEntries(new FormData(form));
       if (action === "password") {
@@ -152,9 +157,12 @@
       resetLibrary();
       member = data.member || null;
       render();
+      if (["login", "logout", "password"].includes(action) && typeof currentWsGid !== "undefined" && currentWsGid) connectWS(currentWsGid);
       if (action === "password") status(t("パスワードを変更しました。"));
+      if (action === "kifu-auto-save") status(t(member.auto_save_kifu ? "棋譜の自動保存をオンにしました。" : "棋譜の自動保存をオフにしました。"));
     } catch (error) {
       if (error.status === 401 && action !== "login") { resetLibrary(); member = null; render(); }
+      if (action === "kifu-auto-save") render();
       status(t(error.message));
     } finally {
       clearSecrets();
@@ -167,6 +175,14 @@
     roots.forEach(root => root.querySelectorAll('input[type="password"]').forEach(input => { input.value = ""; }));
   }
   roots.forEach(root => {
+    root.addEventListener("change", event => {
+      if (event.target.matches("[data-auto-kifu]")) {
+        if (busy) { event.target.checked = !!member?.auto_save_kifu; return; }
+        const enabled = event.target.checked;
+        event.target.disabled = true;
+        perform("kifu-auto-save", null, {enabled});
+      }
+    });
     root.addEventListener("submit", event => { event.preventDefault(); perform(event.target.dataset.action, event.target); });
     root.addEventListener("click", event => {
       if (event.target.closest('[data-action="logout"]')) perform("logout");
@@ -192,7 +208,26 @@
     if (!member || member.must_change_password || !member.paid_active) return false;
     return !member.paid_until || Date.now() < Date.parse(`${member.paid_until}T23:59:59.999+09:00`);
   }
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps};
+  function automaticKifuResult(data) {
+    if (!member || data.member_id !== member.member_id) return;
+    const messages = {
+      saved: "棋譜を自動保存しました。",
+      limit: "保存上限の1000件に達したため、自動保存を停止しました。",
+      unavailable: "棋譜を自動保存できませんでした。会員の有効期限を確認してください。",
+      error: "棋譜を自動保存できませんでした。終局画面から手動で保存してください。",
+    };
+    if (!messages[data.status]) return;
+    if (data.status === "limit") { member.auto_save_kifu = false; render(); }
+    if (data.status === "saved") {
+      invalidateResearchKifuStatistics();
+      if (libraryRoot && document.getElementById("researchKifuDetailView").style.display === "none") loadResearchKifuList();
+    }
+    status(t(messages[data.status]));
+    const notice = document.getElementById("memberAutoKifuNotice");
+    notice.hidden = data.status === "saved";
+    notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
+  }
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, automaticKifuResult};
   render();
   refresh();
 })();

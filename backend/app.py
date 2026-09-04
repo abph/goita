@@ -75,6 +75,7 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, create_member_router, require_member_origin
 from backend.member_kifu import MemberKifuStore
+from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
 from backend.retire_room_kifu import retire_room_kifu
 
@@ -2813,6 +2814,7 @@ def _create_game_obj(
         "current_round_finished": False,
         "last_round_score": 0,
         "last_completed_kifu": None,
+        "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
         "deal_mode": deal_mode,
@@ -3271,9 +3273,28 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
             game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
+            _auto_save_member_round(game)
             checkpoint_ai_search_telemetry("round_finish")
             checkpoint_background_search_value_model("round_finish")
             checkpoint_generic_response_patterns("round_finish")
+
+
+def _auto_save_member_round(game):
+    game_id = next((key for key, value in GAMES.items() if value is game), None)
+    if game_id is None:
+        return
+    connections = {
+        client: sockets for (room, client), sockets in list(manager.client_connections.items())
+        if room == game_id
+    }
+    events = save_connected_round(MemberKifuStore(MEMBER_STORE), game, connections)
+    if events:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        for connection, event in events:
+            loop.create_task(send_save_result(connection, event))
 
 
 def _apply_agent_turn(

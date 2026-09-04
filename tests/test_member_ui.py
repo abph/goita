@@ -13,8 +13,8 @@ def test_member_page_is_available_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260905a"' in html
-    assert 'href="/static/member.css?v=20260904c"' in html
+    assert 'src="/static/member.js?v=20260905d"' in html
+    assert 'href="/static/member.css?v=20260905d"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():

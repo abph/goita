@@ -4,7 +4,7 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-from backend.member_store import MemberError
+from backend.member_store import MemberError, JST
 
 
 class MemberKifuStore:
@@ -86,6 +86,30 @@ class MemberKifuStore:
                 title, memo, json.dumps(tags, ensure_ascii=False), json.dumps(payload, ensure_ascii=False),
             ))
             return self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, owner)).fetchone())
+
+    def save_automatic(self, token, *, round_id, seat, payload):
+        """Commit the opt-in, capacity check and deduplication in one transaction."""
+        with self.members._db(write=True) as db:
+            owner = self._owner(db, token, paid=True)
+            setting = db.execute("SELECT auto_save FROM member_kifu_settings WHERE member_id = ?", (owner,)).fetchone()
+            if not setting or not setting["auto_save"]:
+                return None
+            if db.execute("SELECT 1 FROM member_kifu_auto_saves WHERE member_id = ? AND round_id = ?", (owner, round_id)).fetchone():
+                return None
+            if seat not in ("A", "B", "C", "D") or payload.get("winner") not in ("A", "B", "C", "D"):
+                raise MemberError(409, "棋譜は終局後に保存できます")
+            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= self.LIMIT:
+                db.execute("UPDATE member_kifu_settings SET auto_save = 0 WHERE member_id = ?", (owner,))
+                return {"status": "limit", "member_id": owner}
+            saved = dict(payload, my_seat=seat, anonymous=False)
+            now = datetime.now(timezone.utc)
+            title = f"{now.astimezone(JST):%Y/%m/%d %H:%M} 第{saved.get('round_index', 1)}局"
+            db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                "K-" + secrets.token_hex(16), owner, now.isoformat(timespec="seconds"),
+                title, "", "[]", json.dumps(saved, ensure_ascii=False),
+            ))
+            db.execute("INSERT INTO member_kifu_auto_saves VALUES (?, ?)", (owner, round_id))
+            return {"status": "saved", "member_id": owner}
 
     def access(self, token, record_id, *, action="get", title="", memo="", tags=None, my_seat=None):
         with self.members._db(write=action != "get") as db:

@@ -74,11 +74,19 @@ class UpdateInput(MemberInput):
     paid_until: str | None = Field(default=None, max_length=10)
 
 
+class AutoKifuInput(MemberInput):
+    enabled: StrictBool
+
+
 def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False):
     router = APIRouter(route_class=PrivateRoute)
 
     def token(request):
         return request.cookies.get(MEMBER_COOKIE, "")
+
+    def with_settings(member, value):
+        member["auto_save_kifu"] = False if member["must_change_password"] else store.kifu_auto_save(value)
+        return member
 
     def set_session(request, response, value, seconds):
         response.set_cookie(MEMBER_COOKIE, value, max_age=seconds, path="/", httponly=True,
@@ -90,7 +98,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
             return {"authenticated": False, "member": None}
         try:
             member = store.authenticate(token(request), allow_temporary=True)
-            return {"authenticated": True, "member": member}
+            return {"authenticated": True, "member": with_settings(member, token(request))}
         except MemberError as error:
             if error.status != 401:
                 raise
@@ -102,7 +110,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
         # Replace the previous session on this device, without touching other members.
         store.logout(token(request))
         set_session(request, response, value, seconds)
-        return {"authenticated": True, "member": member}
+        return {"authenticated": True, "member": with_settings(member, value)}
 
     @router.get("/api/member/me")
     def me(request: Request):
@@ -112,7 +120,12 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
     def password(request: Request, response: Response, data: PasswordInput):
         member, value, seconds = store.change_password(token(request), data.current_password, data.new_password)
         set_session(request, response, value, seconds)
-        return {"authenticated": True, "member": member}
+        return {"authenticated": True, "member": with_settings(member, value)}
+
+    @router.post("/api/member/kifu-auto-save")
+    def kifu_auto_save(request: Request, data: AutoKifuInput):
+        store.kifu_auto_save(token(request), data.enabled)
+        return {"member": with_settings(store.authenticate(token(request)), token(request))}
 
     @router.post("/api/member/logout")
     def logout(request: Request, response: Response):
