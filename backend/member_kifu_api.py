@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import secrets
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
@@ -34,6 +35,7 @@ def require_kifu_room_access(request, game_id, password):
 
 
 class Metadata(MemberInput):
+    my_seat: Literal["", "A", "B", "C", "D", "spectator"] | None = None
     title: str = Field(default="", max_length=80)
     memo: str = Field(default="", max_length=2000)
     tags: list[str] = Field(default_factory=list, max_length=len(RESEARCH_KIFU_TAGS))
@@ -68,6 +70,7 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def save(request: Request, data: SaveInput):
         store.members.authenticate(token(request), require_paid=True)
         payload = snapshot(request, data.game_id, data.anonymous)
+        payload["my_seat"] = data.my_seat or ""
         record = store.save(token(request), title=data.title.strip() or f"第{payload.get('round_index', 1)}局",
                             memo=data.memo.strip(), tags=_tags(data.tags), payload=payload)
         return {"record": record, "persistent": persistent}
@@ -79,9 +82,14 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
             payload = parse(data.kifu_text)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
+        payload["my_seat"] = data.my_seat or ""
         record = store.save(token(request), title=data.title.strip() or "読込棋譜", memo=data.memo.strip(),
                             tags=_tags(data.tags), payload=payload)
         return {"record": record, "persistent": persistent}
+
+    @router.post("/statistics")
+    def statistics(request: Request):
+        return {"statistics": store.statistics(token(request))}
 
     @router.post("/{record_id}")
     def get(request: Request, record_id: str):
@@ -90,7 +98,7 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     @router.post("/{record_id}/edit")
     def edit(request: Request, record_id: str, data: Metadata):
         return {"record": store.access(token(request), record_id, action="edit", title=data.title,
-                                      memo=data.memo, tags=_tags(data.tags))}
+                                      memo=data.memo, tags=_tags(data.tags), my_seat=data.my_seat)}
 
     @router.post("/{record_id}/delete")
     def delete(request: Request, record_id: str):

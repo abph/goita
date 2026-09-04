@@ -213,3 +213,64 @@ def test_valid_import_is_private_and_survives_store_restart(library):
     reopened = MemberKifuStore(MemberStore(members.path))
     assert reopened.access(token, record["id"])["title"] == "Imported"
     assert reopened.list(other) == []
+
+
+def test_my_seat_save_edit_import_and_legacy(library):
+    from test_research_kifu_library import _valid_kifu_text
+    store, members, token, other, client, game = library
+    record = save(client, my_seat="C", anonymous=True).json()["record"]
+    assert record["my_seat"] == record["payload"]["my_seat"] == "C"
+    assert "my_seat" not in game["last_completed_kifu"]
+    url = "/api/member/kifu/" + record["id"]
+    assert client.post(url + "/edit", json={"memo": "keep seat"}).json()["record"]["my_seat"] == "C"
+    for seat in ("A", "B", "C", "D", "spectator", ""):
+        assert client.post(url + "/edit", json={"my_seat": seat}).json()["record"]["my_seat"] == seat
+    for invalid in ("E", 2, "watch", [], {"owner": "bobby"}):
+        assert save(client, my_seat=invalid).status_code == 422
+        assert client.post(url + "/edit", json={"my_seat": invalid}).status_code == 422
+    imported = client.post("/api/member/kifu/import", json={"kifu_text": _valid_kifu_text(), "my_seat": "D"}).json()["record"]
+    assert imported["my_seat"] == "D"
+    assert store.statistics(token)["partner_finishes"] == 1  # B wins, D is partner.
+    legacy = store.save(token, title="legacy", memo="", tags=[], payload={})
+    assert legacy["my_seat"] == ""
+    assert MemberKifuStore(MemberStore(members.path)).access(token, imported["id"])["my_seat"] == "D"
+
+
+def test_statistics_are_on_demand_owner_scoped_and_never_persisted(library):
+    store, members, token, other, client, game = library
+    assert client.post("/api/member/kifu/statistics").json()["statistics"]["win_rate"] is None
+    examples = [
+        ("A", "A", 20), ("C", "A", 50), ("B", "D", 30),
+        ("A", "B", 40), ("D", "C", 20),
+        ("", "A", 20), ("spectator", "B", 30), ("A", "", 0), ("D", "D", "bad"),
+    ]
+    ids = []
+    for seat, winner, points in examples:
+        ids.append(store.save(token, title="round", memo="", tags=[], payload={
+            "my_seat": seat, "winner": winner, "gained_score": points,
+        })["id"])
+    store.save(other, title="other", memo="", tags=[], payload={"my_seat": "A", "winner": "A", "gained_score": 100})
+    with members._db() as db:
+        before = [tuple(row) for row in db.execute("SELECT * FROM member_kifu ORDER BY id")]
+    response = client.post("/api/member/kifu/statistics")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["statistics"] == dict(total=9, counted=5, wins=3, losses=2,
+        points_for=100, points_against=60, point_difference=40, self_finishes=1,
+        partner_finishes=2, unset=1, spectator=1, incomplete=2, win_rate=60.0)
+    with members._db() as db:
+        assert [tuple(row) for row in db.execute("SELECT * FROM member_kifu ORDER BY id")] == before
+    store.access(token, ids[0], action="edit", my_seat="B")
+    assert store.statistics(token)["wins"] == 2
+    store.access(token, ids[1], action="delete")
+    assert store.statistics(token)["wins"] == 1
+    client.cookies.set(MEMBER_COOKIE, other)
+    assert client.post("/api/member/kifu/statistics").json()["statistics"]["total"] == 1
+
+
+def test_statistics_access_and_expired_entitlement(library):
+    store, members, token, other, client, game = library
+    members.update("alice", enabled=True, paid_enabled=True, paid_until="2020-01-01")
+    assert client.post("/api/member/kifu/statistics").status_code == 200
+    assert client.post("/api/member/kifu/statistics", headers={"Origin": "https://evil.example"}).status_code == 403
+    members.logout(token)
+    assert client.post("/api/member/kifu/statistics").status_code == 401

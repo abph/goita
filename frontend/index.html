@@ -2825,6 +2825,11 @@
       font-weight: 800;
     }
     .research-kifu-tag-option input { width: auto; margin: 0; }
+    .research-kifu-seat { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+    .research-kifu-seat select { width: auto; min-width: 100px; padding: 4px; }
+    #researchKifuStatistics dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; font-size: 12px; }
+    #researchKifuStatistics dd { margin: 0; text-align: right; }
+    #researchKifuStatistics h4 { font-size: 13px; margin: 8px 0; }
     #researchKifuEditTags {
       gap: 3px 5px;
     }
@@ -5242,6 +5247,9 @@
             <h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>
             <input id="researchKifuTitle" type="text" maxlength="80" aria-label="タイトル" placeholder="タイトル　例：終盤の王受け">
             <textarea id="researchKifuMemo" maxlength="2000" aria-label="研究メモ" placeholder="気になった点をメモできます"></textarea>
+            <label class="research-kifu-seat">自分の席
+              <select id="researchKifuMySeat"><option value="">未設定</option><option>A</option><option>B</option><option>C</option><option>D</option><option value="spectator">観戦</option></select>
+            </label>
             <label>タグ</label>
             <div id="researchKifuSaveTags" class="research-kifu-tag-options"></div>
             <div class="research-kifu-save-actions">
@@ -5253,9 +5261,11 @@
           <div class="research-kifu-filter">
             <strong class="research-kifu-list-heading">棋譜一覧</strong>
             <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
+            <button class="research-kifu-import-button" id="researchKifuStatisticsButton" type="button" onclick="createResearchKifuStatistics()">統計を作る</button>
             <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
           </div>
+          <div id="researchKifuStatistics" aria-live="polite" hidden></div>
           <div id="researchKifuList" class="research-kifu-list"></div>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
@@ -5275,6 +5285,9 @@
             <input id="researchKifuTitleEditInput" type="text" maxlength="80" placeholder="例：終盤の王受け">
             <label for="researchKifuMemoEditInput">メモ</label>
             <textarea id="researchKifuMemoEditInput" maxlength="2000" placeholder="気になった点を記録できます"></textarea>
+            <label class="research-kifu-seat">自分の席
+              <select id="researchKifuMySeatEdit"><option value="">未設定</option><option>A</option><option>B</option><option>C</option><option>D</option><option value="spectator">観戦</option></select>
+            </label>
             <label>タグ</label>
             <div id="researchKifuEditTags" class="research-kifu-tag-options"></div>
             <div class="research-kifu-memo-editor-actions">
@@ -5307,8 +5320,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260905a"></script>
-<script src="/static/i18n.js?v=20260905a"></script>
+<script src="/static/i18n-en.js?v=20260905b"></script>
+<script src="/static/i18n.js?v=20260905b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -8357,8 +8370,61 @@ async function unlockRoomManagement(passwordOverride = "", fromRememberedSession
 }
 
 let memberKifuRevision = 0;
+let researchKifuStatisticsRevision = 0;
+function invalidateResearchKifuStatistics() {
+    researchKifuStatisticsRevision++;
+    const result = document.getElementById("researchKifuStatistics");
+    result.replaceChildren();
+    result.hidden = true;
+    document.getElementById("researchKifuStatisticsButton").disabled = false;
+}
+async function createResearchKifuStatistics() {
+    const revision = ++researchKifuStatisticsRevision;
+    const result = document.getElementById("researchKifuStatistics");
+    const button = document.getElementById("researchKifuStatisticsButton");
+    button.disabled = true;
+    result.hidden = false;
+    result.textContent = uiText("集計しています...");
+    try {
+        const data = await researchKifuApi("/statistics");
+        if (revision !== researchKifuStatisticsRevision) return;
+        const stats = data.statistics;
+        result.replaceChildren();
+        const heading = document.createElement("h4");
+        heading.textContent = uiText("保存棋譜の成績（一局単位）");
+        const list = document.createElement("dl");
+        const rows = [
+            ["保存局数", stats.total], ["集計対象局数", stats.counted],
+            ["勝ち", stats.wins], ["負け", stats.losses],
+            ["勝率", stats.win_rate === null ? "-" : `${stats.win_rate.toFixed(1)}%`],
+            ["合計得点", stats.points_for], ["合計失点", stats.points_against],
+            ["得失点差", stats.point_difference], ["自分の上がり", stats.self_finishes],
+            ["味方の上がり", stats.partner_finishes], ["集計対象外：席未設定", stats.unset],
+            ["集計対象外：観戦", stats.spectator], ["集計対象外：未完了・結果不明", stats.incomplete],
+        ];
+        for (const [label, value] of rows) {
+            const term = document.createElement("dt");
+            const detail = document.createElement("dd");
+            term.textContent = uiText(label);
+            detail.textContent = String(value);
+            list.append(term, detail);
+        }
+        result.append(heading, list);
+    } catch (error) {
+        if (revision === researchKifuStatisticsRevision) result.textContent = uiText(error?.message || "集計できませんでした。");
+    } finally {
+        if (revision === researchKifuStatisticsRevision) button.disabled = false;
+    }
+}
+function researchKifuSeatLabel(record) {
+    const seat = record?.my_seat || "";
+    return `${uiText("自分の席")}: ${seat === "spectator" ? uiText("観戦") : seat || uiText("未設定")}`;
+}
 function resetMemberKifuLibrary() {
     memberKifuRevision++;
+    invalidateResearchKifuStatistics();
+    document.getElementById("researchKifuMySeat").value = "";
+    document.getElementById("researchKifuMySeatEdit").value = "";
     researchKifuRecords = [];
     closeResearchKifuDetail();
     document.getElementById("researchKifuList").replaceChildren();
@@ -8541,6 +8607,7 @@ function renderResearchKifuList() {
 }
 
 async function loadResearchKifuList() {
+    invalidateResearchKifuStatistics();
     const status = document.getElementById("researchKifuStatus");
     status.textContent = uiText("棋譜を読み込んでいます。");
     try {
@@ -8562,6 +8629,7 @@ async function saveCurrentResearchKifu(anonymous = false) {
     try {
         const data = await researchKifuApi("/save", {
             game_id: gid,
+            my_seat: document.getElementById("researchKifuMySeat").value,
             title: document.getElementById("researchKifuTitle").value,
             memo: document.getElementById("researchKifuMemo").value,
             tags: selectedResearchKifuTags("researchKifuSaveTags"),
@@ -8612,6 +8680,7 @@ async function importResearchKifuFile(event) {
         if (revision !== memberKifuRevision) return;
         const data = await researchKifuApi("/import", {
             title: enteredTitle || researchKifuImportTitle(file),
+            my_seat: document.getElementById("researchKifuMySeat").value,
             memo: document.getElementById("researchKifuMemo").value,
             tags: selectedResearchKifuTags("researchKifuSaveTags"),
             kifu_text: kifuText,
@@ -9006,7 +9075,7 @@ function renderResearchKifuDetail(record) {
     const titleActions = document.getElementById("researchKifuDetailTitleActions");
     if (titleActions) titleActions.style.display = "flex";
     document.getElementById("researchKifuDetailMeta").textContent =
-        researchKifuDetailMetaLabel(record, payload);
+        `${researchKifuDetailMetaLabel(record, payload)} / ${researchKifuSeatLabel(record)}`;
     renderResearchKifuTags(document.getElementById("researchKifuDetailTags"), record.tags);
     const memo = document.getElementById("researchKifuDetailMemo");
     memo.textContent = record.memo || "";
@@ -9040,6 +9109,7 @@ function startResearchKifuEdit() {
     if (titleActions) titleActions.style.display = "none";
     if (titleInput) titleInput.value = selectedResearchKifu.title || "";
     if (memoInput) memoInput.value = selectedResearchKifu.memo || "";
+    document.getElementById("researchKifuMySeatEdit").value = selectedResearchKifu.my_seat || "";
     renderResearchKifuTagOptions("researchKifuEditTags", selectedResearchKifu.tags);
     if (editor) editor.style.display = "block";
     document.getElementById("researchKifuDetailStatus").textContent = "";
@@ -9079,11 +9149,15 @@ async function saveResearchKifuEdit() {
             title: titleInput?.value || "",
             memo: memoInput?.value || "",
             tags: selectedResearchKifuTags("researchKifuEditTags"),
+            my_seat: document.getElementById("researchKifuMySeatEdit").value,
         });
         selectedResearchKifu = data.record;
+        invalidateResearchKifuStatistics();
+        document.getElementById("researchKifuDetailMeta").textContent =
+            `${researchKifuDetailMetaLabel(data.record, data.record.payload)} / ${researchKifuSeatLabel(data.record)}`;
         researchKifuRecords = researchKifuRecords.map(record =>
             record.id === data.record.id
-                ? {...record, title: data.record.title, memo: data.record.memo, tags: data.record.tags}
+                ? {...record, title: data.record.title, memo: data.record.memo, tags: data.record.tags, my_seat: data.record.my_seat}
                 : record
         );
         renderResearchKifuList();

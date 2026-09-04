@@ -21,7 +21,16 @@ The old room-scoped HTTP endpoints have been removed. No old record is copied in
 The cleanup does not read or modify `frontend/kifu_data.json`, `frontend/kifu_data_raw.json`, AI dictionaries, or the new `member_kifu` table.
 Historical external backups are not modified by this migration.
 
-## Verification
+## Personal seats and on-demand statistics
+
+- Saves/imports accept an explicitly selected `my_seat`: A, B, C, D, `spectator`, or an empty (unset) value. Editing can correct or clear it. It is not inferred from a name or from a seat occupied after the round.
+- The seat is stored only in that member's existing record payload; old records remain unset. Anonymous saves retain the selected seat without retaining player names.
+- POST `/api/member/kifu/statistics` reads all of the authenticated owner's records on demand. It uses the winner and points already present in each kifu to calculate pair wins/losses, points, and individual/partner finishes. No derived statistic is persisted or sent to analytics/AI training.
+- Unset seats, spectators and unfinished/unknown results are excluded. Zero counted records produce no win-rate percentage. Each saved record counts once, including separately saved copies of the same round. This is a per-round statistic of the saved library, not a full match history.
+- The tag filter does not limit statistics. Edits, saves, imports, deletion, reloading and logout invalidate the displayed statistics; press the button again to recalculate. Requests returning after invalidation cannot restore outdated results.
+- The standard downloadable kifu format remains unchanged; personal seat metadata is not exported.
+
+## Tests
 
 Run `tests/test_member_kifu.py` for ownership, locked-room entry, live-round refusal, subscription expiry, concurrency, persistence, and cleanup scope.
 Existing record parsing/viewer tests and membership/stamp tests remain part of the regression suite.
