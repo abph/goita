@@ -20,7 +20,7 @@ def test_auto_hand_reveal_has_separate_personal_settings() -> None:
         "function maybeAutoRevealOwnAndAiHands(state)",
         "personalSettings.autoRevealOwnHand === true ? [mySeat] : []",
         "personalSettings.autoRevealAiHands !== false ? aiSeats : []",
-        "await requestSeatHandReveal(target, false)",
+        "await requestSeatHandReveal(target, false, true, true)",
     ):
         assert expected in HTML
 

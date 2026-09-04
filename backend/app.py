@@ -1299,7 +1299,7 @@ def _effective_revealed_hand_seats(
     revealed = _revealed_hand_seat_set(game)
     if game_id in MAIN_GIDS and game.get("is_started") and state.finished:
         revealed.update(_ai_seat_set(game))
-    return revealed
+    return revealed - _seat_set(game.get("auto_reveal_blocked_seats", []))
 
 
 app = FastAPI(title="Goita FastAPI (Render-ready)")
@@ -2705,6 +2705,7 @@ def _state_public_view(
         "player_tags": player_tags,
         "reveal_hands": reveal_hands,
         "revealed_hand_seats": sorted(revealed_hand_seats),
+        "auto_reveal_blocked_seats": sorted(_seat_set(game_obj.get("auto_reveal_blocked_seats", []))),
         "owner_name": owner_name,
         "total_team_score": game_obj.get("total_team_score", {"AC": 0, "BD": 0}),
         "round_count": game_obj.get("round_count", 1),
@@ -2795,6 +2796,7 @@ def _create_game_obj(
         "owner_name": "",
         "reveal_hands": False,
         "revealed_hand_seats": [],
+        "auto_reveal_blocked_seats": [],
         "show_legal_actions": False,
         "show_log": False,
         "room_background_image": "",
@@ -4146,6 +4148,7 @@ async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
         game["last_public_action"] = None
         game["reveal_hands"] = False
         game["revealed_hand_seats"] = []
+        game["auto_reveal_blocked_seats"] = []
         game["deal_mode"] = mode
 
     await manager.broadcast_update(game_id)
@@ -4206,6 +4209,8 @@ async def reveal_hand(
     requester: str = "W",
     target: str = "",
     client_id: str = "",
+    visible: bool = True,
+    automatic: bool = False,
 ):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
@@ -4244,7 +4249,16 @@ async def reveal_hand(
         raise HTTPException(status_code=409, detail=f"Seat {target} has no player to reveal.")
 
     revealed = _revealed_hand_seat_set(game)
-    revealed.add(target)
+    blocked = _seat_set(game.get("auto_reveal_blocked_seats", []))
+    if visible:
+        if not automatic:
+            blocked.discard(target)
+        if target not in blocked:
+            revealed.add(target)
+    else:
+        revealed.discard(target)
+        blocked.add(target)
+    game["auto_reveal_blocked_seats"] = sorted(blocked)
     _store_revealed_hand_seats(game, revealed)
     await manager.broadcast_update(game_id)
     return {"ok": True, "revealed_hand_seats": sorted(revealed)}
@@ -4325,6 +4339,7 @@ async def reset_game(
     new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
     new_game["revealed_hand_seats"] = []
+    new_game["auto_reveal_blocked_seats"] = []
     _set_reset_start_state(new_game, auto_start)
     new_game["ai_profile"] = ai_profile
     new_game["show_legal_actions"] = show_legal_actions
@@ -4420,6 +4435,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
+        new_game["auto_reveal_blocked_seats"] = []
         _set_reset_start_state(new_game, body.auto_start)
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
@@ -4456,6 +4472,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
+        new_game["auto_reveal_blocked_seats"] = []
         _set_reset_start_state(new_game, body.auto_start)
         new_game["ai_profile"] = ai_profile
         new_game["show_legal_actions"] = show_legal_actions
