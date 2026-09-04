@@ -21,6 +21,9 @@ def stamp_env(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "_ensure_main_game", lambda _: None)
     monkeypatch.setattr(app_module, "_chat_messages_for_game", lambda _, game: game["chat_messages"])
     monkeypatch.setattr(app_module, "LAST_CHAT_TIMESTAMP", 0)
+    monkeypatch.setattr(app_module, "PUBLIC_CHAT_MESSAGES", [])
+    monkeypatch.setattr(app_module, "LOBBY_HERE_CHAT_MESSAGES", [])
+    monkeypatch.setattr(app_module, "EVERYONE_CHAT_MESSAGES", [])
 
     async def no_broadcast(_):
         pass
@@ -36,7 +39,8 @@ def stamp_env(monkeypatch, tmp_path):
 
 
 def send(client, stamp="sorry", room="main", **kwargs):
-    return client.post(f"/games/{room}/chat", json={"message": "", "stamp_id": stamp}, **kwargs)
+    url = "/lobby/chat" if room == "lobby" else f"/games/{room}/chat"
+    return client.post(url, json={"message": "", "stamp_id": stamp}, **kwargs)
 
 
 def login_paid(client, store, temporary=False):
@@ -48,16 +52,17 @@ def login_paid(client, store, temporary=False):
     return token
 
 
-def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env):
+@pytest.mark.parametrize("room", ["main", "lobby"])
+def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env, room):
     client, store = stamp_env
     for stamp in app_module.PUBLIC_CHAT_STAMP_IDS:
-        assert send(client, stamp).status_code == 200
-    assert send(client).status_code == 401
+        assert send(client, stamp, room).status_code == 200
+    assert send(client, room=room).status_code == 401
     client.cookies.set(MEMBER_COOKIE, "forged-session")
-    assert send(client).status_code == 401
+    assert send(client, room=room).status_code == 401
     login_paid(client, store)
     for stamp in app_module.CHAT_STAMPS:
-        response = send(client, stamp)
+        response = send(client, stamp, room)
         assert response.status_code == 200
         item = response.json()["chat_messages"][-1]
         assert item["stamp_id"] == stamp
@@ -65,7 +70,8 @@ def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env
 
 
 @pytest.mark.parametrize("reason", ["temporary", "unpaid", "expired", "suspended", "deleted", "reset", "logout"])
-def test_extra_stamps_recheck_live_permissions(stamp_env, reason):
+@pytest.mark.parametrize("room", ["main", "lobby"])
+def test_extra_stamps_recheck_live_permissions(stamp_env, reason, room):
     client, store = stamp_env
     token = login_paid(client, store, temporary=reason == "temporary")
     if reason in ("unpaid", "expired", "suspended"):
@@ -77,21 +83,24 @@ def test_extra_stamps_recheck_live_permissions(stamp_env, reason):
         store.reset_password("tester")
     elif reason == "logout":
         store.logout(token)
-    assert send(client).status_code in (401, 403)
+    assert send(client, room=room).status_code in (401, 403)
     assert app_module.GAMES["main"]["chat_messages"] == []
-    assert send(client, "nice").status_code == 200
+    assert app_module.PUBLIC_CHAT_MESSAGES == []
+    assert send(client, "nice", room).status_code == 200
 
 
 def test_private_and_debug_stamps_remain_available_without_membership(stamp_env):
     client, _ = stamp_env
     for room in (app_module.PRIVATE_A_GID, app_module.DEBUG_GID):
         assert send(client, room=room).status_code == 200
-    assert client.post("/lobby/chat", json={"message": "", "stamp_id": "sorry"}).status_code == 403
+    assert client.post("/lobby/chat", json={"message": "", "stamp_id": "sorry"}).status_code == 401
 
 
-def test_paid_stamp_requires_same_origin_header(stamp_env):
+@pytest.mark.parametrize("room", ["main", "lobby"])
+def test_paid_stamp_requires_same_origin_header(stamp_env, room):
     client, store = stamp_env
     login_paid(client, store)
     for headers in ({"Origin": "https://evil.example"}, {"X-Goita-Member": ""}, {"Sec-Fetch-Site": "cross-site"}):
-        assert send(client, headers=headers).status_code == 403
+        assert send(client, room=room, headers=headers).status_code == 403
     assert app_module.GAMES["main"]["chat_messages"] == []
+    assert app_module.PUBLIC_CHAT_MESSAGES == []

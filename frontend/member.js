@@ -58,7 +58,7 @@
           <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
           <label>${label("パスワード")}<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
           <div class="member-actions"><button class="member-primary" type="submit">${label("ログイン")}</button></div>
-        </form><p class="member-help">${label("会員発行・パスワード再発行は運営へお問い合わせください。")}</p>`;
+        </form>`;
       } else if (member.must_change_password) {
         body = `<h4>${label("初回パスワード変更")}</h4><p>${label("会員ID")}：${escape(member.member_id)}</p>
           ${passwordForm(true)}<div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
@@ -78,7 +78,6 @@
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
-        <p class="member-help">${label("保存上限：100件。保存した棋譜は本人だけが閲覧できます。")}</p>
         ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>`;
     });

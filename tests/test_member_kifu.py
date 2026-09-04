@@ -149,6 +149,23 @@ def test_limit_is_atomic_and_deletion_frees_space(library):
     assert attempt(0)
 
 
+def test_default_limit_accepts_1000_records_and_rejects_1001(library):
+    store, members, token, other, client, game = library
+    assert store.LIMIT == 1000
+    with members._db(write=True) as db:
+        db.executemany("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", [
+            (f"seed-{i}", "alice", "2026-09-05", "seed", "", "[]", "{}") for i in range(999)
+        ])
+    record = save(client)
+    assert record.status_code == 200
+    assert len(store.list(token)) == 1000
+    overflow = save(client)
+    assert overflow.status_code == 409
+    assert "1000件" in overflow.json()["detail"]
+    store.access(token, record.json()["record"]["id"], action="delete")
+    assert save(client).status_code == 200
+
+
 def test_member_deletion_removes_records_and_recreated_id_cannot_inherit(library):
     store, members, token, other, client, game = library
     record_id = save(client).json()["record"]["id"]

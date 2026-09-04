@@ -13,7 +13,7 @@ def test_member_page_is_available_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260904e"' in html
+    assert 'src="/static/member.js?v=20260905a"' in html
     assert 'href="/static/member.css?v=20260904c"' in html
 
 
@@ -72,3 +72,17 @@ def test_login_explains_supporter_benefits_with_separate_support_page():
     assert "公開部屋でも全スタンプ" in login
     assert 'href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer"' in login
     assert login.index("支援について") < login.index('name="member_id"')
+
+
+def test_member_page_hides_limit_and_reissue_notices():
+    script = (ROOT / "frontend" / "member.js").read_text(encoding="utf-8")
+    assert "保存上限：" not in script
+    assert "保存した棋譜は本人だけが閲覧できます。" not in script
+    assert "会員発行・パスワード再発行は運営へお問い合わせください。" not in script
+
+
+def test_lobby_stamp_submission_sends_member_auth_header():
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    submit = html.split('fetch(`${API}/lobby/chat`, {')[1].split("body:")[0]
+    assert 'credentials: "same-origin"' in submit
+    assert '"X-Goita-Member": "1"' in submit

@@ -8,7 +8,7 @@ from backend.member_store import MemberError
 
 
 class MemberKifuStore:
-    LIMIT = 100
+    LIMIT = 1000
 
     def __init__(self, members):
         self.members = members
@@ -43,7 +43,7 @@ class MemberKifuStore:
         with self.members._db(write=True) as db:
             owner = self._owner(db, token, paid=True)
             if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= self.LIMIT:
-                raise MemberError(409, "保存上限の100件に達しました。不要な棋譜を削除してください。")
+                raise MemberError(409, "保存上限の1000件に達しました。不要な棋譜を削除してください。")
             record_id = "K-" + secrets.token_hex(16)
             db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
                 record_id, owner, datetime.now(timezone.utc).isoformat(timespec="seconds"),
