@@ -45,10 +45,16 @@
     document.querySelectorAll("[data-member-entry]").forEach(button => {
       button.textContent = t(member ? "マイページ" : "ログイン");
     });
-    roots.forEach(root => {
+    roots.forEach((root, index) => {
+      const hasTabs = member && !member.must_change_password;
+      const prefix = `member-section-${index}`;
       let body;
       if (!member) {
-        body = `<h4>${label("会員ログイン")}</h4><form data-action="login">
+        body = `<h4>${label("会員ログイン")}</h4>
+          <p class="member-help"><strong>${label("支援者向けの会員機能です。")}</strong><br>
+          ${label("ログインすると、公開部屋でも全スタンプを使用でき、棋譜を自分専用のライブラリにサーバー保存できます。")}</p>
+          <p class="member-help"><a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援について")}</a></p>
+          <form data-action="login">
           <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
           <label>${label("パスワード")}<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
           <div class="member-actions"><button class="member-primary" type="submit">${label("ログイン")}</button></div>
@@ -58,17 +64,21 @@
           ${passwordForm(true)}<div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       } else {
         const plan = member.paid_active ? "有料権限：有効" : member.paid_enabled ? "有料権限：期限切れ" : "有料権限：無効";
-        body = `<h4>${label("マイページ")}</h4><dl class="member-info">
+        body = `<dl class="member-info">
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
-        </dl><div class="member-actions"><button type="button" data-action="library">${label("棋譜ライブラリ")}</button></div>
+        </dl>
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }
-      root.innerHTML = `<div data-member-account>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
-        <div data-member-library hidden><button type="button" data-action="account">${label("マイページへ")}</button>
-        <h4>${label("棋譜ライブラリ")}</h4><p class="member-help">${label("保存上限：100件。保存した棋譜は本人だけが閲覧できます。")}</p>
+      const tabs = hasTabs ? `<div class="member-tabs" role="tablist" aria-label="${label("マイページ")}">
+        <button type="button" role="tab" id="${prefix}-account-tab" aria-controls="${prefix}-account" aria-selected="true" data-action="account">${label("アカウント")}</button>
+        <button type="button" role="tab" id="${prefix}-library-tab" aria-controls="${prefix}-library" aria-selected="false" tabindex="-1" data-action="library">${label("棋譜ライブラリ")}</button>
+      </div>` : "";
+      root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
+        <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
+        <p class="member-help">${label("保存上限：100件。保存した棋譜は本人だけが閲覧できます。")}</p>
         ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>`;
     });
@@ -82,14 +92,24 @@
 
   function showLibrary(root, load = true) {
     if (!member || member.must_change_password) return;
+    if (libraryRoot && libraryRoot !== root) selectTab(libraryRoot, "account");
     libraryRoot = root;
-    root.querySelector("[data-member-account]").hidden = true;
-    root.querySelector("[data-member-library]").hidden = false;
+    selectTab(root, "library");
     mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canUseAllStamps());
     if (load) {
       resetMemberKifuLibrary();
       loadResearchKifuList();
     }
+  }
+
+  function selectTab(root, action) {
+    root.querySelector("[data-member-account]").hidden = action !== "account";
+    root.querySelector("[data-member-library]").hidden = action !== "library";
+    root.querySelectorAll('[role="tab"]').forEach(tab => {
+      const selected = tab.dataset.action === action;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
   }
 
   function status(message) {
@@ -151,12 +171,22 @@
     root.addEventListener("submit", event => { event.preventDefault(); perform(event.target.dataset.action, event.target); });
     root.addEventListener("click", event => {
       if (event.target.closest('[data-action="logout"]')) perform("logout");
-      if (event.target.closest('[data-action="library"]')) showLibrary(root);
+      if (event.target.closest('[data-action="library"]') && libraryRoot !== root) showLibrary(root);
       if (event.target.closest('[data-action="account"]')) {
         libraryRoot = null;
         stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
-        render();
+        selectTab(root, "account");
       }
+    });
+    root.addEventListener("keydown", event => {
+      const tab = event.target.closest('[role="tab"]');
+      if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = [...root.querySelectorAll('[role="tab"]')];
+      const index = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
+        (tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[index].focus();
+      tabs[index].click();
     });
   });
   function canUseAllStamps() {

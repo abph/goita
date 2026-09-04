@@ -4389,8 +4389,8 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
-  <link rel="stylesheet" href="/static/member.css?v=20260904b" />
-  <script defer src="/static/member.js?v=20260904c"></script>
+  <link rel="stylesheet" href="/static/member.css?v=20260904c" />
+  <script defer src="/static/member.js?v=20260904e"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -5307,8 +5307,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260904d"></script>
-<script src="/static/i18n.js?v=20260904d"></script>
+<script src="/static/i18n-en.js?v=20260904f"></script>
+<script src="/static/i18n.js?v=20260904f"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -12076,8 +12076,8 @@ function confirmHandReveal(target){
 
   const isOwnHand = target === mySeat;
   messageEl.textContent = uiText(isOwnHand
-    ? "自分の手札を全員に公開します。公開後はこの局では取り消せません。"
-    : "AIの手札を全員に公開します。公開後はこの局では取り消せません。"
+    ? "自分の手札を全員に公開します。"
+    : "AIの手札を全員に公開します。"
   );
 
   return new Promise(resolve => {
@@ -12087,21 +12087,24 @@ function confirmHandReveal(target){
   });
 }
 
-async function requestSeatHandReveal(target, showError = true){
+async function requestSeatHandReveal(target, showError = true, visible = true, automatic = false){
+  const errorMessage = visible ? "手札を公開できませんでした。" : "手札を非公開に戻せませんでした。";
   try{
     const qs = new URLSearchParams({
       requester: mySeat,
       target,
       client_id: clientId,
+      visible: String(visible),
+      automatic: String(automatic),
     });
     const res = await fetch(`${API}/games/${gid}/reveal_hand?${qs.toString()}`, {method: "POST"});
     if(!res.ok){
-      if(showError) alert(uiText("手札を公開できませんでした。"));
+      if(showError) alert(uiText(errorMessage));
       return false;
     }
     return true;
   }catch(e){
-    if(showError) alert(uiText("手札を公開できませんでした。"));
+    if(showError) alert(uiText(errorMessage));
     return false;
   }
 }
@@ -12109,6 +12112,10 @@ async function requestSeatHandReveal(target, showError = true){
 async function revealSeatHand(target){
   if(!await confirmHandReveal(target)) return;
   if(await requestSeatHandReveal(target)) await refresh();
+}
+
+async function hideSeatHand(target){
+  if(await requestSeatHandReveal(target, true, false)) await refresh();
 }
 
 async function maybeAutoRevealOwnAndAiHands(state){
@@ -12127,13 +12134,14 @@ async function maybeAutoRevealOwnAndAiHands(state){
   if(autoRevealHandsRoundKey === roundKey) return false;
 
   const revealed = new Set(Array.isArray(state.revealed_hand_seats) ? state.revealed_hand_seats : []);
+  const blocked = new Set(state.auto_reveal_blocked_seats || []);
   const aiSeats = Array.isArray(state.ai_seats) ? state.ai_seats : [];
   const requestedTargets = [
     ...(personalSettings.autoRevealOwnHand === true ? [mySeat] : []),
     ...(personalSettings.autoRevealAiHands !== false ? aiSeats : []),
   ];
   const targets = requestedTargets.filter((seat, index, list) => (
-    !revealed.has(seat) && list.indexOf(seat) === index
+    !revealed.has(seat) && !blocked.has(seat) && list.indexOf(seat) === index
   ));
   if(targets.length === 0){
     autoRevealHandsRoundKey = roundKey;
@@ -12145,7 +12153,7 @@ async function maybeAutoRevealOwnAndAiHands(state){
   let changed = false;
   try{
     for(const target of targets){
-      if(await requestSeatHandReveal(target, false)) changed = true;
+      if(await requestSeatHandReveal(target, false, true, true)) changed = true;
     }
   }finally{
     autoRevealHandsInFlight = false;
@@ -12168,20 +12176,19 @@ function renderHandRevealControls(state){
   const ownRevealed = isSeatHandRevealed(state, mySeat);
   const ownButton = document.createElement("button");
   ownButton.type = "button";
-  ownButton.textContent = uiText(ownRevealed ? "自分の手札は公開済み" : "自分の手札を公開");
-  ownButton.disabled = ownRevealed || !canRevealNow;
-  if(!ownButton.disabled) ownButton.onclick = () => revealSeatHand(mySeat);
+  ownButton.textContent = uiText(ownRevealed ? "自分の手札を非公開に戻す" : "自分の手札を公開");
+  ownButton.disabled = !canRevealNow;
+  if(!ownButton.disabled) ownButton.onclick = () => ownRevealed ? hideSeatHand(mySeat) : revealSeatHand(mySeat);
   panel.appendChild(ownButton);
 
-  if(!isMain && isCurrentClientHost()){
+  if(state.finished || (!isMain && isCurrentClientHost())){
     const aiSeats = Array.isArray(state.ai_seats) ? state.ai_seats : [];
     aiSeats.forEach(seat => {
       const revealed = isSeatHandRevealed(state, seat);
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = `${seat}（AI） ${uiText(revealed ? "手札公開済み" : "手札を公開")}`;
-      button.disabled = revealed;
-      if(!revealed) button.onclick = () => revealSeatHand(seat);
+      button.textContent = `${seat}（AI） ${uiText(revealed ? "手札を非公開に戻す" : "手札を公開")}`;
+      button.onclick = () => revealed ? hideSeatHand(seat) : revealSeatHand(seat);
       panel.appendChild(button);
     });
   }
@@ -12191,7 +12198,7 @@ function renderHandRevealControls(state){
   note.textContent = uiText(
     isMain && !state.finished
       ? "公開部屋では、終局後に手札を公開できます。"
-      : "公開後は、この局では取り消せません。"
+      : "非公開に戻しても、すでに見られた情報は取り消せません。"
   );
   panel.appendChild(note);
   panel.style.display = "flex";

@@ -1,4 +1,14 @@
 .member-panel { color: inherit; }
+.member-panel .member-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid #d4d9dd; }
+.member-panel .member-tabs button {
+  flex: 1; min-width: 0; margin: 0; padding: 8px 6px;
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: transparent; color: #56616b; font: inherit; font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.member-panel .member-tabs button[aria-selected="true"] { border-bottom-color: #176b57; color: #176b57; font-weight: 700; }
+.member-panel .member-tabs button:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
+.member-panel .member-status:empty { display: none; }
 .member-panel h4 { margin: 8px 0 16px; font-size: 15px; }
 .member-panel form { display: grid; gap: 12px; }
 .member-panel form label { display: grid; gap: 5px; font-weight: 700; }

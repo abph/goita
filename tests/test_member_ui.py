@@ -13,8 +13,8 @@ def test_member_page_is_available_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260904c"' in html
-    assert 'href="/static/member.css?v=20260904b"' in html
+    assert 'src="/static/member.js?v=20260904e"' in html
+    assert 'href="/static/member.css?v=20260904c"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():
@@ -63,3 +63,12 @@ def test_member_password_inputs_accept_eight_characters():
     script = (ROOT / "frontend" / "member.js").read_text(encoding="utf-8")
     assert script.count('minlength="8"') == 2
     assert 'minlength="15"' not in script
+
+
+def test_login_explains_supporter_benefits_with_separate_support_page():
+    script = (ROOT / "frontend" / "member.js").read_text(encoding="utf-8")
+    login = script.split("if (!member) {")[1].split("} else if")[0]
+    assert "支援者向けの会員機能です。" in login
+    assert "公開部屋でも全スタンプ" in login
+    assert 'href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer"' in login
+    assert login.index("支援について") < login.index('name="member_id"')
