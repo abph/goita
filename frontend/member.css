@@ -1,0 +1,22 @@
+.member-panel { color: inherit; }
+.member-panel h4 { margin: 8px 0 16px; font-size: 15px; }
+.member-panel form { display: grid; gap: 12px; }
+.member-panel label { display: grid; gap: 5px; font-weight: 700; }
+.member-panel input {
+  width: 100%; min-width: 0; box-sizing: border-box;
+  padding: 8px; border: 1px solid #aeb7c0; border-radius: 4px;
+  background: #fff; color: #20242a; font: inherit; font-size: 16px;
+}
+.member-panel button { width: auto; padding: 7px 12px; font-size: 13px; }
+.member-panel .member-primary { background: #176b57; color: #fff; border: 1px solid #176b57; }
+.member-panel .member-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.member-panel .member-info { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; margin: 0 0 20px; }
+.member-panel dt { color: #67717d; }
+.member-panel dd { margin: 0; overflow-wrap: anywhere; }
+.member-panel .member-status { min-height: 1.5em; margin: 10px 0; color: #a13232; font-size: 12px; }
+.member-panel .member-help { color: #67717d; font-size: 12px; margin: 12px 0; }
+.member-panel [hidden] { display: none !important; }
+.member-panel button:disabled { opacity: .6; cursor: wait; }
+.member-entry-button { white-space: nowrap; }
+#settingsModal .settings-tabs { flex-wrap: wrap; }
+#settingsModal .settings-tab { min-width: 65px; }

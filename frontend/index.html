@@ -4350,12 +4350,15 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
+  <link rel="stylesheet" href="/static/member.css?v=20260904a" />
+  <script defer src="/static/member.js?v=20260904a"></script>
 </head>
 <body>
 
 <div id="lobbyView">
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
   <div class="lobby-toolbar">
+    <button class="lobby-settings-button member-entry-button" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
     <button class="lobby-settings-button" type="button" onclick="openLobbySettings()">⚙️ 設定</button>
   </div>
   <div class="lobby-intro">
@@ -4468,6 +4471,7 @@
       </h1>
     </div>
     <div class="game-header-actions">
+      <button class="gear-btn member-entry-button" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
       <button id="roomSettingsBtn" class="gear-btn" onclick="openSettingsModal(gid)" style="display:none;" title="ルーム設定"><span class="gear-icon" aria-hidden="true">⚙️</span><span class="gear-label">設定</span></button>
     </div>
   </div>
@@ -4679,6 +4683,10 @@
   <div class="modal-content lobby-admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbySettingsTitle" onclick="event.stopPropagation()">
     <button class="settings-modal-close" type="button" onclick="closeLobbySettings()" aria-label="トップページ設定を閉じる" title="閉じる">×</button>
     <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
+    <div class="settings-tabs" role="tablist" aria-label="設定の種類">
+      <button id="lobbyPersonalTab" class="settings-tab active" type="button" role="tab" onclick="showLobbySettingsTab('personal')">個人設定</button>
+      <button id="lobbyMemberTab" class="settings-tab" type="button" role="tab" onclick="showLobbySettingsTab('member')">マイページ</button>
+    </div>
     <section id="lobbyPersonalSettingsPanel" class="settings-panel active">
         <div class="settings-row">
           <div class="language-switcher" role="group" aria-label="表示言語">
@@ -4820,6 +4828,7 @@
         <button class="settings-save-button" type="button" onclick="saveLobbyPersonalSettings()">個人設定を保存</button>
         <div id="lobbyPersonalSettingsStatus" class="settings-status" aria-live="polite"></div>
     </section>
+    <section id="lobbyMemberPanel" class="settings-panel member-panel" role="tabpanel" data-member-panel></section>
     <div class="settings-footer">
       <button type="button" onclick="closeLobbySettings()">閉じる</button>
     </div>
@@ -4842,14 +4851,15 @@
 </div>
 
 <div id="settingsModal" class="modal-overlay">
-  <div class="modal-content settings-modal-content">
+  <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="roomSettingsTitle">
     <button class="settings-modal-close" type="button" onclick="closeSettings()" aria-label="設定を閉じる" title="閉じる">×</button>
-    <h3>⚙️ 設定</h3>
+    <h3 id="roomSettingsTitle">⚙️ 設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
       <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
       <button id="matchSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('match')">対局設定</button>
       <button id="roomManagementTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('management')">ルーム管理</button>
       <button id="researchKifuTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('research')">研究用棋譜</button>
+      <button id="memberSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('member')">マイページ</button>
     </div>
 
     <section id="personalSettingsPanel" class="settings-panel active" role="tabpanel">
@@ -5243,6 +5253,7 @@
       </div>
     </section>
 
+    <section id="memberSettingsPanel" class="settings-panel member-panel" role="tabpanel" data-member-panel></section>
     <div class="settings-footer">
       <div id="personalSettingsFooterActions">
         <div id="personalSettingsStatus" class="settings-status" aria-live="polite"></div>
@@ -5253,8 +5264,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260901a"></script>
-<script src="/static/i18n.js?v=20260901a"></script>
+<script src="/static/i18n-en.js?v=20260904a"></script>
+<script src="/static/i18n.js?v=20260904a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -6303,6 +6314,7 @@ const SITE_INFO = {
             "そろうごいたでは、サービスの利用傾向を把握するため、個人を直接特定しない分析用IDを用いて、サイトへの訪問、ルームへの入退室、利用時間、利用した機能などを記録する場合があります。これらの利用状況の記録は、サービスの運営中、保存期間を定めず保持する場合があります。個人設定から記録を無効にすると、そのブラウザーの分析用IDに結び付いた記録を削除します。",
             "分析用の記録には、名前、チャット内容、棋譜、手駒、ペア相手、対戦相手の情報を含めません。生のIPアドレスも、マーケティング分析には保存しません。",
             "推定した都道府県または国・地域を記録する場合があります。",
+            "会員機能では、会員ID、暗号学的に保護したパスワード、ログイン情報、有料権限と有効期限を保存します。これらは利用状況の分析用IDとは結び付けません。",
             "対局中は、ゲームを進行するために手順情報をサーバー上で一時的に保持します。研究用棋譜ライブラリには、利用者が明示的に保存した棋譜だけを保存します。保存された棋譜を、本人の同意なくAI開発、研究、記事などに利用することはありません。設定画面の棋譜保存機能は、利用者自身が棋譜を保存するための機能です。",
             "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
             "取得した情報は、サービスの提供、改善、不具合調査および利用傾向の分析に必要な範囲で取り扱い、目的外で利用しません。",
@@ -7566,7 +7578,30 @@ async function returnToLobby() {
     fetchRoomList();
 }
 
+function openMemberPage() {
+    if (document.getElementById("gameView").style.display !== "none") {
+        openSettingsModal(gid, null, "member");
+    } else {
+        openLobbySettings("member");
+    }
+}
+
+function showLobbySettingsTab(tab) {
+    const isMember = tab === "member";
+    document.getElementById("lobbyPersonalSettingsPanel").classList.toggle("active", !isMember);
+    document.getElementById("lobbyMemberPanel").classList.toggle("active", isMember);
+    ["lobbyPersonalTab", "lobbyMemberTab"].forEach((id, index) => {
+        const selected = isMember === (index === 1);
+        document.getElementById(id).classList.toggle("active", selected);
+        document.getElementById(id).setAttribute("aria-selected", String(selected));
+    });
+    if (isMember) window.goitaMembers?.refresh();
+    else window.goitaMembers?.clearSecrets();
+}
+
 function openLobbySettings() {
+    const tab = arguments.length ? arguments[0] : "personal";
+    showLobbySettingsTab(tab);
     syncLobbyPersonalSettingsControls();
     ["lobbyMobileChatSettingsDetails", "lobbyPlaySupportSettingsDetails", "lobbySoundSettingsDetails", "lobbyDataSharingSettingsDetails"].forEach((id) => {
         document.getElementById(id).open = false;
@@ -7576,6 +7611,7 @@ function openLobbySettings() {
 
 function closeLobbySettings(event) {
     if (event && event.target !== event.currentTarget) return;
+    window.goitaMembers?.clearSecrets();
     document.getElementById("lobbySettingsModal").style.display = "none";
 }
 
@@ -7817,13 +7853,19 @@ async function vacateManagedSeat(item) {
 }
 
 function showSettingsTab(tabName) {
+    const isMember = tabName === "member";
     const isMatch = tabName === "match";
     const isManagement = tabName === "management";
     const isResearch = tabName === "research";
     if (isManagement && isMainRoomId(settingTargetGid)) return;
     if (isResearch && !PRIVATE_ROOM_IDS.has(settingTargetGid)) return;
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
-    const isPersonal = !isMatch && !isManagement && !isResearch;
+    const isPersonal = !isMatch && !isManagement && !isResearch && !isMember;
+    document.getElementById("memberSettingsTab").classList.toggle("active", isMember);
+    document.getElementById("memberSettingsTab").setAttribute("aria-selected", String(isMember));
+    document.getElementById("memberSettingsPanel").classList.toggle("active", isMember);
+    if (isMember) window.goitaMembers?.refresh();
+    else window.goitaMembers?.clearSecrets();
     document.getElementById("personalSettingsTab").classList.toggle("active", isPersonal);
     document.getElementById("matchSettingsTab").classList.toggle("active", isMatch);
     document.getElementById("roomManagementTab").classList.toggle("active", isManagement);
@@ -7835,7 +7877,7 @@ function showSettingsTab(tabName) {
     document.getElementById("personalSettingsFooterActions").style.display = isPersonal ? "block" : "none";
     lastSettingsTab = isMatch
         ? "match"
-        : (isManagement ? "management" : (isResearch ? "research" : "personal"));
+        : (isManagement ? "management" : (isResearch ? "research" : (isMember ? "member" : "personal")));
     if (isManagement) {
         if (currentAdminPass) {
             document.getElementById("adminAuthArea").style.display = "none";
@@ -8165,6 +8207,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
 }
 
 function closeSettings() {
+    window.goitaMembers?.clearSecrets();
     stopResearchKifuReplay({restoreFinal: false, clearStatus: true});
     document.getElementById("settingsModal").style.display = "none";
 }

@@ -14,6 +14,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'data-tab="settings"' in admin
     assert 'data-tab="analytics"' in admin
     assert 'data-tab="aiMetrics"' in admin
+    assert 'data-tab="members"' in admin
+    assert 'id="memberCreateForm"' in admin
     assert 'id="aiMetricsView"' in admin
     assert 'id="aiMetricsDownload"' in admin
     assert 'id="aiMetricsStatus"' in admin

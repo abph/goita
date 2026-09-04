@@ -11,11 +11,12 @@ import os
 import random
 import re
 import secrets
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import Counter
+from collections import Counter, deque
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set
@@ -74,6 +75,8 @@ from backend.research_kifu_store import (
 from backend.frequent_deal import is_frequent_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
+from backend.member_store import MemberStore, resolve_member_path
+from backend.member_api import create_member_router
 
 LOGGER = logging.getLogger(__name__)
 
@@ -140,6 +143,16 @@ RESEARCH_KIFU_PATH = resolve_research_kifu_path(
 )
 RESEARCH_KIFU_STORE = ResearchKifuStore(RESEARCH_KIFU_PATH)
 RESEARCH_KIFU_PERSISTENT = is_persistent_research_kifu_configured(os.environ)
+MEMBER_PATH = resolve_member_path(
+    os.environ, Path(__file__).resolve().parents[1] / "results" / "goita-members.sqlite3"
+)
+if MEMBER_PATH.resolve().is_relative_to((Path(__file__).resolve().parents[1] / "frontend").resolve()):
+    raise RuntimeError("GOITA_MEMBER_DB_PATH must be outside the public frontend directory")
+MEMBER_STORE = MemberStore(MEMBER_PATH)
+MEMBER_PERSISTENT = bool(
+    str(os.environ.get("GOITA_MEMBER_DB_PATH", "") or "").strip()
+    or str(os.environ.get("GOITA_PERSISTENT_DATA_DIR", "") or "").strip()
+)
 ANALYTICS_PATH = resolve_analytics_path(
     os.environ,
     local_fallback=Path(__file__).resolve().parents[1]
@@ -157,6 +170,10 @@ ADMIN_SESSION_SECRET = (
     str(os.environ.get("GOITA_ADMIN_SESSION_SECRET", "") or "").encode("utf-8")
     or secrets.token_bytes(32)
 )
+ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+ADMIN_LOGIN_MAX_FAILURES = 5
+ADMIN_LOGIN_FAILURES = deque()
+ADMIN_LOGIN_LOCK = threading.Lock()
 
 
 def _initial_room_count(env_name: str, default: int, minimum: int, maximum: int) -> int:
@@ -1356,6 +1373,37 @@ def _valid_admin_session(token: str) -> bool:
 def _require_site_admin(request: Request) -> None:
     if not _valid_admin_session(request.cookies.get(ADMIN_SESSION_COOKIE, "")):
         raise HTTPException(status_code=401, detail="管理者認証が必要です")
+
+
+def _check_site_admin_login_limit() -> None:
+    now = time.monotonic()
+    with ADMIN_LOGIN_LOCK:
+        while ADMIN_LOGIN_FAILURES and ADMIN_LOGIN_FAILURES[0] <= now - ADMIN_LOGIN_WINDOW_SECONDS:
+            ADMIN_LOGIN_FAILURES.popleft()
+        if len(ADMIN_LOGIN_FAILURES) >= ADMIN_LOGIN_MAX_FAILURES:
+            raise HTTPException(status_code=429, detail="試行回数が多いため、時間をおいてお試しください。")
+
+
+def _record_site_admin_login(success: bool) -> None:
+    with ADMIN_LOGIN_LOCK:
+        if success:
+            ADMIN_LOGIN_FAILURES.clear()
+        else:
+            ADMIN_LOGIN_FAILURES.append(time.monotonic())
+
+
+def _require_member_admin(request: Request) -> None:
+    _require_site_admin(request)
+    if not LOBBY_ADMIN_PASSWORD or LOBBY_ADMIN_PASSWORD == DEFAULT_LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(status_code=503, detail="会員管理には独自のLOBBY_ADMIN_PASSWORDを設定してください。")
+    if os.environ.get("RENDER") and not MEMBER_PERSISTENT:
+        raise HTTPException(status_code=503, detail="会員管理には永続保存先を設定してください。")
+
+
+app.include_router(create_member_router(
+    MEMBER_STORE, _require_member_admin, persistent=MEMBER_PERSISTENT,
+    force_secure=bool(os.environ.get("RENDER")),
+))
 
 
 @app.websocket("/ws/{game_id}")
@@ -3805,7 +3853,10 @@ def admin_login(
     response: Response,
     password: str = Body(..., embed=True),
 ):
-    if password != LOBBY_ADMIN_PASSWORD:
+    _check_site_admin_login_limit()
+    valid = hmac.compare_digest(str(password).encode("utf-8"), LOBBY_ADMIN_PASSWORD.encode("utf-8"))
+    _record_site_admin_login(valid)
+    if not valid:
         raise HTTPException(status_code=401, detail="管理用パスワードが違います")
     expires_at = int(time.time()) + ADMIN_SESSION_SECONDS
     response.set_cookie(

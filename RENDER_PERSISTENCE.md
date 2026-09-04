@@ -22,6 +22,7 @@ The files are then stored at:
 /var/data/goita-room-settings.json
 /var/data/goita-research-kifu.sqlite3
 /var/data/goita-analytics.sqlite3
+/var/data/goita-members.sqlite3
 ```
 
 The room settings file contains only editable room-management values: room
@@ -51,3 +52,8 @@ The administrator dashboard is available directly at `/admin/` and is not
 linked from the public top-page settings. Set `GOITA_ADMIN_SESSION_SECRET` to a
 long random value when administrator login cookies should remain valid across
 deploys; otherwise a secure random value is generated at each process start.
+
+Member accounts use the same persistent directory in a separate database.
+`GOITA_MEMBER_DB_PATH` can override its location. Member management requires
+a non-default `LOBBY_ADMIN_PASSWORD`; see [MEMBER_ACCOUNTS.md](MEMBER_ACCOUNTS.md)
+for issuance, expiry, reset, and session-security details.
