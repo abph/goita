@@ -13,6 +13,15 @@
   })[c]);
   const label = value => escape(t(value));
 
+  function memberStartDate(timestamp) {
+    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "—";
+    const date = new Date(timestamp * 1000);
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString("ja-JP", {
+      timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+    });
+  }
+
   async function request(path, body) {
     const response = await fetch(`/api/member/${path}`, {
       method: body === undefined ? "GET" : "POST", credentials: "same-origin", cache: "no-store",
@@ -68,9 +77,12 @@
         const plan = member.paid_active ? "有料権限：有効" : member.paid_enabled ? "有料権限：期限切れ" : "有料権限：無効";
         body = `<dl class="member-info">
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
+          <dt>${label("利用開始日")}</dt><dd>${escape(memberStartDate(member.created_at))} (JST)</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
+        <p class="member-help">${label("解約は以下のリンクからできます")}<br>
+          <a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援・解約のご案内")}</a></p>
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }

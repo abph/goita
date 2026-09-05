@@ -1355,6 +1355,29 @@
     .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
     .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
 
+    .room-card.has-room-heading { grid-template-rows: auto repeat(3, minmax(0, 1fr)); }
+    .room-card .room-heading {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        width: calc(100% - 72px);
+        margin-top: 12px;
+        color: #b00000;
+        font-size: 16px;
+        font-weight: bold;
+        line-height: 1.25;
+        text-align: center;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+    }
+    .room-card.has-room-heading .seat-top { grid-row: 2; }
+    .room-card.has-room-heading .seat-left,
+    .room-card.has-room-heading .center-info,
+    .room-card.has-room-heading .seat-right { grid-row: 3; }
+    .room-card.has-room-heading .seat-bottom { grid-row: 4; }
+
     @media (max-width: 701px) {
       .lobby-room-section {
         padding: 16px 0 !important;
@@ -1390,6 +1413,11 @@
         font-size: 9px;
         line-height: 1.15;
         margin-bottom: 2px;
+      }
+      .room-card .room-heading {
+        width: calc(100% - 44px);
+        margin-top: 8px;
+        font-size: 11px;
       }
       .room-card .center-info .count {
         font-size: 8px;
@@ -4404,7 +4432,7 @@
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
   <link rel="stylesheet" href="/static/member.css?v=20260905f" />
-  <script defer src="/static/member.js?v=20260905g"></script>
+  <script defer src="/static/member.js?v=20260906a"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -5347,8 +5375,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260905f"></script>
-<script src="/static/i18n.js?v=20260905f"></script>
+<script src="/static/i18n-en.js?v=20260906a"></script>
+<script src="/static/i18n.js?v=20260906a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -7790,12 +7818,13 @@ async function fetchRoomList() {
                     </div>
                 `;
             } else {
+                card.classList.add("has-room-heading");
                 card.innerHTML = `
                     ${settingsIcon}
+                    <div class="room-heading" title="${displayRoomName}"${roomNameIgnore}>${displayRoomName}</div>
                     <div class="seat-top">${makeBadge('C', s['C'])}</div>
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
-                        <div class="title"${roomNameIgnore}>${displayRoomName}</div>
                         <div class="count">(${room.player_count}/4人)</div>
                     </div>
                     <div class="seat-right">${makeBadge('B', s['B'])}</div>

@@ -44,6 +44,7 @@ function makeRoot() {
     },
     fetch: async () => ({ ok: true, json: async () => ({ member }) }),
     resetMemberKifuLibrary() { resets++; },
+    resetMemberKifuDisclosures() {},
     mountMemberKifuLibrary() {},
     loadResearchKifuList() { loads++; },
     stopResearchKifuReplay() { stops++; },
