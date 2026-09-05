@@ -227,7 +227,7 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "openResearchKifuImport()" in HTML
     assert "importResearchKifuFile(event)" in HTML
     assert 'researchKifuApi("/import"' in HTML
-    assert '<h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>' in HTML
+    assert '<h4 id="memberKifuSaveTitle">棋譜をサーバーに保存</h4>' in HTML
     assert 'placeholder="タイトル　例：終盤の王受け"' in HTML
     assert 'placeholder="気になった点をメモできます"' in HTML
     assert '<strong class="research-kifu-list-heading">棋譜一覧</strong>' in HTML

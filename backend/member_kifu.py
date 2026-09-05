@@ -2,9 +2,33 @@
 
 import json
 import secrets
+from collections import Counter
 from datetime import datetime, timezone
 
-from backend.member_store import MemberError, JST
+from backend.member_store import MemberError
+from backend.research_kifu_store import normalize_research_kifu_tags
+
+
+def automatic_hand_tags(payload, seat):
+    """Tag the owner's original hand, using exact counts rather than thresholds."""
+    if seat not in ("A", "B", "C", "D"):
+        return []
+    hands = payload.get("hand", {})
+    hand = hands.get(f"p{'ABCD'.index(seat)}", "") if isinstance(hands, dict) else ""
+    counts = Counter(hand if isinstance(hand, str) else "")
+    tags = []
+    if counts["王"] and counts["玉"]:
+        tags.append("王玉")
+    if counts["し"] in (3, 4):
+        tags.append(f"{counts['し']}し")
+    if counts["香"] in (2, 3, 4):
+        tags.append(f"{counts['香']}香")
+    for piece in ("馬", "銀", "金"):
+        if counts[piece] in (2, 3, 4):
+            tags.append(f"{counts[piece]}中駒")
+    if counts["角"] == 2 or counts["飛"] == 2:
+        tags.append("大駒ペア")
+    return normalize_research_kifu_tags(tags)
 
 
 class MemberKifuStore:
@@ -103,10 +127,10 @@ class MemberKifuStore:
                 return {"status": "limit", "member_id": owner}
             saved = dict(payload, my_seat=seat, anonymous=False)
             now = datetime.now(timezone.utc)
-            title = f"{now.astimezone(JST):%Y/%m/%d %H:%M} 第{saved.get('round_index', 1)}局"
+            tags = automatic_hand_tags(saved, seat)
             db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
                 "K-" + secrets.token_hex(16), owner, now.isoformat(timespec="seconds"),
-                title, "", "[]", json.dumps(saved, ensure_ascii=False),
+                "", "", json.dumps(tags, ensure_ascii=False), json.dumps(saved, ensure_ascii=False),
             ))
             db.execute("INSERT INTO member_kifu_auto_saves VALUES (?, ?)", (owner, round_id))
             return {"status": "saved", "member_id": owner}

@@ -8,7 +8,7 @@ from starlette.datastructures import URL
 
 from backend import app as app_module
 from backend.member_api import MEMBER_COOKIE, create_member_router
-from backend.member_kifu import MemberKifuStore
+from backend.member_kifu import MemberKifuStore, automatic_hand_tags
 from backend.member_kifu_auto import save_connected_round
 from backend.member_store import MemberStore
 from test_member_kifu import library, ready
@@ -46,6 +46,12 @@ def test_auto_settings_off_by_default_and_authorized_api(library):
 
 def test_seated_connected_opted_in_named_seat_and_dedup(library):
     store, members, token, game, connections = setup(library)
+    game["last_completed_kifu"]["hand"] = {
+        "p0": "しししし香馬銀玉", "p1": "しし香馬銀金角飛",
+        "p2": "ししし香香馬馬玉", "p3": "しし香馬銀金角飛",
+    }
+    # The final remaining hand must not replace the saved initial deal.
+    game["state"].hands = {"C": []}
     assert save_connected_round(store, game, connections) == []
     members.kifu_auto_save(token, True)
     events = save_connected_round(store, game, connections)
@@ -56,7 +62,8 @@ def test_seated_connected_opted_in_named_seat_and_dedup(library):
     assert record["payload"]["player_names"] == {s: f"{s} name" for s in "ABCD"}
     assert "A name" in json.dumps(record)
     assert game["last_completed_kifu"]["player_names"]["A"] == "A name"
-    assert "第3局" in record["title"]
+    assert record["title"] == ""
+    assert record["tags"] == ["3し", "2香", "2中駒"]
     assert store.statistics(token)["partner_finishes"] == 1
     # Multiple sockets and later reconnects cannot save twice, even after deletion.
     connections["owner"].append(socket(token))
@@ -66,11 +73,39 @@ def test_seated_connected_opted_in_named_seat_and_dedup(library):
     assert store.list(token) == []
 
 
+@pytest.mark.parametrize("hand, expected", [
+    ("王玉し香馬銀金角", ["王玉"]),
+    ("ししし香馬銀金角", ["3し"]),
+    ("しししし香馬銀金", ["4し"]),
+    ("ししししし香馬銀", []),
+    ("香香し馬銀金角飛", ["2香"]),
+    ("香香香し馬銀金角", ["3香"]),
+    ("香香香香し馬銀金", ["4香"]),
+    ("馬馬銀銀金金し香", ["2中駒"]),
+    ("馬馬銀銀銀し香玉", ["2中駒", "3中駒"]),
+    ("金金金金し香王玉", ["王玉", "4中駒"]),
+    ("角角し香馬銀金玉", ["大駒ペア"]),
+    ("飛飛し香馬銀金玉", ["大駒ペア"]),
+    ("角角飛飛し香王玉", ["王玉", "大駒ペア"]),
+    ("しし香馬銀金角飛", []),
+])
+def test_automatic_hand_tags_use_exact_counts_and_deduplicate(hand, expected):
+    assert automatic_hand_tags({"hand": {"p1": hand}}, "B") == expected
+
+
+@pytest.mark.parametrize("payload, seat", [
+    ({}, "A"), ({"hand": None}, "A"), ({"hand": {"p0": None}}, "A"),
+    ({"hand": {"p0": "王玉"}}, "C"), ({"hand": {"p0": "王玉"}}, "spectator"),
+])
+def test_automatic_hand_tags_missing_own_hand(payload, seat):
+    assert automatic_hand_tags(payload, seat) == []
+
+
 def test_named_auto_save_keeps_existing_anonymous_records(library):
     store, members, token, game, connections = setup(library)
     legacy_payload = dict(game["last_completed_kifu"], anonymous=True,
                           player_names={s: f"プレイヤー{s}" for s in "ABCD"})
-    legacy = store.save(token, title="Existing anonymous record", memo="", tags=[], payload=legacy_payload)
+    legacy = store.save(token, title="Existing anonymous record", memo="", tags=["し攻め"], payload=legacy_payload)
     members.kifu_auto_save(token, True)
     assert save_connected_round(store, game, connections)[0][1]["status"] == "saved"
     assert store.access(token, legacy["id"]) == legacy
