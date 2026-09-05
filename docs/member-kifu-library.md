@@ -32,7 +32,8 @@ Historical external backups are not modified by this migration.
 
 ## Automatic saving
 
-- My Page > Account offers automatic saving with player names, off by default. Consent is stored per member in `member_kifu_settings` and can be disabled after paid access expires. Enabling requires active paid access and a completed initial password change.
+- My Page > Kifu Library offers automatic saving with player names above the manual save section, off by default. Consent is stored per member in `member_kifu_settings` and can be disabled after paid access expires. Enabling requires active paid access and a completed initial password change.
+- My Page opens from the lobby/room menu without the settings tabs. Its Account and Kifu Library tabs remain available. Manual saving is collapsed when opening My Page or entering the library. The Statistics section, including its button and results, appears below the record list.
 - At round completion, the server checks the current human seat owners against same-origin room WebSocket connections. Only a connected, logged-in, opted-in paid member is saved. Spectators, departed/replaced players and AI seats are excluded. A player who joins during a round and remains seated at the end is eligible; temporary disconnection at the instant of completion is not. There is no retrospective save when turning the setting on after a round.
 - Login, logout and password changes reconnect the room WebSocket so its HttpOnly member cookie reflects the current session. Revoked sessions and expired/disabled memberships are rechecked at save time.
 - Save runs during completion, before another round can replace the snapshot. It records the seat occupied at completion, retains the player names from the completed round, and titles the record with a JST date/time and round number. No client ID or session credential is stored in the kifu. Existing anonymously saved records are not changed.

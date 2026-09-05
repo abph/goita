@@ -4394,8 +4394,8 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
-  <link rel="stylesheet" href="/static/member.css?v=20260905d" />
-  <script defer src="/static/member.js?v=20260905d"></script>
+  <link rel="stylesheet" href="/static/member.css?v=20260905e" />
+  <script defer src="/static/member.js?v=20260905e"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -4741,7 +4741,6 @@
     <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
       <button id="lobbyPersonalTab" class="settings-tab active" type="button" role="tab" onclick="showLobbySettingsTab('personal')">個人設定</button>
-      <button id="lobbyMemberTab" class="settings-tab" type="button" role="tab" onclick="showLobbySettingsTab('member')">マイページ</button>
     </div>
     <section id="lobbyPersonalSettingsPanel" class="settings-panel active">
         <div class="settings-row">
@@ -4914,7 +4913,6 @@
       <button id="personalSettingsTab" class="settings-tab active" type="button" role="tab" onclick="showSettingsTab('personal')">個人設定</button>
       <button id="matchSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('match')">対局設定</button>
       <button id="roomManagementTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('management')">ルーム管理</button>
-      <button id="memberSettingsTab" class="settings-tab" type="button" role="tab" onclick="showSettingsTab('member')">マイページ</button>
     </div>
 
     <section id="personalSettingsPanel" class="settings-panel active" role="tabpanel">
@@ -5244,8 +5242,9 @@
 
       <div id="researchKifuLibrary">
         <div id="researchKifuListView">
-          <div class="research-kifu-form">
-            <h4 class="research-kifu-save-heading">棋譜をサーバーに保存</h4>
+          <details id="researchKifuSaveDetails" class="research-kifu-save-details">
+            <summary class="research-kifu-save-heading">棋譜をサーバーに保存</summary>
+            <div class="research-kifu-form">
             <input id="researchKifuTitle" type="text" maxlength="80" aria-label="タイトル" placeholder="タイトル　例：終盤の王受け">
             <textarea id="researchKifuMemo" maxlength="2000" aria-label="研究メモ" placeholder="気になった点をメモできます"></textarea>
             <label class="research-kifu-seat">自分の席
@@ -5257,17 +5256,21 @@
               <button class="settings-save-button" type="button" onclick="saveCurrentResearchKifu(false)">終局した一局を保存</button>
               <button class="settings-save-button anonymous" type="button" onclick="saveCurrentResearchKifu(true)">匿名で保存</button>
             </div>
-          </div>
+            </div>
+          </details>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
           <div class="research-kifu-filter">
             <strong class="research-kifu-list-heading">棋譜一覧</strong>
             <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
-            <button class="research-kifu-import-button" id="researchKifuStatisticsButton" type="button" onclick="createResearchKifuStatistics()">統計を作る</button>
             <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
           </div>
-          <div id="researchKifuStatistics" aria-live="polite" hidden></div>
           <div id="researchKifuList" class="research-kifu-list"></div>
+          <section class="research-kifu-statistics-section" aria-labelledby="researchKifuStatisticsTitle">
+            <h4 id="researchKifuStatisticsTitle">統計</h4>
+            <button class="research-kifu-import-button" id="researchKifuStatisticsButton" type="button" onclick="createResearchKifuStatistics()">統計を作る</button>
+            <div id="researchKifuStatistics" aria-live="polite" hidden></div>
+          </section>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
           <div class="research-kifu-detail-title-line">
@@ -5321,8 +5324,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260905d"></script>
-<script src="/static/i18n.js?v=20260905d"></script>
+<script src="/static/i18n-en.js?v=20260905e"></script>
+<script src="/static/i18n.js?v=20260905e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -7638,6 +7641,7 @@ async function returnToLobby() {
 }
 
 function openMemberPage() {
+    document.getElementById("researchKifuSaveDetails").open = false;
     if (document.getElementById("gameView").style.display !== "none") {
         openSettingsModal(gid, null, "member");
     } else {
@@ -7647,13 +7651,12 @@ function openMemberPage() {
 
 function showLobbySettingsTab(tab) {
     const isMember = tab === "member";
+    document.getElementById("lobbySettingsModal").classList.toggle("member-page-mode", isMember);
+    document.getElementById("lobbySettingsTitle").textContent = uiText(isMember ? "マイページ" : "⚙️ トップページ設定");
     document.getElementById("lobbyPersonalSettingsPanel").classList.toggle("active", !isMember);
     document.getElementById("lobbyMemberPanel").classList.toggle("active", isMember);
-    ["lobbyPersonalTab", "lobbyMemberTab"].forEach((id, index) => {
-        const selected = isMember === (index === 1);
-        document.getElementById(id).classList.toggle("active", selected);
-        document.getElementById(id).setAttribute("aria-selected", String(selected));
-    });
+    document.getElementById("lobbyPersonalTab").classList.toggle("active", !isMember);
+    document.getElementById("lobbyPersonalTab").setAttribute("aria-selected", String(!isMember));
     if (isMember) window.goitaMembers?.refresh();
     else window.goitaMembers?.clearSecrets();
 }
@@ -7920,8 +7923,8 @@ function showSettingsTab(tabName) {
     if (isManagement && isMainRoomId(settingTargetGid)) return;
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
     const isPersonal = !isMatch && !isManagement && !isMember;
-    document.getElementById("memberSettingsTab").classList.toggle("active", isMember);
-    document.getElementById("memberSettingsTab").setAttribute("aria-selected", String(isMember));
+    document.getElementById("settingsModal").classList.toggle("member-page-mode", isMember);
+    document.getElementById("roomSettingsTitle").textContent = uiText(isMember ? "マイページ" : "⚙️ 設定");
     document.getElementById("memberSettingsPanel").classList.toggle("active", isMember);
     if (isMember) window.goitaMembers?.refresh();
     else window.goitaMembers?.clearSecrets();
@@ -7932,9 +7935,9 @@ function showSettingsTab(tabName) {
     document.getElementById("matchSettingsPanel").classList.toggle("active", isMatch);
     document.getElementById("roomManagementPanel").classList.toggle("active", isManagement);
     document.getElementById("personalSettingsFooterActions").style.display = isPersonal ? "block" : "none";
-    lastSettingsTab = isMatch
+    if (!isMember) lastSettingsTab = isMatch
         ? "match"
-        : (isManagement ? "management" : (isMember ? "member" : "personal"));
+        : (isManagement ? "management" : "personal");
     if (isManagement) {
         if (currentAdminPass) {
             document.getElementById("adminAuthArea").style.display = "none";

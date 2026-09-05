@@ -69,9 +69,6 @@
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
-        <label class="member-auto-kifu"><input type="checkbox" data-auto-kifu
-          ${member.auto_save_kifu ? "checked" : ""} ${!member.paid_active && !member.auto_save_kifu ? "disabled" : ""}>
-          ${label("参加した局の棋譜を自動保存する")}</label>
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }
@@ -81,6 +78,12 @@
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
+        ${hasTabs ? `<section class="member-auto-kifu-section" aria-labelledby="${prefix}-auto-kifu-title">
+          <h4 id="${prefix}-auto-kifu-title">${label("棋譜をサーバーに自動保存")}</h4>
+          <label class="member-auto-kifu"><input type="checkbox" data-auto-kifu
+            ${member.auto_save_kifu ? "checked" : ""} ${!member.paid_active && !member.auto_save_kifu ? "disabled" : ""}>
+            ${label("参加した局の棋譜を自動保存する")}</label>
+        </section>` : ""}
         ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>`;
     });
@@ -101,6 +104,7 @@
     selectTab(root, "library");
     mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canUseAllStamps());
     if (load) {
+      document.getElementById("researchKifuSaveDetails").open = false;
       resetMemberKifuLibrary();
       loadResearchKifuList();
     }
@@ -154,7 +158,7 @@
     status("");
     try {
       const data = await request(action, body);
-      resetLibrary();
+      if (action !== "kifu-auto-save") resetLibrary();
       member = data.member || null;
       render();
       if (["login", "logout", "password"].includes(action) && typeof currentWsGid !== "undefined" && currentWsGid) connectWS(currentWsGid);
@@ -168,6 +172,7 @@
       clearSecrets();
       busy = false;
       roots.forEach(root => root.querySelectorAll("button").forEach(button => { button.disabled = false; }));
+      if (libraryRoot) syncMemberKifuControls(canUseAllStamps());
     }
   }
 

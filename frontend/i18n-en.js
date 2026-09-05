@@ -6,6 +6,8 @@
 (() => {
   const exact = Object.freeze({
     "参加した局の棋譜を自動保存する": "Automatically Save Participated Rounds",
+    "棋譜をサーバーに自動保存": "Automatically Save Records to the Server",
+    "統計": "Statistics",
     "棋譜の自動保存をオンにしました。": "Automatic record saving is on.",
     "棋譜の自動保存をオフにしました。": "Automatic record saving is off.",
     "棋譜を自動保存しました。": "The record was automatically saved.",

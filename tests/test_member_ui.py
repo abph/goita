@@ -4,17 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_member_page_is_available_from_lobby_and_room_settings():
+def test_member_page_is_separate_from_lobby_and_room_settings():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert html.count("data-member-entry") == 2
     assert html.count("data-member-panel") == 2
-    assert 'id="lobbyMemberTab"' in html
-    assert 'id="memberSettingsTab"' in html
+    assert 'id="lobbyMemberTab"' not in html
+    assert 'id="memberSettingsTab"' not in html
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260905d"' in html
-    assert 'href="/static/member.css?v=20260905d"' in html
+    assert 'src="/static/member.js?v=20260905e"' in html
+    assert 'href="/static/member.css?v=20260905e"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():

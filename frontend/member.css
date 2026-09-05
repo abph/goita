@@ -1,4 +1,12 @@
 .member-panel { color: inherit; }
+.member-page-mode .settings-tabs { display: none; }
+.member-panel .member-auto-kifu-section { margin-bottom: 20px; }
+.member-panel .member-auto-kifu-section h4 { margin-bottom: 8px; }
+.member-panel .research-kifu-save-details { border: 1px solid #d7c2a4; background: rgba(255,255,255,0.48); }
+.member-panel .research-kifu-save-details > summary { padding: 10px; margin: 0; cursor: pointer; font-weight: 700; }
+.member-panel .research-kifu-save-details > summary:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
+.member-panel .research-kifu-save-details .research-kifu-form { border: 0; background: transparent; }
+.member-panel .research-kifu-statistics-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid #d7c2a4; }
 .member-auto-kifu-notice { font-size: 13px; color: #9e2929; background: #fff3f3; padding: 8px; overflow-wrap: anywhere; }
 .member-panel .member-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid #d4d9dd; }
 .member-panel .member-tabs button {
