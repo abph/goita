@@ -66,12 +66,14 @@ class CreateInput(MemberInput):
     member_id: str = Field(min_length=4, max_length=32)
     paid_enabled: StrictBool = True
     paid_until: str | None = Field(default=None, max_length=10)
+    is_operator: StrictBool = False
 
 
 class UpdateInput(MemberInput):
     enabled: StrictBool
     paid_enabled: StrictBool
     paid_until: str | None = Field(default=None, max_length=10)
+    is_operator: StrictBool | None = None
 
 
 class AutoKifuInput(MemberInput):

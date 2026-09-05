@@ -350,7 +350,27 @@ class ConnectionManager:
     def has_client_connection(self, game_id: str, client_id: str) -> bool:
         return bool(self.client_connections.get((game_id, client_id)))
 
-    def spectator_count(self, game_id: str, game: Dict[str, Any]) -> int:
+    def hidden_client_ids(self) -> Set[str]:
+        hidden = set()
+        checked_tokens = {}
+        for (_game_id, client_id), connections in list(self.client_connections.items()):
+            for connection in list(connections):
+                token = getattr(connection, "cookies", {}).get(MEMBER_COOKIE, "")
+                if not token:
+                    continue
+                url = connection.url
+                scheme = "https" if url.scheme == "wss" else "http"
+                if connection.headers.get("origin") != f"{scheme}://{url.netloc}":
+                    continue
+                if token not in checked_tokens:
+                    checked_tokens[token] = MEMBER_STORE.is_operator_session(token)
+                if checked_tokens[token]:
+                    hidden.add(client_id)
+        return hidden
+
+    def spectator_count(self, game_id: str, game: Dict[str, Any], hidden_clients=None) -> int:
+        if hidden_clients is None:
+            hidden_clients = self.hidden_client_ids()
         connected_client_ids = {
             client_id
             for (connected_game_id, client_id), connections in self.client_connections.items()
@@ -362,7 +382,7 @@ class ConnectionManager:
             if isinstance(human_seats, dict)
             else set()
         )
-        return len(connected_client_ids - seated_client_ids)
+        return len(connected_client_ids - seated_client_ids - hidden_clients)
 
     def cancel_disconnect_release(self, game_id: str, client_id: str) -> None:
         task = self.disconnect_tasks.pop((game_id, client_id), None)
@@ -2195,6 +2215,8 @@ class AnalyticsDeleteRequest(BaseModel):
 
 @app.post("/analytics/event")
 def record_analytics_event(req: AnalyticsEventRequest, request: Request):
+    if MEMBER_STORE.is_operator_session(request.cookies.get(MEMBER_COOKIE, "")):
+        return {"ok": True}
     payload = req.model_dump()
     payload["prefecture"] = infer_prefecture(request.headers)
     payload["country_code"] = infer_country_code(request.headers)
@@ -3411,6 +3433,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
     ):
         visible_private_room = viewer_game_id
 
+    hidden_operator_clients = manager.hidden_client_ids()
+
     def build_site_people() -> List[Dict[str, Any]]:
         candidates: Dict[str, Tuple[int, str, Dict[str, Any]]] = {}
         hidden_debug_clients = {
@@ -3425,7 +3449,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             )
         }
         for (connected_game_id, client_id), connections in manager.client_connections.items():
-            if not client_id or not connections or client_id in hidden_debug_clients:
+            if not client_id or not connections or client_id in hidden_debug_clients or client_id in hidden_operator_clients:
                 continue
 
             connection_name = manager.client_names.get((connected_game_id, client_id), "")
@@ -3552,7 +3576,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         hide_private_names = (
             gid in PRIVATE_ROOM_NAMES and gid != visible_private_room
         )
-        spectator_count = manager.spectator_count(gid, data)
+        spectator_count = manager.spectator_count(gid, data, hidden_operator_clients)
         pn = data.get("player_names", {})
         seats_info = {}
         for s in ALL_SEATS:

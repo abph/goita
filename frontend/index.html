@@ -4394,8 +4394,8 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
-  <link rel="stylesheet" href="/static/member.css?v=20260905e" />
-  <script defer src="/static/member.js?v=20260905e"></script>
+  <link rel="stylesheet" href="/static/member.css?v=20260905f" />
+  <script defer src="/static/member.js?v=20260905f"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -5242,8 +5242,16 @@
 
       <div id="researchKifuLibrary">
         <div id="researchKifuListView">
+          <section class="member-kifu-save-section" aria-labelledby="memberKifuSaveTitle">
+          <h4 id="memberKifuSaveTitle">棋譜をサーバーに保存</h4>
+          <details id="researchKifuAutoSaveDetails" class="research-kifu-save-details" open>
+            <summary class="research-kifu-save-heading">棋譜をサーバーに自動保存</summary>
+            <div class="member-kifu-save-body">
+              <label class="member-auto-kifu"><input id="researchKifuAutoSave" type="checkbox" data-auto-kifu>参加した局の棋譜を自動保存する</label>
+            </div>
+          </details>
           <details id="researchKifuSaveDetails" class="research-kifu-save-details">
-            <summary class="research-kifu-save-heading">棋譜をサーバーに保存</summary>
+            <summary class="research-kifu-save-heading">棋譜をサーバーに手動保存</summary>
             <div class="research-kifu-form">
             <input id="researchKifuTitle" type="text" maxlength="80" aria-label="タイトル" placeholder="タイトル　例：終盤の王受け">
             <textarea id="researchKifuMemo" maxlength="2000" aria-label="研究メモ" placeholder="気になった点をメモできます"></textarea>
@@ -5258,11 +5266,17 @@
             </div>
             </div>
           </details>
+          <details id="researchKifuImportDetails" class="research-kifu-save-details">
+            <summary class="research-kifu-save-heading">棋譜を読み込んでサーバーに保存</summary>
+            <div class="member-kifu-save-body">
+              <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
+              <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
+            </div>
+          </details>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
+          </section>
           <div class="research-kifu-filter">
             <strong class="research-kifu-list-heading">棋譜一覧</strong>
-            <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
-            <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
           </div>
           <div id="researchKifuList" class="research-kifu-list"></div>
@@ -5324,8 +5338,8 @@
   </div>
 </div>
 
-<script src="/static/i18n-en.js?v=20260905e"></script>
-<script src="/static/i18n.js?v=20260905e"></script>
+<script src="/static/i18n-en.js?v=20260905f"></script>
+<script src="/static/i18n.js?v=20260905f"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260825a"></script>
 <script type="module">
@@ -6746,6 +6760,15 @@ const ANALYTICS_SESSION_KEY = "goita_analytics_session_id";
 const ANALYTICS_SOURCE_KEY = "goita_analytics_source";
 const ANALYTICS_RECORDED_ROUNDS = new Set();
 let analyticsRoomEnteredAt = 0;
+let analyticsVisitRecorded = false;
+
+window.onMemberSessionReady = () => {
+    if (window.goitaMembers?.shouldRecordAnalytics() !== true || analyticsVisitRecorded) return;
+    const roomType = document.getElementById("gameView")?.style.display === "none" ? "lobby" : analyticsRoomType();
+    if (personalSettings.enableAnalytics === false || roomType === "none") return;
+    analyticsVisitRecorded = true;
+    trackAnalytics("site_visit", {}, roomType);
+};
 
 function randomAnalyticsToken(prefix) {
     if (window.crypto?.randomUUID) return `${prefix}_${window.crypto.randomUUID()}`;
@@ -6810,6 +6833,7 @@ function analyticsContext(roomType = analyticsRoomType()) {
 }
 
 function trackAnalytics(eventName, properties = {}, roomType = analyticsRoomType(), useBeacon = false) {
+    if (window.goitaMembers?.shouldRecordAnalytics() !== true) return;
     if (personalSettings.enableAnalytics === false || roomType === "none") return;
     try {
         const payload = JSON.stringify({...analyticsContext(roomType), event: eventName, properties});
@@ -7641,7 +7665,7 @@ async function returnToLobby() {
 }
 
 function openMemberPage() {
-    document.getElementById("researchKifuSaveDetails").open = false;
+    resetMemberKifuDisclosures();
     if (document.getElementById("gameView").style.display !== "none") {
         openSettingsModal(gid, null, "member");
     } else {
@@ -8442,6 +8466,11 @@ function resetMemberKifuLibrary() {
      "researchKifuStatus", "researchKifuDetailStatus"].forEach(id => document.getElementById(id).replaceChildren());
     renderResearchKifuTagOptions("researchKifuSaveTags", []);
     renderResearchKifuTagOptions("researchKifuEditTags", []);
+}
+function resetMemberKifuDisclosures() {
+    document.getElementById("researchKifuAutoSaveDetails").open = true;
+    document.getElementById("researchKifuSaveDetails").open = false;
+    document.getElementById("researchKifuImportDetails").open = false;
 }
 function mountMemberKifuLibrary(slot, paid) {
     slot.appendChild(document.getElementById("researchKifuPanel"));
@@ -13626,7 +13655,7 @@ window.addEventListener("load", async ()=>{
   document.getElementById("lobbyView").style.display = "block";
   document.getElementById("gameView").style.display = "none";
 
-  trackAnalytics("site_visit", {}, "lobby");
+  window.onMemberSessionReady();
 
   connectWS("lobby");
   await fetchRoomList();

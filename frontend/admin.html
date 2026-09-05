@@ -161,12 +161,12 @@
     .event-time { color: var(--muted); font-variant-numeric: tabular-nums; }
     .persistence-warning { color: var(--danger); font-weight: 750; }
     .tabs { flex-wrap: wrap; }
-    .member-admin-create { display: grid; grid-template-columns: 1fr 1fr auto auto; align-items: end; gap: 12px; }
+    .member-admin-create { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 12px; }
     .member-admin-create .field { min-width: 0; }
-    .member-admin-row { display: grid; grid-template-columns: minmax(140px, 1fr) auto auto 165px auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--line); padding: 16px 0; }
+    .member-admin-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; border-bottom: 1px solid var(--line); padding: 16px 0; }
     .member-admin-identity { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
     .member-admin-identity span { font-size: 12px; }
-    .member-admin-check { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+    .member-admin-check { display: flex; gap: 6px; align-items: flex-start; }
     .member-admin-check input { width: auto; }
     .member-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     #memberCredential { border-left: 3px solid var(--accent); padding: 12px; margin: 16px 0; background: #fff; }
@@ -225,6 +225,7 @@
           <div class="field"><label for="newMemberId">会員ID</label><input id="newMemberId" name="member_id" pattern="[A-Za-z0-9][A-Za-z0-9_-]{3,31}" minlength="4" maxlength="32" autocomplete="off" autocapitalize="none" placeholder="半角英数字など4〜32文字" required></div>
           <div class="field"><label for="newMemberExpiry">有効期限（空欄は期限なし・JST）</label><input id="newMemberExpiry" name="paid_until" type="date" min="2000-01-01" max="9998-12-31"></div>
           <label class="member-admin-check"><input type="checkbox" name="paid_enabled" checked>有料権限</label>
+          <label class="member-admin-check"><input type="checkbox" name="is_operator">管理者用（一覧・利用状況から除外）</label>
           <button class="button primary" type="submit">会員を発行</button>
         </form>
         <div id="memberCredential" hidden>
@@ -1280,6 +1281,6 @@
       }
     })();
   </script>
-  <script defer src="/static/admin-members.js?v=20260904c"></script>
+  <script defer src="/static/admin-members.js?v=20260905f"></script>
 </body>
 </html>

@@ -7,6 +7,9 @@
   const exact = Object.freeze({
     "参加した局の棋譜を自動保存する": "Automatically Save Participated Rounds",
     "棋譜をサーバーに自動保存": "Automatically Save Records to the Server",
+    "棋譜をサーバーに手動保存": "Manually Save a Record to the Server",
+    "棋譜を読み込んでサーバーに保存": "Import and Save a Record to the Server",
+    "管理者用：一覧非表示・利用状況の記録対象外": "Operator: Hidden from player lists and excluded from usage tracking",
     "統計": "Statistics",
     "棋譜の自動保存をオンにしました。": "Automatic record saving is on.",
     "棋譜の自動保存をオフにしました。": "Automatic record saving is off.",

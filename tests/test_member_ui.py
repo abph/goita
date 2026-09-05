@@ -13,8 +13,8 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260905e"' in html
-    assert 'href="/static/member.css?v=20260905e"' in html
+    assert 'src="/static/member.js?v=20260905f"' in html
+    assert 'href="/static/member.css?v=20260905f"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():
@@ -35,7 +35,7 @@ def test_admin_has_manual_member_issuance_and_confirmed_delete_action():
     assert 'id="memberCreateForm"' in html
     assert "会員を発行" in html
     assert "仮パスワード再発行" in script
-    assert 'src="/static/admin-members.js?v=20260904c"' in html
+    assert 'src="/static/admin-members.js?v=20260905f"' in html
     assert '"DELETE"' in script
     assert 'data-delete' in script
     assert '元に戻せません。' in script

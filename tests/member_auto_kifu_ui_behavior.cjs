@@ -7,6 +7,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
   const status = {textContent: ''};
   const notice = {hidden: true, textContent: ''};
+  const autoSave = {checked: false, disabled: false};
   const listeners = {};
   const root = {innerHTML: '', querySelector: () => status, querySelectorAll: () => [],
     addEventListener: (name, fn) => {listeners[name] = fn;}};
@@ -14,7 +15,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   let invalidations = 0, fail = false, lastRequest;
   const context = vm.createContext({
     document: {querySelectorAll: s => s === '[data-member-panel]' ? [root] : [],
-      getElementById: id => id === 'memberAutoKifuNotice' ? notice : {appendChild() {}}},
+      getElementById: id => id === 'researchKifuAutoSave' ? autoSave : id === 'memberAutoKifuNotice' ? notice : {appendChild() {}}},
     fetch: async (url, options) => {
       lastRequest = {url, options};
       if (url.endsWith('kifu-auto-save')) {
@@ -28,26 +29,25 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   context.window = context;
   vm.runInContext(script, context);
   await tick();
-  assert.match(root.innerHTML, /参加した局の棋譜を自動保存する/);
-  assert.doesNotMatch(root.innerHTML, /自動保存する（匿名）/);
-  assert.doesNotMatch(root.innerHTML, /data-auto-kifu\s+checked/);
+  assert.equal(autoSave.checked, false);
+  assert.equal(autoSave.disabled, false);
   const input = {checked: true, disabled: false, matches: () => true};
   listeners.change({target: input});
   await tick();
   assert.equal(lastRequest.url, '/api/member/kifu-auto-save');
   assert.deepEqual(JSON.parse(lastRequest.options.body), {enabled: true});
-  assert.match(root.innerHTML, /data-auto-kifu\s+checked/);
+  assert.equal(autoSave.checked, true);
   fail = true;
   input.checked = false;
   listeners.change({target: input});
   await tick();
-  assert.match(root.innerHTML, /data-auto-kifu\s+checked/); // Failed request must not pretend consent changed.
+  assert.equal(autoSave.checked, true); // Failed request must not pretend consent changed.
   context.goitaMembers.automaticKifuResult({member_id: 'other', status: 'saved'});
   assert.equal(invalidations, 0);
   context.goitaMembers.automaticKifuResult({member_id: member.member_id, status: 'saved'});
   assert.equal(invalidations, 1);
   context.goitaMembers.automaticKifuResult({member_id: member.member_id, status: 'limit'});
-  assert.doesNotMatch(root.innerHTML, /data-auto-kifu\s+checked/);
+  assert.equal(autoSave.checked, false);
   assert.equal(notice.hidden, false);
   assert.match(notice.textContent, /1000/);
   member = null;

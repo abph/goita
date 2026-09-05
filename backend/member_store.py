@@ -143,6 +143,10 @@ class MemberStore:
                         PRIMARY KEY(member_id, round_id)
                     );
                 """)
+                db.execute("BEGIN IMMEDIATE")
+                columns = {row[1] for row in db.execute("PRAGMA table_info(members)")}
+                if "is_operator" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN is_operator INTEGER NOT NULL DEFAULT 0")
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
                 self._ready = True
@@ -173,6 +177,7 @@ class MemberStore:
             "paid_enabled": bool(row["paid_enabled"]), "paid_until": row["paid_until"],
             "paid_active": paid_active, "must_change_password": bool(row["must_change_password"]),
             "created_at": row["created_at"],
+            "is_operator": bool(row["is_operator"]),
         }
 
     def list_members(self):
@@ -199,7 +204,7 @@ class MemberStore:
             db.execute("DELETE FROM member_sessions WHERE member_id = ?", (member_id,))
             db.execute("DELETE FROM members WHERE member_id = ?", (member_id,))
 
-    def create(self, member_id, paid_enabled=True, paid_until=None):
+    def create(self, member_id, paid_enabled=True, paid_until=None, is_operator=False):
         member_id = normalize_member_id(member_id)
         paid_until = normalize_expiry(paid_until)
         temporary = secrets.token_urlsafe(18)
@@ -207,8 +212,11 @@ class MemberStore:
         now = self.clock()
         with self._db(write=True) as db:
             try:
-                db.execute("""INSERT INTO members VALUES (?, ?, 1, ?, 1, ?, ?, ?, ?)""",
-                           (member_id, encoded, now + TEMP_PASSWORD_SECONDS, int(paid_enabled), paid_until, now, now))
+                db.execute("""INSERT INTO members
+                           (member_id, password_hash, must_change_password, temporary_expires_at,
+                            enabled, paid_enabled, paid_until, created_at, updated_at, is_operator)
+                           VALUES (?, ?, 1, ?, 1, ?, ?, ?, ?, ?)""",
+                           (member_id, encoded, now + TEMP_PASSWORD_SECONDS, int(paid_enabled), paid_until, now, now, int(is_operator)))
             except sqlite3.IntegrityError:
                 raise MemberError(409, "この会員IDは登録済みです。") from None
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
@@ -325,7 +333,7 @@ class MemberStore:
         return {"member_id": member_id, "temporary_password": temporary,
                 "temporary_expires_at": now + TEMP_PASSWORD_SECONDS}
 
-    def update(self, member_id, *, enabled, paid_enabled, paid_until):
+    def update(self, member_id, *, enabled, paid_enabled, paid_until, is_operator=None):
         paid_until = normalize_expiry(paid_until)
         with self._db(write=True) as db:
             result = db.execute("""UPDATE members SET enabled = ?, paid_enabled = ?, paid_until = ?,
@@ -333,7 +341,18 @@ class MemberStore:
                                 (int(enabled), int(paid_enabled), paid_until, self.clock(), member_id))
             if not result.rowcount:
                 raise MemberError(404, "会員が見つかりません。")
+            if is_operator is not None:
+                db.execute("UPDATE members SET is_operator = ? WHERE member_id = ?", (int(is_operator), member_id))
             if not enabled:
                 db.execute("DELETE FROM member_sessions WHERE member_id = ?", (member_id,))
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
         return self._public(row)
+
+    def is_operator_session(self, token):
+        if not token:
+            return False
+        try:
+            # Temporary sessions also exclude the initial password-change visit.
+            return self.authenticate(token, allow_temporary=True)["is_operator"]
+        except MemberError:
+            return False

@@ -5,6 +5,7 @@
   let busy = false;
   let revision = 0;
   let libraryRoot = null;
+  let sessionResolved = false;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -78,14 +79,14 @@
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
-        ${hasTabs ? `<section class="member-auto-kifu-section" aria-labelledby="${prefix}-auto-kifu-title">
-          <h4 id="${prefix}-auto-kifu-title">${label("棋譜をサーバーに自動保存")}</h4>
-          <label class="member-auto-kifu"><input type="checkbox" data-auto-kifu
-            ${member.auto_save_kifu ? "checked" : ""} ${!member.paid_active && !member.auto_save_kifu ? "disabled" : ""}>
-            ${label("参加した局の棋譜を自動保存する")}</label>
-        </section>` : ""}
         ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>`;
+    });
+    const autoSave = document.getElementById("researchKifuAutoSave");
+    autoSave.checked = !!member?.auto_save_kifu;
+    autoSave.disabled = !member || member.must_change_password || (!member.paid_active && !member.auto_save_kifu);
+    roots.forEach(root => {
+      if (member?.is_operator) root.insertAdjacentHTML("afterbegin", `<p class="member-operator-notice">${label("管理者用：一覧非表示・利用状況の記録対象外")}</p>`);
     });
     if (libraryRoot && member && !member.must_change_password) showLibrary(libraryRoot, false);
   }
@@ -104,7 +105,7 @@
     selectTab(root, "library");
     mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canUseAllStamps());
     if (load) {
-      document.getElementById("researchKifuSaveDetails").open = false;
+      resetMemberKifuDisclosures();
       resetMemberKifuLibrary();
       loadResearchKifuList();
     }
@@ -133,6 +134,8 @@
       if (member?.member_id !== data.member?.member_id || data.member?.must_change_password) resetLibrary();
       member = data.member;
       render();
+      sessionResolved = true;
+      window.onMemberSessionReady?.();
     } catch (_error) {
       if (ticket === revision) status(t("通信に失敗しました。"));
     }
@@ -161,6 +164,8 @@
       if (action !== "kifu-auto-save") resetLibrary();
       member = data.member || null;
       render();
+      sessionResolved = true;
+      window.onMemberSessionReady?.();
       if (["login", "logout", "password"].includes(action) && typeof currentWsGid !== "undefined" && currentWsGid) connectWS(currentWsGid);
       if (action === "password") status(t("パスワードを変更しました。"));
       if (action === "kifu-auto-save") status(t(member.auto_save_kifu ? "棋譜の自動保存をオンにしました。" : "棋譜の自動保存をオフにしました。"));
@@ -232,7 +237,8 @@
     notice.hidden = data.status === "saved";
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, automaticKifuResult};
+  const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, automaticKifuResult, shouldRecordAnalytics};
   render();
   refresh();
 })();

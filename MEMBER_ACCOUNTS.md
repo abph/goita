@@ -1,13 +1,33 @@
-# Member accounts: initial release
+# Member accounts
 
-This release adds manually issued member accounts, first-login password change,
-a My Page tab in the existing settings dialogs, and administrator resets.
-Active paid members can use all stamps in public rooms after changing their
-temporary password. Personal kifu storage in public rooms is not enabled yet.
+## Operator accounts
+
+In `/admin/` > 会員管理, check “管理者用（一覧・利用状況から除外）” when issuing
+an ID or editing an existing member. Sign in through the usual member login.
+Existing databases add `is_operator` automatically with a default of false;
+existing credentials, sessions and saved kifu are preserved.
+
+Operator accounts are excluded from site player lists, spectator counts and
+the corresponding room totals. Server-side session validation determines this
+status; the browser cannot grant it. It is independent of paid access and does
+not grant access to the site administration APIs. No special seated-play
+behavior is added: these accounts are intended for site inspection.
+
+Usage events are discarded by the server for valid operator sessions, including
+the temporary initial-password-change session. The frontend also waits for the
+initial member-session check before recording a visit and suppresses operator
+events. The My Page notice identifies this mode. Ordinary login expiry remains
+30 days; the operator setting does not extend it. Revoked/expired sessions no
+longer identify an operator. Past analytics, pre-login activity and infrastructure
+access logs are not removed by this setting.
+
+Members are manually issued and change their temporary password on first login.
+My Page opens from the menu with Account and Kifu Library tabs. Active paid
+members can use all stamps in public rooms and save records to their personal
+library. See `docs/member-kifu-library.md` for storage and access details.
 The lobby retains four stamps, and private/debug rooms retain all stamps.
 Public-room stamp requests validate current server-side membership, including
 expiry, suspension, password reset and account deletion, on every send.
-Existing private-room management and shared kifu permissions are unchanged.
 
 ## Production configuration
 

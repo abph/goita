@@ -48,6 +48,7 @@
           <span class="muted">${member.must_change_password ? "初回変更待ち" : "登録済み"} / ${member.paid_active ? "有料権限：有効" : "有料権限：無効・期限切れ"}</span></div>
         <label class="member-admin-check"><input type="checkbox" name="enabled" ${member.enabled ? "checked" : ""}>ログイン可</label>
         <label class="member-admin-check"><input type="checkbox" name="paid_enabled" ${member.paid_enabled ? "checked" : ""}>有料権限</label>
+        <label class="member-admin-check"><input type="checkbox" name="is_operator" ${member.is_operator ? "checked" : ""}>管理者用（一覧・利用状況から除外）</label>
         <label>有効期限（JST）<input type="date" name="paid_until" value="${esc(member.paid_until)}" min="2000-01-01" max="9998-12-31"></label>
         <div class="member-admin-actions"><button class="button" type="submit">保存</button>
           <button class="button" type="button" data-reset>仮パスワード再発行</button>
@@ -77,6 +78,7 @@
       const data = await request("", "POST", {
         member_id: form.elements.member_id.value,
         paid_enabled: form.elements.paid_enabled.checked,
+        is_operator: form.elements.is_operator.checked,
         paid_until: form.elements.paid_until.value || null,
       });
       form.reset();
@@ -93,6 +95,7 @@
     action(async () => {
       await request(`/${encodeURIComponent(form.dataset.id)}`, "PUT", {
         enabled, paid_enabled: form.elements.paid_enabled.checked, paid_until: form.elements.paid_until.value || null,
+        is_operator: form.elements.is_operator.checked,
       });
       await load();
       status.textContent = "会員情報を保存しました。";
