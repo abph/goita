@@ -6,6 +6,7 @@
   let revision = 0;
   let libraryRoot = null;
   let sessionResolved = false;
+  let pendingLibraryRefresh = null;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -125,8 +126,11 @@
     roots.forEach(root => { root.querySelector(".member-status").textContent = message; });
   }
 
-  async function refresh() {
-    if (busy) return;
+  async function refresh(options = {}) {
+    if (busy) {
+      if (options.reloadLibrary) pendingLibraryRefresh = options;
+      return;
+    }
     const ticket = ++revision;
     try {
       const data = await request("session");
@@ -134,6 +138,9 @@
       if (member?.member_id !== data.member?.member_id || data.member?.must_change_password) resetLibrary();
       member = data.member;
       render();
+      if (options.reloadLibrary && libraryRoot && member && !member.must_change_password) {
+        showLibrary(options.root || libraryRoot);
+      }
       sessionResolved = true;
       window.onMemberSessionReady?.();
     } catch (_error) {
@@ -178,6 +185,11 @@
       busy = false;
       roots.forEach(root => root.querySelectorAll("button").forEach(button => { button.disabled = false; }));
       if (libraryRoot) syncMemberKifuControls(canUseAllStamps());
+      if (pendingLibraryRefresh) {
+        const options = pendingLibraryRefresh;
+        pendingLibraryRefresh = null;
+        refresh(options);
+      }
     }
   }
 

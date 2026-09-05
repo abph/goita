@@ -93,18 +93,21 @@
     whisper.hidden = true;
   }
 
-  function setRoomContext(isPublicRoom, privateAd = null) {
+  function setRoomContext(isPublicRoom, privateAd = null, publicAd = null) {
     const whisper = document.getElementById("lobbyWhisper");
     const message = messageElement();
     const label = document.querySelector("#lobbyWhisper .lobby-whisper-label");
     if (!whisper || !message || !label) return;
 
-    const privateMessage = String(privateAd?.message || "").trim();
-    const privateLabel = String(privateAd?.label || "お知らせ").trim() || "お知らせ";
-    const privateEnabled = !isPublicRoom && privateAd?.enabled === true && privateMessage;
-    const nextContextKey = isPublicRoom
-      ? "public"
-      : (privateEnabled ? `private:${privateLabel}:${privateMessage}:${String(privateAd?.url || "")}` : "");
+    const ad = isPublicRoom ? publicAd : privateAd;
+    const specialPublic = isPublicRoom && (publicAd === null || (publicAd.enabled === true && publicAd.mode === "whisper"));
+    const customMessage = String(ad?.message || "").trim();
+    const customLabel = String(ad?.label || "お知らせ").trim() || "お知らせ";
+    const customEnabled = !specialPublic && ad?.enabled === true && customMessage;
+    const contextPrefix = isPublicRoom ? `public:${publicAd?.room_id || ""}` : "private";
+    const nextContextKey = specialPublic
+      ? `${contextPrefix}:whisper`
+      : (customEnabled ? `${contextPrefix}:${customLabel}:${customMessage}:${String(ad?.url || "")}` : "");
     if (!nextContextKey) {
       clearTimers();
       whisper.hidden = true;
@@ -114,14 +117,14 @@
 
     if (nextContextKey === activeContextKey && !whisper.hidden) return;
     activeContextKey = nextContextKey;
-    activePublicMessage = Boolean(isPublicRoom);
-    activeMessages = isPublicRoom ? PUBLIC_MESSAGES : [privateMessage];
-    activeUrl = isPublicRoom ? "" : String(privateAd?.url || "").trim();
-    label.textContent = isPublicRoom ? "1222のつぶやき" : privateLabel;
+    activePublicMessage = specialPublic;
+    activeMessages = specialPublic ? PUBLIC_MESSAGES : [customMessage];
+    activeUrl = specialPublic ? "" : String(ad?.url || "").trim();
+    label.textContent = specialPublic ? "1222のつぶやき" : customLabel;
     whisper.setAttribute("aria-label", label.textContent);
     whisper.classList.toggle("has-link", Boolean(activeUrl));
     whisper.classList.toggle("is-interactive-message", activePublicMessage);
-    if (isPublicRoom) {
+    if (specialPublic) {
       label.removeAttribute("data-i18n-ignore");
       message.removeAttribute("data-i18n-ignore");
     } else {
@@ -140,7 +143,8 @@
   }
 
   function setRoomVisibility(isPublicRoom) {
-    setRoomContext(isPublicRoom, null);
+    // Wait for the room's settings so a disabled/custom notice never flashes the special message.
+    setRoomContext(isPublicRoom, null, {enabled: false});
   }
 
   function activate() {

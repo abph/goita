@@ -259,6 +259,28 @@
           <p class="muted">各ルーム名は12文字以内で入力してください。</p>
           <div id="publicRoomNames" class="public-room-name-grid"></div>
 
+          <h3 class="subheading">公開部屋のお知らせ</h3>
+          <div class="field">
+            <label for="publicAdRoomSelect">編集するルーム</label>
+            <select id="publicAdRoomSelect"></select>
+          </div>
+          <div class="field">
+            <label><input id="publicAdEnabled" type="checkbox" style="width:auto"> お知らせを表示する</label>
+          </div>
+          <div class="field">
+            <label for="publicAdMode">お知らせの種類</label>
+            <select id="publicAdMode"><option value="custom">通常のお知らせ</option><option value="whisper">1222のつぶやき</option></select>
+          </div>
+          <div id="publicAdCustomFields">
+            <div class="form-grid">
+              <div class="field"><label for="publicAdTitle">見出し</label><input id="publicAdTitle" type="text" maxlength="40" placeholder="例：大会のお知らせ"></div>
+              <div class="field"><label for="publicAdUrl">移動先URL（任意）</label><input id="publicAdUrl" type="url" maxlength="2048" placeholder="https://example.com/"></div>
+            </div>
+            <div class="field"><label for="publicAdMessage">表示する文章</label><textarea id="publicAdMessage" maxlength="200"></textarea></div>
+          </div>
+          <p id="publicAdWhisperHelp" class="muted" hidden>従来の文章と、クリック回数によって文章が変わる仕組みを表示します。</p>
+          <div id="publicAdSummary" class="notice-summary"></div>
+
           <h3 class="subheading">プライベートルームのお知らせ</h3>
           <div class="field">
             <label for="privateAdRoomSelect">編集するルーム</label>
@@ -424,6 +446,8 @@
     let publicRooms = [];
     let privateRooms = [];
     let privateRoomAds = {};
+    let publicRoomAds = {};
+    let activePublicAdRoomId = "";
     let activePrivateAdRoomId = "";
 
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -502,12 +526,60 @@
       renderPrivateAdSummary();
     }
 
+    function normalizedPublicAd(value = {}) {
+      return {...normalizedPrivateAd(value), enabled: value.enabled !== false, mode: value.mode || "whisper"};
+    }
+
+    function syncPublicAdMode() {
+      const custom = document.getElementById("publicAdMode").value === "custom";
+      document.getElementById("publicAdCustomFields").hidden = !custom;
+      document.getElementById("publicAdWhisperHelp").hidden = custom;
+      document.querySelectorAll("#publicAdCustomFields input, #publicAdCustomFields textarea").forEach(input => { input.disabled = !custom; });
+    }
+
+    function capturePublicAdSettings() {
+      if (!activePublicAdRoomId) return;
+      publicRoomAds[activePublicAdRoomId] = {
+        enabled: document.getElementById("publicAdEnabled").checked,
+        mode: document.getElementById("publicAdMode").value,
+        title: document.getElementById("publicAdTitle").value.trim() || "お知らせ",
+        message: document.getElementById("publicAdMessage").value.trim(),
+        url: document.getElementById("publicAdUrl").value.trim(),
+      };
+    }
+
+    function renderPublicAdSummary() {
+      document.getElementById("publicAdSummary").innerHTML = publicRooms.map(room => {
+        const ad = normalizedPublicAd(publicRoomAds[room.game_id]);
+        return `<div class="notice-summary-row"><strong>${escapeHtml(room.owner_name)}</strong>
+          <span class="notice-state${ad.enabled ? " enabled" : ""}">${ad.enabled ? "表示中" : "非表示"}</span>
+          <span>${escapeHtml(ad.enabled ? (ad.mode === "whisper" ? "1222のつぶやき" : ad.title) : "")}</span></div>`;
+      }).join("");
+    }
+
+    function loadPublicAdSettings(gameId) {
+      activePublicAdRoomId = gameId || "";
+      const ad = normalizedPublicAd(publicRoomAds[activePublicAdRoomId]);
+      document.getElementById("publicAdEnabled").checked = ad.enabled;
+      document.getElementById("publicAdMode").value = ad.mode;
+      document.getElementById("publicAdTitle").value = ad.title;
+      document.getElementById("publicAdMessage").value = ad.message;
+      document.getElementById("publicAdUrl").value = ad.url;
+      syncPublicAdMode();
+      renderPublicAdSummary();
+    }
+
     function applySettings(data) {
       document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
       document.getElementById("privateRoomCount").max = data.private_room_max ?? 5;
       publicRooms = Array.isArray(data.main_rooms) ? data.main_rooms : [];
+      publicRoomAds = Object.fromEntries(publicRooms.map(room => [room.game_id, normalizedPublicAd(data.public_room_ads?.[room.game_id])]));
+      const publicSelect = document.getElementById("publicAdRoomSelect");
+      publicSelect.innerHTML = publicRooms.map(room => `<option value="${escapeHtml(room.game_id)}">${escapeHtml(room.owner_name)}</option>`).join("");
+      publicSelect.value = publicRooms.some(room => room.game_id === activePublicAdRoomId) ? activePublicAdRoomId : (publicRooms[0]?.game_id || "");
+      loadPublicAdSettings(publicSelect.value);
       document.getElementById("publicRoomNames").innerHTML = publicRooms.map((room, index) => `
         <div class="field">
           <label for="publicRoomName${index}">公開部屋${index + 1}</label>
@@ -1204,6 +1276,7 @@
       event.preventDefault();
       const status = document.getElementById("settingsStatus");
       capturePrivateAdSettings();
+      capturePublicAdSettings();
       const mainRoomNames = Object.fromEntries(
         [...document.querySelectorAll(".public-room-name")].map(input => [
           input.dataset.room,
@@ -1215,6 +1288,7 @@
         private_room_count: Number(document.getElementById("privateRoomCount").value),
         main_room_names: mainRoomNames,
         private_room_ads: privateRoomAds,
+        public_room_ads: publicRoomAds,
       };
       if (Object.values(mainRoomNames).some(name => !name)) {
         status.textContent = "公開部屋名を入力してください。";
@@ -1238,6 +1312,17 @@
       }
     });
 
+    document.getElementById("publicAdRoomSelect").addEventListener("change", event => {
+      capturePublicAdSettings();
+      loadPublicAdSettings(event.target.value);
+    });
+    ["publicAdEnabled", "publicAdMode", "publicAdTitle", "publicAdMessage", "publicAdUrl"].forEach(id => {
+      document.getElementById(id).addEventListener("input", () => {
+        capturePublicAdSettings();
+        syncPublicAdMode();
+        renderPublicAdSummary();
+      });
+    });
     document.getElementById("privateAdRoomSelect").addEventListener("change", event => {
       capturePrivateAdSettings();
       loadPrivateAdSettings(event.target.value);
