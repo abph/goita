@@ -40,6 +40,8 @@ def test_legacy_database_migration_preserves_member_and_session(tmp_path):
                    (hashlib.sha256(b"legacy-token").hexdigest(),))
     migrated = MemberStore(database)
     assert migrated.authenticate("legacy-token")["is_operator"] is False
+    assert migrated.authenticate("legacy-token")["research_enabled"] is False
+    assert migrated.authenticate("legacy-token")["managed_room_id"] == ""
     assert migrated.create("new-user")["member"]["is_operator"] is False
     assert len(MemberStore(database).list_members()) == 2
     with sqlite3.connect(database) as db:

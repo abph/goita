@@ -1,4 +1,12 @@
 .member-panel { color: inherit; }
+.member-panel [data-room-settings] { margin-top: 16px; }
+.member-panel [data-member-room] select { width: 100%; min-width: 0; padding: 8px; font: inherit; font-size: 16px; }
+.member-panel form .member-room-check { display: flex; align-items: center; gap: 8px; }
+.member-panel .member-room-check input { width: auto; flex: 0 0 auto; }
+.member-panel .member-room-seats { margin-top: 18px; }
+.member-panel .member-room-seat { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.member-panel .member-room-seat span { min-width: 0; overflow-wrap: anywhere; }
+.member-panel .member-room-seat button { flex: 0 0 auto; }
 .member-page-mode .settings-tabs { display: none; }
 .member-panel .member-kifu-save-section { padding: 12px; margin-bottom: 22px; border: 1px solid #d7c2a4; border-radius: 6px; }
 .member-panel .member-kifu-save-section > h4 { margin: 0 0 12px; }
@@ -20,6 +28,7 @@
   overflow-wrap: anywhere;
 }
 .member-panel .member-tabs button[aria-selected="true"] { border-bottom-color: #176b57; color: #176b57; font-weight: 700; }
+.member-panel .member-tabs.has-room-tab [data-action="library"] { flex: 1.4; }
 .member-panel .member-tabs button:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
 .member-panel .member-status:empty { display: none; }
 .member-panel .member-auto-kifu { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; margin: 12px 0 18px; }

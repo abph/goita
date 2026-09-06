@@ -224,7 +224,9 @@
         <form id="memberCreateForm" class="member-admin-create">
           <div class="field"><label for="newMemberId">会員ID</label><input id="newMemberId" name="member_id" pattern="[A-Za-z0-9][A-Za-z0-9_-]{3,31}" minlength="4" maxlength="32" autocomplete="off" autocapitalize="none" placeholder="半角英数字など4〜32文字" required></div>
           <div class="field"><label for="newMemberExpiry">有効期限（空欄は期限なし・JST）</label><input id="newMemberExpiry" name="paid_until" type="date" min="2000-01-01" max="9998-12-31"></div>
-          <label class="member-admin-check"><input type="checkbox" name="paid_enabled" checked>有料権限</label>
+            <label class="member-admin-check"><input type="checkbox" name="paid_enabled" checked>有料権限</label>
+            <label class="member-admin-check"><input type="checkbox" name="research_enabled">研究用プラン</label>
+            <div class="field"><label for="newMemberRoom">管理する部屋</label><select id="newMemberRoom" name="managed_room_id" disabled><option value="">割り当てなし</option></select></div>
           <label class="member-admin-check"><input type="checkbox" name="is_operator">管理者用（一覧・利用状況から除外）</label>
           <button class="button primary" type="submit">会員を発行</button>
         </form>
@@ -1366,6 +1368,6 @@
       }
     })();
   </script>
-  <script defer src="/static/admin-members.js?v=20260905f"></script>
+  <script defer src="/static/admin-members.js?v=20260906b"></script>
 </body>
 </html>

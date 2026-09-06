@@ -5,6 +5,7 @@
   let busy = false;
   let revision = 0;
   let libraryRoot = null;
+  let roomRoot = null;
   let sessionResolved = false;
   let pendingLibraryRefresh = null;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
@@ -79,6 +80,7 @@
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
           <dt>${label("利用開始日")}</dt><dd>${escape(memberStartDate(member.created_at))} (JST)</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
+          ${member.research_enabled ? `<dt>${label("プラン")}</dt><dd>${label("研究用プラン")}</dd>` : ""}
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
         <p class="member-help">${label("解約は以下のリンクからできます")}<br>
@@ -86,14 +88,16 @@
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       }
-      const tabs = hasTabs ? `<div class="member-tabs" role="tablist" aria-label="${label("マイページ")}">
+      const tabs = hasTabs ? `<div class="member-tabs${member.research_enabled ? " has-room-tab" : ""}" role="tablist" aria-label="${label("マイページ")}">
         <button type="button" role="tab" id="${prefix}-account-tab" aria-controls="${prefix}-account" aria-selected="true" data-action="account">${label("アカウント")}</button>
         <button type="button" role="tab" id="${prefix}-library-tab" aria-controls="${prefix}-library" aria-selected="false" tabindex="-1" data-action="library">${label("棋譜ライブラリ")}</button>
+        ${member.research_enabled ? `<button type="button" role="tab" id="${prefix}-room-tab" aria-controls="${prefix}-room" aria-selected="false" tabindex="-1" data-action="room">${label("ルーム管理")}</button>` : ""}
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
         ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
-        <div data-member-library-slot></div></div>`;
+        <div data-member-library-slot></div></div>
+        ${hasTabs && member.research_enabled ? `<div data-member-room id="${prefix}-room" role="tabpanel" aria-labelledby="${prefix}-room-tab" hidden></div>` : ""}`;
     });
     const autoSave = document.getElementById("researchKifuAutoSave");
     autoSave.checked = !!member?.auto_save_kifu;
@@ -102,10 +106,14 @@
       if (member?.is_operator) root.insertAdjacentHTML("afterbegin", `<p class="member-operator-notice">${label("管理者用：一覧非表示・利用状況の記録対象外")}</p>`);
     });
     if (libraryRoot && member && !member.must_change_password) showLibrary(libraryRoot, false);
+    if (roomRoot && member?.research_enabled && !member.must_change_password) showRoom(roomRoot);
+    else if (roomRoot) { roomRoot = null; window.goitaMemberRoom?.reset(); }
   }
 
   function resetLibrary() {
     libraryRoot = null;
+    roomRoot = null;
+    window.goitaMemberRoom?.reset();
     resetMemberKifuLibrary();
     const notice = document.getElementById("memberAutoKifuNotice");
     if (notice) { notice.hidden = true; notice.textContent = ""; }
@@ -113,6 +121,8 @@
 
   function showLibrary(root, load = true) {
     if (!member || member.must_change_password) return;
+    roomRoot = null;
+    window.goitaMemberRoom?.reset();
     if (libraryRoot && libraryRoot !== root) selectTab(libraryRoot, "account");
     libraryRoot = root;
     selectTab(root, "library");
@@ -127,6 +137,8 @@
   function selectTab(root, action) {
     root.querySelector("[data-member-account]").hidden = action !== "account";
     root.querySelector("[data-member-library]").hidden = action !== "library";
+    const room = root.querySelector("[data-member-room]");
+    if (room) room.hidden = action !== "room";
     root.querySelectorAll('[role="tab"]').forEach(tab => {
       const selected = tab.dataset.action === action;
       tab.setAttribute("aria-selected", String(selected));
@@ -138,11 +150,22 @@
     roots.forEach(root => { root.querySelector(".member-status").textContent = message; });
   }
 
+  function showRoom(root) {
+    if (!member?.research_enabled || member.must_change_password) return;
+    if (roomRoot && roomRoot !== root) selectTab(roomRoot, "account");
+    libraryRoot = null;
+    roomRoot = root;
+    stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
+    selectTab(root, "room");
+    window.goitaMemberRoom?.mount(root.querySelector("[data-member-room]"), member);
+  }
+
   async function refresh(options = {}) {
     if (busy) {
       if (options.reloadLibrary) pendingLibraryRefresh = options;
       return;
     }
+    if (options.reloadLibrary && roomRoot) window.goitaMemberRoom?.reset();
     const ticket = ++revision;
     try {
       const data = await request("session");
@@ -153,6 +176,7 @@
       if (options.reloadLibrary && libraryRoot && member && !member.must_change_password) {
         showLibrary(options.root || libraryRoot);
       }
+      if (options.reloadLibrary && roomRoot && options.root && options.root !== roomRoot) showRoom(options.root);
       sessionResolved = true;
       window.onMemberSessionReady?.();
     } catch (_error) {
@@ -176,6 +200,7 @@
     }
     busy = true;
     ++revision;
+    window.goitaMemberRoom?.reset();
     roots.forEach(root => root.querySelectorAll("button").forEach(button => { button.disabled = true; }));
     status("");
     try {
@@ -217,12 +242,18 @@
         perform("kifu-auto-save", null, {enabled});
       }
     });
-    root.addEventListener("submit", event => { event.preventDefault(); perform(event.target.dataset.action, event.target); });
+    root.addEventListener("submit", event => {
+      if (event.target.closest("[data-member-room]")) return;
+      event.preventDefault(); perform(event.target.dataset.action, event.target);
+    });
     root.addEventListener("click", event => {
       if (event.target.closest('[data-action="logout"]')) perform("logout");
       if (event.target.closest('[data-action="library"]') && libraryRoot !== root) showLibrary(root);
+      if (event.target.closest('[data-action="room"]') && roomRoot !== root) showRoom(root);
       if (event.target.closest('[data-action="account"]')) {
         libraryRoot = null;
+        roomRoot = null;
+        window.goitaMemberRoom?.reset();
         stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
         selectTab(root, "account");
       }

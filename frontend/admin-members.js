@@ -5,9 +5,18 @@
   const credential = document.getElementById("memberCredential");
   let busy = false;
   let generation = 0;
+  let rooms = [];
+  let members = [];
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[c]);
+
+  function roomOptions(member = {}) {
+    return '<option value="">割り当てなし</option>' + rooms.map(room => {
+      const owner = members.find(item => item.managed_room_id === room.game_id && item.member_id !== member.member_id);
+      return `<option value="${esc(room.game_id)}" ${member.managed_room_id === room.game_id ? "selected" : ""} ${owner ? "disabled" : ""}>${esc(room.name)} (${esc(room.game_id)})${owner ? "：割り当て済み" : ""}</option>`;
+    }).join("");
+  }
 
   async function request(path = "", method = "GET", body) {
     const started = generation;
@@ -41,6 +50,9 @@
   async function load() {
     try {
       const data = await request();
+      rooms = data.rooms || [];
+      members = data.members;
+      document.querySelector('#memberCreateForm [name="managed_room_id"]').innerHTML = roomOptions();
       document.getElementById("memberPersistence").textContent = data.persistent
         ? "会員情報の永続保存：有効" : "会員情報はローカル保存です。本番環境では永続保存先を設定してください。";
       list.innerHTML = data.members.length ? data.members.map(member => `<form class="member-admin-row" data-id="${esc(member.member_id)}">
@@ -48,6 +60,8 @@
           <span class="muted">${member.must_change_password ? "初回変更待ち" : "登録済み"} / ${member.paid_active ? "有料権限：有効" : "有料権限：無効・期限切れ"}</span></div>
         <label class="member-admin-check"><input type="checkbox" name="enabled" ${member.enabled ? "checked" : ""}>ログイン可</label>
         <label class="member-admin-check"><input type="checkbox" name="paid_enabled" ${member.paid_enabled ? "checked" : ""}>有料権限</label>
+        <label class="member-admin-check"><input type="checkbox" name="research_enabled" ${member.research_enabled ? "checked" : ""}>研究用プラン</label>
+        <label>管理する部屋<select name="managed_room_id" ${member.research_enabled ? "" : "disabled"}>${roomOptions(member)}</select></label>
         <label class="member-admin-check"><input type="checkbox" name="is_operator" ${member.is_operator ? "checked" : ""}>管理者用（一覧・利用状況から除外）</label>
         <label>有効期限（JST）<input type="date" name="paid_until" value="${esc(member.paid_until)}" min="2000-01-01" max="9998-12-31"></label>
         <div class="member-admin-actions"><button class="button" type="submit">保存</button>
@@ -78,10 +92,13 @@
       const data = await request("", "POST", {
         member_id: form.elements.member_id.value,
         paid_enabled: form.elements.paid_enabled.checked,
+        research_enabled: form.elements.research_enabled.checked,
+        managed_room_id: form.elements.research_enabled.checked ? form.elements.managed_room_id.value : "",
         is_operator: form.elements.is_operator.checked,
         paid_until: form.elements.paid_until.value || null,
       });
       form.reset();
+      form.elements.managed_room_id.disabled = true;
       await load();
       showCredential(data);
       status.textContent = "会員を発行しました。";
@@ -95,6 +112,8 @@
     action(async () => {
       await request(`/${encodeURIComponent(form.dataset.id)}`, "PUT", {
         enabled, paid_enabled: form.elements.paid_enabled.checked, paid_until: form.elements.paid_until.value || null,
+        research_enabled: form.elements.research_enabled.checked,
+        managed_room_id: form.elements.research_enabled.checked ? form.elements.managed_room_id.value : "",
         is_operator: form.elements.is_operator.checked,
       });
       await load();
@@ -123,12 +142,19 @@
     });
   });
   document.getElementById("memberCredentialClose").addEventListener("click", hideCredential);
+  document.getElementById("membersView").addEventListener("change", event => {
+    if (event.target.name === "research_enabled") {
+      event.target.form.elements.managed_room_id.disabled = !event.target.checked;
+    }
+  });
   document.getElementById("memberRefresh").addEventListener("click", () => { hideCredential(); load(); });
   function clear() {
     ++generation;
     hideCredential();
     list.replaceChildren();
     document.getElementById("memberCreateForm").reset();
+    document.querySelector('#memberCreateForm [name="managed_room_id"]').disabled = true;
+    rooms = []; members = [];
   }
   window.goitaMemberAdmin = {load, clear, hideCredential};
 })();

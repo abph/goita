@@ -1,4 +1,4 @@
-"""Same-origin member APIs. Member sessions never grant room/site administration."""
+"""Same-origin member APIs. Only site administrators can assign research rooms."""
 
 from urllib.parse import urlsplit
 
@@ -67,6 +67,8 @@ class CreateInput(MemberInput):
     paid_enabled: StrictBool = True
     paid_until: str | None = Field(default=None, max_length=10)
     is_operator: StrictBool = False
+    research_enabled: StrictBool = False
+    managed_room_id: str = Field(default="", max_length=64)
 
 
 class UpdateInput(MemberInput):
@@ -74,17 +76,23 @@ class UpdateInput(MemberInput):
     paid_enabled: StrictBool
     paid_until: str | None = Field(default=None, max_length=10)
     is_operator: StrictBool | None = None
+    research_enabled: StrictBool | None = None
+    managed_room_id: str | None = Field(default=None, max_length=64)
 
 
 class AutoKifuInput(MemberInput):
     enabled: StrictBool
 
 
-def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False):
+def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False, room_options=lambda: []):
     router = APIRouter(route_class=PrivateRoute)
 
     def token(request):
         return request.cookies.get(MEMBER_COOKIE, "")
+
+    def validate_room(room_id):
+        if room_id and room_id not in {room["game_id"] for room in room_options()}:
+            raise MemberError(400, "割り当てるプライベートルームを選択してください。")
 
     def with_settings(member, value):
         member["auto_save_kifu"] = False if member["must_change_password"] else store.kifu_auto_save(value)
@@ -139,16 +147,18 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
     @router.get("/admin/api/members")
     def members(request: Request):
         require_admin(request)
-        return {"members": store.list_members(), "persistent": persistent}
+        return {"members": store.list_members(), "persistent": persistent, "rooms": room_options()}
 
     @router.post("/admin/api/members")
     def create(request: Request, data: CreateInput):
         require_admin(request)
+        validate_room(data.managed_room_id)
         return store.create(**data.model_dump())
 
     @router.put("/admin/api/members/{member_id}")
     def update(request: Request, member_id: str, data: UpdateInput):
         require_admin(request)
+        validate_room(data.managed_room_id)
         return {"member": store.update(member_id, **data.model_dump())}
 
     @router.post("/admin/api/members/{member_id}/reset-password")

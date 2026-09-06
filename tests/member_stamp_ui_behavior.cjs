@@ -19,7 +19,7 @@ function element() {
 }
 
 async function check(member, gid, roomCount, lobbyCount = 4) {
-  const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element(), memberKifuParking: element(), researchKifuPanel: element() };
+  const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element(), memberKifuParking: element(), researchKifuPanel: element(), researchKifuAutoSave: element() };
   const context = vm.createContext({
     document: {
       querySelectorAll: () => [],

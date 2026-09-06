@@ -74,6 +74,7 @@ from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, create_member_router, require_member_origin
+from backend.member_room_api import create_member_room_router
 from backend.member_kifu import MemberKifuStore
 from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
@@ -1427,6 +1428,7 @@ def _require_member_admin(request: Request) -> None:
 app.include_router(create_member_router(
     MEMBER_STORE, _require_member_admin, persistent=MEMBER_PERSISTENT,
     force_secure=bool(os.environ.get("RENDER")),
+    room_options=lambda: _member_room_options(),
 ))
 
 
@@ -4034,22 +4036,35 @@ def verify_admin(game_id: str, password: str = Body(..., embed=True)):
     if not game:
         raise HTTPException(status_code=404, detail="game not found")
     if _room_admin_password_matches(game, password):
-        return {
-            "ok": True, 
-            "owner_name": game.get("owner_name", ""),
-            "is_private": game.get("password") is not None,
-            "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
-            "show_legal_actions": bool(game.get("show_legal_actions", False)),
-            "show_log": bool(game.get("show_log", False)),
-            "room_background_image": str(game.get("room_background_image", "")),
-            "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
-            "managed_human_seats": _admin_managed_human_seats(game_id, game),
-            "ai_profiles": {
-                key: str(info["label"])
-                for key, info in AI_PROFILES.items()
-            },
-        }
+        return _room_management_payload(game_id)
     raise HTTPException(status_code=401, detail="管理用パスワードが違います")
+
+
+def _member_room_options():
+    return [{"game_id": game_id, "name": GAMES.get(game_id, {}).get("owner_name", name)}
+            for game_id, name in PRIVATE_ROOM_NAMES.items()]
+
+
+def _room_management_payload(game_id):
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="部屋が存在しません")
+    return {
+        "game_id": game_id,
+        "ok": True,
+        "owner_name": game.get("owner_name", ""),
+        "is_private": game.get("password") is not None,
+        "ai_profile": _normalize_ai_profile(game.get("ai_profile")),
+        "show_legal_actions": bool(game.get("show_legal_actions", False)),
+        "show_log": bool(game.get("show_log", False)),
+        "room_background_image": str(game.get("room_background_image", "")),
+        "room_settings_persistent": ROOM_SETTINGS_PATH is not None,
+        "managed_human_seats": _admin_managed_human_seats(game_id, game),
+        "ai_profiles": {
+            key: str(info["label"])
+            for key, info in AI_PROFILES.items()
+        },
+    }
 
 
 @app.post("/games/{game_id}/update_settings")
@@ -4059,12 +4074,17 @@ async def update_settings(game_id: str, req: SettingsUpdateRequest):
         raise HTTPException(status_code=404, detail="game not found")
     if not _room_admin_password_matches(game, req.admin_password):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    return await _update_room_management(game_id, req)
+
+
+async def _update_room_management(game_id, req):
+    game = GAMES[game_id]
 
     previous_settings = _room_management_settings(game)
     game["owner_name"] = _sanitize_room_name(req.new_owner_name)
     game["show_legal_actions"] = bool(req.show_legal_actions)
     game["show_log"] = bool(req.show_log)
-    if req.room_background_image is not None:
+    if getattr(req, "room_background_image", None) is not None:
         game["room_background_image"] = _normalize_room_background_image(
             game_id,
             req.room_background_image,
@@ -4113,6 +4133,11 @@ async def admin_vacate_seat(game_id: str, req: AdminVacateSeatRequest):
         raise HTTPException(status_code=404, detail="game not found")
     if not _room_admin_password_matches(game, req.admin_password):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    return await _vacate_room_seat(game_id, req)
+
+
+async def _vacate_room_seat(game_id, req):
+    game = GAMES[game_id]
 
     seat = _validate_seat(req.seat, name="seat")
     human_seats = game.setdefault("human_seats", {})
@@ -5241,6 +5266,11 @@ def _member_kifu_snapshot(request: Request, game_id: str, anonymous: bool) -> Di
 app.include_router(create_member_kifu_router(
     MemberKifuStore(MEMBER_STORE), _member_kifu_snapshot, _parse_research_kifu_text,
     persistent=MEMBER_PERSISTENT,
+))
+
+app.include_router(create_member_room_router(
+    MEMBER_STORE, _member_room_options, _room_management_payload,
+    _update_room_management, _vacate_room_seat,
 ))
 
 

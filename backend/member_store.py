@@ -147,6 +147,11 @@ class MemberStore:
                 columns = {row[1] for row in db.execute("PRAGMA table_info(members)")}
                 if "is_operator" not in columns:
                     db.execute("ALTER TABLE members ADD COLUMN is_operator INTEGER NOT NULL DEFAULT 0")
+                if "research_enabled" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN research_enabled INTEGER NOT NULL DEFAULT 0")
+                if "managed_room_id" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN managed_room_id TEXT NOT NULL DEFAULT ''")
+                db.execute("CREATE UNIQUE INDEX IF NOT EXISTS member_managed_room ON members(managed_room_id) WHERE managed_room_id <> ''")
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
                 self._ready = True
@@ -178,6 +183,8 @@ class MemberStore:
             "paid_active": paid_active, "must_change_password": bool(row["must_change_password"]),
             "created_at": row["created_at"],
             "is_operator": bool(row["is_operator"]),
+            "research_enabled": bool(row["research_enabled"]),
+            "managed_room_id": row["managed_room_id"],
         }
 
     def list_members(self):
@@ -204,7 +211,8 @@ class MemberStore:
             db.execute("DELETE FROM member_sessions WHERE member_id = ?", (member_id,))
             db.execute("DELETE FROM members WHERE member_id = ?", (member_id,))
 
-    def create(self, member_id, paid_enabled=True, paid_until=None, is_operator=False):
+    def create(self, member_id, paid_enabled=True, paid_until=None, is_operator=False,
+               research_enabled=False, managed_room_id=""):
         member_id = normalize_member_id(member_id)
         paid_until = normalize_expiry(paid_until)
         temporary = secrets.token_urlsafe(18)
@@ -219,6 +227,7 @@ class MemberStore:
                            (member_id, encoded, now + TEMP_PASSWORD_SECONDS, int(paid_enabled), paid_until, now, now, int(is_operator)))
             except sqlite3.IntegrityError:
                 raise MemberError(409, "この会員IDは登録済みです。") from None
+            self._assign_room(db, member_id, research_enabled, managed_room_id)
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
         return {"member": self._public(row), "temporary_password": temporary,
                 "temporary_expires_at": now + TEMP_PASSWORD_SECONDS}
@@ -333,7 +342,8 @@ class MemberStore:
         return {"member_id": member_id, "temporary_password": temporary,
                 "temporary_expires_at": now + TEMP_PASSWORD_SECONDS}
 
-    def update(self, member_id, *, enabled, paid_enabled, paid_until, is_operator=None):
+    def update(self, member_id, *, enabled, paid_enabled, paid_until, is_operator=None,
+               research_enabled=None, managed_room_id=None):
         paid_until = normalize_expiry(paid_until)
         with self._db(write=True) as db:
             result = db.execute("""UPDATE members SET enabled = ?, paid_enabled = ?, paid_until = ?,
@@ -343,10 +353,25 @@ class MemberStore:
                 raise MemberError(404, "会員が見つかりません。")
             if is_operator is not None:
                 db.execute("UPDATE members SET is_operator = ? WHERE member_id = ?", (int(is_operator), member_id))
+            if research_enabled is not None or managed_room_id is not None:
+                previous = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
+                research = bool(previous["research_enabled"]) if research_enabled is None else research_enabled
+                room_id = previous["managed_room_id"] if managed_room_id is None else managed_room_id
+                self._assign_room(db, member_id, research, room_id if research else "")
             if not enabled:
                 db.execute("DELETE FROM member_sessions WHERE member_id = ?", (member_id,))
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
         return self._public(row)
+
+    @staticmethod
+    def _assign_room(db, member_id, research_enabled, room_id):
+        if room_id and not research_enabled:
+            raise MemberError(400, "部屋の割り当てには研究用プランが必要です。")
+        try:
+            db.execute("UPDATE members SET research_enabled = ?, managed_room_id = ? WHERE member_id = ?",
+                       (int(research_enabled), room_id, member_id))
+        except sqlite3.IntegrityError:
+            raise MemberError(409, "この部屋は別の会員に割り当てられています。先に割り当てを解除してください。") from None
 
     def is_operator_session(self, token):
         if not token:
