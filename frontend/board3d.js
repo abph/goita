@@ -1233,17 +1233,23 @@ function createTextSprite(text, options = {}) {
 }
 
 function removePassMarker(marker) {
-  if (!marker || !passLayer) return;
+  if (!marker || !passLayer || marker.parent !== passLayer) return;
   passLayer.remove(marker);
   if (marker.material?.map) marker.material.map.dispose();
   if (marker.material) marker.material.dispose();
   renderFrame();
 }
 
+function clearPass(phys) {
+  if (!passLayer) return;
+  [...passLayer.children].filter(marker => marker.userData.passSeat === phys).forEach(removePassMarker);
+}
+
 function showPass(phys) {
   if (!ensureRenderer() || !passLayer) return false;
   const position = PASS_WORLD_POSITIONS[phys];
   if (!position) return false;
+  clearPass(phys);
 
   const marker = createTextSprite(tr("パス"), {
     width: 384,
@@ -1258,6 +1264,7 @@ function showPass(phys) {
   marker.position.set(...position);
   marker.scale.set(1.55, 0.68, 1);
   marker.renderOrder = 40;
+  marker.userData.passSeat = phys;
   passLayer.add(marker);
   renderFrame();
 
@@ -1418,6 +1425,7 @@ window.goitaBoard3D = {
   setPublicTables,
   setVisible,
   showPass,
+  clearPass,
   getCanvas: () => canvas,
 };
 

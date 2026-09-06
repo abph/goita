@@ -407,7 +407,12 @@ class ConnectionManager:
                 pass
 
     async def broadcast_update(self, game_id: str):
-        await self._broadcast_payload(game_id, {"type": "update"})
+        payload = {"type": "update"}
+        game = GAMES.get(game_id)
+        if game and game.get("state"):
+            game["update_version"] = game.get("update_version", 0) + 1
+            payload.update(action_token=_action_state_token(game, game["state"]), update_version=game["update_version"])
+        await self._broadcast_payload(game_id, payload)
         if game_id in MAIN_GIDS and game_id != MEETING_ROOM_GID:
             await self._broadcast_payload(
                 MEETING_ROOM_GID,
@@ -2086,6 +2091,7 @@ class StepRequest(BaseModel):
     player: str = Field(..., description="A/B/C/D")
     client_id: str = ""
     action: ActionModel
+    expected_action_token: Optional[str] = Field(default=None, max_length=64)
 
 class NameRequest(BaseModel):
     seat: str
@@ -2650,6 +2656,13 @@ def _visible_receive_for_score_effect(action: Tuple[str, Optional[str], Optional
     return "baizuke" in effects or "damadama_agari" in effects
 
 
+def _action_state_token(game, state):
+    # A room reset gets a new nonce, so old requests cannot match a new deal.
+    nonce = game.get("action_state_nonce") or game.setdefault("action_state_nonce", secrets.token_hex(24))
+    context = f"{nonce}:{len(game.get('log', []))}:{len(game.get('kifu_moves', []))}:{getattr(state, 'turn', None)}:{getattr(state, 'phase', '')}:{getattr(state, 'finished', False)}:{game.get('is_started', False)}"
+    return hashlib.sha256(context.encode()).hexdigest()
+
+
 def _state_public_view(
     state: GoitaState,
     *,
@@ -2717,6 +2730,8 @@ def _state_public_view(
         winner = state.winner
 
     payload = {
+        "action_token": _action_state_token(game_obj, state),
+        "update_version": game_obj.get("update_version", 0),
         "is_started": is_started,
         "turn": turn,
         "phase": phase,
@@ -5031,6 +5046,8 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     _require_human_seat_owner(game, player, req.client_id)
 
     state: GoitaState = game["state"]
+    if req.expected_action_token is not None and req.expected_action_token != _action_state_token(game, state):
+        raise HTTPException(status_code=409, detail="盤面が更新されています。最新の盤面で操作してください。")
     agents: Dict[str, RuleBasedAgent] = game["agents"]
     log: List[str] = game.setdefault("log", [])
     board = game.setdefault("board", _new_board_snapshot())

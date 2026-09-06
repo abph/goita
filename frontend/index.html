@@ -5381,7 +5381,7 @@
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260821b").catch((error) => {
+  import("/static/board3d.js?v=20260906c").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
@@ -6978,6 +6978,9 @@ let beginnerRecommendationKey = "";
 let pending = null;
 let legalActionsRetryTimer = null;
 let refreshRequestSequence = 0;
+let actionSubmission = null;
+let immediateActionFeedback = null;
+const earlyPassLogKeys = new Set();
 let isGameStarted = false; 
 let activeRoomId = null;
 let chatOpen = false;
@@ -7327,7 +7330,7 @@ function connectWS(targetGid) {
                 if (currentWsGid === "lobby") {
                     fetchRoomList();
                 } else {
-                    refresh(); 
+                    if(!queueImmediateActionUpdate(data)) refresh();
                 }
             } else if (data.type === "public_table_update" && currentWsGid === MEETING_ROOM_GID) {
                 refreshMeetingPublicTables(true);
@@ -7553,6 +7556,7 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    cancelImmediateAction();
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
         analyticsRoomEnteredAt = 0;
@@ -7645,6 +7649,7 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 }
 
 async function returnToLobby() {
+    cancelImmediateAction();
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
         analyticsRoomEnteredAt = 0;
@@ -9488,6 +9493,7 @@ async function selectSpectator() {
 
 async function selectSeat(next) {
     if (next === mySeat) return;
+    cancelImmediateAction();
 
     await voiceChatController?.leave?.();
     forceDisablePreset();
@@ -9514,6 +9520,7 @@ async function selectSeat(next) {
 
 async function setSeatAiMode(seat, enabled) {
     if (!seat || seat === WATCH) return;
+    if (mySeat === seat) cancelImmediateAction();
     if (mySeat === seat) await voiceChatController?.leave?.();
     pending = null;
     setAutoPlayEnabled(false);
@@ -9554,6 +9561,7 @@ async function clearSeatMode(seat) {
 
 async function leaveSeat(seat) {
     if (!seat || seat === WATCH || mySeat !== seat) return;
+    cancelImmediateAction();
     await voiceChatController?.leave?.();
     pending = null;
     setAutoPlayEnabled(false);
@@ -12382,38 +12390,167 @@ function renderHandRevealControls(state){
   panel.style.display = "flex";
 }
 
-async function submitAction(actionObj, usedSlots = []){
-  try{
-    const res = await fetch(`${API}/games/${gid}/step`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ player: mySeat, client_id: clientId, action: actionObj })
-    });
-    if(res.ok){
-      usedSlots.forEach(item => markFixedHandSlotUsed(
-        latestState,
-        item.seat || mySeat,
-        item.slotIndex,
-        item.piece,
-        item.hidden === true
-      ));
-      await refresh();
-    }else if(res.status === 403){
-      pending = null;
-      await refresh();
-    }else{
-      scheduleLegalActionsRetry();
+function actionIsPending(){
+  return !!actionSubmission && actionSubmission.room === gid && actionSubmission.seat === mySeat;
+}
+
+function queueImmediateActionUpdate(update){
+  if(!actionIsPending()) return false;
+  actionSubmission.update = update;
+  return true;
+}
+
+function actionUpdateMatchesState(update, state){
+  return !!state?.action_token && update?.action_token === state.action_token && update.update_version === state.update_version;
+}
+
+function projectImmediateAction(state, seat, action){
+  if(!Array.isArray(state?.hands?.[seat]) || !state.board_public?.[seat]) return null;
+  const projected = JSON.parse(JSON.stringify(state));
+  const hand = projected.hands[seat];
+  const row = projected.board_public[seat];
+  const type = action.action_type;
+  if(!["receive", "attack", "attack_after_block", "pass"].includes(type)) return null;
+  const place = (kind, piece, hidden = false) => {
+    const handIndex = hand.indexOf(piece);
+    const slot = firstEmptyIndex(row[kind]);
+    if(handIndex < 0 || slot < 0) return false;
+    hand.splice(handIndex, 1);
+    row[kind][slot] = piece;
+    if(kind === "receive"){
+      row.receive_hidden = row.receive_hidden || [false, false, false, false];
+      row.receive_hidden[slot] = hidden;
+      if(hidden){
+        projected.face_down_pieces = projected.face_down_pieces || {};
+        projected.face_down_pieces[seat] = [...(projected.face_down_pieces[seat] || []), piece];
+      }
     }
-    return res.ok;
-  }catch(error){
-    console.warn("Action request failed; waiting for connection recovery.", error);
-    setHint("通信を確認しています。接続が戻ると自動で操作できるようになります。");
-    scheduleLegalActionsRetry();
-    return false;
+    return true;
+  };
+  if(type === "receive" || type === "attack_after_block"){
+    if(!place("receive", action.block, type === "attack_after_block" || state.current_attack == null)) return null;
+    projected.current_attack = null;
+    projected.attacker = seat;
   }
+  if(type === "attack" || type === "attack_after_block"){
+    if(!place("attack", action.attack)) return null;
+    projected.current_attack = action.attack;
+    projected.attacker = seat;
+  }
+  // Only the display is projected. Turns, scores and legal actions stay authoritative.
+  return projected;
+}
+
+function immediateActionView(state){
+  return actionIsPending() && state === latestState ? actionSubmission.projected || state : state;
+}
+
+function clearImmediatePass(phys){
+  document.querySelector(`.pass-anim-wrapper[data-pass-seat="${phys}"]`)?.remove();
+  window.goitaBoard3D?.clearPass?.(phys);
+}
+
+function cancelImmediateAction(){
+  if(actionSubmission) clearImmediatePass(actionSubmission.phys);
+  actionSubmission = null;
+  immediateActionFeedback = null;
+  earlyPassLogKeys.clear();
+  ++refreshRequestSequence;
+}
+
+function rememberImmediateFeedback(state){
+  const feedback = immediateActionFeedback;
+  if(!feedback) return;
+  if(feedback.room !== gid || feedback.round !== state.round_count){ immediateActionFeedback = null; return; }
+  const entry = state.log?.[feedback.index];
+  if(!entry) return;
+  if(String(entry).startsWith(feedback.prefix)){
+    const key = pieceSoundLogKey(state, feedback.index, entry);
+    if(feedback.pass) earlyPassLogKeys.add(key);
+    if(feedback.sound) earlyPieceSoundLogKeys.add(key);
+  }
+  immediateActionFeedback = null;
+}
+
+async function submitAction(actionObj, usedSlots = []){
+  if(actionIsPending() || isProcessingCpu || !latestState?.is_started || latestState.finished || isSpectator() || latestState.turn !== mySeat) return false;
+  const base = latestState;
+  const action = {...actionObj};
+  const submission = {
+    room: gid, seat: mySeat, phys: getSeatToPhys()[mySeat],
+    projected: projectImmediateAction(base, mySeat, action),
+    handMemory: JSON.parse(JSON.stringify(fixedHandMemory)),
+  };
+  actionSubmission = submission;
+  clearLegalActionsRetry();
+  ++refreshRequestSequence;
+  pending = null;
+  usedSlots.forEach(item => markFixedHandSlotUsed(base, item.seat || mySeat, item.slotIndex, item.piece, item.hidden === true));
+  renderBoard(base);
+  renderHands(base);
+  renderActions();
+  const type = action.action_type;
+  const suffix = type === "pass" ? "pass" : type === "receive" ? `receive ${action.block}`
+    : type === "attack" ? `attack ${action.attack}` : `block ${action.block} -> attack ${action.attack}`;
+  immediateActionFeedback = {room: gid, round: base.round_count, index: base.log?.length || 0,
+    prefix: `${mySeat}: ${suffix}`, pass: type === "pass", sound: false};
+  if(type === "pass") showPassAnimation(submission.phys);
+  if(audioUnlocked && personalSettings.enableSoundEffects !== false){
+    if(type === "pass") playPassSound(); else playPieceSound();
+    immediateActionFeedback.sound = true;
+  }
+  const current = () => actionSubmission === submission && gid === submission.room && mySeat === submission.seat;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let resultState = null;
+  let accepted = false;
+  try{
+    const res = await fetch(`${API}/games/${submission.room}/step`, {
+      method: "POST", signal: controller.signal,
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({player: submission.seat, client_id: clientId, action,
+        expected_action_token: base.action_token || null}),
+    });
+    const data = await res.json();
+    if(!current()) return false;
+    accepted = res.ok;
+    if(accepted) resultState = data.state || null;
+    else {
+      immediateActionFeedback = null;
+      clearImmediatePass(submission.phys);
+    }
+    // The ordinary notification is already covered by the POST result. If someone
+    // else moved while that result was in transit, obtain the more recent state.
+    if(accepted && submission.update && !actionUpdateMatchesState(submission.update, resultState)){
+      const query = new URLSearchParams({viewer: submission.seat, client_id: clientId});
+      const fresh = await fetch(`${API}/games/${submission.room}/state?${query}`, {signal: controller.signal});
+      if(fresh.ok) resultState = await fresh.json();
+    }
+  }catch(error){
+    if(current()) setHint("通信を確認しています。接続が戻ると自動で操作できるようになります。");
+  }finally{
+    clearTimeout(timeout);
+    if(current()){
+      actionSubmission = null;
+      if(!accepted){
+        fixedHandMemory = submission.handMemory;
+        latestLegal = [];
+        renderBoard(base);
+        renderHands(base);
+        renderActions();
+      }
+      if(resultState){
+        await refreshFromState(resultState);
+        if(gid === submission.room && submission.update && !actionUpdateMatchesState(submission.update, resultState)) scheduleLegalActionsRetry();
+      }
+      else { scheduleLegalActionsRetry(); await refresh(); }
+    }
+  }
+  return accepted;
 }
 
 async function onHandPieceClick(piece, slotIndex){
+  if(actionIsPending()) return;
   if(!latestState || !latestState.is_started) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
@@ -12437,7 +12574,6 @@ async function onHandPieceClick(piece, slotIndex){
         { seat: mySeat, slotIndex, piece, hidden: false },
       ].filter(item => item.slotIndex != null);
       await submitAction(matched[0], usedSlots);
-      pending = null;
       return;
     }
     if(matched.length > 1){ setHint("同じ駒で複数候補があります。デバッグ用ボタンから選んでください。"); return; }
@@ -12471,6 +12607,7 @@ async function onHandPieceClick(piece, slotIndex){
 }
 
 async function onPassClick(){
+  if(actionIsPending()) return;
   if(!latestState || !latestState.is_started) {
     setHint("まずは「開始」ボタンを押して対局を始めてください。");
     return;
@@ -12624,6 +12761,7 @@ function cWinsInLogEntry(state, entry){
 }
 
 function renderBoard(state){
+  state = immediateActionView(state);
   const board=document.getElementById("board");
   board.innerHTML="";
 
@@ -12810,12 +12948,13 @@ function renderBoard(state){
 
 // 盤面下の独立した手札エリアの描画
 function renderHands(state) {
+  state = immediateActionView(state);
   const area = document.getElementById("handsArea");
   if (!area) return;
   area.innerHTML = "";
 
   const usable = new Set();
-  if(!isSpectator() && state.turn===mySeat && !state.finished){
+  if(!actionIsPending() && !isSpectator() && state.turn===mySeat && !state.finished){
     if(pending && pending.candidates){
       pending.candidates.forEach(a => {
         if(pending.need==="attack" && a.attack) usable.add(a.attack);
@@ -12920,7 +13059,7 @@ function renderHands(state) {
       passBtn.className = "pass";
       passBtn.textContent = "パス";
       
-      if (!isSpectatorRow && state.turn === mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")) {
+      if (!actionIsPending() && !isSpectatorRow && state.turn === mySeat && !state.finished && latestLegal.some(a=>a.action_type==="pass")) {
           passBtn.onclick = onPassClick;
       } else {
           passBtn.classList.add("disabled");
@@ -12939,7 +13078,7 @@ function renderHands(state) {
       autoBtn.type = "button";
       autoBtn.textContent = "Auto";
       autoBtn.classList.toggle("active", !isSpectatorRow && autoPlayEnabled);
-      autoBtn.disabled = isSpectatorRow || state.finished || !state.is_started;
+      autoBtn.disabled = actionIsPending() || isSpectatorRow || state.finished || !state.is_started;
       if(!isSpectatorRow) autoBtn.onclick = toggleAutoPlay;
       passBtnWrap.appendChild(autoBtn);
 
@@ -12964,6 +13103,7 @@ async function renderActions(){
     const at=a.attack ? pieceToLabel(a.attack) : "";
     btn.textContent = `${t} ${b} ${at}`.trim();
     btn.onclick = async ()=>{ pending=null; await submitAction(a); };
+    btn.disabled = actionIsPending();
     actionsDiv.appendChild(btn);
   });
 }
@@ -13257,6 +13397,11 @@ async function fetchBeginnerRecommendation(state){
 }
 
 async function refresh(){
+  return refreshFromState();
+}
+
+async function refreshFromState(confirmedState = null){
+  if(actionIsPending()) return;
   if(isProcessingCpu) return;
 
   const requestSequence = ++refreshRequestSequence;
@@ -13265,11 +13410,13 @@ async function refresh(){
   qs.set("viewer", viewerSeat());
   qs.set("client_id", clientId);
 
-  let state;
+  let state = confirmedState;
   try{
-    const response = await fetch(`${API}/games/${gid}/state?${qs.toString()}`);
-    if(!response.ok) throw new Error(`state request failed: ${response.status}`);
-    state = await response.json();
+    if(!state){
+      const response = await fetch(`${API}/games/${gid}/state?${qs.toString()}`);
+      if(!response.ok) throw new Error(`state request failed: ${response.status}`);
+      state = await response.json();
+    }
   }catch(error){
     console.warn("State request failed; retrying shortly.", error);
     scheduleLegalActionsRetry();
@@ -13296,6 +13443,7 @@ async function refresh(){
     return;
   }
   latestState = state;
+  rememberImmediateFeedback(state);
   syncDebugAutoNextRoundControls();
   syncMemberKifuControls();
   trackAnalyticsGameState(state);
@@ -13349,6 +13497,10 @@ async function refresh(){
   playNewPieceSoundsAfterBoardRender(state, currentLogCount);
 
   const localFollowupActions = localFollowupAttackActions(state);
+  if(previousLegalContext !== nextLegalContext) latestLegal = localFollowupActions;
+  renderHands(state);
+  renderActions();
+  processGameLogFeedback(state, currentLogCount);
   if(localFollowupActions.length > 0){
     latestLegal = localFollowupActions;
     renderBoard(state);
@@ -13461,6 +13613,10 @@ async function refresh(){
   await renderActions();
   renderChat(state);
 
+  scheduleAutomaticTurn(state);
+}
+
+function processGameLogFeedback(state, currentLogCount){
   const logDelta = currentLogCount - lastLogCount;
   if (logDelta > 0) {
     logAnimationGeneration += 1;
@@ -13512,14 +13668,15 @@ async function refresh(){
       if (isPass) {
         const logicalSeat = isPass[1];
         const physSeat = seatToPhys[logicalSeat];
-        scheduleLogAnimation(() => {
+        const passWasShownEarly = earlyPassLogKeys.has(pieceSoundLogKey(state, i, entry));
+        if(!passWasShownEarly) scheduleLogAnimation(() => {
           if(shouldPlayLogAudio) {
             playPassSound();
             if(cVoiceKind) setTimeout(() => playCVoice(cVoiceKind), 120);
           }
           showPassAnimation(physSeat);
         }, animDelay);
-        animDelay += 800; 
+        if(!passWasShownEarly) animDelay += 800;
       }
 
       if (shouldPlayLogAudio && cVoiceKind && !isPass) {
@@ -13575,6 +13732,9 @@ async function refresh(){
   lastLogCount = currentLogCount;
   logAudioPrimed = true;
 
+}
+
+function scheduleAutomaticTurn(state){
   if(state.is_started === true && !state.finished && !isProcessingCpu){
     if(seatIsAi(state, state.turn)){
       isProcessingCpu = true;
