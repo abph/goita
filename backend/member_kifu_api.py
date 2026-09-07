@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
 
 from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute
+from backend.kifu_import import parse_kifu_rounds
 from backend.research_kifu_store import RESEARCH_KIFU_TAGS, normalize_research_kifu_tags
 
 
@@ -79,13 +80,22 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def import_record(request: Request, data: ImportInput):
         store.members.authenticate(token(request), require_paid=True)
         try:
-            payload = parse(data.kifu_text)
+            payloads = parse_kifu_rounds(data.kifu_text, parse)
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
-        payload["my_seat"] = data.my_seat or ""
-        record = store.save(token(request), title=data.title.strip() or "読込棋譜", memo=data.memo.strip(),
-                            tags=_tags(data.tags), payload=payload)
-        return {"record": record, "persistent": persistent}
+        records = []
+        title = data.title.strip() or "読込棋譜"
+        tags = _tags(data.tags)
+        for payload in payloads:
+            payload["my_seat"] = data.my_seat or ""
+            record_title = title
+            if len(payloads) > 1:
+                payload["import_title"] = title
+                suffix = f" 第{payload['round_index']}局"
+                record_title = title[:80 - len(suffix)] + suffix
+            records.append(dict(title=record_title, memo=data.memo.strip(), tags=tags, payload=payload))
+        saved = store.save_many(token(request), records)
+        return {"record": saved[0], "records": saved, "count": len(saved), "persistent": persistent}
 
     @router.post("/statistics")
     def statistics(request: Request):

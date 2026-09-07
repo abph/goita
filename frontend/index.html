@@ -5330,6 +5330,10 @@
           <details id="researchKifuImportDetails" class="research-kifu-save-details">
             <summary class="research-kifu-save-heading">棋譜を読み込んでサーバーに保存</summary>
             <div class="member-kifu-save-body">
+              <p>複数局を含む棋譜は、局ごとに分けて保存します。</p>
+              <label class="research-kifu-seat">自分の席（読み込む全局に適用）
+                <select id="researchKifuImportMySeat"><option value="">未設定</option><option>A</option><option>B</option><option>C</option><option>D</option><option value="spectator">観戦</option></select>
+              </label>
               <button class="research-kifu-import-button" id="researchKifuImportButton" type="button" onclick="openResearchKifuImport()">棋譜読込</button>
               <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             </div>
@@ -8529,6 +8533,7 @@ function resetMemberKifuLibrary() {
     memberKifuRevision++;
     invalidateResearchKifuStatistics();
     document.getElementById("researchKifuMySeat").value = "";
+    document.getElementById("researchKifuImportMySeat").value = "";
     document.getElementById("researchKifuMySeatEdit").value = "";
     researchKifuRecords = [];
     closeResearchKifuDetail();
@@ -8792,7 +8797,7 @@ async function importResearchKifuFile(event) {
         if (revision !== memberKifuRevision) return;
         const data = await researchKifuApi("/import", {
             title: enteredTitle || researchKifuImportTitle(file),
-            my_seat: document.getElementById("researchKifuMySeat").value,
+            my_seat: document.getElementById("researchKifuImportMySeat").value,
             memo: document.getElementById("researchKifuMemo").value,
             tags: selectedResearchKifuTags("researchKifuSaveTags"),
             kifu_text: kifuText,
@@ -8801,7 +8806,9 @@ async function importResearchKifuFile(event) {
         document.getElementById("researchKifuMemo").value = "";
         renderResearchKifuTagOptions("researchKifuSaveTags", []);
         await loadResearchKifuList();
-        status.textContent = `${uiText("棋譜を読み込みました。")} ${data.record?.id || ""}`.trim();
+        status.textContent = data.count > 1
+            ? `${data.count}局の棋譜を局ごとに保存しました。`
+            : `${uiText("棋譜を読み込みました。")} ${data.record?.id || ""}`.trim();
         trackAnalytics("kifu_loaded");
     } catch (error) {
         status.textContent = uiText(error?.message || "棋譜を読み込めませんでした。");
@@ -8834,7 +8841,9 @@ function researchKifuMoveLabel(row) {
 
 function researchKifuDetailMetaLabel(record, payload) {
     const language = currentUiLanguage();
-    const base = researchKifuDateLabel(record.created_at);
+    const source = payload.import_round_count > 1
+        ? ` / ${payload.import_title || "読込棋譜"} / 第${payload.round_index}局（全${payload.import_round_count}局）` : "";
+    const base = researchKifuDateLabel(record.created_at) + source;
     if (language === "zh") return `${base} / 庄家${payload.dealer || "-"}`;
     if (language === "en") return `${base} / Dealer ${payload.dealer || "-"}`;
     return `${base} / 親${payload.dealer || "-"}`;

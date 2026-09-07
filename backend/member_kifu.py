@@ -3,7 +3,7 @@
 import json
 import secrets
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from backend.member_store import MemberError
 from backend.research_kifu_store import normalize_research_kifu_tags
@@ -100,16 +100,25 @@ class MemberKifuStore:
         return result
 
     def save(self, token, *, title, memo, tags, payload):
+        return self.save_many(token, [dict(title=title, memo=memo, tags=tags, payload=payload)])[0]
+
+    def save_many(self, token, records):
+        """Save the complete import in one transaction, including capacity checks."""
         with self.members._db(write=True) as db:
             owner = self._owner(db, token, paid=True)
-            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= self.LIMIT:
+            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] + len(records) > self.LIMIT:
                 raise MemberError(409, "保存上限の1000件に達しました。不要な棋譜を削除してください。")
-            record_id = "K-" + secrets.token_hex(16)
-            db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
-                record_id, owner, datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                title, memo, json.dumps(tags, ensure_ascii=False), json.dumps(payload, ensure_ascii=False),
-            ))
-            return self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, owner)).fetchone())
+            saved = []
+            now = datetime.now(timezone.utc)
+            for index, record in enumerate(records):
+                record_id = "K-" + secrets.token_hex(16)
+                created = (now - timedelta(microseconds=index)).isoformat(timespec="microseconds")
+                db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                    record_id, owner, created, record["title"], record["memo"],
+                    json.dumps(record["tags"], ensure_ascii=False), json.dumps(record["payload"], ensure_ascii=False),
+                ))
+                saved.append(self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, owner)).fetchone()))
+            return saved
 
     def save_automatic(self, token, *, round_id, seat, payload):
         """Commit the opt-in, capacity check and deduplication in one transaction."""

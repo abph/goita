@@ -1637,7 +1637,7 @@ def _research_kifu_scalar(raw: str) -> str:
     return value
 
 
-def _parse_research_kifu_text(kifu_text: str) -> Dict[str, Any]:
+def _parse_research_kifu_text(kifu_text: str, *, score_is_before=False) -> Dict[str, Any]:
     """Parse and validate the restricted version 1.0 game-record format."""
     normalized = (
         str(kifu_text or "")
@@ -1744,7 +1744,7 @@ def _parse_research_kifu_text(kifu_text: str) -> Dict[str, Any]:
 
     state = GoitaState(hands=hands, dealer=dealer)
     try:
-        for pid, block_label, attack_label in raw_moves:
+        for move_index, (pid, block_label, attack_label) in enumerate(raw_moves):
             if state.finished:
                 raise ValueError("終局後の手順があります")
             actor = ALL_SEATS[int(pid)]
@@ -1761,8 +1761,19 @@ def _parse_research_kifu_text(kifu_text: str) -> Dict[str, Any]:
             if state.turn != actor:
                 raise ValueError("手番の順序が正しくありません")
 
+            # Some exporters use 王 for both royal pieces in moves, but distinguish
+            # them in the initial hand. Preserve the actual piece in the saved replay.
+            if block_label == "王" and piece_codes["王"] not in state.hands[actor] and piece_codes["玉"] in state.hands[actor]:
+                block_label = "玉"
             block = piece_codes.get(block_label) if block_label else None
             attack = piece_codes.get(attack_label) if attack_label else None
+            remaining = list(state.hands[actor])
+            if block in remaining:
+                remaining.remove(block)
+            if attack_label == "王" and piece_codes["王"] not in remaining and piece_codes["玉"] in remaining:
+                attack_label = "玉"
+                attack = piece_codes["玉"]
+            raw_moves[move_index] = [pid, block_label, attack_label]
             if state.phase == "receive":
                 if block is None:
                     raise ValueError("受け駒がありません")
@@ -1785,11 +1796,13 @@ def _parse_research_kifu_text(kifu_text: str) -> Dict[str, Any]:
 
     winning_team = "AC" if state.winner in ("A", "C") else "BD"
     gained_score = int(state.team_score[winning_team])
+    if score_is_before:
+        score_after[winning_team] += gained_score
     score_after[winning_team] = max(score_after[winning_team], gained_score)
     score_before = dict(score_after)
     score_before[winning_team] = max(0, score_before[winning_team] - gained_score)
     player_names = {
-        seat: _sanitize_player_name(names.get(f"p{index}", ""))
+        seat: re.sub(r"[\x00-\x1f\x7f]", "", names.get(f"p{index}", "")).strip()[:80]
         or f"プレイヤー{seat}"
         for index, seat in enumerate(ALL_SEATS)
     }

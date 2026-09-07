@@ -52,7 +52,7 @@ class Element {
   for (const name of ['saveCurrentResearchKifu', 'importResearchKifuFile', 'saveResearchKifuEdit']) {
     const start = html.indexOf('async function ' + name + '(');
     const next = html.indexOf('\nfunction ', start);
-    assert.match(html.slice(start, next), /my_seat: document.getElementById\("researchKifuMySeat(?:Edit)?"\).value/);
+    assert.match(html.slice(start, next), /my_seat: document.getElementById\("researchKifu(?:Import)?MySeat(?:Edit)?"\).value/);
   }
   console.log('Statistics UI: on-demand rendering, zero sample, invalidation, error recovery and seat inputs passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

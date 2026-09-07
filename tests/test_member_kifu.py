@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -15,6 +16,52 @@ from backend.retire_room_kifu import retire_room_kifu
 
 
 HEADERS = {"X-Goita-Member": "1", "Origin": "https://testserver"}
+
+
+def external_match():
+    return (Path(__file__).parent / "fixtures" / "external_match.yaml").read_text(encoding="utf-8-sig")
+
+
+def test_import_match_as_ten_independent_rounds(library):
+    store, members, token, other, client, game = library
+    response = client.post("/api/member/kifu/import", json={
+        "kifu_text": external_match(), "title": "Example match", "my_seat": "D", "tags": ["2香"], "memo": "Review",
+    })
+    assert response.status_code == 200, response.text
+    records = response.json()["records"]
+    assert response.json()["count"] == 10
+    assert [r["round_index"] for r in records] == list(range(1, 11))
+    assert [r["gained_score"] for r in records] == [20,20,30,20,30,10,20,60,40,50]
+    assert [r["round_index"] for r in store.list(token)] == list(range(1, 11))
+    assert len({r["payload"]["import_group_id"] for r in records}) == 1
+    assert records[0]["payload"]["score_before"] == {"AC":0,"BD":0}
+    assert records[-1]["payload"]["score_after"] == {"AC":140,"BD":160}
+    for index, record in enumerate(records):
+        assert record["my_seat"] == "D"
+        assert record["tags"] == ["2香"] and record["memo"] == "Review"
+        assert record["title"] == f"Example match 第{index + 1}局"
+        assert record["payload"]["player_names"]["A"] == "Sample player 0"
+        assert store.access(token, record["id"])["payload"] == record["payload"]
+        if index:
+            assert records[index-1]["payload"]["score_after"] == record["payload"]["score_before"]
+    assert records[-1]["payload"]["moves"][-1][-1] == "玉"
+    assert store.statistics(token)["counted"] == 10
+    assert store.list(other) == []
+
+
+@pytest.mark.parametrize("failure", ["capacity", "invalid_move", "score_gap"])
+def test_match_import_is_all_or_nothing(library, monkeypatch, failure):
+    store, members, token, other, client, game = library
+    text = external_match()
+    if failure == "capacity":
+        monkeypatch.setattr(store, "LIMIT", 9)
+    elif failure == "invalid_move":
+        text = text.replace('["3","金","王"]', '["3","金","飛"]')
+    else:
+        text = text.replace('score: [140,110]', 'score: [140,120]')
+    response = client.post("/api/member/kifu/import", json={"kifu_text":text})
+    assert response.status_code == (409 if failure == "capacity" else 400)
+    assert store.list(token) == []
 
 
 def ready(members, name):

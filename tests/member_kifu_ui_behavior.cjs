@@ -45,5 +45,21 @@ const source = html.slice(html.indexOf('async function researchKifuApi('), html.
   const text = context.researchKifuDownloadText({payload: {dealer: 'A', hand: {p0: 'し', p1: 'し', p2: 'し', p3: 'し'}, game: [['0','し','し']], player_names: {A: 'Alice'}}});
   assert.match(text, /version: 1\.0/);
   assert.match(text, /Alice/);
+  const elements = Object.fromEntries(['researchKifuStatus', 'researchKifuTitle', 'researchKifuMemo', 'researchKifuImportMySeat'].map(id => [id, {value:'',textContent:''}]));
+  elements.researchKifuImportMySeat.value = 'D';
+  let imported;
+  const importContext = vm.createContext({
+    memberKifuRevision:0, document:{getElementById:id=>elements[id]}, uiText:text=>text,
+    selectedResearchKifuTags:()=>[], renderResearchKifuTagOptions:()=>{},
+    loadResearchKifuList:async()=>{}, trackAnalytics:()=>{},
+    researchKifuApi:async (url,body)=>{imported=body; assert.equal(url,'/import'); return {count:10};},
+  });
+  vm.runInContext(html.slice(html.indexOf('function researchKifuImportTitle('),html.indexOf('function researchKifuMoveLabel(')), importContext);
+  const input={value:'selected',files:[{name:'match.yaml',size:12,text:async()=>'match contents'}]};
+  await importContext.importResearchKifuFile({target:input});
+  assert.equal(imported.my_seat,'D');
+  assert.equal(imported.title,'match');
+  assert.equal(elements.researchKifuStatus.textContent,'10局の棋譜を局ごとに保存しました。');
+  assert.equal(input.value,'');
   console.log('Member library UI: authenticated requests, stale-response rejection, expiry, and export passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});
