@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, Set, Literal
 
 from fastapi import FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -1830,6 +1830,21 @@ def _parse_research_kifu_text(kifu_text: str, *, score_is_before=False) -> Dict[
             player_names[seat] == f"プレイヤー{seat}" for seat in ALL_SEATS
         ),
     }
+
+
+class KifuPreviewRequest(BaseModel):
+    kifu_text: str = Field(min_length=1, max_length=200_000)
+
+
+@app.post("/kifu/preview")
+def preview_kifu_file(data: KifuPreviewRequest):
+    """Validate a file for temporary viewing; no library or game writes."""
+    from backend.kifu_import import parse_kifu_rounds
+    try:
+        rounds = parse_kifu_rounds(data.kifu_text, _parse_research_kifu_text)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    return JSONResponse({"rounds": rounds}, headers={"Cache-Control": "no-store"})
 
 
 def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str, Any]:

@@ -68,17 +68,15 @@ def test_kifu_0001_round_1_has_the_expected_four_hands() -> None:
     }
 
 
-def test_personal_kifu_save_actions_are_grouped() -> None:
+def test_kifu_actions_have_a_dedicated_menu_dialog() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
-    details_start = html.index('<details id="kifuSaveSettingsDetails"')
-    details_end = html.index("</details>", details_start)
-    details = html[details_start:details_end]
-
-    assert "棋譜を保存する" in details
-    assert "匿名で棋譜を保存する" in details
-    assert html.count('id="kifuSaveSettingsDetails"') == 1
-    assert '"kifuSaveSettingsDetails"' in html
+    assert 'kifuSaveSettingsDetails' not in html
+    assert html.count('onclick="openKifuFiles()"') == 2
+    assert 'id="kifuFilesModal"' in html
+    assert 'onclick="downloadKifu(false)">棋譜を保存</button>' in html
+    assert 'onclick="downloadKifu(true)">棋譜を匿名で保存</button>' in html
+    assert '棋譜を読み込んで見る</button>' in html
 
 
 def test_effects_and_beginner_support_are_grouped() -> None:

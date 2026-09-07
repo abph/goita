@@ -4473,6 +4473,7 @@
       <div id="lobbyHeaderMenu" class="header-menu-popup" hidden>
         <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
         <button class="header-menu-item" type="button" onclick="openLobbySettings()">設定</button>
+        <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
       </div>
     </div>
   </div>
@@ -4592,6 +4593,7 @@
         <div id="roomHeaderMenu" class="header-menu-popup" hidden>
           <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
           <button id="roomSettingsBtn" class="header-menu-item" type="button" onclick="openSettingsModal(gid)" style="display:none;">設定</button>
+          <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
         </div>
       </div>
     </div>
@@ -5108,20 +5110,6 @@
           </div>
         </div>
       </details>
-      <details id="kifuSaveSettingsDetails" class="settings-disclosure">
-        <summary>
-          <span class="when-closed">▶ 棋譜保存を開く</span>
-          <span class="when-open">▼ 棋譜保存を閉じる</span>
-        </summary>
-        <div class="settings-disclosure-content">
-          <div class="settings-row">
-            <button class="settings-action-button" type="button" onclick="downloadKifu(false)">棋譜を保存する</button>
-          </div>
-          <div class="settings-row">
-            <button class="settings-action-button" type="button" onclick="downloadKifu(true)">匿名で棋譜を保存する</button>
-          </div>
-        </div>
-      </details>
     </section>
 
     <section id="matchSettingsPanel" class="settings-panel" role="tabpanel">
@@ -5407,6 +5395,44 @@
   </div>
 </div>
 
+<div id="kifuFilesModal" class="modal-overlay" onclick="if(event.target===this) closeKifuFiles()">
+  <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="kifuFilesTitle">
+    <button class="settings-modal-close" type="button" onclick="closeKifuFiles()" aria-label="棋譜ファイルを閉じる">×</button>
+    <h3 id="kifuFilesTitle">棋譜ファイル</h3>
+    <div class="kifu-files-body">
+      <div class="kifu-file-actions">
+        <button id="kifuFileSave" type="button" onclick="downloadKifu(false)">棋譜を保存</button>
+        <button id="kifuFileSaveAnonymous" type="button" onclick="downloadKifu(true)">棋譜を匿名で保存</button>
+        <button type="button" onclick="document.getElementById('kifuFileInput').click()">棋譜を読み込んで見る</button>
+        <input id="kifuFileInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="readKifuFile(this)">
+      </div>
+      <p class="settings-help-text">保存は終局後に利用できます。読み込むファイルは解析のために送信しますが、サーバーには保存しません。</p>
+      <div id="kifuFileStatus" class="settings-status" aria-live="polite"></div>
+      <div id="kifuFileViewer" hidden>
+        <label>表示する局 <select id="kifuFileRound" onchange="selectKifuFileRound()"></select></label>
+        <div class="research-kifu-board-wrap"><div id="kifuFileBoard" class="research-kifu-board" aria-label="読み込んだ棋譜の盤面"></div></div>
+        <div class="research-kifu-play-actions">
+          <button type="button" onclick="moveKifuFileFrame(0,true)">最初</button>
+          <button type="button" onclick="moveKifuFileFrame(-1)">戻る</button>
+          <button id="kifuFilePlay" type="button" onclick="playKifuFile()">再生</button>
+          <button type="button" onclick="moveKifuFileFrame(1)">進む</button>
+          <button type="button" onclick="moveKifuFileFrame(Infinity,true)">最後</button>
+        </div>
+        <p id="kifuFileMove" class="settings-help-text" aria-live="polite"></p>
+      </div>
+    </div>
+    <div class="settings-footer"><button type="button" onclick="closeKifuFiles()">閉じる</button></div>
+  </div>
+</div>
+<style>
+  .kifu-files-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .kifu-file-actions { display: grid; gap: 8px; }
+  #kifuFileRound { max-width: 100%; }
+  #kifuFileViewer[hidden] { display: none; }
+  #kifuFilesModal .research-kifu-play-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  #kifuFilesModal .research-kifu-play-actions button { min-width: 0; width: 100%; padding: 8px 4px; }
+</style>
+<script src="/static/kifu-files.js?v=20260908a"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -8328,7 +8354,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     document.getElementById("boardViewSettingRow").style.display =
         supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
     if (!sameTarget) {
-        ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "dataSharingSettingsDetails", "kifuSaveSettingsDetails"].forEach((id) => {
+        ["mobileChatSettingsDetails", "playSupportSettingsDetails", "soundSettingsDetails", "dataSharingSettingsDetails"].forEach((id) => {
             const details = document.getElementById(id);
             if (details) details.open = false;
         });
@@ -8945,7 +8971,7 @@ function createResearchKifuPiece(piece, seat, options = {}) {
 }
 
 function renderResearchKifuBoard(payload, options = {}) {
-    const container = document.getElementById("researchKifuBoard");
+    const container = options.container || document.getElementById("researchKifuBoard");
     if (!container) return;
     container.replaceChildren();
     const rows = Array.isArray(options.rows) ? options.rows : null;
