@@ -9,7 +9,9 @@
 .member-panel .member-room-seat button { flex: 0 0 auto; }
 .member-page-mode .settings-tabs { display: none; }
 .member-panel .member-kifu-save-section { padding: 12px; margin-bottom: 22px; border: 1px solid #d7c2a4; border-radius: 6px; }
-.member-panel .member-kifu-save-section > h4 { margin: 0 0 12px; }
+.member-panel .member-kifu-save-section > summary { cursor: pointer; font-size: 15px; font-weight: 700; }
+.member-panel .member-kifu-save-section[open] > summary { margin-bottom: 12px; }
+.member-panel .member-kifu-save-section > summary:focus-visible { outline: 2px solid #176b57; outline-offset: 4px; }
 .member-panel .member-kifu-save-section .research-kifu-save-details + .research-kifu-save-details { margin-top: 8px; }
 .member-panel .member-kifu-save-body { padding: 0 10px 12px; }
 .member-panel .member-kifu-save-body .member-auto-kifu { margin: 2px 0 0; }

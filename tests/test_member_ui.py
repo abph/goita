@@ -14,7 +14,7 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
     assert 'src="/static/member.js?v=20260906b"' in html
-    assert 'href="/static/member.css?v=20260906b"' in html
+    assert 'href="/static/member.css?v=20260908a"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():

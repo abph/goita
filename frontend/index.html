@@ -2936,7 +2936,7 @@
       font-weight: 800;
     }
     .research-kifu-list {
-      max-height: 250px;
+      max-height: 380px;
       margin-top: 12px;
       overflow-y: auto;
       overscroll-behavior: contain;
@@ -3260,7 +3260,7 @@
     .research-kifu-actions .danger { color: #a62424; border-color: #c78888; }
     @media (max-width: 701px) {
       .settings-modal-content .settings-tab { padding-inline: 4px; font-size: 11px; }
-      .research-kifu-list { max-height: 210px; }
+      .research-kifu-list { max-height: 280px; }
       .research-kifu-detail { max-height: none; }
       .research-kifu-hands { grid-template-columns: 1fr; }
       .research-kifu-board-wrap { padding: 5px; border-width: 2px; }
@@ -3279,6 +3279,10 @@
       box-sizing: border-box;
     }
     .lobby-admin-modal-content > h3 { padding-right: 36px; }
+    @media (min-width: 702px) {
+      .settings-modal-content,
+      .lobby-admin-modal-content { height: min(840px, calc(100dvh - 24px)); }
+    }
     .settings-modal-content > h3,
     .settings-modal-content > .settings-tabs,
     .settings-modal-content > .settings-footer,
@@ -4454,7 +4458,7 @@
     }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
-  <link rel="stylesheet" href="/static/member.css?v=20260906b" />
+  <link rel="stylesheet" href="/static/member.css?v=20260908a" />
   <script defer src="/static/member-room.js?v=20260906b"></script>
   <script defer src="/static/member.js?v=20260906b"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
@@ -5303,8 +5307,8 @@
 
       <div id="researchKifuLibrary">
         <div id="researchKifuListView">
-          <section class="member-kifu-save-section" aria-labelledby="memberKifuSaveTitle">
-          <h4 id="memberKifuSaveTitle">棋譜をサーバーに保存</h4>
+          <details class="member-kifu-save-section" aria-labelledby="memberKifuSaveTitle">
+          <summary id="memberKifuSaveTitle">棋譜をサーバーに保存</summary>
           <details id="researchKifuAutoSaveDetails" class="research-kifu-save-details" open>
             <summary class="research-kifu-save-heading">棋譜をサーバーに自動保存</summary>
             <div class="member-kifu-save-body">
@@ -5338,8 +5342,8 @@
               <input id="researchKifuImportInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden onchange="importResearchKifuFile(event)">
             </div>
           </details>
+          </details>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
-          </section>
           <div class="research-kifu-filter">
             <strong class="research-kifu-list-heading">棋譜一覧</strong>
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="renderResearchKifuList()"></select>
