@@ -8,11 +8,11 @@ HTML_PATH = ROOT / "frontend" / "index.html"
 def test_lobby_room_cards_truncate_only_long_player_names() -> None:
     html = HTML_PATH.read_text(encoding="utf-8")
 
-    assert "function truncateLobbyPlayerName(playerName, maxCharacters = 5)" in html
+    assert 'function truncateLobbyPlayerName(playerName, maxCharacters = 5, suffix = "…")' in html
     assert 'characters.length <= maxCharacters' in html
-    assert 'characters.slice(0, maxCharacters).join("")}…' in html
+    assert 'characters.slice(0, maxCharacters).join("")}${suffix}' in html
     assert "(!isAi && !isEmpty)" in html
-    assert "? truncateLobbyPlayerName(fullDisplayName)" in html
+    assert 'truncateLobbyPlayerName(fullDisplayName, isSideSeat ? 4 : 5, isSideSeat ? "..." : "…")' in html
 
 
 def test_lobby_room_cards_keep_full_name_for_hover_and_accessibility() -> None:

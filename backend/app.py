@@ -418,6 +418,12 @@ class ConnectionManager:
                 MEETING_ROOM_GID,
                 {"type": "public_table_update", "game_id": game_id},
             )
+        if game and game_id != "lobby":
+            score = game.get("total_team_score", {})
+            lobby_score = (bool(game.get("is_started")), score.get("AC", 0), score.get("BD", 0))
+            if game.get("lobby_score_snapshot") != lobby_score:
+                game["lobby_score_snapshot"] = lobby_score
+                await self._broadcast_payload("lobby", {"type": "update"})
 
 manager = ConnectionManager()
 
@@ -3666,6 +3672,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             "spectator_count": spectator_count,
             "people_count": len(human_set) + spectator_count,
             "seats": seats_info,
+            "is_started": bool(data.get("is_started", False)),
+            "total_team_score": dict(data.get("total_team_score", {"AC": 0, "BD": 0})),
         }
 
     rooms = [

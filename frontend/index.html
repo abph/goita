@@ -1355,7 +1355,23 @@
     .seat-left { grid-column: 1; grid-row: 2; justify-self: end; margin-right: 4px;} /* D */
     .seat-right { grid-column: 3; grid-row: 2; justify-self: start; margin-left: 4px;} /* B */
 
-    .room-card.has-room-heading { grid-template-rows: auto repeat(3, minmax(0, 1fr)); }
+    .room-card.has-room-heading {
+        grid-template-rows: auto repeat(3, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+    }
+    .room-card.has-room-heading .center-info { width: 100%; max-width: 100%; }
+    .room-card .room-score { font-size: 11px; line-height: 1.4; white-space: nowrap; }
+    .room-card .room-score-ac { color: #b00000; }
+    .room-card .room-score-bd { color: #0000cc; }
+    .room-card .seat-left,
+    .room-card .seat-right { min-width: 0; max-width: calc(100% - 4px); }
+    .room-card .seat-left .seat-badge,
+    .room-card .seat-right .seat-badge {
+        box-sizing: border-box;
+        max-width: 100%;
+        font-size: 11px;
+        padding-inline: 4px;
+    }
     .room-card .room-heading {
         grid-column: 1 / -1;
         grid-row: 1;
@@ -1458,6 +1474,13 @@
         max-width: 39px;
         padding-inline: 2px;
       }
+    }
+
+    @media (max-width: 701px) {
+      .room-card.has-room-heading { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); }
+      .room-card .room-score { font-size: 7px; }
+      .room-card .seat-left .seat-badge,
+      .room-card .seat-right .seat-badge { font-size: 7.5px; padding-inline: 2px; }
     }
 
     @media (max-width: 353px) {
@@ -7745,10 +7768,10 @@ function closeLobbySettings(event) {
     document.getElementById("lobbySettingsModal").style.display = "none";
 }
 
-function truncateLobbyPlayerName(playerName, maxCharacters = 5) {
+function truncateLobbyPlayerName(playerName, maxCharacters = 5, suffix = "…") {
     const characters = Array.from(String(playerName ?? ""));
     if (characters.length <= maxCharacters) return characters.join("");
-    return `${characters.slice(0, maxCharacters).join("")}…`;
+    return `${characters.slice(0, maxCharacters).join("")}${suffix}`;
 }
 
 function escapeLobbyHtml(value) {
@@ -7789,8 +7812,9 @@ async function fetchRoomList() {
                 const isAi = (playerName === "AI");
                 const isEmpty = (playerName === "Empty");
                 const fullDisplayName = isEmpty ? "空席" : String(playerName ?? "");
+                const isSideSeat = seatName === "B" || seatName === "D";
                 const displayName = (!isAi && !isEmpty)
-                    ? truncateLobbyPlayerName(fullDisplayName)
+                    ? truncateLobbyPlayerName(fullDisplayName, isSideSeat ? 4 : 5, isSideSeat ? "..." : "…")
                     : fullDisplayName;
                 let text = "";
                 let fullText = "";
@@ -7813,6 +7837,13 @@ async function fetchRoomList() {
                 : "";
             const roomNameIgnore = isBuiltInRoomName(room.owner_name) ? "" : " data-i18n-ignore";
             const displayRoomName = escapeLobbyHtml(roomNameForDisplay(room.owner_name));
+            const scoreValue = team => {
+                const value = Number(room.total_team_score?.[team] ?? 0);
+                return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+            };
+            const scoreHtml = room.is_started === true
+                ? `<div class="room-score"><div class="room-score-ac">AC：${scoreValue("AC")}点</div><div class="room-score-bd">BD：${scoreValue("BD")}点</div></div>`
+                : "";
 
             if (requiresPassword) {
                 card.innerHTML = `
@@ -7831,7 +7862,7 @@ async function fetchRoomList() {
                     <div class="seat-top">${makeBadge('C', s['C'])}</div>
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
-                        <div class="count">(${room.player_count}/4人)</div>
+                        ${scoreHtml}
                     </div>
                     <div class="seat-right">${makeBadge('B', s['B'])}</div>
                     <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
