@@ -104,7 +104,7 @@ def test_settings_modals_keep_a_fixed_height_while_panels_scroll() -> None:
     assert "flex: 1 1 auto;" in html
     assert "min-height: 0;" in html
     assert "overflow-y: auto;" in html
-    assert html.count("height: calc(100dvh - 12px);") >= 2
+    assert html.count("height: calc(100dvh - 64px);") >= 2
 
 
 def test_room_settings_header_and_footer_use_compact_actions() -> None:
