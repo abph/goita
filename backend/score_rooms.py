@@ -53,8 +53,7 @@ class ScoreRoomGuard:
                 method = scope.get("method")
                 allowed = ((method == "GET" and (action in {"state", "legal_actions", "kifu"}
                             or re.fullmatch(r"trace_results/(latest|history|[^/]+(?:/original)?)", action or "")))
-                           or (method == "POST" and (action in {"step", "cpu_step", "set_name", "trace_random_start", "score_reset", "score_activity"}
-                            or re.fullmatch(r"trace_results/[^/]+/retry", action or ""))))
+                           or (method == "POST" and action in {"step", "cpu_step", "set_name", "trace_random_start", "score_reset", "score_activity", "chat", "chat/ask_ai"}))
                 if not allowed:
                     raise HTTPException(403, "スコアアタックではこの操作は利用できません。")
                 # Polling and AI turns must never keep an unattended room alive.

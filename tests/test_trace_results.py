@@ -132,6 +132,27 @@ def test_guest_expiry_deletes_data_but_preserves_member_results(tmp_path, payloa
         assert db.execute("SELECT COUNT(*) FROM trace_people WHERE guest=1").fetchone()[0] == 0
 
 
+def test_all_attempts_ranking_keeps_duplicate_players_ties_and_expiry(tmp_path, payload):
+    now = [1000]
+    store = TraceStore(tmp_path / "all.sqlite", clock=lambda: now[0])
+    first = store.start("member:one", False, "Name", payload)
+    store.finish(first, payload["score_after"])
+    second = store.start("member:one", False, "Name", payload)
+    improved = dict(payload["score_after"])
+    improved["AC"] += 10
+    store.finish(second, improved)
+    guest = store.start("guest:two", True, "Guest", payload)
+    store.finish(guest, improved)
+    abandoned = store.start("member:one", False, "Name", payload)
+    result = store.read("member:one", first, mode="all")
+    assert result["own_rank"] == 3 and result["total"] == 3
+    assert [row["rank"] for row in result["ranking"]] == [1, 1, 3]
+    assert [row["attempt_no"] for row in result["ranking"] if row["self"]] == [2, 1]
+    now[0] += RETENTION
+    result = store.read("member:one", second, mode="all")
+    assert result["total"] == 2 and result["own_rank"] == 1
+
+
 def test_abandonment_consumes_first_attempt_and_challenges_are_separate(tmp_path, payload):
     store = TraceStore(tmp_path / "trace.sqlite")
     first = store.start("member:test", False, "Name", payload)
@@ -219,8 +240,9 @@ def test_guest_full_flow_replay_is_private_retry_does_not_replace_ranking(trace_
     assert original["anonymous"] and original["my_seat"] == "A"
     outsider = TestClient(game_app.app, headers={"X-Goita-Member": "1"})
     assert outsider.get(path + "/original").status_code == 401
-    assert outsider.post(path + "/retry", json={"client_id": "owner"}).status_code == 401
-    again = client.post(path + "/retry", json={"client_id": "owner"})
+    assert outsider.post(path + "/retry", json={"client_id": "owner"}).status_code == 404
+    assert client.post(path + "/retry", json={"client_id": "owner"}).status_code == 404
+    again = client.post("/games/debug/trace_random_start", json={"client_id": "owner"})
     assert again.status_code == 200, again.text
     retry = again.json()["state"]["trace_attempt_id"]
     assert retry != attempt
@@ -228,7 +250,7 @@ def test_guest_full_flow_replay_is_private_retry_does_not_replace_ranking(trace_
     assert game_app.GAMES["debug"]["total_team_score"] == payload["score_before"]
     finish_round()
     result = client.get(f"/games/debug/trace_results/{retry}").json()
-    assert not result["ranked"] and result["total"] == 1
+    assert not result["ranked"] and result["total"] == 2
 
 
 def test_member_identity_survives_different_browser_and_guest_has_no_access(trace_client, monkeypatch):
@@ -258,7 +280,7 @@ def test_reset_clears_score_attack_and_scores_but_keeps_history(trace_client):
 
 def test_trace_endpoints_are_debug_only_and_same_origin(trace_client):
     client = trace_client
-    for path in ("trace_random_start", "trace_same_start", "trace_results/abc/retry"):
+    for path in ("trace_random_start", "trace_same_start"):
         assert client.post(f"/games/main/{path}", json={"client_id": "owner"}).status_code == 403
     for path in ("trace_results/latest", "trace_results/history", "trace_results/abc", "trace_results/abc/original"):
         assert client.get(f"/games/main/{path}").status_code == 403

@@ -5315,10 +5315,6 @@ async def start_random_debug_trace(
         raise HTTPException(status_code=500, detail=str(error)) from error
     if not candidates:
         raise HTTPException(status_code=404, detail="50点以下の棋譜が見つかりません。")
-    previous = GAMES[game_id].get("trace_challenge")
-    candidates = [item for item in candidates if not previous or item.get("challenge_id") != previous]
-    if not candidates:
-        raise HTTPException(404, "条件に合う別の棋譜がありません。同じ棋譜への再挑戦は結果画面から開始できます。")
     candidate = copy.deepcopy(random.choice(candidates))
     # Spectators see the game's public state; do not copy identifying archive
     # metadata into it, even when the starting player is an administrator.
@@ -5358,7 +5354,7 @@ def trace_history(game_id: str, request: Request, response: Response, offset: in
 
 
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}")
-def trace_result(game_id: str, attempt_id: str, request: Request, response: Response, mode: str = "best"):
+def trace_result(game_id: str, attempt_id: str, request: Request, response: Response, mode: str = "all"):
     _require_trace_room(game_id)
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
@@ -5374,15 +5370,6 @@ def trace_original(game_id: str, attempt_id: str, request: Request, response: Re
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     return {"payload": store.read(owner, attempt_id, original=True)}
-
-
-@trace_router.post("/games/{game_id}/trace_results/{attempt_id}/retry")
-async def retry_trace(game_id: str, attempt_id: str, body: DebugTraceRandomStartRequest, request: Request, response: Response):
-    _trace_host(game_id, body)
-    store = get_trace_store()
-    owner, _ = store.identity(request, response, MEMBER_STORE)
-    payload = store.read(owner, attempt_id, original=True)
-    return await _begin_trace_attempt(game_id, body, request, response, payload, practice=True)
 
 
 app.include_router(trace_router)

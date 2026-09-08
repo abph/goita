@@ -81,7 +81,7 @@ def test_fixed_conditions_and_end_to_end_result_retry_reset(trace_client):
     attempt = begin(client, room)
     for endpoint in ["claim?seat=B", "release?seat=A", "set_ai?seat=B", "reveal_hand?target=B", "toggle_reveal_hands",
                      "reset", "reset_config", "start", "auto_step?player=A", "turn_time_limit", "deal_mode",
-                     "trace_start", "trace_same_start", "update_settings", "chat", "verify_admin"]:
+                     "trace_start", "trace_same_start", "update_settings", "verify_admin"]:
         response = client.post(f"/games/{room}/{endpoint}", json={"requester": "A", "client_id": "owner"})
         assert response.status_code == 403, (endpoint, response.text)
     assert client.get(f"/games/{room}/beginner_recommendation?player=A&client_id=owner").status_code == 403
@@ -106,7 +106,8 @@ def test_fixed_conditions_and_end_to_end_result_retry_reset(trace_client):
                                    "scheme": "http", "server": ("testserver",80), "path":"/"})
         game_app._member_kifu_snapshot(request, room, True)
     assert error.value.status_code in {401,403}
-    assert client.post(path + "/retry", json={"client_id": "owner"}).status_code == 200
+    assert client.post(path + "/retry", json={"client_id": "owner"}).status_code == 403
+    begin(client, room)
     finish(client, room)
     assert client.get(f"/games/{room}/trace_results/history").json()["total"] == 2
     assert client.post(f"/games/{room}/score_reset", json={"client_id": "owner"}).status_code == 200
@@ -162,3 +163,21 @@ def test_member_room_reused_across_sessions_and_guest_rankings_shared(trace_clie
     result = member.get(f"/games/{room}/trace_results/{member_attempt}").json()
     assert result["total"] == 2
     assert client.get(f"/games/{guest_room}/trace_results/{attempt}").json()["total"] == 2
+
+
+def test_personal_chat_and_ai_are_available_only_to_owner(trace_client, monkeypatch):
+    client = trace_client
+    room = enter(client)
+    body = {"client_id": "owner", "seat": "A", "message": "テスト"}
+    response = client.post(f"/games/{room}/chat", json=body)
+    assert response.status_code == 200
+    assert any(item["message"] == "テスト" for item in response.json()["chat_messages"])
+    async def answer(*args):
+        return "テスト回答"
+    monkeypatch.setattr(game_app, "_resolve_chat_ai_answer", answer)
+    response = client.post(f"/games/{room}/chat/ask_ai", json=body)
+    assert response.status_code == 200 and response.json()["answer"] == "テスト回答"
+    other = TestClient(game_app.app, headers={"X-Goita-Member": "1"})
+    enter(other)
+    for endpoint in ("chat", "chat/ask_ai"):
+        assert other.post(f"/games/{room}/{endpoint}", json=body).status_code == 403

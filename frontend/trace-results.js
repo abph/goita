@@ -51,7 +51,7 @@ let traceActionBusy = false;
 let traceHistoryRequest = 0;
 let traceHistoryOffset = 0;
 const traceElement = id => document.getElementById(id);
-const traceSigned = value => `${value > 0 ? '+' : ''}${value}点`;
+const traceSigned = value => `${value === 0 ? '±' : value > 0 ? '+' : ''}${value}点`;
 const traceDate = value => new Date(value * 1000).toLocaleDateString('ja-JP', {timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'});
 
 async function traceApi(path, body) {
@@ -79,7 +79,7 @@ function syncTraceResult(state) {
   }
 }
 
-async function openTraceResult(attemptId = '', mode = 'best') {
+async function openTraceResult(attemptId = '') {
   if (!isScoreAttackRoom()) return;
   closeTraceOriginal();
   closeTraceHistory();
@@ -92,24 +92,21 @@ async function openTraceResult(attemptId = '', mode = 'best') {
   try {
     const id = attemptId || (await traceApi('trace_results/latest')).attempt_id;
     if (!id) throw new Error('まだ終了した対戦の記録がありません。');
-    const data = await traceApi(`trace_results/${encodeURIComponent(id)}?mode=${mode}`);
+    const data = await traceApi(`trace_results/${encodeURIComponent(id)}?mode=all`);
     if (generation !== traceResultRequest || !isScoreAttackRoom()) return;
     traceResultId = id;
-    for (const value of ['best','first']) {
-      traceElement(`traceRanking${value}`).setAttribute('aria-pressed', String(value === mode));
-    }
     const scoreLabel = score => score.BD > score.AC ? `BD：${score.BD}点` : `AC：${score.AC}点`;
-    traceElement('traceActualScore').textContent = `今回 ${scoreLabel(data.actual)}`;
-    traceElement('traceOriginalScore').textContent = `元の棋譜 ${scoreLabel(data.original)}`;
-    traceElement('traceImprovement').textContent = `点差${traceSigned(data.improvement)}`;
-    traceElement('traceRecordKind').textContent = `${data.attempt_no === 1 ? '初回' : `${data.attempt_no}回目`}の挑戦${data.is_best ? '・自己ベスト' : ''}`;
+    traceElement('traceActualScore').textContent = scoreLabel(data.actual);
+    traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
+    traceElement('traceImprovement').textContent = `元の対局との差　${traceSigned(data.improvement)}`;
+    traceElement('traceRecordKind').textContent = `${data.attempt_no === 1 ? '初回' : `${data.attempt_no}回目`}の挑戦`;
     const rows = traceElement('traceRankingRows');
     rows.replaceChildren();
     for (const item of data.ranking) {
       const row = document.createElement('tr');
       if (item.self) row.className = 'trace-ranking-self';
-      const values = [`${item.rank}位`, `${item.name}${item.guest ? '（ゲスト）' : ''}${item.self ? '（自分）' : ''}`,
-        traceSigned(item.improvement), `${item.attempt_no}回目`, traceDate(item.finished_at)];
+      const values = [`${item.rank}位`, `${item.name}（${item.attempt_no === 1 ? '初回' : `${item.attempt_no}回目`}）${item.guest ? '（ゲスト）' : ''}${item.self ? '（自分）' : ''}`,
+        traceSigned(item.improvement), traceDate(item.finished_at)];
       for (const text of values) {
         const cell = document.createElement('td');
         cell.textContent = text;
@@ -117,7 +114,6 @@ async function openTraceResult(attemptId = '', mode = 'best') {
       }
       rows.append(row);
     }
-    traceElement('traceRetryButton').disabled = mySeat !== 'A';
     traceElement('traceResultContent').hidden = false;
     traceElement('traceResultStatus').textContent = '';
   } catch (error) {
@@ -240,24 +236,6 @@ function closeTraceOriginal() {
   traceElement('traceOriginalBoard').replaceChildren();
   traceElement('traceOriginalModal').style.display = 'none';
   if (wasOpen && traceElement('traceResultModal').style.display === 'flex') traceElement('traceViewOriginalButton').focus();
-}
-
-async function retryTrace() {
-  if (traceActionBusy || !isScoreAttackRoom() || mySeat !== 'A') return;
-  traceActionBusy = true;
-  traceElement('traceRetryButton').disabled = true;
-  traceElement('traceResultStatus').textContent = '対戦を準備しています。';
-  try {
-    await traceApi(`trace_results/${encodeURIComponent(traceResultId)}/retry`,
-      {requester: 'A', client_id: clientId});
-    closeTraceResult();
-    await refresh();
-  } catch (error) {
-    traceElement('traceResultStatus').textContent = error.message;
-  } finally {
-    traceActionBusy = false;
-    traceElement('traceRetryButton').disabled = mySeat !== 'A';
-  }
 }
 
 document.addEventListener('keydown', event => {

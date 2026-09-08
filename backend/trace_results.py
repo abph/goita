@@ -139,7 +139,7 @@ class TraceStore:
                        (now, now + RETENTION if row["expires"] is not None else None, ac, bd, ac - bd - original_margin, attempt_id))
 
     def read(self, owner, attempt_id, *, original=False, mode="best"):
-        if mode not in ("best", "first"):
+        if mode not in ("all", "best", "first"):
             raise HTTPException(400, "ランキングの種類を確認してください。")
         with self.db() as db:
             row = db.execute("SELECT a.*, c.payload, p.guest FROM trace_attempts a JOIN trace_challenges c ON c.id=a.challenge JOIN trace_people p ON p.owner=a.owner WHERE a.id=? AND a.owner=?", (attempt_id, owner)).fetchone()
@@ -154,11 +154,12 @@ class TraceStore:
                 SELECT a.*, name,guest,
                     ROW_NUMBER() OVER (PARTITION BY owner ORDER BY improvement DESC,attempt_no,finished,a.id) AS best
                 FROM trace_attempts a JOIN trace_people p USING(owner)
-                WHERE challenge=? AND finished IS NOT NULL AND (?='best' OR ranked=1))
+                WHERE challenge=? AND finished IS NOT NULL AND (?!='first' OR ranked=1))
                 SELECT *, RANK() OVER (ORDER BY improvement DESC) AS position
-                FROM candidates WHERE best=1
-                ORDER BY improvement DESC, finished ASC, id ASC""", (row["challenge"], mode)).fetchall()
-            own_rank = next((item["position"] for item in ranking if item["owner"] == owner), None)
+                FROM candidates WHERE ?='all' OR best=1
+                ORDER BY improvement DESC, finished ASC, id ASC""", (row["challenge"], mode, mode)).fetchall()
+            own_rank = next((item["position"] for item in ranking
+                             if (item["id"] == attempt_id if mode == "all" else item["owner"] == owner)), None)
             best_score = db.execute("SELECT MAX(improvement) FROM trace_attempts WHERE owner=? AND challenge=? AND finished IS NOT NULL", (owner, row["challenge"])).fetchone()[0]
             number = db.execute("SELECT number FROM trace_challenge_labels WHERE challenge=?", (row["challenge"],)).fetchone()[0]
             before, after = payload["score_before"], payload["score_after"]
