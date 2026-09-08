@@ -223,7 +223,7 @@ async function startDebugTraceFromFile() {
   const round = Number(document.getElementById('debugTraceRound').value || 1);
   button.disabled = true;
   randomButton.disabled = true;
-  status.textContent = '棋譜トレース対戦を準備しています。';
+  status.textContent = 'スコアアタックを準備しています。';
   try {
     const response = await fetch(`${API}/games/debug/trace_start`, {
       method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-Goita-Member': '1'},

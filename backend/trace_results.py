@@ -46,11 +46,22 @@ class TraceStore:
                 CREATE INDEX IF NOT EXISTS trace_owner_challenge ON trace_attempts(owner, challenge);
                 CREATE INDEX IF NOT EXISTS trace_ranking ON trace_attempts(challenge, ranked, improvement DESC);
                 CREATE INDEX IF NOT EXISTS trace_expiry ON trace_attempts(expires);
+                CREATE TABLE IF NOT EXISTS trace_challenge_labels (
+                    number INTEGER PRIMARY KEY AUTOINCREMENT,
+                    challenge TEXT UNIQUE NOT NULL REFERENCES trace_challenges(id) ON DELETE CASCADE);
             """)
             db.execute("BEGIN IMMEDIATE")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(trace_attempts)")}
+            if "attempt_no" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 0")
+                db.execute("""WITH numbered AS (
+                    SELECT id, ROW_NUMBER() OVER (PARTITION BY owner,challenge ORDER BY started,id) AS n
+                    FROM trace_attempts)
+                    UPDATE trace_attempts SET attempt_no=(SELECT n FROM numbered WHERE numbered.id=trace_attempts.id)""")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
             db.execute("DELETE FROM trace_challenges WHERE id NOT IN (SELECT challenge FROM trace_attempts)")
+            db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT id FROM trace_challenges WHERE id NOT IN (SELECT challenge FROM trace_challenge_labels) ORDER BY rowid")
             yield db
             db.commit()
         except Exception:
@@ -99,12 +110,14 @@ class TraceStore:
         attempt_id = secrets.token_urlsafe(24)
         now = self.clock()
         with self.db() as db:
-            first = not db.execute("SELECT 1 FROM trace_attempts WHERE owner=? AND challenge=?", (owner, challenge)).fetchone()
+            attempt_no = db.execute("SELECT COALESCE(MAX(attempt_no),0)+1 FROM trace_attempts WHERE owner=? AND challenge=?", (owner, challenge)).fetchone()[0]
+            first = attempt_no == 1
             db.execute("INSERT INTO trace_people VALUES (?,?,?) ON CONFLICT(owner) DO UPDATE SET name=excluded.name",
                        (owner, name.strip()[:24] or ("ゲスト" if guest else "プレイヤー"), int(guest)))
             db.execute("INSERT OR IGNORE INTO trace_challenges VALUES (?,?)", (challenge, json.dumps(payload)))
-            db.execute("INSERT INTO trace_attempts(id,owner,challenge,started,expires,ranked) VALUES (?,?,?,?,?,?)",
-                       (attempt_id, owner, challenge, now, now + RETENTION if guest else None, int(first and not practice)))
+            db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM trace_challenge_labels WHERE challenge=?)", (challenge, challenge))
+            db.execute("INSERT INTO trace_attempts(id,owner,challenge,started,expires,ranked,attempt_no) VALUES (?,?,?,?,?,?,?)",
+                       (attempt_id, owner, challenge, now, now + RETENTION if guest else None, int(first and not practice), attempt_no))
         return attempt_id
 
     def finish(self, attempt_id, actual):
@@ -120,7 +133,9 @@ class TraceStore:
             db.execute("UPDATE trace_attempts SET finished=?, expires=?, actual_ac=?, actual_bd=?, improvement=? WHERE id=? AND finished IS NULL",
                        (now, now + RETENTION if row["expires"] is not None else None, ac, bd, ac - bd - original_margin, attempt_id))
 
-    def read(self, owner, attempt_id, *, original=False):
+    def read(self, owner, attempt_id, *, original=False, mode="best"):
+        if mode not in ("best", "first"):
+            raise HTTPException(400, "ランキングの種類を確認してください。")
         with self.db() as db:
             row = db.execute("SELECT a.*, c.payload, p.guest FROM trace_attempts a JOIN trace_challenges c ON c.id=a.challenge JOIN trace_people p ON p.owner=a.owner WHERE a.id=? AND a.owner=?", (attempt_id, owner)).fetchone()
             if row is None:
@@ -130,21 +145,46 @@ class TraceStore:
             payload = json.loads(row["payload"])
             if original:
                 return payload
-            ranking = db.execute("""SELECT name,guest,improvement,finished,owner,
-                RANK() OVER (ORDER BY improvement DESC) AS position
+            ranking = db.execute("""WITH candidates AS (
+                SELECT a.*, name,guest,
+                    ROW_NUMBER() OVER (PARTITION BY owner ORDER BY improvement DESC,attempt_no,finished,a.id) AS best
                 FROM trace_attempts a JOIN trace_people p USING(owner)
-                WHERE challenge=? AND ranked=1 AND finished IS NOT NULL
-                ORDER BY improvement DESC, finished ASC, a.id ASC""", (row["challenge"],)).fetchall()
+                WHERE challenge=? AND finished IS NOT NULL AND (?='best' OR ranked=1))
+                SELECT *, RANK() OVER (ORDER BY improvement DESC) AS position
+                FROM candidates WHERE best=1
+                ORDER BY improvement DESC, finished ASC, id ASC""", (row["challenge"], mode)).fetchall()
             own_rank = next((item["position"] for item in ranking if item["owner"] == owner), None)
+            best_score = db.execute("SELECT MAX(improvement) FROM trace_attempts WHERE owner=? AND challenge=? AND finished IS NOT NULL", (owner, row["challenge"])).fetchone()[0]
+            number = db.execute("SELECT number FROM trace_challenge_labels WHERE challenge=?", (row["challenge"],)).fetchone()[0]
             before, after = payload["score_before"], payload["score_after"]
             return {"attempt_id": attempt_id, "ranked": bool(row["ranked"]),
+                    "mode": mode, "attempt_no": row["attempt_no"], "challenge_label": f"課題{number:03d}",
+                    "is_best": row["improvement"] == best_score,
                     "guest": bool(row["guest"]), "expires_at": row["expires"],
                     "original": {team: after[team] - before[team] for team in ("AC", "BD")},
                     "actual": {"AC": row["actual_ac"], "BD": row["actual_bd"]},
                     "improvement": row["improvement"], "own_rank": own_rank, "total": len(ranking),
                     "ranking": [{"rank": item["position"], "name": item["name"], "guest": bool(item["guest"]),
+                                 "attempt_no": item["attempt_no"],
                                  "improvement": item["improvement"], "finished_at": item["finished"],
                                  "self": item["owner"] == owner} for item in ranking[:100]]}
+
+    def history(self, owner, *, offset=0, limit=30):
+        if offset < 0 or not 1 <= limit <= 100:
+            raise HTTPException(400, "履歴の表示範囲を確認してください。")
+        with self.db() as db:
+            total = db.execute("SELECT COUNT(*) FROM trace_attempts WHERE owner=? AND finished IS NOT NULL", (owner,)).fetchone()[0]
+            offset = min(offset, ((max(total, 1) - 1) // limit) * limit)
+            rows = db.execute("""SELECT a.*, l.number,
+                MAX(improvement) OVER (PARTITION BY a.challenge) AS best_score
+                FROM trace_attempts a JOIN trace_challenge_labels l ON l.challenge=a.challenge
+                WHERE owner=? AND finished IS NOT NULL
+                ORDER BY finished DESC,started DESC,attempt_no DESC,a.id DESC LIMIT ? OFFSET ?""", (owner, limit, offset)).fetchall()
+            return {"total": total, "offset": offset, "limit": limit, "records": [
+                {"attempt_id": row["id"], "challenge_label": f"課題{row['number']:03d}",
+                 "finished_at": row["finished"], "improvement": row["improvement"],
+                 "attempt_no": row["attempt_no"], "is_best": row["improvement"] == row["best_score"]}
+                for row in rows]}
 
     def latest(self, owner):
         with self.db() as db:

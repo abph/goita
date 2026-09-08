@@ -5131,9 +5131,9 @@ trace_router = APIRouter(route_class=PrivateRoute)
 
 def _trace_host(game_id, body):
     if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
-        raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
+        raise HTTPException(status_code=403, detail="スコアアタックはデバッグルーム専用です。")
     if body.requester != "A":
-        raise HTTPException(status_code=403, detail="棋譜トレース対戦はA席で開始してください。")
+        raise HTTPException(status_code=403, detail="スコアアタックはA席で開始してください。")
     game = GAMES[game_id]
     _require_human_seat_owner(game, "A", body.client_id)
     return game
@@ -5166,7 +5166,7 @@ async def _begin_trace_attempt(game_id, body, request, response, payload, *, pra
     async with _game_turn_lock(game_id):
         game = _trace_host(game_id, body)
         if game.get("trace_mode") and not game["state"].finished:
-            raise HTTPException(409, "現在の棋譜トレース対戦が終わってから開始してください。")
+            raise HTTPException(409, "現在のスコアアタックが終わってから開始してください。")
         payload = _canonical_trace_payload(payload)
         store = get_trace_store()
         owner, guest = store.identity(request, response, MEMBER_STORE, create=True)
@@ -5243,12 +5243,21 @@ def latest_trace_result(game_id: str, request: Request, response: Response):
 async def start_same_trace(game_id: str, body: DebugTraceRandomStartRequest, request: Request, response: Response):
     game = _trace_host(game_id, body)
     if not game.get("trace_payload") or not game["state"].finished:
-        raise HTTPException(409, "この部屋で棋譜トレース対戦が終了してから利用できます。")
+        raise HTTPException(409, "この部屋でスコアアタックが終了してから利用できます。")
     return await _begin_trace_attempt(game_id, body, request, response, game["trace_payload"])
 
 
+@trace_router.get("/games/{game_id}/trace_results/history")
+def trace_history(game_id: str, request: Request, response: Response, offset: int = 0, limit: int = 30):
+    if game_id != DEBUG_GID:
+        raise HTTPException(403, "デバッグルーム専用です。")
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    return store.history(owner, offset=offset, limit=limit)
+
+
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}")
-def trace_result(game_id: str, attempt_id: str, request: Request, response: Response):
+def trace_result(game_id: str, attempt_id: str, request: Request, response: Response, mode: str = "best"):
     if game_id != DEBUG_GID:
         raise HTTPException(403, "デバッグルーム専用です。")
     store = get_trace_store()
@@ -5256,7 +5265,7 @@ def trace_result(game_id: str, attempt_id: str, request: Request, response: Resp
     game = GAMES.get(game_id, {})
     if game.get("trace_attempt_id") == attempt_id:
         _save_trace_result(game)
-    return store.read(owner, attempt_id)
+    return store.read(owner, attempt_id, mode=mode)
 
 
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}/original")

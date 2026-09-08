@@ -4594,7 +4594,7 @@
           <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
           <button id="roomSettingsBtn" class="header-menu-item" type="button" onclick="openSettingsModal(gid)" style="display:none;">設定</button>
           <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
-          <button id="debugTraceMenuItem" class="header-menu-item" type="button" onclick="openDebugTrace()" style="display:none;">棋譜トレース対戦</button>
+          <button id="debugTraceMenuItem" class="header-menu-item" type="button" onclick="openDebugTrace()" style="display:none;">スコアアタック</button>
         </div>
       </div>
     </div>
@@ -5435,12 +5435,12 @@
 </style>
 <div id="debugTraceModal" class="modal-overlay" onclick="if(event.target===this) closeDebugTrace()">
   <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="debugTraceTitle">
-    <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="棋譜トレース対戦を閉じる">×</button>
-    <h3 id="debugTraceTitle">棋譜トレース対戦</h3>
-    <p class="settings-help-text">同じ棋譜への初回挑戦をランキングに記録します。ゲストの成績は30日間保存します。再挑戦・ファイルからの対戦は練習です。</p>
-    <button type="button" onclick="closeDebugTrace(); openTraceResult()">前回の結果・ランキング</button>
+    <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="スコアアタックを閉じる">×</button>
+    <h3 id="debugTraceTitle">スコアアタック</h3>
+    <p class="settings-help-text">何度でも挑戦でき、自己ベストをランキングに記録します。初回記録との切り替えもできます。ゲストの成績は30日間保存します。</p>
+    <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <button type="button" onclick="startSameTrace()">この部屋と同じ棋譜に挑戦</button>
-    <p class="settings-help-text">A席を人間、B・C・D席を棋譜トレースAIにして、読み込んだ棋譜と同じ配牌・親で再挑戦します。</p>
+    <p class="settings-help-text">A席で、元の棋譜と同じ配牌・親に挑戦します。B・C・D席はAIが担当します。</p>
     <button id="debugTraceRandomButton" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
     <p class="settings-help-text">開始時点のAC・BDがともに50点以下の局から、1局を選びます。</p>
     <label>棋譜ファイル
@@ -5459,9 +5459,10 @@
 <div id="traceResultModal" class="modal-overlay" onclick="if(event.target===this) closeTraceResult()">
   <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceResultTitle">
     <button class="settings-modal-close" type="button" onclick="closeTraceResult()" aria-label="閉じる">×</button>
-    <h3 id="traceResultTitle">棋譜トレース対戦の結果</h3>
+    <h3 id="traceResultTitle">スコアアタックの結果</h3>
     <p id="traceResultStatus" role="status" aria-live="polite"></p>
     <div id="traceResultContent" hidden>
+      <p id="traceChallengeLabel"></p>
       <p id="traceRecordKind"></p>
       <p>この局で獲得した点数</p>
       <table class="trace-score-table"><thead><tr><th>ペア</th><th>元の棋譜</th><th>今回</th></tr></thead>
@@ -5471,14 +5472,32 @@
       <p id="traceRetention" class="settings-help-text"></p>
       <button id="traceViewOriginalButton" type="button" onclick="openTraceOriginal()">元々の棋譜を見る</button>
       <h4>この棋譜のランキング</h4>
-      <p class="settings-help-text">初回成績を元の棋譜からの改善点順に表示します。同点は同順位です。</p>
+      <div class="trace-ranking-tabs" role="group" aria-label="ランキングの種類">
+        <button id="traceRankingbest" type="button" aria-pressed="true" onclick="openTraceResult(traceResultId, 'best')">ベスト記録</button>
+        <button id="traceRankingfirst" type="button" aria-pressed="false" onclick="openTraceResult(traceResultId, 'first')">初回記録</button>
+      </div>
+      <p class="settings-help-text">各プレイヤー1枠で、元の棋譜からの改善点順に表示します。同点は同順位です。ファイル読込はベスト記録のみ対象です。</p>
       <p id="traceRankingSummary"></p>
-      <div class="trace-ranking-scroll"><table class="trace-score-table"><thead><tr><th>順位</th><th>名前</th><th>改善点</th><th>対戦日時</th></tr></thead><tbody id="traceRankingRows"></tbody></table></div>
-      <button type="button" onclick="openTraceResult(traceResultId)">ランキングを更新</button>
+      <div class="trace-ranking-scroll"><table class="trace-score-table"><thead><tr><th>順位</th><th>名前</th><th>改善点</th><th>達成回</th><th>対戦日</th></tr></thead><tbody id="traceRankingRows"></tbody></table></div>
+      <button type="button" onclick="openTraceResult(traceResultId, traceRankingMode)">ランキングを更新</button>
+      <button type="button" onclick="openTraceHistory(traceHistoryOffset)">挑戦履歴へ</button>
       <div class="trace-result-actions">
         <button id="traceRetryButton" type="button" onclick="continueTrace(true)">同じ棋譜でもう一度挑戦</button>
         <button id="traceNextButton" type="button" onclick="continueTrace(false)">別の棋譜に挑戦</button>
       </div>
+    </div>
+  </div>
+</div>
+<div id="traceHistoryModal" class="modal-overlay" onclick="if(event.target===this) closeTraceHistory()">
+  <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceHistoryTitle">
+    <button class="settings-modal-close" type="button" onclick="closeTraceHistory()" aria-label="閉じる">×</button>
+    <h3 id="traceHistoryTitle">スコアアタックの挑戦履歴・ランキング</h3>
+    <p class="settings-help-text">終了した挑戦を新しい順に表示します。会員は継続保存、ゲストは直近30日分です。</p>
+    <p id="traceHistoryStatus" role="status" aria-live="polite"></p>
+    <div class="trace-history-scroll"><table class="trace-score-table"><thead><tr><th>挑戦日</th><th>課題</th><th>改善点</th><th>挑戦回数</th><th></th></tr></thead><tbody id="traceHistoryRows"></tbody></table></div>
+    <div class="trace-result-actions">
+      <button id="traceHistoryPrev" type="button" onclick="openTraceHistory(Math.max(0, traceHistoryOffset - 30))">前の30件</button>
+      <button id="traceHistoryNext" type="button" onclick="openTraceHistory(traceHistoryOffset + 30)">次の30件</button>
     </div>
   </div>
 </div>
@@ -5504,13 +5523,18 @@
   .trace-ranking-scroll { max-height:280px; overflow:auto; margin-bottom:12px; }
   .trace-ranking-scroll table { min-width:480px; }
   .trace-ranking-scroll th { white-space:nowrap; }
+  .trace-ranking-tabs { display:flex; gap:8px; }
+  .trace-ranking-tabs button[aria-pressed="true"] { background:#e2f1e7; color:#153a24; font-weight:700; }
+  .trace-history-scroll { max-height:55vh; overflow:auto; }
+  .trace-history-scroll table { min-width:540px; }
+  .trace-history-scroll th { white-space:nowrap; }
   .trace-ranking-self { background:#e2f1e7; color:#153a24; font-weight:700; }
   .trace-result-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
-<script src="/static/kifu-files.js?v=20260910a"></script>
-<script src="/static/trace-results.js?v=20260910a"></script>
+<script src="/static/kifu-files.js?v=20260910b"></script>
+<script src="/static/trace-results.js?v=20260910b"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -13734,7 +13758,7 @@ async function refreshFromState(confirmedState = null){
     const original = state.trace_original_score_after || {};
     const acDiff = Number(actual.AC || 0) - Number(original.AC || 0);
     const bdDiff = Number(actual.BD || 0) - Number(original.BD || 0);
-    setHint(`棋譜トレース対戦終了。元棋譜との差　AC：${acDiff >= 0 ? "+" : ""}${acDiff}点 ／ BD：${bdDiff >= 0 ? "+" : ""}${bdDiff}点${state.trace_diverged ? "（途中で元棋譜と異なる手順になりました）" : ""}`);
+    setHint(`スコアアタック終了。元棋譜との差　AC：${acDiff >= 0 ? "+" : ""}${acDiff}点 ／ BD：${bdDiff >= 0 ? "+" : ""}${bdDiff}点${state.trace_diverged ? "（途中で元棋譜と異なる手順になりました）" : ""}`);
   }
   syncTraceResult(state);
 
