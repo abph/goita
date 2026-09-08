@@ -5454,28 +5454,17 @@
     <h3 id="traceResultTitle">スコアアタックの結果</h3>
     <p id="traceResultStatus" role="status" aria-live="polite"></p>
     <div id="traceResultContent" hidden>
-      <p id="traceChallengeLabel"></p>
+      <p class="trace-score-summary"><span id="traceActualScore"></span><span id="traceOriginalScore"></span><span id="traceImprovement"></span></p>
       <p id="traceRecordKind"></p>
-      <p>この局で獲得した点数</p>
-      <table class="trace-score-table"><thead><tr><th>ペア</th><th>元の棋譜</th><th>今回</th></tr></thead>
-        <tbody><tr><th>AC（自分側）</th><td id="traceOriginalAC"></td><td id="traceActualAC"></td></tr>
-          <tr><th>BD（相手側）</th><td id="traceOriginalBD"></td><td id="traceActualBD"></td></tr></tbody></table>
-      <p id="traceImprovement" class="trace-improvement"></p>
-      <p id="traceRetention" class="settings-help-text"></p>
       <button id="traceViewOriginalButton" type="button" onclick="openTraceOriginal()">元々の棋譜を見る</button>
       <h4>この棋譜のランキング</h4>
       <div class="trace-ranking-tabs" role="group" aria-label="ランキングの種類">
         <button id="traceRankingbest" type="button" aria-pressed="true" onclick="openTraceResult(traceResultId, 'best')">ベスト記録</button>
         <button id="traceRankingfirst" type="button" aria-pressed="false" onclick="openTraceResult(traceResultId, 'first')">初回記録</button>
       </div>
-      <p class="settings-help-text">各プレイヤー1枠で、元の棋譜からの改善点順に表示します。同点は同順位です。</p>
-      <p id="traceRankingSummary"></p>
       <div class="trace-ranking-scroll"><table class="trace-score-table"><thead><tr><th>順位</th><th>名前</th><th>改善点</th><th>達成回</th><th>対戦日</th></tr></thead><tbody id="traceRankingRows"></tbody></table></div>
-      <button type="button" onclick="openTraceResult(traceResultId, traceRankingMode)">ランキングを更新</button>
-      <button type="button" onclick="openTraceHistory(traceHistoryOffset)">挑戦履歴へ</button>
       <div class="trace-result-actions">
-        <button id="traceRetryButton" type="button" onclick="continueTrace(true)">同じ棋譜でもう一度挑戦</button>
-        <button id="traceNextButton" type="button" onclick="continueTrace(false)">別の棋譜に挑戦</button>
+        <button id="traceRetryButton" type="button" onclick="retryTrace()">同じ棋譜でもう一度挑戦</button>
       </div>
     </div>
   </div>
@@ -5495,15 +5484,12 @@
 </div>
 <div id="traceOriginalModal" class="modal-overlay" onclick="if(event.target===this) closeTraceOriginal()">
   <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="traceOriginalTitle">
-    <button class="settings-modal-close" type="button" onclick="closeTraceOriginal()" aria-label="結果に戻る">×</button>
-    <h3 id="traceOriginalTitle">元々の棋譜を見る</h3>
+    <h3 id="traceOriginalTitle"><button id="traceOriginalBack" class="trace-original-back" type="button" onclick="closeTraceOriginal()" aria-label="元々の棋譜を見る：結果に戻る">← 元々の棋譜を見る</button></h3>
     <div id="traceOriginalBoard" class="research-kifu-board"></div>
-    <p id="traceOriginalPosition" aria-live="polite"></p>
     <div class="trace-result-actions">
       <button type="button" onclick="stepTraceOriginal(-1)">前へ</button>
       <button id="traceOriginalPlay" type="button" onclick="playTraceOriginal()">棋譜再生</button>
       <button type="button" onclick="stepTraceOriginal(1)">次へ</button>
-      <button type="button" onclick="closeTraceOriginal()">結果に戻る</button>
     </div>
   </div>
 </div>
@@ -5512,7 +5498,11 @@
   .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
   .trace-score-table { width:100%; border-collapse:collapse; font-size:14px; }
   .trace-score-table th,.trace-score-table td { padding:8px; border-bottom:1px solid #ccc; text-align:left; overflow-wrap:anywhere; }
-  .trace-improvement { font-size:22px; font-weight:700; }
+  .trace-score-summary { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:16px; font-weight:700; }
+  .trace-score-summary span { white-space:nowrap; }
+  .trace-original-back { padding:0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+  .trace-original-back:focus-visible { outline:2px solid currentColor; outline-offset:4px; }
+  #traceResultStatus:empty { display:none; }
   .trace-ranking-scroll { max-height:280px; overflow:auto; margin-bottom:12px; }
   .trace-ranking-scroll table { min-width:480px; }
   .trace-ranking-scroll th { white-space:nowrap; }
@@ -5527,7 +5517,7 @@
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
 <script src="/static/kifu-files.js?v=20260910c"></script>
-<script src="/static/trace-results.js?v=20260910c"></script>
+<script src="/static/trace-results.js?v=20260910d"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>

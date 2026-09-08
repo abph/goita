@@ -40,7 +40,6 @@ let traceOriginalStep = 0;
 let traceOriginalTimer = null;
 let traceOriginalRequest = 0;
 let traceActionBusy = false;
-let traceRankingMode = 'best';
 let traceHistoryRequest = 0;
 let traceHistoryOffset = 0;
 const traceElement = id => document.getElementById(id);
@@ -88,19 +87,14 @@ async function openTraceResult(attemptId = '', mode = 'best') {
     const data = await traceApi(`trace_results/${encodeURIComponent(id)}?mode=${mode}`);
     if (generation !== traceResultRequest || gid !== 'debug') return;
     traceResultId = id;
-    traceRankingMode = mode;
     for (const value of ['best','first']) {
       traceElement(`traceRanking${value}`).setAttribute('aria-pressed', String(value === mode));
     }
-    traceElement('traceChallengeLabel').textContent = data.challenge_label || '';
-    for (const team of ['AC', 'BD']) {
-      traceElement(`traceOriginal${team}`).textContent = `${data.original[team]}点`;
-      traceElement(`traceActual${team}`).textContent = `${data.actual[team]}点`;
-    }
-    traceElement('traceImprovement').textContent = `元の棋譜との差：${traceSigned(data.improvement)}`;
+    const scoreLabel = score => score.BD > score.AC ? `BD：${score.BD}点` : `AC：${score.AC}点`;
+    traceElement('traceActualScore').textContent = `今回 ${scoreLabel(data.actual)}`;
+    traceElement('traceOriginalScore').textContent = `元の棋譜 ${scoreLabel(data.original)}`;
+    traceElement('traceImprovement').textContent = `点差${traceSigned(data.improvement)}`;
     traceElement('traceRecordKind').textContent = `${data.attempt_no === 1 ? '初回' : `${data.attempt_no}回目`}の挑戦${data.is_best ? '・自己ベスト' : ''}`;
-    traceElement('traceRetention').textContent = data.guest
-      ? `ゲストの記録期限：${traceDate(data.expires_at)}` : '会員の成績として保存しました。';
     const rows = traceElement('traceRankingRows');
     rows.replaceChildren();
     for (const item of data.ranking) {
@@ -115,11 +109,7 @@ async function openTraceResult(attemptId = '', mode = 'best') {
       }
       rows.append(row);
     }
-    traceElement('traceRankingSummary').textContent = data.total
-      ? `${data.total}人中${data.own_rank ? `・自分の${mode === 'best' ? 'ベスト' : '初回'}記録は${data.own_rank}位` : '・自分のランキング記録はありません'}（上位100人を表示）`
-      : 'この棋譜のランキング記録はまだありません。';
     traceElement('traceRetryButton').disabled = mySeat !== 'A';
-    traceElement('traceNextButton').disabled = mySeat !== 'A';
     traceElement('traceResultContent').hidden = false;
     traceElement('traceResultStatus').textContent = '';
   } catch (error) {
@@ -191,7 +181,7 @@ async function openTraceOriginal() {
     traceOriginalStep = traceOriginalFrames.length;
     renderTraceOriginal();
     traceElement('traceOriginalModal').style.display = 'flex';
-    traceElement('traceOriginalModal').querySelector('.settings-modal-close').focus();
+    traceElement('traceOriginalBack').focus();
     traceElement('traceResultStatus').textContent = '';
   } catch (error) {
     if (generation === traceOriginalRequest) traceElement('traceResultStatus').textContent = error.message;
@@ -205,7 +195,6 @@ function renderTraceOriginal() {
     container: traceElement('traceOriginalBoard'), rows: frame?.rows || [],
     finished: traceOriginalStep === traceOriginalFrames.length, latestAction: frame?.latestAction,
   });
-  traceElement('traceOriginalPosition').textContent = `${traceOriginalStep} / ${traceOriginalFrames.length} ${frame?.label || '配牌'}`;
 }
 
 function stopTraceOriginal() {
@@ -235,22 +224,23 @@ function playTraceOriginal() {
 }
 
 function closeTraceOriginal() {
+  const wasOpen = traceElement('traceOriginalModal').style.display === 'flex';
   ++traceOriginalRequest;
   stopTraceOriginal();
   traceOriginalPayload = null;
   traceOriginalFrames = [];
   traceElement('traceOriginalBoard').replaceChildren();
   traceElement('traceOriginalModal').style.display = 'none';
+  if (wasOpen && traceElement('traceResultModal').style.display === 'flex') traceElement('traceViewOriginalButton').focus();
 }
 
-async function continueTrace(retry) {
+async function retryTrace() {
   if (traceActionBusy || gid !== 'debug' || mySeat !== 'A') return;
   traceActionBusy = true;
   traceElement('traceRetryButton').disabled = true;
-  traceElement('traceNextButton').disabled = true;
   traceElement('traceResultStatus').textContent = '対戦を準備しています。';
   try {
-    await traceApi(retry ? `trace_results/${encodeURIComponent(traceResultId)}/retry` : 'trace_random_start',
+    await traceApi(`trace_results/${encodeURIComponent(traceResultId)}/retry`,
       {requester: 'A', client_id: clientId});
     closeTraceResult();
     await refresh();
@@ -259,7 +249,6 @@ async function continueTrace(retry) {
   } finally {
     traceActionBusy = false;
     traceElement('traceRetryButton').disabled = mySeat !== 'A';
-    traceElement('traceNextButton').disabled = mySeat !== 'A';
   }
 }
 
