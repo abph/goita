@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Response
 
 from backend import app as game_app
 
@@ -11,7 +11,8 @@ FIXTURE = (Path(__file__).parent / "fixtures" / "external_match.yaml").read_text
 
 
 @pytest.fixture
-def debug_trace(monkeypatch):
+def debug_trace(monkeypatch, tmp_path):
+    monkeypatch.setenv("GOITA_PERSISTENT_DATA_DIR", str(tmp_path))
     game = game_app._create_game_obj(dealer="A")
     game.update(is_debug_room=True, human_seats={"A": "owner"}, ai_seats=[])
     monkeypatch.setitem(game_app.GAMES, game_app.DEBUG_GID, game)
@@ -24,7 +25,8 @@ def debug_trace(monkeypatch):
 
 def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_trace):
     request = game_app.DebugTraceStartRequest(kifu_text=FIXTURE, round_index=3, client_id="owner")
-    result = asyncio.run(game_app.start_debug_trace(game_app.DEBUG_GID, request))
+    http = Request({"type": "http", "scheme": "http", "server": ("testserver", 80), "path": "/", "headers": []})
+    result = asyncio.run(game_app.start_debug_trace(game_app.DEBUG_GID, request, http, Response()))
     assert result["ok"] is True
     game = debug_trace = game_app.GAMES[game_app.DEBUG_GID]
     assert game["trace_mode"] is True
@@ -57,11 +59,11 @@ def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_tr
 def test_trace_route_is_debug_only_and_requires_a_owner(debug_trace):
     request = game_app.DebugTraceStartRequest(kifu_text=FIXTURE, client_id="owner")
     with pytest.raises(HTTPException) as error:
-        asyncio.run(game_app.start_debug_trace("main", request))
+        asyncio.run(game_app.start_debug_trace("main", request, None, Response()))
     assert error.value.status_code == 403
     request.requester = "B"
     with pytest.raises(HTTPException) as error:
-        asyncio.run(game_app.start_debug_trace(game_app.DEBUG_GID, request))
+        asyncio.run(game_app.start_debug_trace(game_app.DEBUG_GID, request, None, Response()))
     assert error.value.status_code == 403
 
 

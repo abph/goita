@@ -11,6 +11,7 @@ import os
 import random
 import re
 import secrets
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -75,6 +76,7 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
+from backend.trace_results import TraceStore, get_trace_store, trace_lifespan
 from backend.member_room_api import create_member_room_router
 from backend.member_kifu import MemberKifuStore
 from backend.member_kifu_auto import save_connected_round, send_save_result
@@ -1340,7 +1342,7 @@ def _effective_revealed_hand_seats(
     return revealed - _seat_set(game.get("auto_reveal_blocked_seats", []))
 
 
-app = FastAPI(title="Goita FastAPI (Render-ready)")
+app = FastAPI(title="Goita FastAPI (Render-ready)", lifespan=trace_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1946,6 +1948,7 @@ def _schedule_debug_auto_next_round(game_id: str) -> None:
     if (
         game_id != DEBUG_GID
         or not game
+        or game.get("trace_mode")
         or not bool(game.get("is_debug_room", False))
         or not auto_advance_enabled
         or state is None
@@ -1984,6 +1987,7 @@ async def _debug_auto_next_round_worker(
             )
             if (
                 not game
+                or game.get("trace_mode")
                 or not bool(game.get("is_debug_room", False))
                 or state is None
                 or id(state) != state_identity
@@ -2823,6 +2827,8 @@ def _state_public_view(
         "trace_original_score_before": dict(game_obj.get("trace_original_score_before", {})),
         "trace_original_score_after": dict(game_obj.get("trace_original_score_after", {})),
         "trace_source": dict(game_obj.get("trace_source", {})),
+        "trace_attempt_id": game_obj.get("trace_attempt_id", "")
+            if "A" in owned_human_seats and client_id == game_obj.get("trace_client_id") else "",
         "debug_auto_next_round": bool(
             game_id == DEBUG_GID
             and game_obj.get("debug_auto_next_round", False)
@@ -3420,6 +3426,10 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
             game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
+            try:
+                _save_trace_result(game)
+            except (OSError, ValueError, sqlite3.Error):
+                LOGGER.exception("Trace result save failed; result retrieval will retry.")
             _auto_save_member_round(game)
             checkpoint_ai_search_telemetry("round_finish")
             checkpoint_background_search_value_model("round_finish")
@@ -3442,6 +3452,11 @@ def _auto_save_member_round(game):
             return
         for connection, event in events:
             loop.create_task(send_save_result(connection, event))
+
+
+def _save_trace_result(game):
+    if game.get("trace_attempt_id") and game.get("current_round_finished"):
+        get_trace_store().finish(game["trace_attempt_id"], game["total_team_score"])
 
 
 _KIFU_ARCHIVE_CACHE: Optional[Dict[str, Any]] = None
@@ -3623,17 +3638,7 @@ def _archive_round_to_trace_payload(
     winning_team = "AC" if replay_state.winner in ("A", "C") else "BD"
     calculated_after = dict(payload["score_before"])
     calculated_after[winning_team] += int(replay_state.team_score[winning_team])
-    rounds = match.get("rounds") if isinstance(match.get("rounds"), list) else []
-    next_score = (
-        _archive_score_pair(rounds[round_position])
-        if round_position < len(rounds) and isinstance(rounds[round_position], dict)
-        else None
-    )
-    score_after = (
-        {"AC": next_score[0], "BD": next_score[1]}
-        if next_score is not None and all(next_score[i] >= score[i] for i in (0, 1))
-        else calculated_after
-    )
+    score_after = calculated_after
     payload.update(
         winner=replay_state.winner,
         gained_score=int(replay_state.team_score[winning_team]),
@@ -3671,7 +3676,9 @@ def _random_trace_candidates() -> List[Dict[str, Any]]:
                 payload, source = _archive_round_to_trace_payload(match, round_obj, position)
             except (ValueError, TypeError, IndexError):
                 continue
-            candidates.append({"payload": payload, "source": source})
+            payload = _canonical_trace_payload(payload)
+            candidates.append({"payload": payload, "source": source,
+                               "challenge_id": TraceStore.challenge_id(payload)})
     _KIFU_RANDOM_TRACE_CACHE = candidates
     _KIFU_RANDOM_TRACE_CACHE_MTIME_NS = mtime_ns
     return candidates
@@ -5073,6 +5080,7 @@ async def _start_debug_trace_payload(
     *,
     client_id: str,
     source: Optional[Dict[str, Any]] = None,
+    attempt_id: str = "",
 ) -> Dict[str, Any]:
     hands = payload.get("hands") or {}
     preset = {
@@ -5088,6 +5096,13 @@ async def _start_debug_trace_payload(
     trace_game["ai_seats"] = ["B", "C", "D"]
     trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
     trace_game["trace_mode"] = True
+    trace_game["trace_attempt_id"] = attempt_id
+    trace_game["trace_client_id"] = client_id
+    trace_game["debug_auto_next_round"] = False
+    trace_game["debug_auto_new_game"] = False
+    trace_game["ai_profile"] = "current"
+    trace_game["agents"] = _create_agents("current")
+    trace_game["debug_dictionary_narrowing"] = False
     trace_game["trace_moves"] = _expand_trace_moves(payload)
     trace_game["trace_move_index"] = 0
     trace_game["trace_diverged"] = False
@@ -5111,14 +5126,64 @@ async def _start_debug_trace_payload(
     }
 
 
-@app.post("/games/{game_id}/trace_start")
-async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
+trace_router = APIRouter(route_class=PrivateRoute)
+
+
+def _trace_host(game_id, body):
     if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
         raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
     if body.requester != "A":
         raise HTTPException(status_code=403, detail="棋譜トレース対戦はA席で開始してください。")
     game = GAMES[game_id]
     _require_human_seat_owner(game, "A", body.client_id)
+    return game
+
+
+def _canonical_trace_payload(payload):
+    payload = copy.deepcopy(payload)
+    payload["hands"] = {seat: sorted(payload["hands"][seat]) for seat in ALL_SEATS}
+    moves = _expand_trace_moves(payload)
+    state = GoitaState(hands=copy.deepcopy(payload["hands"]), dealer=payload["dealer"])
+    for row in moves:
+        actor = ALL_SEATS[int(row[0])]
+        action = _trace_row_to_action(state, actor, row)
+        if action not in state.legal_actions(actor):
+            raise ValueError("棋譜の手順を再現できません。")
+        _apply_action(state, actor, action)
+    before = {team: int(payload.get("score_before", {}).get(team, 0)) for team in ("AC", "BD")}
+    after = {team: before[team] + int(state.team_score[team]) for team in before}
+    payload.update(moves=moves, game=_compress_kifu_moves(moves), score_before=before, score_after=after,
+                   winner=state.winner, gained_score=sum(state.team_score.values()), anonymous=True,
+                   player_names={seat: f"プレイヤー{seat}" for seat in ALL_SEATS}, my_seat="A",
+                   hand={f"p{i}": _hand_to_kifu_string(payload["hands"][seat]) for i, seat in enumerate(ALL_SEATS)},
+                   uchidashi=ALL_SEATS.index(payload["dealer"]))
+    # Persist only the fields needed to replay this one round.
+    return {key: payload[key] for key in ("hands", "hand", "dealer", "uchidashi", "moves", "game",
+            "score_before", "score_after", "winner", "gained_score", "anonymous", "player_names", "my_seat", "round_index")}
+
+
+async def _begin_trace_attempt(game_id, body, request, response, payload, *, practice=False):
+    async with _game_turn_lock(game_id):
+        game = _trace_host(game_id, body)
+        if game.get("trace_mode") and not game["state"].finished:
+            raise HTTPException(409, "現在の棋譜トレース対戦が終わってから開始してください。")
+        payload = _canonical_trace_payload(payload)
+        store = get_trace_store()
+        owner, guest = store.identity(request, response, MEMBER_STORE, create=True)
+        name = re.sub(r"[\x00-\x1f\x7f]", "", str(game.get("player_names", {}).get("A", "")))
+        attempt_id = store.start(owner, guest, name, payload, practice=practice)
+        result = await _start_debug_trace_payload(game_id, payload, client_id=body.client_id, attempt_id=attempt_id)
+        # Preserve the participant's display name on A; archive names stay private.
+        GAMES[game_id]["player_names"]["A"] = name
+        GAMES[game_id]["trace_challenge"] = store.challenge_id(payload)
+        GAMES[game_id]["trace_payload"] = payload
+        await manager.broadcast_update(game_id)
+        return result
+
+
+@trace_router.post("/games/{game_id}/trace_start")
+async def start_debug_trace(game_id: str, body: DebugTraceStartRequest, request: Request, response: Response):
+    _trace_host(game_id, body)
     from backend.kifu_import import parse_kifu_rounds
     try:
         rounds = parse_kifu_rounds(body.kifu_text, _parse_research_kifu_text)
@@ -5128,49 +5193,91 @@ async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
         raise HTTPException(status_code=400, detail="指定した局が見つかりません。")
     payload = rounds[body.round_index - 1]
     try:
-        return await _start_debug_trace_payload(
-            game_id, payload, client_id=body.client_id,
-        )
+        return await _begin_trace_attempt(game_id, body, request, response, payload, practice=True)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/games/{game_id}/trace_random_start")
+@trace_router.post("/games/{game_id}/trace_random_start")
 async def start_random_debug_trace(
     game_id: str,
     body: DebugTraceRandomStartRequest,
     request: Request,
+    response: Response,
 ):
-    _require_private_archive_user(request)
-    if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
-        raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
-    if body.requester != "A":
-        raise HTTPException(status_code=403, detail="棋譜トレース対戦はA席で開始してください。")
-    game = GAMES[game_id]
-    _require_human_seat_owner(game, "A", body.client_id)
+    _trace_host(game_id, body)
     try:
         candidates = _random_trace_candidates()
     except ValueError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
     if not candidates:
         raise HTTPException(status_code=404, detail="50点以下の棋譜が見つかりません。")
+    previous = GAMES[game_id].get("trace_challenge")
+    candidates = [item for item in candidates if not previous or item.get("challenge_id") != previous]
+    if not candidates:
+        raise HTTPException(404, "条件に合う別の棋譜がありません。同じ棋譜への再挑戦は結果画面から開始できます。")
     candidate = copy.deepcopy(random.choice(candidates))
     # Spectators see the game's public state; do not copy identifying archive
     # metadata into it, even when the starting player is an administrator.
     candidate["payload"]["player_names"] = {seat: f"プレイヤー{seat}" for seat in ALL_SEATS}
     candidate["source"] = {}
     try:
-        result = await _start_debug_trace_payload(
-            game_id,
-            candidate["payload"],
-            client_id=body.client_id,
-            source=candidate["source"],
-        )
+        result = await _begin_trace_attempt(game_id, body, request, response, candidate["payload"])
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     result["eligible_count"] = len(candidates)
     result["max_start_score"] = 50
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    return result
+
+
+@trace_router.get("/games/{game_id}/trace_results/latest")
+def latest_trace_result(game_id: str, request: Request, response: Response):
+    if game_id != DEBUG_GID:
+        raise HTTPException(403, "デバッグルーム専用です。")
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    return {"attempt_id": store.latest(owner)}
+
+
+@trace_router.post("/games/{game_id}/trace_same_start")
+async def start_same_trace(game_id: str, body: DebugTraceRandomStartRequest, request: Request, response: Response):
+    game = _trace_host(game_id, body)
+    if not game.get("trace_payload") or not game["state"].finished:
+        raise HTTPException(409, "この部屋で棋譜トレース対戦が終了してから利用できます。")
+    return await _begin_trace_attempt(game_id, body, request, response, game["trace_payload"])
+
+
+@trace_router.get("/games/{game_id}/trace_results/{attempt_id}")
+def trace_result(game_id: str, attempt_id: str, request: Request, response: Response):
+    if game_id != DEBUG_GID:
+        raise HTTPException(403, "デバッグルーム専用です。")
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    game = GAMES.get(game_id, {})
+    if game.get("trace_attempt_id") == attempt_id:
+        _save_trace_result(game)
+    return store.read(owner, attempt_id)
+
+
+@trace_router.get("/games/{game_id}/trace_results/{attempt_id}/original")
+def trace_original(game_id: str, attempt_id: str, request: Request, response: Response):
+    if game_id != DEBUG_GID:
+        raise HTTPException(403, "デバッグルーム専用です。")
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    return {"payload": store.read(owner, attempt_id, original=True)}
+
+
+@trace_router.post("/games/{game_id}/trace_results/{attempt_id}/retry")
+async def retry_trace(game_id: str, attempt_id: str, body: DebugTraceRandomStartRequest, request: Request, response: Response):
+    _trace_host(game_id, body)
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    payload = store.read(owner, attempt_id, original=True)
+    return await _begin_trace_attempt(game_id, body, request, response, payload, practice=True)
+
+
+app.include_router(trace_router)
 
 
 @app.post("/games/{game_id}/claim")

@@ -24,6 +24,7 @@ The files are then stored at:
 /var/data/goita-analytics.sqlite3
 /var/data/goita-members.sqlite3
 /var/data/private-kifu/kifu_data.json
+/var/data/private-kifu/trace-results.sqlite3
 ```
 
 The private trace archive is uploaded from `/admin/` under Site Settings.

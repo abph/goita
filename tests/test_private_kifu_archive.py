@@ -95,11 +95,10 @@ def test_random_trace_anonymizes_archive_metadata(archive_client, monkeypatch):
     candidate = {"payload": {"player_names": {"A": "private name"}},
                  "source": {"match_id": "private-id", "played_at": "private-date"}}
     monkeypatch.setattr(game_app, "_random_trace_candidates", lambda: [candidate])
-    async def start(game_id, payload, *, client_id, source):
-        assert source == {}
+    async def start(game_id, body, request, response, payload):
         assert payload["player_names"] == {seat: f"プレイヤー{seat}" for seat in "ABCD"}
-        return {"ok": True, "source": source}
-    monkeypatch.setattr(game_app, "_start_debug_trace_payload", start)
+        return {"ok": True, "source": {}}
+    monkeypatch.setattr(game_app, "_begin_trace_attempt", start)
     monkeypatch.setattr(game_app.MEMBER_STORE, "is_operator_session", lambda token: token == "operator-test")
     client.cookies.set(game_app.MEMBER_COOKIE, "operator-test")
     headers = {"X-Goita-Member": "1"}

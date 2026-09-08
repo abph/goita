@@ -226,7 +226,7 @@ async function startDebugTraceFromFile() {
   status.textContent = '棋譜トレース対戦を準備しています。';
   try {
     const response = await fetch(`${API}/games/debug/trace_start`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+      method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-Goita-Member': '1'},
       body: JSON.stringify({kifu_text: debugTraceText, round_index: round, requester: 'A', client_id: clientId}),
     });
     const data = await response.json();
