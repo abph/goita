@@ -369,7 +369,8 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     agent.bind_player("A")
     agent._ensure_trackers(state)
     agent.TIME_SEARCH_CACHE_ENABLED = False
-    agent.GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED = True
+    agent.GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_ENABLED = True
+    agent.GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_MIN_VALUE_DELTA = 20.0
     actions = state.legal_actions("A")
     baseline = ("pass", None, None)
     human_action = ("receive", "5", None)
@@ -408,6 +409,11 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
             _kwargs.get("disable_stable_stop", False),
         ))
         if forced_priority_action is None:
+            run_context["human_targeted_priority_action"] = human_action
+            agent.last_generic_response_human_targeted_priority = {
+                "pattern_key": "human-pattern-root-test",
+                "recommended_action": "receive_same",
+            }
             return TimedSearchResult(
                 action=baseline,
                 depth=5,
@@ -507,7 +513,10 @@ def test_human_hint_runs_equal_budget_root_fixed_comparisons() -> None:
     snapshot = generic_response_pattern_snapshot()
 
     assert result is not None
-    assert result.action == baseline
+    assert result.action == human_action
+    assert agent.last_generic_response_human_live_adoption[
+        "value_delta"
+    ] == 25.0
     assert len(calls) == 3
     assert calls[0][0] == calls[1][0] == calls[2][0]
     assert calls[1][2] == baseline

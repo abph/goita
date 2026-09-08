@@ -413,6 +413,19 @@ def test_reviewed_human_silver_pattern_is_also_available() -> None:
     ].startswith("eaec40b232")
 
 
+def test_human_live_adoption_requires_depth_margin_and_no_added_loss() -> None:
+    agent = RuleBasedAgent()
+    check = agent._human_targeted_live_adoption_is_safe
+    assert check(common_depth=5, value_delta=100, ai_terminal_loss_rate=0.1,
+                 human_terminal_loss_rate=0.1)
+    assert not check(common_depth=4, value_delta=200, ai_terminal_loss_rate=0.1,
+                     human_terminal_loss_rate=0.1)
+    assert not check(common_depth=5, value_delta=99.9, ai_terminal_loss_rate=0.1,
+                     human_terminal_loss_rate=0.1)
+    assert not check(common_depth=5, value_delta=200, ai_terminal_loss_rate=0.1,
+                     human_terminal_loss_rate=0.11)
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_generic_response_pattern_mixin()
     test_pattern_does_not_read_or_encode_opponent_hands()

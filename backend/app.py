@@ -3836,6 +3836,7 @@ def _apply_agent_turn(
         return {"status": "no_legal_actions"}
 
     agent = agents[player]
+    current_ai = _normalize_ai_profile(game.get("ai_profile")) == "current"
     if hasattr(agent, "GENERIC_RESPONSE_NARROWING_ENABLED"):
         agent.GENERIC_RESPONSE_NARROWING_ENABLED = bool(
             game.get("is_debug_room", False)
@@ -3853,9 +3854,10 @@ def _apply_agent_turn(
         )
     if hasattr(agent, "GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED"):
         agent.GENERIC_RESPONSE_HUMAN_TARGETED_PRIORITY_ENABLED = bool(
-            game.get("is_debug_room", False)
-            and game.get("debug_dictionary_narrowing", False)
+            current_ai
         )
+    if hasattr(agent, "GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_ENABLED"):
+        agent.GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_ENABLED = bool(current_ai)
     if hasattr(
         agent,
         "GENERIC_RESPONSE_HUMAN_TARGETED_PAIRED_COMPARISON_ENABLED",

@@ -92,6 +92,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="humanMismatchRows"' in admin
     assert "棋譜観測・支持" in admin
     assert "観測・支持" in admin
+    assert "集中再検証を通過した3型は強化中AIで" in admin
+    assert "評価差100以上・確定負け率が増えない場合" in admin
     assert "戦術分類はデバッグルームだけで" in admin
     assert "中分類から優先" in admin
     assert "影響なし比較" in admin

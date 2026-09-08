@@ -90,6 +90,26 @@ class TimedSearchMixin:
             ordered.insert(0, priority_action)
         return ordered
 
+    def _human_targeted_live_adoption_is_safe(
+        self,
+        *,
+        common_depth: int,
+        value_delta: float,
+        ai_terminal_loss_rate: float,
+        human_terminal_loss_rate: float,
+    ) -> bool:
+        """Adopt a reviewed human route only after a clear equal-depth win."""
+        return bool(
+            int(common_depth) >= 5
+            and float(value_delta) >= float(getattr(
+                self,
+                "GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_MIN_VALUE_DELTA",
+                100.0,
+            ))
+            and float(human_terminal_loss_rate)
+            <= float(ai_terminal_loss_rate) + 1e-9
+        )
+
     @staticmethod
     def _timed_search_safe_generic_narrowing(
         actions: Sequence[Action],
@@ -1299,6 +1319,7 @@ class TimedSearchMixin:
             or state.finished
         ):
             return None
+        decision_started_at = time.perf_counter()
 
         self.last_time_search_cache_hit = False
         self.last_time_search_cache_source = None
@@ -1543,16 +1564,38 @@ class TimedSearchMixin:
                             value_delta=result.value - control_result.value,
                             margin_delta=result.margin - control_result.margin,
                         )
-                human_pair_enabled = bool(
+                human_targeted_live_enabled = bool(
                     result is not None
                     and cancel_event is None
                     and getattr(
                         self,
-                        "GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED",
+                        "GENERIC_RESPONSE_HUMAN_TARGETED_LIVE_ENABLED",
                         False,
                     )
+                    and human_targeted_priority_action is not None
                 )
-                if human_pair_enabled:
+                human_pair_enabled = bool(
+                    result is not None
+                    and cancel_event is None
+                    and (
+                        human_targeted_live_enabled
+                        or getattr(
+                            self,
+                            "GENERIC_RESPONSE_HUMAN_PAIRED_COMPARISON_ENABLED",
+                            False,
+                        )
+                    )
+                )
+                if human_targeted_live_enabled:
+                    human_recommendation = dict(
+                        getattr(
+                            self,
+                            "last_generic_response_human_targeted_priority",
+                            {},
+                        ) or {}
+                    )
+                    human_actions = (human_targeted_priority_action,)
+                elif human_pair_enabled:
                     human_recommendation, human_actions = (
                         self._human_response_comparison_actions(
                             state,
@@ -1620,6 +1663,18 @@ class TimedSearchMixin:
                                 "GENERIC_RESPONSE_HUMAN_ROOT_COMPARISON_SECONDS",
                                 5.0,
                             )
+                        )
+                        remaining_seconds = max(
+                            0.0,
+                            float(getattr(
+                                self,
+                                "TIME_SEARCH_HARD_MAX_SECONDS",
+                                20.0,
+                            )) - (time.perf_counter() - decision_started_at),
+                        )
+                        comparison_seconds = min(
+                            comparison_seconds,
+                            remaining_seconds / 2.0,
                         )
                         comparison_min_depth = int(
                             getattr(
@@ -1852,6 +1907,28 @@ class TimedSearchMixin:
                                 )
                             ),
                         )
+                        if (
+                            human_targeted_live_enabled
+                            and human_result.action
+                            == human_targeted_priority_action
+                            and self._human_targeted_live_adoption_is_safe(
+                                common_depth=common_depth,
+                                value_delta=value_delta,
+                                ai_terminal_loss_rate=float(
+                                    ai_common.get("terminal_loss_rate", 0.0)
+                                ),
+                                human_terminal_loss_rate=float(
+                                    human_common.get("terminal_loss_rate", 0.0)
+                                ),
+                            )
+                        ):
+                            result = human_result
+                            self.last_generic_response_human_live_adoption = {
+                                "pattern_key": human_pattern_key,
+                                "action": human_result.action,
+                                "common_depth": common_depth,
+                                "value_delta": value_delta,
+                            }
             return result
         finally:
             try:
