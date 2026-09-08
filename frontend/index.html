@@ -5438,21 +5438,13 @@
     <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="スコアアタックを閉じる">×</button>
     <h3 id="debugTraceTitle">スコアアタック</h3>
     <p class="settings-help-text">何度でも挑戦でき、自己ベストをランキングに記録します。初回記録との切り替えもできます。ゲストの成績は30日間保存します。</p>
-    <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
-    <button type="button" onclick="startSameTrace()">この部屋と同じ棋譜に挑戦</button>
     <p class="settings-help-text">A席で、元の棋譜と同じ配牌・親に挑戦します。B・C・D席はAIが担当します。</p>
-    <button id="debugTraceRandomButton" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
+    <button id="debugTraceRandomButton" class="score-attack-start" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
     <p class="settings-help-text">開始時点のAC・BDがともに50点以下の局から、1局を選びます。</p>
-    <label>棋譜ファイル
-      <input id="debugTraceInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" onchange="previewDebugTrace(this)">
-    </label>
-    <label>対戦する局
-      <select id="debugTraceRound" disabled onchange="syncDebugTraceRoundStatus()"></select>
-    </label>
+    <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <p id="debugTraceStatus" class="settings-status" aria-live="polite"></p>
     <div class="settings-footer">
-      <button type="button" onclick="closeDebugTrace()">キャンセル</button>
-      <button id="debugTraceStartButton" type="button" onclick="startDebugTraceFromFile()" disabled>対戦を開始</button>
+      <button type="button" onclick="closeDebugTrace()">閉じる</button>
     </div>
   </div>
 </div>
@@ -5476,7 +5468,7 @@
         <button id="traceRankingbest" type="button" aria-pressed="true" onclick="openTraceResult(traceResultId, 'best')">ベスト記録</button>
         <button id="traceRankingfirst" type="button" aria-pressed="false" onclick="openTraceResult(traceResultId, 'first')">初回記録</button>
       </div>
-      <p class="settings-help-text">各プレイヤー1枠で、元の棋譜からの改善点順に表示します。同点は同順位です。ファイル読込はベスト記録のみ対象です。</p>
+      <p class="settings-help-text">各プレイヤー1枠で、元の棋譜からの改善点順に表示します。同点は同順位です。</p>
       <p id="traceRankingSummary"></p>
       <div class="trace-ranking-scroll"><table class="trace-score-table"><thead><tr><th>順位</th><th>名前</th><th>改善点</th><th>達成回</th><th>対戦日</th></tr></thead><tbody id="traceRankingRows"></tbody></table></div>
       <button type="button" onclick="openTraceResult(traceResultId, traceRankingMode)">ランキングを更新</button>
@@ -5517,6 +5509,7 @@
 </div>
 <style>
   .trace-result-content { overflow-y:auto; }
+  .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
   .trace-score-table { width:100%; border-collapse:collapse; font-size:14px; }
   .trace-score-table th,.trace-score-table td { padding:8px; border-bottom:1px solid #ccc; text-align:left; overflow-wrap:anywhere; }
   .trace-improvement { font-size:22px; font-weight:700; }
@@ -5533,8 +5526,8 @@
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
-<script src="/static/kifu-files.js?v=20260910b"></script>
-<script src="/static/trace-results.js?v=20260910b"></script>
+<script src="/static/kifu-files.js?v=20260910c"></script>
+<script src="/static/trace-results.js?v=20260910c"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -13674,7 +13667,6 @@ async function refreshFromState(confirmedState = null){
   await fetchBeginnerRecommendation(state);
   if(requestSequence !== refreshRequestSequence) return;
 
-  const btnNewGame = document.getElementById("btnNewGame");
   const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
   const isHost = isCurrentClientHost();
   const autoNextRoundPending = (
@@ -13686,19 +13678,7 @@ async function refreshFromState(confirmedState = null){
           || (state.match_finished && state.debug_auto_new_game === true)
       )
   );
-  if (btnNewGame) {
-      btnNewGame.style.display = (isHost && state.finished && !autoNextRoundPending) ? "" : "none";
-      btnNewGame.disabled = nextRoundRequestInFlight;
-      if (nextRoundRequestInFlight) {
-          btnNewGame.textContent = uiText("配牌中...");
-      } else if (state.match_finished) {
-          btnNewGame.textContent = "新規ゲーム (スコアリセット)";
-          btnNewGame.onclick = () => startNewGame(false);
-      } else if (state.finished) {
-          btnNewGame.textContent = "次の一局へ";
-          btnNewGame.onclick = () => startNewGame(true);
-      }
-  }
+  updateRoundResetButton(state, isHost, autoNextRoundPending);
   if (forceResetSettingsRow) {
       forceResetSettingsRow.style.display = (isHost && !state.finished) ? "block" : "none";
   }

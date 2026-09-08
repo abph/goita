@@ -184,6 +184,7 @@ def trace_client(monkeypatch, tmp_path, payload):
 def start(client):
     response = client.post("/games/debug/trace_random_start", json={"client_id": "owner"})
     assert response.status_code == 200, response.text
+    assert all(response.json()["state"]["player_names"][seat] == "" for seat in ("B", "C", "D"))
     return response.json()["state"]["trace_attempt_id"]
 
 
@@ -242,6 +243,17 @@ def test_member_identity_survives_different_browser_and_guest_has_no_access(trac
     assert result.status_code == 200 and not result.json()["guest"]
     assert result.json()["expires_at"] is None
     assert "stable-id" not in result.text
+
+
+def test_reset_clears_score_attack_and_scores_but_keeps_history(trace_client):
+    attempt = start(trace_client)
+    finish_round()
+    asyncio.run(game_app.reset_game("debug", requester="A", client_id="owner", keep_score=False, auto_start=False))
+    game = game_app.GAMES["debug"]
+    assert not game.get("trace_mode")
+    assert game["total_team_score"] == {"AC": 0, "BD": 0}
+    assert not game["is_started"]
+    assert trace_client.get(f"/games/debug/trace_results/{attempt}").status_code == 200
 
 
 def test_trace_endpoints_are_debug_only_and_same_origin(trace_client):

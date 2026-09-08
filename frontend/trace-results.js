@@ -1,4 +1,37 @@
 let traceResultId = '';
+
+function updateRoundResetButton(state, isHost, autoNextRoundPending) {
+  const button = document.getElementById('btnNewGame');
+  if (!button) return;
+  button.style.display = isHost && state.finished && !autoNextRoundPending ? '' : 'none';
+  button.disabled = nextRoundRequestInFlight || traceActionBusy;
+  if (nextRoundRequestInFlight) {
+    button.textContent = uiText('配牌中...');
+  } else if (gid === 'debug' && state.trace_mode) {
+    button.textContent = 'リセット';
+    button.onclick = resetScoreAttack;
+  } else if (state.match_finished) {
+    button.textContent = '新規ゲーム (スコアリセット)';
+    button.onclick = () => startNewGame(false);
+  } else if (state.finished) {
+    button.textContent = '次の一局へ';
+    button.onclick = () => startNewGame(true);
+  }
+}
+
+async function resetScoreAttack() {
+  if (gid !== 'debug' || mySeat !== 'A' || traceActionBusy) return;
+  traceActionBusy = true;
+  document.getElementById('btnNewGame').disabled = true;
+  closeTraceResult();
+  try {
+    await startNewGame(false);
+    await refresh();
+  } finally {
+    traceActionBusy = false;
+    document.getElementById('btnNewGame').disabled = false;
+  }
+}
 let traceResultSeen = '';
 let traceResultRequest = 0;
 let traceOriginalPayload = null;
@@ -228,19 +261,6 @@ async function continueTrace(retry) {
     traceElement('traceRetryButton').disabled = mySeat !== 'A';
     traceElement('traceNextButton').disabled = mySeat !== 'A';
   }
-}
-
-async function startSameTrace() {
-  if (traceActionBusy || gid !== 'debug') return;
-  traceActionBusy = true;
-  traceElement('debugTraceStatus').textContent = '同じ棋譜の対戦を準備しています。';
-  try {
-    await traceApi('trace_same_start', {requester:'A', client_id:clientId});
-    closeDebugTrace();
-    await refresh();
-  } catch (error) {
-    traceElement('debugTraceStatus').textContent = error.message;
-  } finally {traceActionBusy = false;}
 }
 
 document.addEventListener('keydown', event => {

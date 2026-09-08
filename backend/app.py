@@ -5094,7 +5094,7 @@ async def _start_debug_trace_payload(
     trace_game = GAMES[game_id]
     trace_game["human_seats"] = {"A": client_id}
     trace_game["ai_seats"] = ["B", "C", "D"]
-    trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
+    trace_game["player_names"] = {seat: "" for seat in ALL_SEATS}
     trace_game["trace_mode"] = True
     trace_game["trace_attempt_id"] = attempt_id
     trace_game["trace_client_id"] = client_id
