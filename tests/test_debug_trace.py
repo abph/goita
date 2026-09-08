@@ -65,7 +65,15 @@ def test_trace_route_is_debug_only_and_requires_a_owner(debug_trace):
     assert error.value.status_code == 403
 
 
-def test_random_trace_candidates_are_limited_to_fifty_starting_points():
+def test_random_trace_candidates_are_limited_to_fifty_starting_points(monkeypatch):
+    import yaml
+    rounds = yaml.safe_load(FIXTURE)["log"]
+    for index, item in enumerate(rounds, 1):
+        item["round_index"] = index
+    monkeypatch.setattr(game_app, "_load_kifu_archive", lambda: {
+        "matches": [{"id": "fixture", "rounds": rounds}],
+    })
+    monkeypatch.setattr(game_app, "_KIFU_RANDOM_TRACE_CACHE", None)
     candidates = game_app._random_trace_candidates()
     assert candidates
     assert all(

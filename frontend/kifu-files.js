@@ -249,8 +249,9 @@ async function startRandomDebugTrace() {
   fileButton.disabled = true;
   status.textContent = '50点以下の棋譜からランダムに選んでいます。';
   try {
-    const response = await fetch(`${API}/games/debug/trace_random_start`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+      const response = await fetch(`${API}/games/debug/trace_random_start`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-Goita-Member': '1'},
       body: JSON.stringify({requester: 'A', client_id: clientId}),
     });
     const data = await response.json();
@@ -258,9 +259,11 @@ async function startRandomDebugTrace() {
     const source = data.source || {};
     closeDebugTrace();
     await refresh();
-    if (source.match_id) {
-      setHint(`ランダム棋譜を開始しました（${source.match_id}・第${source.round_index}局）。`);
-    }
+      if (source.match_id) {
+        setHint(`ランダム棋譜を開始しました（${source.match_id}・第${source.round_index}局）。`);
+      } else {
+        setHint('50点以下のランダム棋譜を開始しました。');
+      }
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;

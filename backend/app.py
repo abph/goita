@@ -21,7 +21,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple, Set, Literal
 
-from fastapi import FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,7 +73,8 @@ from backend.frequent_deal import is_frequent_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
-from backend.member_api import MEMBER_COOKIE, create_member_router, require_member_origin
+from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
+from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
 from backend.member_room_api import create_member_room_router
 from backend.member_kifu import MemberKifuStore
 from backend.member_kifu_auto import save_connected_round, send_save_result
@@ -1351,7 +1352,15 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+class PublicStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        # Also block legacy copies accidentally left in the public directory.
+        if Path(path).name.lower() in {"kifu_data.json", "kifu_data_raw.json"}:
+            return Response(status_code=404, headers={"Cache-Control": "no-store"})
+        return await super().get_response(path, scope)
+
+
+app.mount("/static", PublicStaticFiles(directory=FRONTEND_DIR), name="static")
 
 
 @app.get("/")
@@ -3437,28 +3446,102 @@ def _auto_save_member_round(game):
 
 _KIFU_ARCHIVE_CACHE: Optional[Dict[str, Any]] = None
 _KIFU_ARCHIVE_CACHE_MTIME_NS: Optional[int] = None
+_KIFU_ARCHIVE_CACHE_PATH: Optional[Path] = None
 _KIFU_RANDOM_TRACE_CACHE: Optional[List[Dict[str, Any]]] = None
 _KIFU_RANDOM_TRACE_CACHE_MTIME_NS: Optional[int] = None
 
 
 def _load_kifu_archive() -> Dict[str, Any]:
-    global _KIFU_ARCHIVE_CACHE, _KIFU_ARCHIVE_CACHE_MTIME_NS
-    path = FRONTEND_DIR / "kifu_data.json"
+    global _KIFU_ARCHIVE_CACHE, _KIFU_ARCHIVE_CACHE_MTIME_NS, _KIFU_ARCHIVE_CACHE_PATH
+    path = archive_path(BASE_DIR)
     try:
         mtime_ns = path.stat().st_mtime_ns
     except OSError as error:
-        raise ValueError("棋譜データを読み込めません") from error
-    if _KIFU_ARCHIVE_CACHE is not None and _KIFU_ARCHIVE_CACHE_MTIME_NS == mtime_ns:
+        raise ValueError("非公開の棋譜データが未登録か読み込めません。管理者ページから登録してください。") from error
+    if (_KIFU_ARCHIVE_CACHE is not None and _KIFU_ARCHIVE_CACHE_MTIME_NS == mtime_ns
+            and _KIFU_ARCHIVE_CACHE_PATH == path):
         return _KIFU_ARCHIVE_CACHE
     try:
-        archive = json.loads(path.read_text(encoding="utf-8-sig"))
+        archive = parse_archive(path.read_bytes())
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("棋譜データを読み込めません") from error
     if not isinstance(archive, dict) or not isinstance(archive.get("matches"), list):
         raise ValueError("棋譜データの形式が正しくありません")
     _KIFU_ARCHIVE_CACHE = archive
     _KIFU_ARCHIVE_CACHE_MTIME_NS = mtime_ns
+    _KIFU_ARCHIVE_CACHE_PATH = path
+    # The archive may have changed paths while retaining its modification time.
+    global _KIFU_RANDOM_TRACE_CACHE
+    _KIFU_RANDOM_TRACE_CACHE = None
     return archive
+
+
+def _require_private_archive_user(request: Request) -> None:
+    require_member_origin(request)
+    if _valid_admin_session(request.cookies.get(ADMIN_SESSION_COOKIE, "")):
+        return
+    if MEMBER_STORE.is_operator_session(request.cookies.get(MEMBER_COOKIE, "")):
+        return
+    raise HTTPException(403, "非公開棋譜の利用には、管理者ページまたは管理者用会員IDでログインしてください。")
+
+
+private_archive_router = APIRouter(route_class=PrivateRoute)
+
+
+@private_archive_router.get("/admin/api/private-kifu")
+def private_archive_status(request: Request):
+    _require_site_admin(request)
+    try:
+        path = archive_path(BASE_DIR)
+    except ValueError as error:
+        return {"configured": False, "registered": False, "message": str(error)}
+    return {"configured": True, "registered": path.is_file()}
+
+
+@private_archive_router.put("/admin/api/private-kifu")
+async def upload_private_archive(request: Request):
+    _require_site_admin(request)
+    if not LOBBY_ADMIN_PASSWORD or LOBBY_ADMIN_PASSWORD == DEFAULT_LOBBY_ADMIN_PASSWORD:
+        raise HTTPException(503, "独自のLOBBY_ADMIN_PASSWORDを設定してください。")
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > MAX_ARCHIVE_BYTES:
+            raise HTTPException(413, "棋譜ファイルは20MB以下にしてください。")
+        raw.extend(chunk)
+    try:
+        result = save_archive(archive_path(BASE_DIR), bytes(raw))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except OSError as error:
+        raise HTTPException(500, "棋譜を保存できません。保存先の設定を確認してください。") from error
+    global _KIFU_ARCHIVE_CACHE, _KIFU_RANDOM_TRACE_CACHE
+    _KIFU_ARCHIVE_CACHE = None
+    _KIFU_RANDOM_TRACE_CACHE = None
+    return {"ok": True, **result}
+
+
+@private_archive_router.get("/api/private-kifu/preset")
+def private_archive_preset(request: Request, match_id: str, round_index: int):
+    _require_private_archive_user(request)
+    try:
+        archive = _load_kifu_archive()
+    except ValueError as error:
+        raise HTTPException(503, str(error)) from error
+    matches = archive["matches"]
+    match = next((item for item in matches if str(item.get("id")) == match_id), None)
+    if match is None and match_id.isascii() and match_id.isdecimal():
+        match = next((item for item in matches
+                      if str(item.get("id", "")).isascii()
+                      and str(item.get("id", "")).isdecimal()
+                      and int(item["id"]) == int(match_id)), None)
+    round_obj = next((item for item in (match or {}).get("rounds", [])
+                      if isinstance(item, dict) and item.get("round_index") == round_index), None)
+    if round_obj is None:
+        raise HTTPException(404, "指定した棋譜・局が見つかりません。")
+    return {"match_id": match["id"], "round": {"hand": round_obj.get("hand", {})}}
+
+
+app.include_router(private_archive_router)
 
 
 def _archive_score_pair(round_obj: Dict[str, Any]) -> Optional[Tuple[int, int]]:
@@ -5056,7 +5139,9 @@ async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
 async def start_random_debug_trace(
     game_id: str,
     body: DebugTraceRandomStartRequest,
+    request: Request,
 ):
+    _require_private_archive_user(request)
     if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
         raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
     if body.requester != "A":
@@ -5069,7 +5154,11 @@ async def start_random_debug_trace(
         raise HTTPException(status_code=500, detail=str(error)) from error
     if not candidates:
         raise HTTPException(status_code=404, detail="50点以下の棋譜が見つかりません。")
-    candidate = random.choice(candidates)
+    candidate = copy.deepcopy(random.choice(candidates))
+    # Spectators see the game's public state; do not copy identifying archive
+    # metadata into it, even when the starting player is an administrator.
+    candidate["payload"]["player_names"] = {seat: f"プレイヤー{seat}" for seat in ALL_SEATS}
+    candidate["source"] = {}
     try:
         result = await _start_debug_trace_payload(
             game_id,
@@ -5081,7 +5170,7 @@ async def start_random_debug_trace(
         raise HTTPException(status_code=400, detail=str(error)) from error
     result["eligible_count"] = len(candidates)
     result["max_start_score"] = 50
-    return result
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/games/{game_id}/claim")

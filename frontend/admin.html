@@ -243,6 +243,13 @@
       </section>
 
       <section id="settingsView" class="view active">
+        <form id="privateKifuForm" class="panel">
+          <h2 class="section-heading">非公開の棋譜データ</h2>
+          <p class="muted">ランダム棋譜トレース用の棋譜を登録します。利用できるのは管理者だけです。再登録すると以前のデータを置き換えます。</p>
+          <div class="field"><label for="privateKifuFile">kifu_data.json（20MBまで）</label><input id="privateKifuFile" type="file" accept=".json,application/json" required></div>
+          <button id="privateKifuUpload" class="button primary" type="submit">棋譜データを登録</button>
+          <div id="privateKifuStatus" class="status" role="status" aria-live="polite"></div>
+        </form>
         <form id="settingsForm" class="panel">
           <h2 class="section-heading">サイト設定</h2>
           <div class="form-grid">
@@ -477,7 +484,44 @@
       document.getElementById("adminView").hidden = false;
       document.getElementById("logoutButton").hidden = false;
       applySettings(payload);
+      refreshPrivateKifuStatus();
     }
+
+    async function refreshPrivateKifuStatus() {
+      const status = document.getElementById("privateKifuStatus");
+      try {
+        const data = await api("/admin/api/private-kifu", {headers: {"X-Goita-Member": "1"}});
+        status.textContent = data.message || (data.registered ? "棋譜データは登録済みです。" : "棋譜データは未登録です。");
+        document.getElementById("privateKifuUpload").disabled = !data.configured;
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    }
+
+    document.getElementById("privateKifuForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const file = document.getElementById("privateKifuFile").files[0];
+      const status = document.getElementById("privateKifuStatus");
+      const button = document.getElementById("privateKifuUpload");
+      if (!file) return;
+      if (file.size > 20 * 1024 * 1024) {
+        status.textContent = "棋譜ファイルは20MB以下にしてください。";
+        return;
+      }
+      button.disabled = true;
+      status.textContent = "棋譜データを登録しています。";
+      try {
+        const data = await api("/admin/api/private-kifu", {
+          method: "PUT", headers: {"X-Goita-Member": "1", "Content-Type": "application/octet-stream"}, body: file,
+        });
+        status.textContent = `登録しました（${data.match_count}対局・${data.round_count}局）。`;
+        event.target.reset();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
 
     function showLogin() {
       window.goitaMemberAdmin?.clear();

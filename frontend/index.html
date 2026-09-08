@@ -5453,7 +5453,7 @@
     </div>
   </div>
 </div>
-<script src="/static/kifu-files.js?v=20260909b"></script>
+<script src="/static/kifu-files.js?v=20260909c"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -7113,7 +7113,6 @@ let voiceChatState = {
 };
 let fixedHandMemory = {};
 let setupApplyTimer = null;
-let kifuArchiveCache = null;
 let kifuPresetLoading = false;
 let startRequestInFlight = false;
 let nextRoundRequestInFlight = false;
@@ -10129,27 +10128,6 @@ function setKifuPresetStatus(message, kind = ""){
   status.classList.toggle("success", kind === "success");
 }
 
-async function getKifuArchive(){
-  if(kifuArchiveCache) return kifuArchiveCache;
-  const response = await fetch("/static/kifu_data.json", {cache: "force-cache"});
-  if(!response.ok) throw new Error(`棋譜データを取得できませんでした（${response.status}）`);
-  const data = await response.json();
-  if(!data || !Array.isArray(data.matches)){
-    throw new Error("棋譜データの形式が正しくありません。");
-  }
-  kifuArchiveCache = data;
-  return data;
-}
-
-function findKifuMatch(matches, inputId){
-  const requested = String(inputId || "").trim();
-  const exact = matches.find(match => String(match?.id || "") === requested);
-  if(exact) return exact;
-  if(!/^\d+$/.test(requested)) return null;
-  const requestedNumber = Number(requested);
-  return matches.find(match => /^\d+$/.test(String(match?.id || "")) && Number(match.id) === requestedNumber) || null;
-}
-
 function parseKifuHand(handText){
   const labelToPiece = Object.fromEntries(
     Object.entries(PIECE_LABEL).map(([piece, label]) => [label, piece])
@@ -10229,20 +10207,14 @@ async function loadKifuPresetByValues(requestedIdValue, requestedRoundValue, opt
   setKifuPresetStatus("棋譜を読み込んでいます。");
 
   try{
-    const archive = await getKifuArchive();
-    const match = findKifuMatch(archive.matches, requestedId);
-    if(!match){
-      setKifuPresetStatus(`棋譜ID ${requestedId} は見つかりませんでした。`, "error");
-      return false;
-    }
-
-    const round = Array.isArray(match.rounds)
-      ? match.rounds.find(item => Number(item?.round_index) === requestedRound)
-      : null;
-    if(!round){
-      setKifuPresetStatus(`棋譜ID ${match.id} に ${requestedRound}局目はありません。`, "error");
-      return false;
-    }
+    const query = new URLSearchParams({match_id: requestedId, round_index: String(requestedRound)});
+    const response = await fetch(`${API}/api/private-kifu/preset?${query}`, {
+      credentials: "same-origin", cache: "no-store", headers: {"X-Goita-Member": "1"},
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.detail || "棋譜の手札を取得できませんでした。");
+    const match = {id: data.match_id};
+    const round = data.round;
     if(!applyKifuHandsToPreset(round, {scheduleApply: options.scheduleApply !== false})){
       setKifuPresetStatus("棋譜の手札データを読み取れませんでした。", "error");
       return false;

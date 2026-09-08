@@ -23,7 +23,13 @@ The files are then stored at:
 /var/data/goita-research-kifu.sqlite3
 /var/data/goita-analytics.sqlite3
 /var/data/goita-members.sqlite3
+/var/data/private-kifu/kifu_data.json
 ```
+
+The private trace archive is uploaded from `/admin/` under Site Settings.
+It is never committed to Git or served under `/static`. Upload it once after
+deployment; the persistent disk retains it across deployments. See
+[the trace setup guide](docs/debug-trace-match.md) for the registration steps.
 
 The room settings file contains only editable room-management values: room
 name, entry passphrase, AI profile, legal-action visibility, log visibility,
