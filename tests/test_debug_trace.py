@@ -33,10 +33,25 @@ def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_tr
     assert game["ai_seats"] == ["B", "C", "D"]
     assert game["state"].turn == "C"
     assert game["total_team_score"] == {"AC": 20, "BD": 20}
+    assert game["trace_moves"][:5] == [
+        ["2", "し", "金"],
+        ["3", "パス", ""],
+        ["0", "パス", ""],
+        ["1", "金", ""],
+        ["1", "", "角"],
+    ]
     result = game_app._apply_agent_turn(game, "C")
     assert result["status"] == "ok"
     assert game["trace_move_index"] == 1
     assert game["log"][-1].endswith("[TRACE]")
+    # The imported format omits D/A's passes before B's next recorded move.
+    # They must be replayed by the live engine to keep the trace cursor aligned.
+    assert game["state"].turn == "D"
+    result = game_app._apply_agent_turn(game, "D")
+    assert result["status"] == "ok"
+    assert game["trace_move_index"] == 2
+    assert game["log"][-1].endswith("[TRACE]")
+    assert game["state"].turn == "A"
 
 
 def test_trace_route_is_debug_only_and_requires_a_owner(debug_trace):

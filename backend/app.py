@@ -3428,6 +3428,84 @@ def _auto_save_member_round(game):
             loop.create_task(send_save_result(connection, event))
 
 
+def _expand_trace_moves(payload: Dict[str, Any]) -> List[List[str]]:
+    """Expand imported compact rows into the engine's one-action-per-turn rows.
+
+    The external format omits passes and may combine a receive followed by an
+    attack in one row.  The live game needs both actions explicitly so the
+    trace cursor stays aligned with the current turn.
+    """
+    hands = payload.get("hands") or {}
+    try:
+        trace_state = GoitaState(
+            hands={seat: list(hands[seat]) for seat in ALL_SEATS},
+            dealer=str(payload.get("dealer") or "A"),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("棋譜の配牌をトレース用に準備できません") from error
+
+    code_by_label = {label: code for code, label in PIECE_KANJI.items()}
+    expanded: List[List[str]] = []
+    for source_row in payload.get("moves") or []:
+        if not isinstance(source_row, list) or len(source_row) < 3:
+            raise ValueError("棋譜の手順をトレース用に展開できません")
+        pid, block_label, attack_label = [str(value or "") for value in source_row[:3]]
+        if pid not in {PLAYER_IDX[seat] for seat in ALL_SEATS}:
+            raise ValueError("棋譜に不明な席があります")
+        actor = ALL_SEATS[int(pid)]
+
+        if block_label == "パス":
+            if attack_label or trace_state.phase != "receive" or trace_state.turn != actor:
+                raise ValueError("棋譜のパスをトレース用に展開できません")
+            trace_state.apply_pass(actor)
+            expanded.append([pid, "パス", ""])
+            continue
+
+        # The imported format omits passes between the recorded actors.
+        for _ in range(3):
+            if trace_state.turn == actor or trace_state.phase != "receive":
+                break
+            passer = trace_state.turn
+            trace_state.apply_pass(passer)
+            expanded.append([PLAYER_IDX[passer], "パス", ""])
+        if trace_state.turn != actor:
+            raise ValueError("棋譜の手番順をトレース用に展開できません")
+
+        # parse_research_kifu_text has already normalized 王/玉 where needed,
+        # but keep the normalization here for callers constructing payloads.
+        hand = list(trace_state.hands[actor])
+        block = code_by_label.get(block_label) if block_label else None
+        attack = code_by_label.get(attack_label) if attack_label else None
+        if block_label == "王" and "9" not in hand and "8" in hand:
+            block_label, block = "玉", "8"
+        remaining = list(hand)
+        if block in remaining:
+            remaining.remove(block)
+        if attack_label == "王" and "9" not in remaining and "8" in remaining:
+            attack_label, attack = "玉", "8"
+
+        if trace_state.phase == "receive":
+            if block is None:
+                raise ValueError("棋譜に受け駒がありません")
+            trace_state.apply_receive(actor, block)
+            expanded.append([pid, _piece_to_kifu(block), ""])
+            if attack is not None:
+                trace_state.apply_attack(actor, attack)
+                expanded.append([pid, "", _piece_to_kifu(attack)])
+        elif block is not None and attack is not None:
+            trace_state.apply_attack_after_block(actor, block, attack)
+            expanded.append([pid, _piece_to_kifu(block), _piece_to_kifu(attack)])
+        elif block is None and attack is not None:
+            trace_state.apply_attack(actor, attack)
+            expanded.append([pid, "", _piece_to_kifu(attack)])
+        else:
+            raise ValueError("棋譜の手をトレース用に展開できません")
+
+    if not trace_state.finished:
+        raise ValueError("棋譜をトレース用の手順に展開できません")
+    return expanded
+
+
 def _trace_row_to_action(state, player, row):
     if not isinstance(row, list) or len(row) < 3:
         return None
@@ -3443,14 +3521,14 @@ def _trace_row_to_action(state, player, row):
     block = code_by_label.get(block_label) if block_label else None
     attack = code_by_label.get(attack_label) if attack_label else None
     hand = list(getattr(state, "hands", {}).get(player, []))
-    if block_label == "王" and "8" not in hand and "9" in hand:
-        block = "9"
+    if block_label == "王" and "9" not in hand and "8" in hand:
+        block = "8"
     if attack_label == "王":
         remaining = list(hand)
         if block in remaining:
             remaining.remove(block)
-        if "8" not in remaining and "9" in remaining:
-            attack = "9"
+        if "9" not in remaining and "8" in remaining:
+            attack = "8"
     if block is not None and attack is not None:
         return ("attack_after_block", block, attack)
     if block is not None:
@@ -4772,7 +4850,10 @@ async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
     trace_game["ai_seats"] = ["B", "C", "D"]
     trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
     trace_game["trace_mode"] = True
-    trace_game["trace_moves"] = payload.get("moves", [])
+    try:
+        trace_game["trace_moves"] = _expand_trace_moves(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     trace_game["trace_move_index"] = 0
     trace_game["trace_diverged"] = False
     trace_game["trace_original_round"] = body.round_index
