@@ -2161,6 +2161,11 @@ class DebugTraceStartRequest(BaseModel):
     client_id: str = ""
 
 
+class DebugTraceRandomStartRequest(BaseModel):
+    requester: str = Field(default="A")
+    client_id: str = ""
+
+
 class TurnTimeLimitUpdateRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
@@ -2808,6 +2813,7 @@ def _state_public_view(
         "trace_original_round": game_obj.get("trace_original_round"),
         "trace_original_score_before": dict(game_obj.get("trace_original_score_before", {})),
         "trace_original_score_after": dict(game_obj.get("trace_original_score_after", {})),
+        "trace_source": dict(game_obj.get("trace_source", {})),
         "debug_auto_next_round": bool(
             game_id == DEBUG_GID
             and game_obj.get("debug_auto_next_round", False)
@@ -2909,6 +2915,7 @@ def _create_game_obj(
         "match_winner": None,
         "current_round_finished": False,
         "last_round_score": 0,
+        "trace_source": {},
         "last_completed_kifu": None,
         "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
@@ -3426,6 +3433,165 @@ def _auto_save_member_round(game):
             return
         for connection, event in events:
             loop.create_task(send_save_result(connection, event))
+
+
+_KIFU_ARCHIVE_CACHE: Optional[Dict[str, Any]] = None
+_KIFU_ARCHIVE_CACHE_MTIME_NS: Optional[int] = None
+_KIFU_RANDOM_TRACE_CACHE: Optional[List[Dict[str, Any]]] = None
+_KIFU_RANDOM_TRACE_CACHE_MTIME_NS: Optional[int] = None
+
+
+def _load_kifu_archive() -> Dict[str, Any]:
+    global _KIFU_ARCHIVE_CACHE, _KIFU_ARCHIVE_CACHE_MTIME_NS
+    path = FRONTEND_DIR / "kifu_data.json"
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except OSError as error:
+        raise ValueError("棋譜データを読み込めません") from error
+    if _KIFU_ARCHIVE_CACHE is not None and _KIFU_ARCHIVE_CACHE_MTIME_NS == mtime_ns:
+        return _KIFU_ARCHIVE_CACHE
+    try:
+        archive = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("棋譜データを読み込めません") from error
+    if not isinstance(archive, dict) or not isinstance(archive.get("matches"), list):
+        raise ValueError("棋譜データの形式が正しくありません")
+    _KIFU_ARCHIVE_CACHE = archive
+    _KIFU_ARCHIVE_CACHE_MTIME_NS = mtime_ns
+    return archive
+
+
+def _archive_score_pair(round_obj: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+    raw_score = round_obj.get("score")
+    if not isinstance(raw_score, list) or len(raw_score) < 2:
+        return None
+    try:
+        score = (int(raw_score[0]), int(raw_score[1]))
+    except (TypeError, ValueError):
+        return None
+    if any(value < 0 for value in score):
+        return None
+    return score
+
+
+def _archive_round_to_trace_payload(
+    match: Dict[str, Any],
+    round_obj: Dict[str, Any],
+    round_position: int,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    hand_obj = round_obj.get("hand")
+    if not isinstance(hand_obj, dict):
+        raise ValueError("配牌がありません")
+    code_by_label = {label: code for code, label in PIECE_KANJI.items()}
+    hands: Dict[str, List[str]] = {}
+    for index, seat in enumerate(ALL_SEATS):
+        hand_text = str(hand_obj.get(f"p{index}") or "")
+        hand = [code_by_label.get(piece) for piece in hand_text]
+        if len(hand) != 8 or any(piece is None for piece in hand):
+            raise ValueError("配牌の形式が正しくありません")
+        hands[seat] = [str(piece) for piece in hand]
+    if Counter(piece for hand in hands.values() for piece in hand) != Counter(PIECE_TOTALS):
+        raise ValueError("32枚の駒構成に矛盾があります")
+
+    try:
+        dealer_index = int(round_obj.get("uchidashi"))
+        dealer = ALL_SEATS[dealer_index]
+    except (TypeError, ValueError, IndexError) as error:
+        raise ValueError("親の形式が正しくありません") from error
+    game_rows = round_obj.get("game")
+    if not isinstance(game_rows, list) or not game_rows:
+        raise ValueError("手順がありません")
+    moves = [
+        [str(value or "") for value in row[:3]]
+        for row in game_rows
+        if isinstance(row, list) and len(row) >= 3
+    ]
+    if len(moves) != len(game_rows):
+        raise ValueError("手順の形式が正しくありません")
+
+    score = _archive_score_pair(round_obj)
+    if score is None:
+        raise ValueError("開始点数の形式が正しくありません")
+    player_data = match.get("players") if isinstance(match.get("players"), dict) else {}
+    player_names = {
+        seat: str(player_data.get(f"p{index}") or "").strip()[:80]
+        or f"プレイヤー{seat}"
+        for index, seat in enumerate(ALL_SEATS)
+    }
+    payload = {
+        "version": 1,
+        "round_index": int(round_obj.get("round_index") or (round_position + 1)),
+        "dealer": dealer,
+        "hands": hands,
+        "moves": moves,
+        "score_before": {"AC": score[0], "BD": score[1]},
+        "player_names": player_names,
+    }
+    expanded = _expand_trace_moves(payload)
+    replay_state = GoitaState(hands=hands, dealer=dealer)
+    for row in expanded:
+        actor = ALL_SEATS[int(row[0])]
+        action = _trace_row_to_action(replay_state, actor, row)
+        if action is None or action not in replay_state.legal_actions(actor):
+            raise ValueError("手順を合法手として再現できません")
+        _apply_action(replay_state, actor, action)
+    if not replay_state.finished or replay_state.winner not in ALL_SEATS:
+        raise ValueError("終局している棋譜を選んでください")
+    winning_team = "AC" if replay_state.winner in ("A", "C") else "BD"
+    calculated_after = dict(payload["score_before"])
+    calculated_after[winning_team] += int(replay_state.team_score[winning_team])
+    rounds = match.get("rounds") if isinstance(match.get("rounds"), list) else []
+    next_score = (
+        _archive_score_pair(rounds[round_position])
+        if round_position < len(rounds) and isinstance(rounds[round_position], dict)
+        else None
+    )
+    score_after = (
+        {"AC": next_score[0], "BD": next_score[1]}
+        if next_score is not None and all(next_score[i] >= score[i] for i in (0, 1))
+        else calculated_after
+    )
+    payload.update(
+        winner=replay_state.winner,
+        gained_score=int(replay_state.team_score[winning_team]),
+        score_after=score_after,
+    )
+    source = {
+        "match_id": str(match.get("id") or ""),
+        "round_index": payload["round_index"],
+        "played_at": str(match.get("played_at") or "").strip(),
+        "players": player_names,
+    }
+    return payload, source
+
+
+def _random_trace_candidates() -> List[Dict[str, Any]]:
+    global _KIFU_RANDOM_TRACE_CACHE, _KIFU_RANDOM_TRACE_CACHE_MTIME_NS
+    archive = _load_kifu_archive()
+    mtime_ns = _KIFU_ARCHIVE_CACHE_MTIME_NS
+    if _KIFU_RANDOM_TRACE_CACHE is not None and _KIFU_RANDOM_TRACE_CACHE_MTIME_NS == mtime_ns:
+        return _KIFU_RANDOM_TRACE_CACHE
+    candidates: List[Dict[str, Any]] = []
+    for match in archive.get("matches", []):
+        if not isinstance(match, dict):
+            continue
+        rounds = match.get("rounds")
+        if not isinstance(rounds, list):
+            continue
+        for position, round_obj in enumerate(rounds):
+            if not isinstance(round_obj, dict):
+                continue
+            score = _archive_score_pair(round_obj)
+            if score is None or score[0] > 50 or score[1] > 50:
+                continue
+            try:
+                payload, source = _archive_round_to_trace_payload(match, round_obj, position)
+            except (ValueError, TypeError, IndexError):
+                continue
+            candidates.append({"payload": payload, "source": source})
+    _KIFU_RANDOM_TRACE_CACHE = candidates
+    _KIFU_RANDOM_TRACE_CACHE_MTIME_NS = mtime_ns
+    return candidates
 
 
 def _expand_trace_moves(payload: Dict[str, Any]) -> List[List[str]]:
@@ -4818,6 +4984,50 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
 
+async def _start_debug_trace_payload(
+    game_id: str,
+    payload: Dict[str, Any],
+    *,
+    client_id: str,
+    source: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    hands = payload.get("hands") or {}
+    preset = {
+        seat: dict(Counter(hands.get(seat, [])))
+        for seat in ALL_SEATS
+    }
+    await reset_game_config(game_id, ResetConfigBody(
+        dealer=payload.get("dealer", "A"), preset_counts=preset,
+        requester="A", client_id=client_id, auto_start=True,
+    ))
+    trace_game = GAMES[game_id]
+    trace_game["human_seats"] = {"A": client_id}
+    trace_game["ai_seats"] = ["B", "C", "D"]
+    trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
+    trace_game["trace_mode"] = True
+    trace_game["trace_moves"] = _expand_trace_moves(payload)
+    trace_game["trace_move_index"] = 0
+    trace_game["trace_diverged"] = False
+    trace_game["trace_original_round"] = int(payload.get("round_index") or 1)
+    trace_game["trace_original_score_before"] = dict(payload.get("score_before") or {"AC": 0, "BD": 0})
+    trace_game["trace_original_score_after"] = dict(payload.get("score_after") or {})
+    trace_game["trace_source"] = dict(source or {})
+    trace_game["total_team_score"] = dict(trace_game["trace_original_score_before"])
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "round_index": trace_game["trace_original_round"],
+        "source": dict(source or {}),
+        "state": _state_public_view(
+            trace_game["state"],
+            game_id=game_id,
+            viewer="A",
+            game_obj=trace_game,
+            client_id=client_id,
+        ),
+    }
+
+
 @app.post("/games/{game_id}/trace_start")
 async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
     if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
@@ -4834,36 +5044,44 @@ async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
     if body.round_index > len(rounds):
         raise HTTPException(status_code=400, detail="指定した局が見つかりません。")
     payload = rounds[body.round_index - 1]
-    preset = {
-        seat: dict(Counter(payload.get("hands", {}).get(seat, [])))
-        for seat in ALL_SEATS
-    }
     try:
-        await reset_game_config(game_id, ResetConfigBody(
-            dealer=payload.get("dealer", "A"), preset_counts=preset,
-            requester="A", client_id=body.client_id, auto_start=True,
-        ))
-    except HTTPException:
-        raise
-    trace_game = GAMES[game_id]
-    trace_game["human_seats"] = {"A": body.client_id}
-    trace_game["ai_seats"] = ["B", "C", "D"]
-    trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
-    trace_game["trace_mode"] = True
-    try:
-        trace_game["trace_moves"] = _expand_trace_moves(payload)
+        return await _start_debug_trace_payload(
+            game_id, payload, client_id=body.client_id,
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    trace_game["trace_move_index"] = 0
-    trace_game["trace_diverged"] = False
-    trace_game["trace_original_round"] = body.round_index
-    trace_game["trace_original_score_before"] = payload.get("score_before", {"AC": 0, "BD": 0})
-    trace_game["trace_original_score_after"] = payload.get("score_after", {})
-    trace_game["total_team_score"] = dict(trace_game["trace_original_score_before"])
-    await manager.broadcast_update(game_id)
-    return {"ok": True, "round_index": body.round_index, "state": _state_public_view(
-        trace_game["state"], game_id=game_id, viewer="A", game_obj=trace_game, client_id=body.client_id,
-    )}
+
+
+@app.post("/games/{game_id}/trace_random_start")
+async def start_random_debug_trace(
+    game_id: str,
+    body: DebugTraceRandomStartRequest,
+):
+    if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
+        raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
+    if body.requester != "A":
+        raise HTTPException(status_code=403, detail="棋譜トレース対戦はA席で開始してください。")
+    game = GAMES[game_id]
+    _require_human_seat_owner(game, "A", body.client_id)
+    try:
+        candidates = _random_trace_candidates()
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    if not candidates:
+        raise HTTPException(status_code=404, detail="50点以下の棋譜が見つかりません。")
+    candidate = random.choice(candidates)
+    try:
+        result = await _start_debug_trace_payload(
+            game_id,
+            candidate["payload"],
+            client_id=body.client_id,
+            source=candidate["source"],
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    result["eligible_count"] = len(candidates)
+    result["max_start_score"] = 50
+    return result
 
 
 @app.post("/games/{game_id}/claim")

@@ -63,3 +63,14 @@ def test_trace_route_is_debug_only_and_requires_a_owner(debug_trace):
     with pytest.raises(HTTPException) as error:
         asyncio.run(game_app.start_debug_trace(game_app.DEBUG_GID, request))
     assert error.value.status_code == 403
+
+
+def test_random_trace_candidates_are_limited_to_fifty_starting_points():
+    candidates = game_app._random_trace_candidates()
+    assert candidates
+    assert all(
+        item["payload"]["score_before"]["AC"] <= 50
+        and item["payload"]["score_before"]["BD"] <= 50
+        for item in candidates
+    )
+    assert all(item["payload"]["hands"] for item in candidates)

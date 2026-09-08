@@ -146,10 +146,12 @@ function openDebugTrace() {
   const input = document.getElementById('debugTraceInput');
   const round = document.getElementById('debugTraceRound');
   const button = document.getElementById('debugTraceStartButton');
+  const randomButton = document.getElementById('debugTraceRandomButton');
   const status = document.getElementById('debugTraceStatus');
   if (input) input.value = '';
   if (round) { round.replaceChildren(); round.disabled = true; }
   if (button) button.disabled = true;
+  if (randomButton) randomButton.disabled = mySeat !== 'A';
   if (status) status.textContent = '棋譜ファイルを選択してください。';
   const modal = document.getElementById('debugTraceModal');
   modal.style.display = 'flex';
@@ -167,6 +169,7 @@ function closeDebugTrace() {
   document.getElementById('debugTraceRound').replaceChildren();
   document.getElementById('debugTraceRound').disabled = true;
   document.getElementById('debugTraceStartButton').disabled = true;
+  document.getElementById('debugTraceRandomButton').disabled = false;
 }
 
 async function previewDebugTrace(input) {
@@ -215,9 +218,11 @@ function syncDebugTraceRoundStatus() {
 async function startDebugTraceFromFile() {
   if (gid !== 'debug' || mySeat !== 'A' || !debugTraceText) return;
   const button = document.getElementById('debugTraceStartButton');
+  const randomButton = document.getElementById('debugTraceRandomButton');
   const status = document.getElementById('debugTraceStatus');
   const round = Number(document.getElementById('debugTraceRound').value || 1);
   button.disabled = true;
+  randomButton.disabled = true;
   status.textContent = '棋譜トレース対戦を準備しています。';
   try {
     const response = await fetch(`${API}/games/debug/trace_start`, {
@@ -231,6 +236,35 @@ async function startDebugTraceFromFile() {
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
+    randomButton.disabled = mySeat !== 'A';
+  }
+}
+
+async function startRandomDebugTrace() {
+  if (gid !== 'debug' || mySeat !== 'A') return;
+  const button = document.getElementById('debugTraceRandomButton');
+  const fileButton = document.getElementById('debugTraceStartButton');
+  const status = document.getElementById('debugTraceStatus');
+  button.disabled = true;
+  fileButton.disabled = true;
+  status.textContent = '50点以下の棋譜からランダムに選んでいます。';
+  try {
+    const response = await fetch(`${API}/games/debug/trace_random_start`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({requester: 'A', client_id: clientId}),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'ランダム棋譜を選べませんでした。');
+    const source = data.source || {};
+    closeDebugTrace();
+    await refresh();
+    if (source.match_id) {
+      setHint(`ランダム棋譜を開始しました（${source.match_id}・第${source.round_index}局）。`);
+    }
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    fileButton.disabled = !debugTraceRounds.length;
   }
 }
 

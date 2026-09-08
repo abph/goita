@@ -5438,6 +5438,8 @@
     <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="棋譜トレース対戦を閉じる">×</button>
     <h3 id="debugTraceTitle">棋譜トレース対戦</h3>
     <p class="settings-help-text">A席を人間、B・C・D席を棋譜トレースAIにして、読み込んだ棋譜と同じ配牌・親で再挑戦します。</p>
+    <button id="debugTraceRandomButton" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
+    <p class="settings-help-text">開始時点のAC・BDがともに50点以下の局から、1局を選びます。</p>
     <label>棋譜ファイル
       <input id="debugTraceInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" onchange="previewDebugTrace(this)">
     </label>
@@ -5451,7 +5453,7 @@
     </div>
   </div>
 </div>
-<script src="/static/kifu-files.js?v=20260909a"></script>
+<script src="/static/kifu-files.js?v=20260909b"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
