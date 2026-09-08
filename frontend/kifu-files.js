@@ -128,3 +128,110 @@ document.addEventListener('keydown', event => {
     }
   }
 });
+
+let debugTraceText = '';
+let debugTraceRounds = [];
+let debugTraceRequest = null;
+
+function syncDebugTraceMenu() {
+  const item = document.getElementById('debugTraceMenuItem');
+  if (item) item.style.display = gid === 'debug' ? '' : 'none';
+}
+
+function openDebugTrace() {
+  if (typeof gid === 'undefined' || gid !== 'debug') return;
+  debugTraceText = '';
+  debugTraceRounds = [];
+  debugTraceRequest?.abort();
+  const input = document.getElementById('debugTraceInput');
+  const round = document.getElementById('debugTraceRound');
+  const button = document.getElementById('debugTraceStartButton');
+  const status = document.getElementById('debugTraceStatus');
+  if (input) input.value = '';
+  if (round) { round.replaceChildren(); round.disabled = true; }
+  if (button) button.disabled = true;
+  if (status) status.textContent = '棋譜ファイルを選択してください。';
+  const modal = document.getElementById('debugTraceModal');
+  modal.style.display = 'flex';
+  modal.querySelector('.settings-modal-close')?.focus();
+}
+
+function closeDebugTrace() {
+  debugTraceRequest?.abort();
+  debugTraceRequest = null;
+  debugTraceText = '';
+  debugTraceRounds = [];
+  const modal = document.getElementById('debugTraceModal');
+  modal.style.display = 'none';
+  document.getElementById('debugTraceInput').value = '';
+  document.getElementById('debugTraceRound').replaceChildren();
+  document.getElementById('debugTraceRound').disabled = true;
+  document.getElementById('debugTraceStartButton').disabled = true;
+}
+
+async function previewDebugTrace(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  debugTraceRequest?.abort();
+  const request = new AbortController();
+  debugTraceRequest = request;
+  const status = document.getElementById('debugTraceStatus');
+  const round = document.getElementById('debugTraceRound');
+  const start = document.getElementById('debugTraceStartButton');
+  status.textContent = '棋譜を確認しています。';
+  start.disabled = true;
+  try {
+    if (file.size > 200000) throw new Error('棋譜ファイルは200KB以下にしてください。');
+    debugTraceText = await file.text();
+    const response = await fetch('/kifu/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store',
+      signal: request.signal, body: JSON.stringify({kifu_text: debugTraceText}),
+    });
+    const data = await response.json();
+    if (request !== debugTraceRequest) return;
+    if (!response.ok) throw new Error(data.detail || '棋譜を読み込めませんでした。');
+    debugTraceRounds = data.rounds || [];
+    round.replaceChildren(...debugTraceRounds.map((item, index) => {
+      const option = document.createElement('option'); option.value = index + 1;
+      option.textContent = `第${item.round_index}局（${item.winner} ${item.gained_score}点）`; return option;
+    }));
+    round.disabled = !debugTraceRounds.length;
+    start.disabled = !debugTraceRounds.length;
+    syncDebugTraceRoundStatus();
+  } catch (error) {
+    if (request === debugTraceRequest && !request.signal.aborted) status.textContent = error.message;
+  } finally {
+    if (request === debugTraceRequest) debugTraceRequest = null;
+  }
+}
+
+function syncDebugTraceRoundStatus() {
+  const index = Number(document.getElementById('debugTraceRound').value || 1) - 1;
+  const item = debugTraceRounds[index];
+  const status = document.getElementById('debugTraceStatus');
+  if (item && status) status.textContent = `親：${item.dealer}　開始点数 AC：${item.score_before?.AC || 0} ／ BD：${item.score_before?.BD || 0}`;
+}
+
+async function startDebugTraceFromFile() {
+  if (gid !== 'debug' || mySeat !== 'A' || !debugTraceText) return;
+  const button = document.getElementById('debugTraceStartButton');
+  const status = document.getElementById('debugTraceStatus');
+  const round = Number(document.getElementById('debugTraceRound').value || 1);
+  button.disabled = true;
+  status.textContent = '棋譜トレース対戦を準備しています。';
+  try {
+    const response = await fetch(`${API}/games/debug/trace_start`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kifu_text: debugTraceText, round_index: round, requester: 'A', client_id: clientId}),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '対戦を開始できませんでした。');
+    closeDebugTrace();
+    await refresh();
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+window.addEventListener('load', syncDebugTraceMenu);

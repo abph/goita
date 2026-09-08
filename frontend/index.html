@@ -4594,6 +4594,7 @@
           <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
           <button id="roomSettingsBtn" class="header-menu-item" type="button" onclick="openSettingsModal(gid)" style="display:none;">設定</button>
           <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
+          <button id="debugTraceMenuItem" class="header-menu-item" type="button" onclick="openDebugTrace()" style="display:none;">棋譜トレース対戦</button>
         </div>
       </div>
     </div>
@@ -5432,7 +5433,25 @@
   #kifuFilesModal .research-kifu-play-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
   #kifuFilesModal .research-kifu-play-actions button { min-width: 0; width: 100%; padding: 8px 4px; }
 </style>
-<script src="/static/kifu-files.js?v=20260908a"></script>
+<div id="debugTraceModal" class="modal-overlay" onclick="if(event.target===this) closeDebugTrace()">
+  <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="debugTraceTitle">
+    <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="棋譜トレース対戦を閉じる">×</button>
+    <h3 id="debugTraceTitle">棋譜トレース対戦</h3>
+    <p class="settings-help-text">A席を人間、B・C・D席を棋譜トレースAIにして、読み込んだ棋譜と同じ配牌・親で再挑戦します。</p>
+    <label>棋譜ファイル
+      <input id="debugTraceInput" type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" onchange="previewDebugTrace(this)">
+    </label>
+    <label>対戦する局
+      <select id="debugTraceRound" disabled onchange="syncDebugTraceRoundStatus()"></select>
+    </label>
+    <p id="debugTraceStatus" class="settings-status" aria-live="polite"></p>
+    <div class="settings-footer">
+      <button type="button" onclick="closeDebugTrace()">キャンセル</button>
+      <button id="debugTraceStartButton" type="button" onclick="startDebugTraceFromFile()" disabled>対戦を開始</button>
+    </div>
+  </div>
+</div>
+<script src="/static/kifu-files.js?v=20260909a"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -7645,6 +7664,7 @@ async function enterRoom(targetGid, roomName) {
     lastHintNoticeKey = "";
     mySeat = WATCH;
     gid = targetGid;
+    syncDebugTraceMenu?.();
     initializeChatStampPickers();
     isGameStarted = false; 
     clearRoomBackground();
@@ -9638,6 +9658,8 @@ async function leaveSeat(seat) {
     await releaseSeat(seat);
     trackAnalytics("seat_left", {role: seat === "A" ? "host" : "joined"});
     mySeat = WATCH;
+    const debugTraceMenuItem = document.getElementById("debugTraceMenuItem");
+    if (debugTraceMenuItem) debugTraceMenuItem.style.display = "none";
     await refresh();
 }
 
@@ -13673,6 +13695,14 @@ async function refreshFromState(confirmedState = null){
     pending = null;
   } else if(!pending){
     setHint("あなたの手番です。手札をクリックしてください。");
+  }
+
+  if (state.trace_mode && state.finished) {
+    const actual = state.total_team_score || {};
+    const original = state.trace_original_score_after || {};
+    const acDiff = Number(actual.AC || 0) - Number(original.AC || 0);
+    const bdDiff = Number(actual.BD || 0) - Number(original.BD || 0);
+    setHint(`棋譜トレース対戦終了。元棋譜との差　AC：${acDiff >= 0 ? "+" : ""}${acDiff}点 ／ BD：${bdDiff >= 0 ? "+" : ""}${bdDiff}点${state.trace_diverged ? "（途中で元棋譜と異なる手順になりました）" : ""}`);
   }
 
   renderBoard(state);

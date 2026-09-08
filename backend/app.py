@@ -2154,6 +2154,13 @@ class ResetConfigBody(BaseModel):
     auto_start: bool = Field(default=False)
 
 
+class DebugTraceStartRequest(BaseModel):
+    kifu_text: str = Field(min_length=1, max_length=200_000)
+    round_index: int = Field(default=1, ge=1)
+    requester: str = Field(default="A")
+    client_id: str = ""
+
+
 class TurnTimeLimitUpdateRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
@@ -2796,6 +2803,11 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "trace_mode": bool(game_obj.get("trace_mode", False)),
+        "trace_diverged": bool(game_obj.get("trace_diverged", False)),
+        "trace_original_round": game_obj.get("trace_original_round"),
+        "trace_original_score_before": dict(game_obj.get("trace_original_score_before", {})),
+        "trace_original_score_after": dict(game_obj.get("trace_original_score_after", {})),
         "debug_auto_next_round": bool(
             game_id == DEBUG_GID
             and game_obj.get("debug_auto_next_round", False)
@@ -3416,6 +3428,54 @@ def _auto_save_member_round(game):
             loop.create_task(send_save_result(connection, event))
 
 
+def _trace_row_to_action(state, player, row):
+    if not isinstance(row, list) or len(row) < 3:
+        return None
+    try:
+        if int(row[0]) != ALL_SEATS.index(player):
+            return None
+    except (TypeError, ValueError):
+        return None
+    block_label, attack_label = str(row[1] or ""), str(row[2] or "")
+    if block_label == "パス":
+        return ("pass", None, None)
+    code_by_label = {label: code for code, label in PIECE_KANJI.items()}
+    block = code_by_label.get(block_label) if block_label else None
+    attack = code_by_label.get(attack_label) if attack_label else None
+    hand = list(getattr(state, "hands", {}).get(player, []))
+    if block_label == "王" and "8" not in hand and "9" in hand:
+        block = "9"
+    if attack_label == "王":
+        remaining = list(hand)
+        if block in remaining:
+            remaining.remove(block)
+        if "8" not in remaining and "9" in remaining:
+            attack = "9"
+    if block is not None and attack is not None:
+        return ("attack_after_block", block, attack)
+    if block is not None:
+        return ("receive", block, None)
+    if attack is not None:
+        return ("attack", None, attack)
+    return None
+
+
+def _debug_trace_action(game, state, player, legal_actions):
+    if not game.get("trace_mode") or game.get("trace_diverged"):
+        return None
+    index = int(game.get("trace_move_index", 0))
+    moves = game.get("trace_moves", [])
+    if index < 0 or index >= len(moves):
+        return None
+    action = _trace_row_to_action(state, player, moves[index])
+    if action is None:
+        return None
+    if action in legal_actions:
+        return action
+    game["trace_diverged"] = True
+    return None
+
+
 def _apply_agent_turn(
     game: Dict[str, Any],
     player: str,
@@ -3471,7 +3531,13 @@ def _apply_agent_turn(
             game.get("is_debug_room", False)
             and game.get("debug_dictionary_narrowing", False)
         )
-    if forced_action is not None and forced_action in acts:
+    trace_used = False
+    trace_action = _debug_trace_action(game, state, player, acts)
+    if trace_action is not None:
+        agent_action = trace_action
+        game["trace_move_index"] = int(game.get("trace_move_index", 0)) + 1
+        trace_used = True
+    elif forced_action is not None and forced_action in acts:
         agent_action = forced_action
     else:
         agent_action = agent.select_action(state, player, acts)
@@ -3494,11 +3560,13 @@ def _apply_agent_turn(
     log_str = _format_action(player, agent_action) + (" (hidden)" if hidden_receive else "")
     for ef in effects:
         log_str += f" [EFFECT:{ef}]"
-    if forced_action is None:
+    if forced_action is None and not trace_used:
         log_str += _format_ai_decision(agent)
         log_str += _format_ai_attack_candidates(agent)
         log_str += _format_ai_performance(agent)
     log_str += str(log_suffix or "")
+    if trace_used:
+        log_str += " [TRACE]"
     log.append(log_str)
     if forced_action is None and player in _ai_seat_set(game) and board_targets:
         game.setdefault("ai_board_explanations", []).append({
@@ -4672,6 +4740,51 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     return {"ok": True, "game_id": game_id, "dealer": dealer, "preset": bool(preset)}
 
 
+@app.post("/games/{game_id}/trace_start")
+async def start_debug_trace(game_id: str, body: DebugTraceStartRequest):
+    if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
+        raise HTTPException(status_code=403, detail="棋譜トレース対戦はデバッグルーム専用です。")
+    if body.requester != "A":
+        raise HTTPException(status_code=403, detail="棋譜トレース対戦はA席で開始してください。")
+    game = GAMES[game_id]
+    _require_human_seat_owner(game, "A", body.client_id)
+    from backend.kifu_import import parse_kifu_rounds
+    try:
+        rounds = parse_kifu_rounds(body.kifu_text, _parse_research_kifu_text)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if body.round_index > len(rounds):
+        raise HTTPException(status_code=400, detail="指定した局が見つかりません。")
+    payload = rounds[body.round_index - 1]
+    preset = {
+        seat: dict(Counter(payload.get("hands", {}).get(seat, [])))
+        for seat in ALL_SEATS
+    }
+    try:
+        await reset_game_config(game_id, ResetConfigBody(
+            dealer=payload.get("dealer", "A"), preset_counts=preset,
+            requester="A", client_id=body.client_id, auto_start=True,
+        ))
+    except HTTPException:
+        raise
+    trace_game = GAMES[game_id]
+    trace_game["human_seats"] = {"A": body.client_id}
+    trace_game["ai_seats"] = ["B", "C", "D"]
+    trace_game["player_names"] = payload.get("player_names", trace_game.get("player_names", {}))
+    trace_game["trace_mode"] = True
+    trace_game["trace_moves"] = payload.get("moves", [])
+    trace_game["trace_move_index"] = 0
+    trace_game["trace_diverged"] = False
+    trace_game["trace_original_round"] = body.round_index
+    trace_game["trace_original_score_before"] = payload.get("score_before", {"AC": 0, "BD": 0})
+    trace_game["trace_original_score_after"] = payload.get("score_after", {})
+    trace_game["total_team_score"] = dict(trace_game["trace_original_score_before"])
+    await manager.broadcast_update(game_id)
+    return {"ok": True, "round_index": body.round_index, "state": _state_public_view(
+        trace_game["state"], game_id=game_id, viewer="A", game_obj=trace_game, client_id=body.client_id,
+    )}
+
+
 @app.post("/games/{game_id}/claim")
 async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if _is_main_game_id(game_id):
@@ -5104,6 +5217,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
         raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
     
     action = req.action.to_tuple()
+    trace_expected = _debug_trace_action(game, state, player, [action])
     
     effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
 
@@ -5125,6 +5239,11 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     log.append(log_str)
     
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
+    if game.get("trace_mode") and not game.get("trace_diverged"):
+        if trace_expected == action:
+            game["trace_move_index"] = int(game.get("trace_move_index", 0)) + 1
+        else:
+            game["trace_diverged"] = True
     _notify_public(agents, state, player, action)
     _notify_public(game.get("beginner_support_agents", {}), state, player, action)
     _schedule_ai_background_search(game, action)
