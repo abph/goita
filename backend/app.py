@@ -76,7 +76,8 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
-from backend.trace_results import TraceStore, get_trace_store, trace_lifespan
+from backend.trace_results import TraceStore, get_trace_store
+from backend.score_rooms import ScoreRoomGuard, score_lifespan, is_score_room, IDLE_SECONDS
 from backend.member_room_api import create_member_room_router
 from backend.member_kifu import MemberKifuStore
 from backend.member_kifu_auto import save_connected_round, send_save_result
@@ -398,6 +399,8 @@ class ConnectionManager:
             task.cancel()
 
     def schedule_disconnect_release(self, game_id: str, client_id: str) -> None:
+        if is_score_room(game_id):
+            return
         self.cancel_disconnect_release(game_id, client_id)
         task = asyncio.create_task(_release_disconnected_client_after_grace(game_id, client_id))
         self.disconnect_tasks[(game_id, client_id)] = task
@@ -1342,7 +1345,7 @@ def _effective_revealed_hand_seats(
     return revealed - _seat_set(game.get("auto_reveal_blocked_seats", []))
 
 
-app = FastAPI(title="Goita FastAPI (Render-ready)", lifespan=trace_lifespan)
+app = FastAPI(title="Goita FastAPI (Render-ready)", lifespan=score_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2822,6 +2825,7 @@ def _state_public_view(
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
         "trace_mode": bool(game_obj.get("trace_mode", False)),
+        "is_score_attack_room": is_score_room(game_id),
         "trace_diverged": bool(game_obj.get("trace_diverged", False)),
         "trace_original_round": game_obj.get("trace_original_round"),
         "trace_original_score_before": dict(game_obj.get("trace_original_score_before", {})),
@@ -3944,6 +3948,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             and connections
             and (
                 connected_game_id == DEBUG_GID
+                or is_score_room(connected_game_id)
                 or GAMES.get(connected_game_id, {}).get("is_debug_room", False)
             )
         }
@@ -4118,7 +4123,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
     counted_rooms = [
         build_room_info(gid, data)
         for gid, data in GAMES.items()
-        if gid != DEBUG_GID and not data.get("is_debug_room", False)
+        if gid != DEBUG_GID and not data.get("is_debug_room", False) and not is_score_room(gid)
     ]
     room_totals = {
         "main_people_count": sum(
@@ -4933,6 +4938,7 @@ async def reset_game(
     if keep_score:
         _preserve_match_progress(new_game, old_game)
     
+    new_game.update({key: value for key, value in old_game.items() if key.startswith("score_")})
     GAMES[game_id] = new_game
     _arm_turn_timeout(game_id)
 
@@ -5029,6 +5035,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
 
+        new_game.update({key: value for key, value in old_game.items() if key.startswith("score_")})
         GAMES[game_id] = new_game
     else:
         new_game = _create_game_obj(
@@ -5066,6 +5073,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         if body.keep_score:
             _preserve_match_progress(new_game, old_game)
             
+        new_game.update({key: value for key, value in old_game.items() if key.startswith("score_")})
         GAMES[game_id] = new_game
 
     _arm_turn_timeout(game_id)
@@ -5129,9 +5137,104 @@ async def _start_debug_trace_payload(
 trace_router = APIRouter(route_class=PrivateRoute)
 
 
+def _score_identity(request, response, *, create=False):
+    return get_trace_store().identity(request, response, MEMBER_STORE, create=create)
+
+
+async def _expire_score_room(game_id):
+    async with _game_turn_lock(game_id):
+        game = GAMES.get(game_id)
+        if not game or time.monotonic() - game["score_last_active"] < IDLE_SECONDS:
+            return
+        # Completed results are saved before releasing transient game state.
+        _save_trace_result(game)
+        for agent in game.get("agents", {}).values():
+            cancel = getattr(agent, "cancel_background_search", None)
+            if callable(cancel):
+                cancel()
+        _cancel_turn_timeout_task(game_id)
+        _cancel_debug_auto_next_round_task(game_id)
+        GAMES.pop(game_id, None)
+        for connection in list(manager.active_connections.pop(game_id, [])):
+            try:
+                await connection.close(code=4001)
+            except Exception:
+                pass
+        for key in list(manager.client_connections):
+            if key[0] == game_id:
+                manager.client_connections.pop(key, None)
+                manager.client_names.pop(key, None)
+                manager.client_tags.pop(key, None)
+    GAME_TURN_LOCKS.pop(game_id, None)
+
+
+async def _sweep_score_rooms():
+    for game_id, game in list(GAMES.items()):
+        if is_score_room(game_id) and time.monotonic() - game["score_last_active"] >= IDLE_SECONDS:
+            try:
+                await _expire_score_room(game_id)
+            except Exception:
+                LOGGER.exception("Score attack room cleanup failed")
+
+
+app.state.sweep_score_rooms = _sweep_score_rooms
+app.add_middleware(ScoreRoomGuard, games=GAMES, identity=_score_identity, expire=_expire_score_room)
+
+
+class ScoreRoomEntry(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(default="", max_length=24)
+
+
+@trace_router.post("/api/score-attack/enter")
+async def enter_score_room(body: ScoreRoomEntry, request: Request, response: Response):
+    owner, _ = _score_identity(request, response, create=True)
+    # Serialize room creation/reconnection so one identity has at most one room.
+    async with _game_turn_lock("score-entry"):
+        await _sweep_score_rooms()
+        game_id = next((key for key, value in GAMES.items()
+                        if is_score_room(key) and value.get("score_owner") == owner), None)
+        if game_id is None:
+            game_id = "score-" + secrets.token_urlsafe(18)
+            game = _create_game_obj(dealer="A", ai_profile="current")
+            game.update(score_owner=owner, score_last_active=time.monotonic(),
+                        hidden_from_lobby=True, owner_name="スコアアタック",
+                        human_seats={"A": body.client_id}, ai_seats=["B", "C", "D"])
+            GAMES[game_id] = game
+        async with _game_turn_lock(game_id):
+            game = GAMES[game_id]
+            game["score_last_active"] = time.monotonic()
+            game["human_seats"] = {"A": body.client_id}
+            game["trace_client_id"] = body.client_id
+            game["player_names"]["A"] = _sanitize_player_name(body.name)
+        return {"game_id": game_id}
+
+
+@trace_router.post("/games/{game_id}/score_activity")
+def score_activity(game_id: str):
+    if not is_score_room(game_id):
+        raise HTTPException(404)
+    return {"ok": True}
+
+
+@trace_router.post("/games/{game_id}/score_reset")
+async def reset_score_room(game_id: str, body: DebugTraceRandomStartRequest):
+    async with _game_turn_lock(game_id):
+        game = _trace_host(game_id, body)
+        if not is_score_room(game_id) or not game["state"].finished:
+            raise HTTPException(409, "対戦終了後にリセットしてください。")
+        _save_trace_result(game)
+        await reset_game(game_id, requester="A", client_id=body.client_id)
+        return {"ok": True}
+
+
+def _require_trace_room(game_id):
+    if game_id != DEBUG_GID and not (is_score_room(game_id) and game_id in GAMES):
+        raise HTTPException(403, "スコアアタックのルームで開いてください。")
+
+
 def _trace_host(game_id, body):
-    if game_id != DEBUG_GID or not GAMES.get(game_id, {}).get("is_debug_room", False):
-        raise HTTPException(status_code=403, detail="スコアアタックはデバッグルーム専用です。")
+    _require_trace_room(game_id)
     if body.requester != "A":
         raise HTTPException(status_code=403, detail="スコアアタックはA席で開始してください。")
     game = GAMES[game_id]
@@ -5232,8 +5335,7 @@ async def start_random_debug_trace(
 
 @trace_router.get("/games/{game_id}/trace_results/latest")
 def latest_trace_result(game_id: str, request: Request, response: Response):
-    if game_id != DEBUG_GID:
-        raise HTTPException(403, "デバッグルーム専用です。")
+    _require_trace_room(game_id)
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     return {"attempt_id": store.latest(owner)}
@@ -5249,8 +5351,7 @@ async def start_same_trace(game_id: str, body: DebugTraceRandomStartRequest, req
 
 @trace_router.get("/games/{game_id}/trace_results/history")
 def trace_history(game_id: str, request: Request, response: Response, offset: int = 0, limit: int = 30):
-    if game_id != DEBUG_GID:
-        raise HTTPException(403, "デバッグルーム専用です。")
+    _require_trace_room(game_id)
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     return store.history(owner, offset=offset, limit=limit)
@@ -5258,8 +5359,7 @@ def trace_history(game_id: str, request: Request, response: Response, offset: in
 
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}")
 def trace_result(game_id: str, attempt_id: str, request: Request, response: Response, mode: str = "best"):
-    if game_id != DEBUG_GID:
-        raise HTTPException(403, "デバッグルーム専用です。")
+    _require_trace_room(game_id)
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     game = GAMES.get(game_id, {})
@@ -5270,8 +5370,7 @@ def trace_result(game_id: str, attempt_id: str, request: Request, response: Resp
 
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}/original")
 def trace_original(game_id: str, attempt_id: str, request: Request, response: Response):
-    if game_id != DEBUG_GID:
-        raise HTTPException(403, "デバッグルーム専用です。")
+    _require_trace_room(game_id)
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     return {"payload": store.read(owner, attempt_id, original=True)}
@@ -5926,6 +6025,10 @@ def _member_kifu_snapshot(request: Request, game_id: str, anonymous: bool) -> Di
     game = GAMES.get(game_id)
     if game is None:
         raise HTTPException(404, "game not found")
+    if is_score_room(game_id):
+        owner, _ = _score_identity(request, Response())
+        if game.get("score_owner") != owner:
+            raise HTTPException(403, "本人専用のルームです。")
     require_kifu_room_access(request, game_id, game.get("password"))
     # Only a finished round may expose its hidden pieces, even when a previous
     # completed-round snapshot remains in memory during the next round.

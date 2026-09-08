@@ -7,7 +7,7 @@ function updateRoundResetButton(state, isHost, autoNextRoundPending) {
   button.disabled = nextRoundRequestInFlight || traceActionBusy;
   if (nextRoundRequestInFlight) {
     button.textContent = uiText('配牌中...');
-  } else if (gid === 'debug' && state.trace_mode) {
+  } else if (isScoreAttackRoom() && state.trace_mode) {
     button.textContent = 'リセット';
     button.onclick = resetScoreAttack;
   } else if (state.match_finished) {
@@ -20,13 +20,21 @@ function updateRoundResetButton(state, isHost, autoNextRoundPending) {
 }
 
 async function resetScoreAttack() {
-  if (gid !== 'debug' || mySeat !== 'A' || traceActionBusy) return;
+  if (!isScoreAttackRoom() || mySeat !== 'A' || traceActionBusy) return;
   traceActionBusy = true;
   document.getElementById('btnNewGame').disabled = true;
   closeTraceResult();
   try {
-    await startNewGame(false);
+    if (isPersonalScoreRoom()) {
+      await traceApi("score_reset", {requester:"A", client_id:clientId});
+      pending = null;
+    } else {
+      await startNewGame(false);
+    }
     await refresh();
+    if (isPersonalScoreRoom()) openDebugTrace();
+  } catch (error) {
+    alert(error.message);
   } finally {
     traceActionBusy = false;
     document.getElementById('btnNewGame').disabled = false;
@@ -47,8 +55,8 @@ const traceSigned = value => `${value > 0 ? '+' : ''}${value}点`;
 const traceDate = value => new Date(value * 1000).toLocaleDateString('ja-JP', {timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'});
 
 async function traceApi(path, body) {
-  if (gid !== 'debug') throw new Error('デバッグルーム専用です。');
-  const response = await fetch(`${API}/games/debug/${path}`, {
+  if (!isScoreAttackRoom()) throw new Error('スコアアタックのルームで開いてください。');
+  const response = await fetch(`${API}/games/${gid}/${path}`, {
     method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store',
     headers: {'Content-Type': 'application/json', 'X-Goita-Member': '1'},
     ...(body ? {body: JSON.stringify(body)} : {}),
@@ -59,7 +67,7 @@ async function traceApi(path, body) {
 }
 
 function syncTraceResult(state) {
-  if (gid !== 'debug') {
+  if (!isScoreAttackRoom()) {
     closeTraceResult();
     closeTraceHistory();
     traceResultSeen = '';
@@ -72,7 +80,7 @@ function syncTraceResult(state) {
 }
 
 async function openTraceResult(attemptId = '', mode = 'best') {
-  if (gid !== 'debug') return;
+  if (!isScoreAttackRoom()) return;
   closeTraceOriginal();
   closeTraceHistory();
   const generation = ++traceResultRequest;
@@ -85,7 +93,7 @@ async function openTraceResult(attemptId = '', mode = 'best') {
     const id = attemptId || (await traceApi('trace_results/latest')).attempt_id;
     if (!id) throw new Error('まだ終了した対戦の記録がありません。');
     const data = await traceApi(`trace_results/${encodeURIComponent(id)}?mode=${mode}`);
-    if (generation !== traceResultRequest || gid !== 'debug') return;
+    if (generation !== traceResultRequest || !isScoreAttackRoom()) return;
     traceResultId = id;
     for (const value of ['best','first']) {
       traceElement(`traceRanking${value}`).setAttribute('aria-pressed', String(value === mode));
@@ -124,7 +132,7 @@ function closeTraceResult() {
 }
 
 async function openTraceHistory(offset = 0) {
-  if (gid !== 'debug') return;
+  if (!isScoreAttackRoom()) return;
   closeTraceResult();
   const generation = ++traceHistoryRequest;
   traceElement('traceHistoryModal').style.display = 'flex';
@@ -135,7 +143,7 @@ async function openTraceHistory(offset = 0) {
   traceElement('traceHistoryNext').disabled = true;
   try {
     const data = await traceApi(`trace_results/history?offset=${offset}&limit=30`);
-    if (generation !== traceHistoryRequest || gid !== 'debug') return;
+    if (generation !== traceHistoryRequest || !isScoreAttackRoom()) return;
     offset = data.offset;
     traceHistoryOffset = offset;
     for (const item of data.records) {
@@ -175,7 +183,7 @@ async function openTraceOriginal() {
   traceElement('traceResultStatus').textContent = '元の棋譜を読み込んでいます。';
   try {
     const data = await traceApi(`trace_results/${encodeURIComponent(traceResultId)}/original`);
-    if (generation !== traceOriginalRequest || gid !== 'debug') return;
+    if (generation !== traceOriginalRequest || !isScoreAttackRoom()) return;
     traceOriginalPayload = data.payload;
     traceOriginalFrames = researchKifuReplayFrames(data.payload);
     traceOriginalStep = traceOriginalFrames.length;
@@ -235,7 +243,7 @@ function closeTraceOriginal() {
 }
 
 async function retryTrace() {
-  if (traceActionBusy || gid !== 'debug' || mySeat !== 'A') return;
+  if (traceActionBusy || !isScoreAttackRoom() || mySeat !== 'A') return;
   traceActionBusy = true;
   traceElement('traceRetryButton').disabled = true;
   traceElement('traceResultStatus').textContent = '対戦を準備しています。';

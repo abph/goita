@@ -46,6 +46,8 @@ class TraceStore:
                 CREATE INDEX IF NOT EXISTS trace_owner_challenge ON trace_attempts(owner, challenge);
                 CREATE INDEX IF NOT EXISTS trace_ranking ON trace_attempts(challenge, ranked, improvement DESC);
                 CREATE INDEX IF NOT EXISTS trace_expiry ON trace_attempts(expires);
+                CREATE TABLE IF NOT EXISTS trace_sessions (
+                    owner TEXT PRIMARY KEY, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS trace_challenge_labels (
                     number INTEGER PRIMARY KEY AUTOINCREMENT,
                     challenge TEXT UNIQUE NOT NULL REFERENCES trace_challenges(id) ON DELETE CASCADE);
@@ -59,6 +61,7 @@ class TraceStore:
                     FROM trace_attempts)
                     UPDATE trace_attempts SET attempt_no=(SELECT n FROM numbered WHERE numbered.id=trace_attempts.id)""")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
+            db.execute("DELETE FROM trace_sessions WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
             db.execute("DELETE FROM trace_challenges WHERE id NOT IN (SELECT challenge FROM trace_attempts)")
             db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT id FROM trace_challenges WHERE id NOT IN (SELECT challenge FROM trace_challenge_labels) ORDER BY rowid")
@@ -86,13 +89,15 @@ class TraceStore:
         guest = request.cookies.get(GUEST_COOKIE, "")
         owner = "guest:" + hashlib.sha256(guest.encode()).hexdigest()
         with self.db() as db:
-            known = bool(guest and db.execute("SELECT 1 FROM trace_people WHERE owner=?", (owner,)).fetchone())
+            known = bool(guest and db.execute("SELECT 1 FROM trace_people WHERE owner=? UNION ALL SELECT 1 FROM trace_sessions WHERE owner=?", (owner, owner)).fetchone())
         if not known:
             if not create:
                 raise HTTPException(401, "挑戦したブラウザ、または会員IDで開いてください。")
             guest = secrets.token_urlsafe(32)
             owner = "guest:" + hashlib.sha256(guest.encode()).hexdigest()
         if create:
+            with self.db() as db:
+                db.execute("INSERT INTO trace_sessions VALUES (?,?) ON CONFLICT(owner) DO UPDATE SET expires=excluded.expires", (owner, self.clock() + RETENTION))
             response.set_cookie(GUEST_COOKIE, guest, max_age=RETENTION, httponly=True,
                                 secure=bool(os.environ.get("RENDER")) or request.url.scheme == "https",
                                 samesite="strict", path="/")

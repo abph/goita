@@ -133,11 +133,11 @@ let debugTraceStarting = false;
 
 function syncDebugTraceMenu() {
   const item = document.getElementById('debugTraceMenuItem');
-  if (item) item.style.display = gid === 'debug' ? '' : 'none';
+  if (item) item.style.display = isScoreAttackRoom() ? '' : 'none';
 }
 
 function openDebugTrace() {
-  if (typeof gid === 'undefined' || gid !== 'debug') return;
+  if (typeof gid === 'undefined' || !isScoreAttackRoom()) return;
   document.getElementById('debugTraceRandomButton').disabled = mySeat !== 'A' || debugTraceStarting;
   document.getElementById('debugTraceStatus').textContent = debugTraceStarting
     ? '対戦を準備しています。' : mySeat === 'A' ? '' : 'A席に着席すると対戦を開始できます。';
@@ -151,14 +151,14 @@ function closeDebugTrace() {
 }
 
 async function startRandomDebugTrace() {
-  if (gid !== 'debug' || mySeat !== 'A' || debugTraceStarting) return;
+  if (!isScoreAttackRoom() || mySeat !== 'A' || debugTraceStarting) return;
   debugTraceStarting = true;
   const button = document.getElementById('debugTraceRandomButton');
   const status = document.getElementById('debugTraceStatus');
   button.disabled = true;
   status.textContent = '50点以下の棋譜からランダムに選んでいます。';
   try {
-    const response = await fetch(`${API}/games/debug/trace_random_start`, {
+    const response = await fetch(`${API}/games/${gid}/trace_random_start`, {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-Goita-Member':'1'},
       body:JSON.stringify({requester:'A',client_id:clientId}),

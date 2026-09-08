@@ -4490,6 +4490,8 @@
      </div>
   </div>
 
+  <div class="score-attack-entry"><button id="scoreAttackEntry" class="score-attack-start" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button></div>
+
   <div id="linkedKifuNotice" class="linked-kifu-notice" hidden>
     <div>
       <strong id="linkedKifuNoticeTitle"></strong>
@@ -5437,10 +5439,7 @@
   <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="debugTraceTitle">
     <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="スコアアタックを閉じる">×</button>
     <h3 id="debugTraceTitle">スコアアタック</h3>
-    <p class="settings-help-text">何度でも挑戦でき、自己ベストをランキングに記録します。初回記録との切り替えもできます。ゲストの成績は30日間保存します。</p>
-    <p class="settings-help-text">A席で、元の棋譜と同じ配牌・親に挑戦します。B・C・D席はAIが担当します。</p>
     <button id="debugTraceRandomButton" class="score-attack-start" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
-    <p class="settings-help-text">開始時点のAC・BDがともに50点以下の局から、1局を選びます。</p>
     <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <p id="debugTraceStatus" class="settings-status" aria-live="polite"></p>
     <div class="settings-footer">
@@ -5451,7 +5450,7 @@
 <div id="traceResultModal" class="modal-overlay" onclick="if(event.target===this) closeTraceResult()">
   <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceResultTitle">
     <button class="settings-modal-close" type="button" onclick="closeTraceResult()" aria-label="閉じる">×</button>
-    <h3 id="traceResultTitle">スコアアタックの結果</h3>
+    <h3 id="traceResultTitle"><button type="button" class="trace-back" onclick="openTraceHistory(traceHistoryOffset)">← スコアアタックの結果</button></h3>
     <p id="traceResultStatus" role="status" aria-live="polite"></p>
     <div id="traceResultContent" hidden>
       <p class="trace-score-summary"><span id="traceActualScore"></span><span id="traceOriginalScore"></span><span id="traceImprovement"></span></p>
@@ -5472,7 +5471,7 @@
 <div id="traceHistoryModal" class="modal-overlay" onclick="if(event.target===this) closeTraceHistory()">
   <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceHistoryTitle">
     <button class="settings-modal-close" type="button" onclick="closeTraceHistory()" aria-label="閉じる">×</button>
-    <h3 id="traceHistoryTitle">スコアアタックの挑戦履歴・ランキング</h3>
+    <h3 id="traceHistoryTitle"><button type="button" class="trace-back" onclick="closeTraceHistory(); openDebugTrace()">← スコアアタックの挑戦履歴・ランキング</button></h3>
     <p class="settings-help-text">終了した挑戦を新しい順に表示します。会員は継続保存、ゲストは直近30日分です。</p>
     <p id="traceHistoryStatus" role="status" aria-live="polite"></p>
     <div class="trace-history-scroll"><table class="trace-score-table"><thead><tr><th>挑戦日</th><th>課題</th><th>改善点</th><th>挑戦回数</th><th></th></tr></thead><tbody id="traceHistoryRows"></tbody></table></div>
@@ -5509,15 +5508,22 @@
   .trace-ranking-tabs { display:flex; gap:8px; }
   .trace-ranking-tabs button[aria-pressed="true"] { background:#e2f1e7; color:#153a24; font-weight:700; }
   .trace-history-scroll { max-height:55vh; overflow:auto; }
-  .trace-history-scroll table { min-width:540px; }
+  .trace-history-scroll table { min-width:540px; font-size:13px; }
+  .trace-history-scroll button { font-size:13px; }
+  .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
+  .score-attack-entry { text-align:center; margin:0 auto 24px; }
+  .personal-score-room :is(#btnSpectator, #voiceChatBar, #handRevealPanel, #matchSettingsTab, #roomManagementTab, #matchSettingsPanel, #roomManagementPanel, #forceResetSettingsRow, #dealerDetails, #presetHandsDetails, #beginnerSupportSettingRow, #mobileChatSettingsDetails, #chatPanel, #chatToggle, .auto-play) { display:none !important; }
+  .personal-score-room .settings-row:has(:is(#checkAutoRevealOwnHand, #checkAutoRevealAiHands, #checkShowAiThinkingBreakdown)) { display:none; }
+  .personal-score-room #seatButtons button:disabled { opacity:1; cursor:default; }
   .trace-history-scroll th { white-space:nowrap; }
   .trace-ranking-self { background:#e2f1e7; color:#153a24; font-weight:700; }
   .trace-result-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
-<script src="/static/kifu-files.js?v=20260910c"></script>
-<script src="/static/trace-results.js?v=20260910d"></script>
+<script src="/static/score-rooms.js?v=20260911a"></script>
+<script src="/static/kifu-files.js?v=20260911a"></script>
+<script src="/static/trace-results.js?v=20260911a"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -7481,7 +7487,8 @@ function connectWS(targetGid) {
         }
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+        if (isPersonalScoreRoom(targetGid) && [4001,4403].includes(event.code)) { void leaveExpiredScoreRoom(); return; }
         console.log("WebSocket disconnected. 3秒後に再接続します...");
         setTimeout(() => connectWS(currentWsGid), 3000);
     };
@@ -7521,7 +7528,7 @@ function forceDisablePreset() {
 }
 
 function setAutoPlayEnabled(on){
-    autoPlayEnabled = !!on && !isSpectator();
+    autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom();
     if(!autoPlayEnabled){
         pending = null;
     }
@@ -7631,6 +7638,7 @@ async function autoEnterDebugRoomFromUrl() {
 function cancelDebugRoomAccess() {
     document.getElementById("debugAccessModal").style.display = "none";
     clearDebugRoomUrl();
+    if (isPersonalScoreRoom()) gid = MAIN_GID;
     connectWS("lobby");
     fetchRoomList();
 }
@@ -7729,6 +7737,7 @@ async function enterRoom(targetGid, roomName) {
     lastHintNoticeKey = "";
     mySeat = WATCH;
     gid = targetGid;
+    syncScoreRoomUI();
     syncDebugTraceMenu?.();
     initializeChatStampPickers();
     isGameStarted = false; 
@@ -7791,6 +7800,9 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 }
 
 async function returnToLobby() {
+    sessionStorage.removeItem("goitaScoreRoomOpen");
+    closeDebugTrace(); closeTraceResult(); closeTraceHistory();
+    document.body.classList.remove("personal-score-room");
     cancelImmediateAction();
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
@@ -7845,6 +7857,7 @@ async function returnToLobby() {
     window.goitaBoard3D?.setVisible?.(false);
     renderLobbyChat.initialized = false;
     
+    if (isPersonalScoreRoom()) gid = MAIN_GID;
     connectWS("lobby");
     fetchRoomList();
 }
@@ -8134,6 +8147,7 @@ async function vacateManagedSeat(item) {
 }
 
 function showSettingsTab(tabName) {
+    if (isPersonalScoreRoom(settingTargetGid) && ["match","management"].includes(tabName)) tabName = "personal";
     const isMember = tabName === "member";
     const isMatch = tabName === "match";
     const isManagement = tabName === "management";
@@ -9626,7 +9640,7 @@ function updateSeatButtons(state) {
         btn.classList.toggle('active', mySeat === s);
         btn.classList.toggle('ai-mode', isAi);
         btn.classList.toggle('empty-seat', !isHuman && !isAi);
-        btn.disabled = occupiedByOther;
+        btn.disabled = occupiedByOther || isPersonalScoreRoom();
 
         if (mySeat === s) {
             btn.textContent = `${displayName} (自分)${speakingSuffix}`;
@@ -9641,12 +9655,14 @@ function updateSeatButtons(state) {
 }
 
 async function selectSpectator() {
+    if (isPersonalScoreRoom()) return;
     if (isSpectator()) return;
     await voiceChatController?.leave?.();
     await leaveSeat(mySeat);
 }
 
 async function selectSeat(next) {
+    if (isPersonalScoreRoom()) return;
     if (next === mySeat) return;
     cancelImmediateAction();
 
@@ -9729,6 +9745,7 @@ async function leaveSeat(seat) {
 }
 
 async function openSeatMenu(seat) {
+    if (isPersonalScoreRoom()) return;
     if (!seat || seat === WATCH) return;
     const isHuman = seatIsHuman(latestState, seat);
     const isAi = seatIsAi(latestState, seat);
@@ -10309,6 +10326,7 @@ async function loadPresetFromKifu(event){
 }
 
 async function maybeApplyLinkedKifuPreset(state){
+    if (isPersonalScoreRoom()) return;
   const preset = linkedKifuPreset;
   if(!preset || preset.applied || preset.loading || preset.autoLoadAttempted) return false;
 
@@ -10573,6 +10591,7 @@ async function applyCurrentSetupToWaitingGame(options = {}){
 }
 
 function scheduleApplyCurrentSetup(){
+    if (isPersonalScoreRoom()) return;
   if(setupApplyTimer){
     clearTimeout(setupApplyTimer);
     setupApplyTimer = null;
@@ -11928,7 +11947,7 @@ function rerenderPendingPreview(){
 
 function beginnerSupportActive(state = latestState){
   return (
-    personalSettings.enableBeginnerSupport === true &&
+    !isPersonalScoreRoom() && personalSettings.enableBeginnerSupport === true &&
     !isMainRoomId(gid) &&
     !isSpectator() &&
     state?.is_started === true &&
@@ -12327,7 +12346,7 @@ async function claimSeat(seat){
   }
   return false;
 }
-async function releaseSeat(seat){ try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
+async function releaseSeat(seat){ if (isPersonalScoreRoom()) return; try{ await fetch(`${API}/games/${gid}/release?seat=${encodeURIComponent(seat)}&client_id=${encodeURIComponent(clientId)}`, {method:"POST"}); }catch(e){} }
 
 async function setName(seat, name){
   name = sanitizeName(name);
@@ -12435,6 +12454,7 @@ async function hideSeatHand(target){
 }
 
 async function maybeAutoRevealOwnAndAiHands(state){
+    if (isPersonalScoreRoom()) return;
   if(
     (personalSettings.autoRevealOwnHand !== true && personalSettings.autoRevealAiHands === false)
     || !state?.is_started
@@ -13676,6 +13696,8 @@ async function refreshFromState(confirmedState = null){
   const startGameBtn = document.getElementById("startGameBtn");
   if (startGameBtn) {
       startGameBtn.style.display = (!state.is_started && isHost && !startRequestInFlight) ? "inline-block" : "none";
+      startGameBtn.textContent = isPersonalScoreRoom() ? "スコアアタックを開く" : "▶ 開始";
+      startGameBtn.onclick = isPersonalScoreRoom() ? openDebugTrace : startGame;
   }
   if (state.is_started || state.finished) {
       startRequestInFlight = false;
@@ -13730,6 +13752,7 @@ async function refreshFromState(confirmedState = null){
     const bdDiff = Number(actual.BD || 0) - Number(original.BD || 0);
     setHint(`スコアアタック終了。元棋譜との差　AC：${acDiff >= 0 ? "+" : ""}${acDiff}点 ／ BD：${bdDiff >= 0 ? "+" : ""}${bdDiff}点${state.trace_diverged ? "（途中で元棋譜と異なる手順になりました）" : ""}`);
   }
+  if (isPersonalScoreRoom() && !state.is_started) setHint("スコアアタックを開いて対戦を開始してください。");
   syncTraceResult(state);
 
   renderBoard(state);
@@ -14011,6 +14034,7 @@ window.addEventListener("load", async ()=>{
 
   window.onMemberSessionReady();
 
+  if (sessionStorage.getItem("goitaScoreRoomOpen") === "1" && await enterScoreAttackRoom()) return;
   connectWS("lobby");
   await fetchRoomList();
   openInitialLobbyChatOnce();
