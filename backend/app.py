@@ -5186,6 +5186,18 @@ class ScoreRoomEntry(BaseModel):
     name: str = Field(default="", max_length=24)
 
 
+@trace_router.get("/api/score-attack/rankings")
+def score_period_rankings(request: Request, response: Response, period: str = "daily"):
+    store = get_trace_store()
+    owner = None
+    try:
+        owner, _ = store.identity(request, response, MEMBER_STORE)
+    except HTTPException as error:
+        if error.status_code != 401:
+            raise
+    return store.period_ranking(period, owner=owner)
+
+
 @trace_router.post("/api/score-attack/enter")
 async def enter_score_room(body: ScoreRoomEntry, request: Request, response: Response):
     owner, _ = _score_identity(request, response, create=True)

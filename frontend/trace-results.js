@@ -99,7 +99,6 @@ async function openTraceResult(attemptId = '') {
     traceElement('traceActualScore').textContent = scoreLabel(data.actual);
     traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
     traceElement('traceImprovement').textContent = `元の対局との差　${traceSigned(data.improvement)}`;
-    traceElement('traceRecordKind').textContent = `${data.attempt_no === 1 ? '初回' : `${data.attempt_no}回目`}の挑戦`;
     const rows = traceElement('traceRankingRows');
     rows.replaceChildren();
     for (const item of data.ranking) {
@@ -145,7 +144,7 @@ async function openTraceHistory(offset = 0) {
     for (const item of data.records) {
       const row = document.createElement('tr');
       for (const text of [traceDate(item.finished_at),item.challenge_label,
-        `${traceSigned(item.improvement)}${item.is_best ? ' ★' : ''}`,`${item.attempt_no}回目`]) {
+        `${traceSigned(item.improvement)}${item.is_best ? ' ★' : ''}`]) {
         const cell = document.createElement('td');
         cell.textContent = text;
         row.append(cell);
@@ -153,7 +152,7 @@ async function openTraceHistory(offset = 0) {
       const cell = document.createElement('td');
       const button = document.createElement('button');
       button.type = 'button'; button.textContent = '結果を見る';
-      button.setAttribute('aria-label', `${item.challenge_label} ${item.attempt_no}回目の結果を見る`);
+      button.setAttribute('aria-label', `${traceDate(item.finished_at)} ${item.challenge_label}の結果を見る`);
       button.onclick = () => openTraceResult(item.attempt_id);
       cell.append(button); row.append(cell);
       traceElement('traceHistoryRows').append(row);

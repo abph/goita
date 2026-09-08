@@ -4490,7 +4490,14 @@
      </div>
   </div>
 
-  <div class="score-attack-entry"><button id="scoreAttackEntry" class="score-attack-start" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button><p class="score-attack-description">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</p></div>
+  <section class="card score-attack-entry" aria-labelledby="scoreAttackSectionTitle">
+    <h2 id="scoreAttackSectionTitle">スコアアタック</h2>
+    <p class="score-attack-description">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</p>
+    <div class="score-attack-entry-actions">
+      <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button>
+      <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
+    </div>
+  </section>
 
   <div id="linkedKifuNotice" class="linked-kifu-notice" hidden>
     <div>
@@ -5447,17 +5454,31 @@
     </div>
   </div>
 </div>
+<div id="scoreRankingsModal" class="modal-overlay" onclick="if(event.target===this) closeScoreRankings()">
+  <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="scoreRankingsTitle">
+    <button class="settings-modal-close" type="button" onclick="closeScoreRankings()" aria-label="ランキングを閉じる">×</button>
+    <h3 id="scoreRankingsTitle">スコアアタックのランキング</h3>
+    <div class="trace-ranking-tabs" role="group" aria-label="集計期間">
+      <button id="scorePerioddaily" type="button" aria-pressed="true" onclick="openScoreRankings('daily')">デイリー</button>
+      <button id="scorePeriodweekly" type="button" aria-pressed="false" onclick="openScoreRankings('weekly')">ウィークリー</button>
+    </div>
+    <p id="scoreRankingsPeriod" class="settings-help-text"></p>
+    <p id="scoreRankingsNote" class="settings-help-text"></p>
+    <p id="scoreRankingsStatus" role="status" aria-live="polite"></p>
+    <div style="overflow:auto;"><table class="trace-score-table score-period-table"><thead><tr><th>順位</th><th>名前</th><th id="scoreRankingsScoreHeader">合計点差</th><th>対戦数</th></tr></thead><tbody id="scoreRankingsRows"></tbody></table></div>
+  </div>
+</div>
 <div id="traceResultModal" class="modal-overlay" onclick="if(event.target===this) closeTraceResult()">
   <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceResultTitle">
     <button class="settings-modal-close" type="button" onclick="closeTraceResult()" aria-label="閉じる">×</button>
     <h3 id="traceResultTitle"><button type="button" class="trace-back" onclick="openTraceHistory(traceHistoryOffset)">← スコアアタックの結果</button></h3>
     <p id="traceResultStatus" role="status" aria-live="polite"></p>
     <div id="traceResultContent" hidden>
-      <table class="trace-score-comparison"><thead><tr><th scope="col">元の対局</th><th scope="col">今回</th></tr></thead><tbody><tr><td id="traceOriginalScore"></td><td id="traceActualScore"></td></tr></tbody></table>
+      <div class="trace-score-lines">
+        <div class="trace-score-line"><span>今回</span><strong id="traceActualScore"></strong></div>
+        <div class="trace-score-line"><span>元の対局</span><strong id="traceOriginalScore"></strong><button id="traceViewOriginalButton" type="button" onclick="openTraceOriginal()">元々の棋譜を見る</button></div>
+      </div>
       <p id="traceImprovement" class="trace-score-summary"></p>
-      <p class="settings-help-text">AC：自分のペア ／ BD：相手のペア</p>
-      <p id="traceRecordKind"></p>
-      <button id="traceViewOriginalButton" type="button" onclick="openTraceOriginal()">元々の棋譜を見る</button>
       <h4>この棋譜のランキング</h4>
       <div class="trace-ranking-scroll"><table class="trace-score-table"><thead><tr><th>順位</th><th>名前</th><th>点差</th><th>対戦日</th></tr></thead><tbody id="traceRankingRows"></tbody></table></div>
     </div>
@@ -5469,7 +5490,7 @@
     <h3 id="traceHistoryTitle"><button type="button" class="trace-back" onclick="closeTraceHistory(); openDebugTrace()">← スコアアタックの挑戦履歴・ランキング</button></h3>
     <p class="settings-help-text">終了した挑戦を新しい順に表示します。会員は継続保存、ゲストは直近30日分です。</p>
     <p id="traceHistoryStatus" role="status" aria-live="polite"></p>
-    <div class="trace-history-scroll"><table class="trace-score-table"><thead><tr><th>挑戦日</th><th>課題</th><th>改善点</th><th>挑戦回数</th><th></th></tr></thead><tbody id="traceHistoryRows"></tbody></table></div>
+    <div class="trace-history-scroll"><table class="trace-score-table"><thead><tr><th>挑戦日</th><th>課題</th><th>改善点</th><th></th></tr></thead><tbody id="traceHistoryRows"></tbody></table></div>
     <div class="trace-result-actions">
       <button id="traceHistoryPrev" type="button" onclick="openTraceHistory(Math.max(0, traceHistoryOffset - 30))">前の30件</button>
       <button id="traceHistoryNext" type="button" onclick="openTraceHistory(traceHistoryOffset + 30)">次の30件</button>
@@ -5493,10 +5514,12 @@
   .trace-score-table { width:100%; border-collapse:collapse; font-size:14px; }
   .trace-score-table th,.trace-score-table td { padding:8px; border-bottom:1px solid #ccc; text-align:left; overflow-wrap:anywhere; }
   .trace-score-summary { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:16px; font-weight:700; }
-  .trace-score-comparison { width:100%; border-collapse:collapse; text-align:center; margin:16px 0; }
-  .trace-score-comparison th, .trace-score-comparison td { width:50%; padding:10px; border:1px solid #ddd; }
-  .trace-score-comparison th { background:#f4f6f4; font-size:14px; }
-  .trace-score-comparison td { font-size:18px; font-weight:700; }
+  .trace-score-lines { margin:18px 0 8px; display:grid; gap:10px; }
+  .trace-score-line { display:grid; grid-template-columns:5em max-content minmax(0,1fr); gap:10px; align-items:center; }
+  .trace-score-line > span { width:5em; flex:none; }
+  .trace-score-line > strong { white-space:nowrap; }
+  .trace-score-line button { padding:6px 8px; font-size:13px; justify-self:start; max-width:100%; }
+  @media(max-width:480px) { .trace-score-line button { grid-column:2 / -1; } }
   .score-attack-description { max-width:620px; margin:12px auto 0; padding:0 16px; font-size:14px; line-height:1.8; text-align:left; }
   .trace-original-back { padding:0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
   .trace-original-back:focus-visible { outline:2px solid currentColor; outline-offset:4px; }
@@ -5507,10 +5530,14 @@
   .trace-ranking-tabs { display:flex; gap:8px; }
   .trace-ranking-tabs button[aria-pressed="true"] { background:#e2f1e7; color:#153a24; font-weight:700; }
   .trace-history-scroll { max-height:55vh; overflow:auto; }
-  .trace-history-scroll table { min-width:540px; font-size:13px; }
+  .trace-history-scroll table { width:auto; min-width:0; font-size:13px; }
+  .trace-history-scroll th,.trace-history-scroll td { padding:6px 5px; white-space:nowrap; }
   .trace-history-scroll button { font-size:13px; }
   .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
-  .score-attack-entry { text-align:center; margin:0 auto 24px; }
+  .score-attack-entry { text-align:center; margin:0 auto 24px; padding:24px; }
+  .score-attack-entry-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:18px; }
+  .score-attack-entry-actions button { padding:12px 14px; }
+  .score-period-table td:not(:nth-child(2)),.score-period-table th { white-space:nowrap; }
   .personal-score-room :is(#btnSpectator, #voiceChatBar, #handRevealPanel, #matchSettingsTab, #roomManagementTab, #matchSettingsPanel, #roomManagementPanel, #forceResetSettingsRow, #dealerDetails, #presetHandsDetails, #beginnerSupportSettingRow, .auto-play) { display:none !important; }
   .personal-score-room .settings-row:has(:is(#checkAutoRevealOwnHand, #checkAutoRevealAiHands, #checkShowAiThinkingBreakdown)) { display:none; }
   .personal-score-room #seatButtons button:disabled { opacity:1; cursor:default; }
@@ -5520,9 +5547,10 @@
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
+<script src="/static/score-rankings.js?v=20260913a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260911a"></script>
-<script src="/static/trace-results.js?v=20260912a"></script>
+<script src="/static/trace-results.js?v=20260913a"></script>
 <script src="/static/i18n-en.js?v=20260906b"></script>
 <script src="/static/i18n.js?v=20260906b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>

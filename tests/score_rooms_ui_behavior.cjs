@@ -45,7 +45,7 @@ const path = require('node:path');
       return route.fulfill({json:url.pathname === '/api/member/session' ? {member:null} : {rooms:[],site_people:[],public_chat_messages:[]}});
     });
     await page.goto('http://goita.test/');
-    assert.equal(await page.getByRole('button',{name:'ランキングを見る',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:'ランキングを見る',exact:true}).count(),1);
     await page.locator('#scoreAttackEntry').click();
     await page.locator('#debugTraceModal').waitFor({state:'visible'});
     assert.equal(page.url(),'http://goita.test/');

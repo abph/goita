@@ -8,6 +8,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import asynccontextmanager, contextmanager, suppress
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -46,6 +47,7 @@ class TraceStore:
                 CREATE INDEX IF NOT EXISTS trace_owner_challenge ON trace_attempts(owner, challenge);
                 CREATE INDEX IF NOT EXISTS trace_ranking ON trace_attempts(challenge, ranked, improvement DESC);
                 CREATE INDEX IF NOT EXISTS trace_expiry ON trace_attempts(expires);
+                CREATE INDEX IF NOT EXISTS trace_finished ON trace_attempts(finished);
                 CREATE TABLE IF NOT EXISTS trace_sessions (
                     owner TEXT PRIMARY KEY, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS trace_challenge_labels (
@@ -191,6 +193,37 @@ class TraceStore:
                  "finished_at": row["finished"], "improvement": row["improvement"],
                  "attempt_no": row["attempt_no"], "is_best": row["improvement"] == row["best_score"]}
                 for row in rows]}
+
+    def period_ranking(self, period="daily", *, owner=None):
+        if period not in ("daily", "weekly"):
+            raise HTTPException(400, "ランキングの期間を確認してください。")
+        now = self.clock()
+        today = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
+        start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        if period == "weekly":
+            start -= timedelta(days=start.weekday())
+        end = start + timedelta(days=7 if period == "weekly" else 1)
+        with self.db() as db:
+            rows = db.execute("""WITH days AS (
+                SELECT owner, date(finished,'unixepoch','+9 hours') AS day,
+                       SUM(improvement) AS points, COUNT(*) AS games
+                FROM trace_attempts
+                WHERE finished >= ? AND finished < ? AND finished <= ?
+                GROUP BY owner, day
+            ), totals AS (
+                SELECT owner, SUM(CASE WHEN ?='weekly' THEN MAX(points,0) ELSE points END) AS points,
+                       SUM(games) AS games FROM days GROUP BY owner
+            )
+            SELECT totals.*, name, guest, RANK() OVER (ORDER BY points DESC) AS position
+            FROM totals JOIN trace_people USING(owner)
+            ORDER BY points DESC, name, owner""",
+                (start.timestamp(), end.timestamp(), now, period)).fetchall()
+        return {"period": period, "start_date": start.date().isoformat(),
+                "end_date": (end - timedelta(days=1)).date().isoformat(),
+                "total": len(rows), "ranking": [
+                    {"rank": row["position"], "name": row["name"], "guest": bool(row["guest"]),
+                     "score": row["points"], "games": row["games"], "self": row["owner"] == owner}
+                    for row in rows[:100]]}
 
     def latest(self, owner):
         with self.db() as db:
