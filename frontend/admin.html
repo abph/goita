@@ -174,6 +174,9 @@
     .score-audit-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
     .score-audit-toolbar select { width: auto; }
     .score-audit-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+    .score-audit-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; }
+    .score-audit-pagination .button:disabled { cursor: not-allowed; opacity: .5; }
+    .score-audit-page-status { min-width: 150px; text-align: center; }
     .score-audit-chip { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
     .score-audit-status { font-weight: 800; white-space: nowrap; }
     .score-audit-status.review { color: #9a5b00; }
@@ -395,7 +398,7 @@
             <label for="scoreAuditStatusFilter">表示</label>
             <select id="scoreAuditStatusFilter">
               <option value="all">すべて</option>
-              <option value="review">要確認</option>
+              <option value="review" selected>要確認</option>
               <option value="eligible">採用</option>
               <option value="excluded">除外</option>
               <option value="invalid">不正</option>
@@ -411,6 +414,11 @@
               <thead><tr><th>棋譜</th><th>状態</th><th>開始点</th><th>勝者</th><th>手数</th><th>判定理由</th><th>操作</th></tr></thead>
               <tbody id="scoreAuditRows"></tbody>
             </table>
+          </div>
+          <div class="score-audit-pagination" aria-label="監査一覧のページ移動">
+            <button id="scoreAuditPrevious" class="button" type="button" disabled>前の100件</button>
+            <span id="scoreAuditPageStatus" class="score-audit-page-status status" role="status" aria-live="polite">0件</span>
+            <button id="scoreAuditNext" class="button" type="button" disabled>次の100件</button>
           </div>
         </section>
       </section>
@@ -604,6 +612,8 @@
       out_of_range: "対象外",
     };
     const SCORE_AUDIT_HEADERS = {"X-Goita-Member": "1"};
+    const SCORE_AUDIT_PAGE_SIZE = 100;
+    let scoreAuditOffset = 0;
 
     function scoreAuditStatusLabel(status) {
       return SCORE_AUDIT_STATUS_LABELS[status] || status || "-";
@@ -653,22 +663,54 @@
       });
     }
 
-    async function loadScoreAudit() {
+    function renderScoreAuditPagination({total = 0, shown = 0, offset = scoreAuditOffset} = {}) {
+      const previous = document.getElementById("scoreAuditPrevious");
+      const next = document.getElementById("scoreAuditNext");
+      const pageStatus = document.getElementById("scoreAuditPageStatus");
+      const safeTotal = Math.max(0, Number(total) || 0);
+      const safeShown = Math.max(0, Number(shown) || 0);
+      const safeOffset = Math.max(0, Number(offset) || 0);
+      if (previous) previous.disabled = safeOffset <= 0;
+      if (next) next.disabled = safeOffset + safeShown >= safeTotal;
+      if (pageStatus) {
+        pageStatus.textContent = safeTotal
+          ? `${safeOffset + 1}〜${safeOffset + safeShown}件 / ${safeTotal}件`
+          : "0件";
+      }
+    }
+
+    async function loadScoreAudit({resetPage = false} = {}) {
       const status = document.getElementById("scoreAuditStatus");
       const filter = document.getElementById("scoreAuditStatusFilter").value;
+      if (resetPage) scoreAuditOffset = 0;
       status.textContent = "監査一覧を読み込んでいます...";
       try {
-        const data = await api(`/admin/api/score-attack/audit?status=${encodeURIComponent(filter)}`, {
+        const params = new URLSearchParams({
+          status: filter,
+          limit: String(SCORE_AUDIT_PAGE_SIZE),
+          offset: String(scoreAuditOffset),
+        });
+        const data = await api(`/admin/api/score-attack/audit?${params.toString()}`, {
           headers: SCORE_AUDIT_HEADERS,
         });
         renderScoreAuditSummary(data.summary || {});
         renderScoreAuditRows(data.items || []);
-        status.textContent = `${Number(data.shown ?? data.items?.length ?? 0)}件を表示しています（全${Number(data.total || 0)}件）。`;
+        const shown = Number(data.shown ?? data.items?.length ?? 0);
+        const total = Number(data.total || 0);
+        renderScoreAuditPagination({total, shown, offset: scoreAuditOffset});
+        if (!shown && total > 0 && scoreAuditOffset > 0) {
+          scoreAuditOffset = Math.max(0, Math.floor((total - 1) / SCORE_AUDIT_PAGE_SIZE) * SCORE_AUDIT_PAGE_SIZE);
+          return loadScoreAudit();
+        }
+        status.textContent = total
+          ? `${scoreAuditOffset + 1}〜${scoreAuditOffset + shown}件を表示しています（${total}件中）。`
+          : "該当する棋譜はありません。";
       } catch (error) {
         if (error.status === 401) showLogin();
         status.textContent = error.message;
         renderScoreAuditSummary({});
         renderScoreAuditRows([]);
+        renderScoreAuditPagination({});
       }
     }
 
@@ -1948,7 +1990,15 @@
     document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
     document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
     document.getElementById("scoreAuditRefresh").addEventListener("click", loadScoreAudit);
-    document.getElementById("scoreAuditStatusFilter").addEventListener("change", loadScoreAudit);
+    document.getElementById("scoreAuditStatusFilter").addEventListener("change", () => loadScoreAudit({resetPage: true}));
+    document.getElementById("scoreAuditPrevious").addEventListener("click", () => {
+      scoreAuditOffset = Math.max(0, scoreAuditOffset - SCORE_AUDIT_PAGE_SIZE);
+      loadScoreAudit();
+    });
+    document.getElementById("scoreAuditNext").addEventListener("click", () => {
+      scoreAuditOffset += SCORE_AUDIT_PAGE_SIZE;
+      loadScoreAudit();
+    });
     document.getElementById("scoreAuditDialogClose").addEventListener("click", () => {
       stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
       document.getElementById("scoreAuditDialog").close();

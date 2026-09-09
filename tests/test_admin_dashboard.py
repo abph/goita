@@ -15,6 +15,10 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'data-tab="scoreAudit"' in admin
     assert 'id="scoreAuditView"' in admin
     assert 'id="scoreAuditStatusFilter"' in admin
+    assert '<option value="review" selected>要確認</option>' in admin
+    assert 'id="scoreAuditPrevious"' in admin
+    assert 'id="scoreAuditNext"' in admin
+    assert "SCORE_AUDIT_PAGE_SIZE = 100" in admin
     assert 'id="scoreAuditDialog"' in admin
     assert 'id="scoreAuditBoard"' in admin
     assert 'id="scoreAuditReplayButton"' in admin

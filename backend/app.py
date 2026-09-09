@@ -3532,22 +3532,41 @@ def private_archive_status(request: Request):
 
 
 @private_archive_router.get("/admin/api/score-attack/audit")
-def score_attack_audit_list(request: Request, status: str = "all"):
+def score_attack_audit_list(
+    request: Request,
+    status: str = "all",
+    limit: int = 100,
+    offset: int = 0,
+):
     _require_site_admin(request)
     if status != "all" and status not in AUDIT_STATUSES:
         raise HTTPException(400, "監査状態が正しくありません。")
+    if limit < 1 or limit > 100:
+        raise HTTPException(400, "監査一覧の取得件数は1〜100件で指定してください。")
+    if offset < 0:
+        raise HTTPException(400, "監査一覧の開始位置が正しくありません。")
     try:
         records = _score_attack_audit_records()
     except (ValueError, OSError) as error:
         raise HTTPException(503, str(error)) from error
-    items = [_score_attack_audit_item(item) for item in records]
+    all_items = [_score_attack_audit_item(item) for item in records]
+    items = all_items
     if status != "all":
         items = [item for item in items if item["status"] == status]
     summary = {value: 0 for value in AUDIT_STATUSES}
-    for item in [_score_attack_audit_item(record) for record in records]:
+    for item in all_items:
         if item["status"] in summary:
             summary[item["status"]] += 1
-    return {"items": items, "summary": summary, "total": len(records), "shown": len(items)}
+    total = len(items)
+    page_items = items[offset:offset + limit]
+    return {
+        "items": page_items,
+        "summary": summary,
+        "total": total,
+        "shown": len(page_items),
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 @private_archive_router.get("/admin/api/score-attack/audit/{candidate_id}")
