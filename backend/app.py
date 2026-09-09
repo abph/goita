@@ -76,6 +76,12 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
+from backend.score_attack_audit import (
+    AUDIT_STATUSES,
+    MANUAL_STATUSES,
+    audit_store_for,
+    candidate_id as score_attack_candidate_id,
+)
 from backend.trace_results import TraceStore, get_trace_store
 from backend.score_rooms import ScoreRoomGuard, score_lifespan, is_score_room, IDLE_SECONDS
 from backend.member_room_api import create_member_room_router
@@ -3510,6 +3516,11 @@ def _require_private_archive_user(request: Request) -> None:
 private_archive_router = APIRouter(route_class=PrivateRoute)
 
 
+class ScoreAttackAuditUpdate(BaseModel):
+    status: str = Field(min_length=1, max_length=32)
+    note: str = Field(default="", max_length=500)
+
+
 @private_archive_router.get("/admin/api/private-kifu")
 def private_archive_status(request: Request):
     _require_site_admin(request)
@@ -3518,6 +3529,66 @@ def private_archive_status(request: Request):
     except ValueError as error:
         return {"configured": False, "registered": False, "message": str(error)}
     return {"configured": True, "registered": path.is_file()}
+
+
+@private_archive_router.get("/admin/api/score-attack/audit")
+def score_attack_audit_list(request: Request, status: str = "all"):
+    _require_site_admin(request)
+    if status != "all" and status not in AUDIT_STATUSES:
+        raise HTTPException(400, "監査状態が正しくありません。")
+    try:
+        records = _score_attack_audit_records()
+    except (ValueError, OSError) as error:
+        raise HTTPException(503, str(error)) from error
+    items = [_score_attack_audit_item(item) for item in records]
+    if status != "all":
+        items = [item for item in items if item["status"] == status]
+    summary = {value: 0 for value in AUDIT_STATUSES}
+    for item in [_score_attack_audit_item(record) for record in records]:
+        if item["status"] in summary:
+            summary[item["status"]] += 1
+    return {"items": items, "summary": summary, "total": len(records), "shown": len(items)}
+
+
+@private_archive_router.get("/admin/api/score-attack/audit/{candidate_id}")
+def score_attack_audit_detail(candidate_id: str, request: Request):
+    _require_site_admin(request)
+    try:
+        records = _score_attack_audit_records()
+    except (ValueError, OSError) as error:
+        raise HTTPException(503, str(error)) from error
+    item = next((value for value in records
+                 if value["audit"].get("candidate_id") == candidate_id), None)
+    if item is None:
+        raise HTTPException(404, "指定した棋譜監査が見つかりません。")
+    result = _score_attack_audit_item(item, include_payload=True)
+    result["history"] = audit_store_for(BASE_DIR).history(candidate_id)
+    return result
+
+
+@private_archive_router.put("/admin/api/score-attack/audit/{candidate_id}")
+def score_attack_audit_update(candidate_id: str, body: ScoreAttackAuditUpdate, request: Request):
+    _require_site_admin(request)
+    if body.status not in MANUAL_STATUSES:
+        raise HTTPException(400, "採用・要確認・除外のいずれかを指定してください。")
+    try:
+        records = _score_attack_audit_records()
+        item = next((value for value in records
+                     if value["audit"].get("candidate_id") == candidate_id), None)
+        if item is None:
+            raise HTTPException(404, "指定した棋譜監査が見つかりません。")
+        store = audit_store_for(BASE_DIR)
+        updated = store.set_status(candidate_id, body.status, note=body.note)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except OSError as error:
+        raise HTTPException(503, "監査状態を保存できません。保存先の設定を確認してください。") from error
+    global _KIFU_RANDOM_TRACE_CACHE
+    _KIFU_RANDOM_TRACE_CACHE = None
+    updated_item = {"audit": updated, "payload": item.get("payload")}
+    result = _score_attack_audit_item(updated_item, include_payload=False)
+    result["history"] = store.history(candidate_id)
+    return result
 
 
 @private_archive_router.put("/admin/api/private-kifu")
@@ -3660,13 +3731,11 @@ def _archive_round_to_trace_payload(
     return payload, source
 
 
-def _random_trace_candidates() -> List[Dict[str, Any]]:
-    global _KIFU_RANDOM_TRACE_CACHE, _KIFU_RANDOM_TRACE_CACHE_MTIME_NS
+def _score_attack_audit_records() -> List[Dict[str, Any]]:
+    """Scan the current private archive and preserve per-round admin decisions."""
     archive = _load_kifu_archive()
-    mtime_ns = _KIFU_ARCHIVE_CACHE_MTIME_NS
-    if _KIFU_RANDOM_TRACE_CACHE is not None and _KIFU_RANDOM_TRACE_CACHE_MTIME_NS == mtime_ns:
-        return _KIFU_RANDOM_TRACE_CACHE
-    candidates: List[Dict[str, Any]] = []
+    store = audit_store_for(BASE_DIR)
+    records: List[Dict[str, Any]] = []
     for match in archive.get("matches", []):
         if not isinstance(match, dict):
             continue
@@ -3674,18 +3743,164 @@ def _random_trace_candidates() -> List[Dict[str, Any]]:
         if not isinstance(rounds, list):
             continue
         for position, round_obj in enumerate(rounds):
-            if not isinstance(round_obj, dict):
-                continue
-            score = _archive_score_pair(round_obj)
-            if score is None or score[0] > 50 or score[1] > 50:
-                continue
+            round_is_mapping = isinstance(round_obj, dict)
+            round_data = round_obj if round_is_mapping else {"raw_round": round_obj}
+            identifier = score_attack_candidate_id(match, round_data, position)
+            raw_round_index = round_obj.get("round_index") if round_is_mapping else None
             try:
-                payload, source = _archive_round_to_trace_payload(match, round_obj, position)
-            except (ValueError, TypeError, IndexError):
-                continue
-            payload = _canonical_trace_payload(payload)
-            candidates.append({"payload": payload, "source": source,
-                               "challenge_id": TraceStore.challenge_id(payload)})
+                round_index = int(raw_round_index) if raw_round_index is not None else position + 1
+            except (TypeError, ValueError):
+                round_index = None
+            score = _archive_score_pair(round_obj) if round_is_mapping else None
+            default_status = "eligible"
+            reasons: List[str] = []
+            payload: Optional[Dict[str, Any]] = None
+            error_text = ""
+            suspicious_move: Optional[Tuple[int, str]] = None
+            if not round_is_mapping:
+                default_status = "invalid"
+                reasons.append("局データの形式が正しくありません")
+            elif score is None:
+                default_status = "invalid"
+                reasons.append("開始点数の形式が正しくありません")
+            else:
+                if score[0] > 50 or score[1] > 50:
+                    default_status = "out_of_range"
+                    reasons.append("開始点数がスコアアタックの対象範囲外です")
+                try:
+                    payload, _source = _archive_round_to_trace_payload(match, round_obj, position)
+                    payload = _canonical_trace_payload(payload)
+                    suspicious_move = _passed_before_immediate_finish(payload)
+                    if (
+                        suspicious_move is not None
+                        and payload.get("winner") in ALL_SEATS
+                        and (payload["winner"] in ("A", "C")) != (suspicious_move[1] in ("A", "C"))
+                    ):
+                        default_status = "review"
+                        reasons.append(
+                            f"手数{suspicious_move[0] + 1}で、受けて直ちに上がれる可能性があるのにパスしています"
+                        )
+                except (ValueError, TypeError, IndexError) as error:
+                    default_status = "invalid"
+                    error_text = str(error)
+                    reasons.append(error_text or "棋譜を合法手として再現できません")
+            metadata = {
+                "dealer": payload.get("dealer") if payload else None,
+                "move_count": len(payload.get("moves", [])) if payload else 0,
+                "expanded_move_count": len(payload.get("game", [])) if payload else 0,
+                "error": error_text,
+                "suspicious_move_index": suspicious_move[0] if suspicious_move else None,
+                "suspicious_player": suspicious_move[1] if suspicious_move else None,
+            }
+            record = {
+                "candidate_id": identifier,
+                "default_status": default_status,
+                "match_id": str(match.get("id") or ""),
+                "round_index": round_index,
+                "score_ac": score[0] if score else None,
+                "score_bd": score[1] if score else None,
+                "winner": payload.get("winner") if payload else None,
+                "gained_score": payload.get("gained_score") if payload else None,
+                "reasons": reasons,
+                "metadata": metadata,
+            }
+            stored = store.sync(record)
+            records.append({"audit": stored, "payload": payload})
+    return records
+
+
+def _passed_before_immediate_finish(payload: Dict[str, Any]) -> Optional[Tuple[int, str]]:
+    """Find a pass where receiving then attacking would finish immediately.
+
+    This is deliberately a narrow, exact check. More speculative human-style
+    quality checks should remain review suggestions instead of automatic
+    exclusions.
+    """
+    try:
+        state = GoitaState(
+            hands={seat: list(payload["hands"][seat]) for seat in ALL_SEATS},
+            dealer=str(payload.get("dealer") or "A"),
+        )
+        moves = list(payload.get("moves") or [])
+    except (KeyError, TypeError, ValueError):
+        return None
+    for index, row in enumerate(moves):
+        try:
+            actor = ALL_SEATS[int(row[0])]
+        except (TypeError, ValueError, IndexError):
+            return None
+        action = _trace_row_to_action(state, actor, row)
+        if action is None or action not in state.legal_actions(actor):
+            return None
+        if action[0] == "pass":
+            for receive in state.legal_actions(actor):
+                if receive[0] != "receive":
+                    continue
+                after_receive = copy.deepcopy(state)
+                try:
+                    _apply_action(after_receive, actor, receive)
+                except (ValueError, TypeError):
+                    continue
+                for attack in after_receive.legal_actions(actor):
+                    if attack[0] not in {"attack", "attack_after_block"}:
+                        continue
+                    after_attack = copy.deepcopy(after_receive)
+                    try:
+                        _apply_action(after_attack, actor, attack)
+                    except (ValueError, TypeError):
+                        continue
+                    if after_attack.finished and after_attack.winner == actor:
+                        return index, actor
+        try:
+            _apply_action(state, actor, action)
+        except (ValueError, TypeError):
+            return None
+        if state.finished:
+            break
+    return None
+
+
+def _score_attack_audit_item(item: Dict[str, Any], *, include_payload: bool = False) -> Dict[str, Any]:
+    audit = dict(item.get("audit") or {})
+    result = {
+        "candidate_id": audit.get("candidate_id"),
+        "status": audit.get("status"),
+        "default_status": audit.get("default_status"),
+        "match_id": audit.get("match_id"),
+        "round_index": audit.get("round_index"),
+        "score": {"AC": audit.get("score_ac"), "BD": audit.get("score_bd")},
+        "winner": audit.get("winner"),
+        "gained_score": audit.get("gained_score"),
+        "reasons": audit.get("reasons") or [],
+        "metadata": audit.get("metadata") or {},
+        "updated_at": audit.get("updated_at"),
+        "updated_by": audit.get("updated_by"),
+        "decision_note": audit.get("decision_note") or "",
+    }
+    if include_payload and item.get("payload") is not None:
+        result["payload"] = item["payload"]
+    return result
+
+
+def _random_trace_candidates() -> List[Dict[str, Any]]:
+    global _KIFU_RANDOM_TRACE_CACHE, _KIFU_RANDOM_TRACE_CACHE_MTIME_NS
+    _load_kifu_archive()
+    mtime_ns = _KIFU_ARCHIVE_CACHE_MTIME_NS
+    if _KIFU_RANDOM_TRACE_CACHE is not None and _KIFU_RANDOM_TRACE_CACHE_MTIME_NS == mtime_ns:
+        return _KIFU_RANDOM_TRACE_CACHE
+    candidates: List[Dict[str, Any]] = []
+    for item in _score_attack_audit_records():
+        audit = item["audit"]
+        payload = item.get("payload")
+        if audit.get("status") != "eligible" or audit.get("default_status") in {"invalid", "out_of_range"} or payload is None:
+            continue
+        source = {
+            "match_id": audit.get("match_id"),
+            "round_index": audit.get("round_index"),
+        }
+        candidates.append({"payload": payload, "source": source,
+                           "challenge_id": TraceStore.challenge_id(payload),
+                           "candidate_id": audit.get("candidate_id")})
     _KIFU_RANDOM_TRACE_CACHE = candidates
     _KIFU_RANDOM_TRACE_CACHE_MTIME_NS = mtime_ns
     return candidates

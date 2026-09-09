@@ -12,6 +12,11 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'href="/admin/"' not in lobby
     assert "そろうごいた 管理者ページ" in admin
     assert 'data-tab="settings"' in admin
+    assert 'data-tab="scoreAudit"' in admin
+    assert 'id="scoreAuditView"' in admin
+    assert 'id="scoreAuditStatusFilter"' in admin
+    assert 'id="scoreAuditDialog"' in admin
+    assert '"/admin/api/score-attack/audit?' in admin
     assert 'data-tab="analytics"' in admin
     assert 'data-tab="aiMetrics"' in admin
     assert 'data-tab="members"' in admin

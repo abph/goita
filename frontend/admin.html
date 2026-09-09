@@ -171,6 +171,27 @@
     .member-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     #memberCredential { border-left: 3px solid var(--accent); padding: 12px; margin: 16px 0; background: #fff; }
     #memberCredentialText { min-height: 92px; }
+    .score-audit-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .score-audit-toolbar select { width: auto; }
+    .score-audit-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+    .score-audit-chip { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
+    .score-audit-status { font-weight: 800; white-space: nowrap; }
+    .score-audit-status.review { color: #9a5b00; }
+    .score-audit-status.excluded, .score-audit-status.invalid, .score-audit-status.out_of_range { color: var(--danger); }
+    .score-audit-status.eligible { color: var(--accent); }
+    .score-audit-table { min-width: 900px; }
+    .score-audit-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    dialog.score-audit-dialog { width: min(920px, calc(100% - 28px)); max-height: min(88vh, 900px); border: 1px solid var(--line); border-radius: 6px; padding: 0; color: var(--ink); }
+    dialog.score-audit-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+    .score-audit-dialog-inner { padding: 18px; }
+    .score-audit-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .score-audit-dialog-header h2 { margin: 0; font-size: 20px; }
+    .score-audit-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+    .score-audit-meta div { padding: 9px; border: 1px solid var(--line); background: var(--surface); }
+    .score-audit-meta strong { display: block; margin-top: 3px; }
+    .score-audit-moves { max-height: 360px; overflow: auto; }
+    .score-audit-moves table { min-width: 500px; }
+    .score-audit-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     [hidden] { display: none !important; }
     @media (max-width: 900px) {
       .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -180,6 +201,7 @@
       .password-row { grid-template-columns: 1fr; }
       .room-options { grid-template-columns: 1fr; }
       .member-admin-create, .member-admin-row { grid-template-columns: 1fr; }
+      .score-audit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .topbar { flex-wrap: wrap; gap: 8px; }
       .topbar h1 { font-size: 16px; }
       .topbar-actions { margin-left: auto; white-space: nowrap; }
@@ -213,6 +235,7 @@
     <section id="adminView" hidden>
       <nav class="tabs" aria-label="管理項目">
         <button class="tab active" type="button" data-tab="settings">サイト設定</button>
+        <button class="tab" type="button" data-tab="scoreAudit">スコアアタック監査</button>
         <button class="tab" type="button" data-tab="analytics">利用状況</button>
         <button class="tab" type="button" data-tab="aiMetrics">AI計測</button>
         <button class="tab" type="button" data-tab="members">会員管理</button>
@@ -327,6 +350,33 @@
 
       </section>
 
+      <section id="scoreAuditView" class="view">
+        <section class="panel">
+          <div class="score-audit-toolbar">
+            <h2 class="section-heading" style="margin:0; margin-right:auto">スコアアタック棋譜監査</h2>
+            <label for="scoreAuditStatusFilter">表示</label>
+            <select id="scoreAuditStatusFilter">
+              <option value="all">すべて</option>
+              <option value="review">要確認</option>
+              <option value="eligible">採用</option>
+              <option value="excluded">除外</option>
+              <option value="invalid">不正</option>
+              <option value="out_of_range">対象外</option>
+            </select>
+            <button id="scoreAuditRefresh" class="button" type="button">更新</button>
+          </div>
+          <p class="muted">棋譜の原本は変更せず、ここで「採用」「要確認」「除外」を管理します。除外した棋譜は今後のランダム出題から外れますが、過去のランキングと履歴は残ります。</p>
+          <div id="scoreAuditStatus" class="status" role="status" aria-live="polite"></div>
+          <div id="scoreAuditSummary" class="score-audit-summary"></div>
+          <div class="table-scroll">
+            <table class="score-audit-table">
+              <thead><tr><th>棋譜</th><th>状態</th><th>開始点</th><th>勝者</th><th>手数</th><th>判定理由</th><th>操作</th></tr></thead>
+              <tbody id="scoreAuditRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
       <section id="aiMetricsView" class="view">
         <section class="panel">
           <div class="analytics-toolbar">
@@ -427,6 +477,16 @@
     </section>
   </main>
 
+  <dialog id="scoreAuditDialog" class="score-audit-dialog">
+    <div class="score-audit-dialog-inner">
+      <div class="score-audit-dialog-header">
+        <h2 id="scoreAuditDialogTitle">棋譜の確認</h2>
+        <button id="scoreAuditDialogClose" class="button" type="button">閉じる</button>
+      </div>
+      <div id="scoreAuditDialogBody"></div>
+    </div>
+  </dialog>
+
   <script>
     const EVENT_LABELS = {
       site_visit: "サイトを訪問",
@@ -498,6 +558,158 @@
       }
     }
 
+    const SCORE_AUDIT_STATUS_LABELS = {
+      eligible: "採用",
+      review: "要確認",
+      excluded: "除外",
+      invalid: "不正",
+      out_of_range: "対象外",
+    };
+    const SCORE_AUDIT_HEADERS = {"X-Goita-Member": "1"};
+
+    function scoreAuditStatusLabel(status) {
+      return SCORE_AUDIT_STATUS_LABELS[status] || status || "-";
+    }
+
+    function renderScoreAuditSummary(summary = {}) {
+      const order = ["review", "eligible", "excluded", "invalid", "out_of_range"];
+      document.getElementById("scoreAuditSummary").innerHTML = order.map(status => `
+        <span class="score-audit-chip"><span class="score-audit-status ${escapeHtml(status)}">${escapeHtml(scoreAuditStatusLabel(status))}</span> ${Number(summary[status] || 0)}件</span>
+      `).join("");
+    }
+
+    function scoreAuditActionButtons(item) {
+      const id = escapeHtml(item.candidate_id);
+      const inspect = `<button class="button score-audit-detail" type="button" data-candidate="${id}">棋譜を見る</button>`;
+      if (item.status === "eligible") {
+        return `${inspect}<button class="button danger score-audit-status-button" type="button" data-candidate="${id}" data-status="excluded">除外</button>`;
+      }
+      if (item.status === "excluded" || item.status === "review") {
+        return `${inspect}<button class="button score-audit-status-button" type="button" data-candidate="${id}" data-status="eligible">採用に戻す</button>`;
+      }
+      return inspect;
+    }
+
+    function renderScoreAuditRows(items = []) {
+      const rows = items.map(item => {
+        const score = item.score || {};
+        const metadata = item.metadata || {};
+        const reasons = (item.reasons || []).map(reason => escapeHtml(reason)).join("<br>") || '<span class="muted">自動検証で問題なし</span>';
+        const winner = item.winner ? `${escapeHtml(item.winner)}側` : "-";
+        return `<tr>
+          <td>${escapeHtml(item.match_id || "-")} / ${escapeHtml(item.round_index ?? "-")}<br><span class="muted">${escapeHtml(String(item.candidate_id || "").slice(0, 10))}…</span></td>
+          <td><span class="score-audit-status ${escapeHtml(item.status)}">${escapeHtml(scoreAuditStatusLabel(item.status))}</span></td>
+          <td>AC ${escapeHtml(score.AC ?? "-")} / BD ${escapeHtml(score.BD ?? "-")}</td>
+          <td>${winner}</td>
+          <td>${Number(metadata.move_count || 0)}手</td>
+          <td>${reasons}</td>
+          <td><div class="score-audit-actions">${scoreAuditActionButtons(item)}</div></td>
+        </tr>`;
+      }).join("");
+      document.getElementById("scoreAuditRows").innerHTML = rows || '<tr><td colspan="7" class="muted">該当する棋譜はありません。</td></tr>';
+      document.querySelectorAll(".score-audit-detail").forEach(button => {
+        button.addEventListener("click", () => openScoreAuditDetail(button.dataset.candidate));
+      });
+      document.querySelectorAll(".score-audit-status-button").forEach(button => {
+        button.addEventListener("click", () => updateScoreAuditStatus(button.dataset.candidate, button.dataset.status));
+      });
+    }
+
+    async function loadScoreAudit() {
+      const status = document.getElementById("scoreAuditStatus");
+      const filter = document.getElementById("scoreAuditStatusFilter").value;
+      status.textContent = "監査一覧を読み込んでいます...";
+      try {
+        const data = await api(`/admin/api/score-attack/audit?status=${encodeURIComponent(filter)}`, {
+          headers: SCORE_AUDIT_HEADERS,
+        });
+        renderScoreAuditSummary(data.summary || {});
+        renderScoreAuditRows(data.items || []);
+        status.textContent = `${Number(data.shown ?? data.items?.length ?? 0)}件を表示しています（全${Number(data.total || 0)}件）。`;
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+        renderScoreAuditSummary({});
+        renderScoreAuditRows([]);
+      }
+    }
+
+    function scoreAuditMoveLabel(row) {
+      const block = String(row?.[1] || "");
+      const attack = String(row?.[2] || "");
+      if (block === "パス") return "パス";
+      if (block && attack) return `${block}で受ける → ${attack}で攻める`;
+      if (block) return `${block}で受ける`;
+      if (attack) return `${attack}で攻める`;
+      return "-";
+    }
+
+    async function openScoreAuditDetail(candidate) {
+      const dialog = document.getElementById("scoreAuditDialog");
+      const body = document.getElementById("scoreAuditDialogBody");
+      body.innerHTML = '<p class="muted">棋譜を読み込んでいます...</p>';
+      dialog.showModal();
+      try {
+        const item = await api(`/admin/api/score-attack/audit/${encodeURIComponent(candidate)}`, {
+          headers: SCORE_AUDIT_HEADERS,
+        });
+        const payload = item.payload || {};
+        const seats = ["A", "B", "C", "D"];
+        const hands = Object.entries(payload.hands || {}).map(([seat, hand]) =>
+          `<div><span class="muted">${escapeHtml(seat)}の手駒</span><strong>${escapeHtml((hand || []).join(" "))}</strong></div>`
+        ).join("");
+        const moves = (payload.moves || []).map((row, index) => `
+          <tr><td>${index + 1}</td><td>${escapeHtml(seats[Number(row?.[0])] || row?.[0] || "-")}</td><td>${escapeHtml(scoreAuditMoveLabel(row))}</td></tr>
+        `).join("");
+        const history = (item.history || []).map(entry => `
+          <div class="event-row"><span class="event-time">${escapeHtml(formatDate(entry.changed_at, true))}</span><span>${escapeHtml(scoreAuditStatusLabel(entry.status))}${entry.note ? ` / ${escapeHtml(entry.note)}` : ""}</span></div>
+        `).join("");
+        const canRestore = item.status === "excluded" || item.status === "review";
+        const canExclude = item.status === "eligible";
+        body.innerHTML = `
+          <div class="score-audit-meta">
+            <div><span class="muted">棋譜</span><strong>${escapeHtml(item.match_id || "-")} / ${escapeHtml(item.round_index ?? "-")}</strong></div>
+            <div><span class="muted">状態</span><strong class="score-audit-status ${escapeHtml(item.status)}">${escapeHtml(scoreAuditStatusLabel(item.status))}</strong></div>
+            <div><span class="muted">開始点</span><strong>AC ${escapeHtml(item.score?.AC ?? "-")} / BD ${escapeHtml(item.score?.BD ?? "-")}</strong></div>
+            <div><span class="muted">結果</span><strong>${escapeHtml(item.winner ? `${item.winner}側・${item.gained_score || 0}点` : "-")}</strong></div>
+          </div>
+          <p>${(item.reasons || []).map(reason => escapeHtml(reason)).join("<br>") || '<span class="muted">自動検証で問題は見つかっていません。</span>'}</p>
+          <div class="score-audit-meta">${hands || '<div class="muted">手駒を表示できません。</div>'}</div>
+          <div class="score-audit-moves"><table><thead><tr><th>手数</th><th>手番</th><th>内容</th></tr></thead><tbody>${moves || '<tr><td colspan="3" class="muted">手順を表示できません。</td></tr>'}</tbody></table></div>
+          <h3 class="subheading">変更履歴</h3>
+          <div class="session-events">${history || '<span class="muted">まだ変更履歴はありません。</span>'}</div>
+          <div class="field"><label for="scoreAuditNote">管理メモ（任意）</label><textarea id="scoreAuditNote" maxlength="500" placeholder="除外・再採用の理由を残せます">${escapeHtml(item.decision_note || "")}</textarea></div>
+          <div class="score-audit-dialog-actions">
+            ${canExclude ? '<button class="button danger" id="scoreAuditExcludeFromDetail" type="button">この棋譜を除外</button>' : ""}
+            ${canRestore ? '<button class="button" id="scoreAuditRestoreFromDetail" type="button">採用に戻す</button>' : ""}
+          </div>
+        `;
+        document.getElementById("scoreAuditExcludeFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "excluded", true));
+        document.getElementById("scoreAuditRestoreFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "eligible", true));
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        body.innerHTML = `<p class="status">${escapeHtml(error.message)}</p>`;
+      }
+    }
+
+    async function updateScoreAuditStatus(candidate, nextStatus, closeDialog = false) {
+      if (nextStatus === "excluded" && !confirm("この棋譜を今後のスコアアタック出題から除外しますか？")) return;
+      const note = document.getElementById("scoreAuditNote")?.value || "";
+      try {
+        await api(`/admin/api/score-attack/audit/${encodeURIComponent(candidate)}`, {
+          method: "PUT",
+          headers: SCORE_AUDIT_HEADERS,
+          body: JSON.stringify({status: nextStatus, note}),
+        });
+        if (closeDialog) document.getElementById("scoreAuditDialog").close();
+        await loadScoreAudit();
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        const status = document.getElementById("scoreAuditStatus");
+        status.textContent = error.message;
+      }
+    }
+
     document.getElementById("privateKifuForm").addEventListener("submit", async event => {
       event.preventDefault();
       const file = document.getElementById("privateKifuFile").files[0];
@@ -516,6 +728,7 @@
         });
         status.textContent = `登録しました（${data.match_count}対局・${data.round_count}局）。`;
         event.target.reset();
+        if (!document.getElementById("scoreAuditView").hidden) loadScoreAudit();
       } catch (error) {
         status.textContent = error.message;
       } finally {
@@ -1385,6 +1598,7 @@
       document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${name}View`));
       if (name === "analytics") loadAnalytics();
+      if (name === "scoreAudit") loadScoreAudit();
       if (name === "aiMetrics") loadResponseMetrics();
       if (name === "members") window.goitaMemberAdmin?.load();
       else window.goitaMemberAdmin?.hideCredential();
@@ -1399,6 +1613,9 @@
     updateAnalyticsRangeVisibility();
     document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
     document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
+    document.getElementById("scoreAuditRefresh").addEventListener("click", loadScoreAudit);
+    document.getElementById("scoreAuditStatusFilter").addEventListener("change", loadScoreAudit);
+    document.getElementById("scoreAuditDialogClose").addEventListener("click", () => document.getElementById("scoreAuditDialog").close());
     document.getElementById("logoutButton").addEventListener("click", async () => {
       await api("/admin/api/logout", {method: "POST"}).catch(() => {});
       showLogin();
