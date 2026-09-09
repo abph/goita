@@ -2,11 +2,11 @@ schema_version: 1
 description: "これまでの棋譜指導から整理した、ごいたAIの判断基準"
 runtime_connected: false
 summary:
-  confirmed_policies: 61
+  confirmed_policies: 62
   regression_candidates: 13
   reference_cases: 5
   superseded_cases: 7
-  total_records: 86
+  total_records: 87
 status_order:
   - confirmed
   - reference

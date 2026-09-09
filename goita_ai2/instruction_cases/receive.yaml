@@ -190,3 +190,23 @@ cases:
       state: partial
       note: 分岐付き攻め計画と時間制限付き探索へ接続。代表棋譜テストは追加予定
 
+  - id: REC-011
+    status: confirmed
+    title: 味方のリーチへ受ける機会を渡す
+    classification: ally_reach_handoff
+    priority: high
+    conditions:
+      - 敵の攻め駒が自分の手駒と公開履歴で尽きている
+      - 味方の残り手駒が2枚で、王または玉による受けが推定される
+      - 自分が未知の残り駒を受けられ、パス後の即時敵上がりがない
+    required: 受け後の攻めだけでなく、パスして味方が直後に受ける機会を同じ公開情報候補で比較する
+    preferred:
+      - パス後の味方の直後上がり機会が、受けて守備範囲を保つ枝以上ならパスする
+      - 途中の敵の受けと全員パスの危険を見積もる
+    forbidden:
+      - 推定候補が少ない、または敵の2枚上がりを見落とす可能性がある状態でパスを決める
+    reason: 銀を受けて攻め駒を選ぶより、味方の王・玉受けでリーチを続ける機会を渡した方がよい局面がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_ally_reach_handoff.py::test_review_turn13_passes_before_selecting_an_attack

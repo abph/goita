@@ -87,6 +87,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'startsWith("low_reentry_receive_")',
         'return "敵の3枚目を待っても上がれると判断してパス";',
         "function localizeGameLogAiDetail(",
+        "pass_ally_reach_royal_",
         "function localizeGameLogAiDecision(",
         "function formatGameLogSeconds(",
         "function localizeGameLogPerformance(",

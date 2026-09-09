@@ -151,6 +151,7 @@ class DecisionMixin:
         if (
             detail.startswith("attack_sequence_")
             or detail.startswith("pass_ally_kyosha_continuation")
+            or detail.startswith("pass_ally_reach_royal_")
             or detail.startswith("pass_royal_reserve_")
             or detail.startswith("receive_no_shi_royal_")
         ):
@@ -1179,6 +1180,7 @@ class DecisionMixin:
         self._set_decision_reason("")
         self._set_score_fallback_detail("")
         self.last_attack_candidate_scores = []
+        self.last_ally_reach_comparison = None
 
         if self.me is None:
             self.me = player
@@ -1573,6 +1575,10 @@ class DecisionMixin:
                     f"inferred_endgame_min_loss_{winner}_{score}"
                 )
             return chosen
+
+        ally_reach_handoff = self._ally_reach_handoff_action(state, player, actions)
+        if ally_reach_handoff is not None:
+            return ally_reach_handoff
 
         shi_insertion_action = self._shi_insertion_plan_action(
             state,

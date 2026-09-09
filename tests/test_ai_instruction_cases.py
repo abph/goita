@@ -10,7 +10,7 @@ EXPECTED_CASE_COUNTS = {
     "endgame.yaml": 11,
     "hand_inference.yaml": 8,
     "kyosha_strategy.yaml": 10,
-    "receive.yaml": 10,
+    "receive.yaml": 11,
     "reference.yaml": 5,
     "regression_candidates.yaml": 13,
     "shi_strategy.yaml": 10,
@@ -33,7 +33,7 @@ def test_instruction_case_catalog_has_expected_files_and_unique_ids():
         assert len(ids) == expected_count, (filename, ids)
         all_ids.extend(ids)
 
-    assert len(all_ids) == 86
+    assert len(all_ids) == 87
     assert len(all_ids) == len(set(all_ids))
 
 
@@ -63,9 +63,9 @@ def test_index_documents_catalog_counts_and_runtime_state():
     readme = (CASE_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "runtime_connected: false" in index
-    assert "confirmed_policies: 61" in index
+    assert "confirmed_policies: 62" in index
     assert "regression_candidates: 13" in index
-    assert "total_records: 86" in index
+    assert "total_records: 87" in index
     assert "AI本体から独立" in readme
     assert "superseded" in readme
 
@@ -75,4 +75,3 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(function):
             function()
     print("AI_INSTRUCTION_CASES_TEST_OK")
-

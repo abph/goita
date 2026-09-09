@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from goita_ai2.current_ai.attack_planning import AttackPlanningMixin
+from goita_ai2.current_ai.ally_reach import AllyReachMixin
 from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
 from goita_ai2.current_ai.attack_plan_templates import AttackPlanTemplateMixin
 from goita_ai2.current_ai.background_search import BackgroundSearchMixin
@@ -74,6 +75,7 @@ class RuleBasedAgent(
     AttackStrategyMixin,
     ShiInsertionStrategyMixin,
     ReceiveStrategyMixin,
+    AllyReachMixin,
     PublicInferenceMixin,
 ):
     def __init__(self, name: str = "RuleBased"):
@@ -95,6 +97,15 @@ class RuleBasedAgent(
         self.FIRST_ENEMY_RECEIVE_BONUS = 500.0
         self.FIRST_ENEMY_PASS_BONUS = 500.0
         self.FIRST_ENEMY_KING_RECEIVE_PENALTY = 12000.0
+
+        self.ALLY_REACH_HANDOFF_ENABLED = True
+        self.ALLY_REACH_HANDOFF_SAMPLE_COUNT = 256
+        self.ALLY_REACH_HANDOFF_MIN_SAMPLES = 64
+        self.ALLY_REACH_HANDOFF_MIN_EFFECTIVE_SAMPLES = 8
+        self.ALLY_REACH_HANDOFF_MAX_SECONDS = 0.5
+        self.ALLY_REACH_HANDOFF_MIN_CHANCE = 0.05
+        self.ALLY_REACH_HANDOFF_MIN_ADVANTAGE = 0.02
+        self.last_ally_reach_comparison = None
 
         self.LAST_ONE_BONUS = 65.0
 

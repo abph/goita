@@ -5808,6 +5808,13 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const handoff = String(detail || "").match(/^pass_ally_reach_royal_([ABCD])_piece_([3-7])_chance_(\d+)_receive_(\d+)$/);
+    if(handoff) {
+        const piece = gameLogCandidatePieceLabel(handoff[2], language);
+        if(language === "en") return `Pass ${piece} to ready partner ${handoff[1]}, preserving defensive coverage. Compared interception and all-pass risks using the same estimated hands; immediate partner finish opportunity: pass ${handoff[3]}%, receive then attack while retaining coverage ${handoff[4]}%. Royal receipt was evaluated from the estimated candidates.`;
+        if(language === "zh") return `跳过${piece}，将接牌机会让给听牌的搭档${handoff[1]}，保留防守范围。以同一组推测手牌比较对手截获和全员跳过的风险：搭档直接获胜机会，跳过${handoff[3]}%，保留防守范围接牌后进攻${handoff[4]}%。王玉受牌可能性来自推测候选。`;
+        return `味方${handoff[1]}がリーチのため${piece}をパスし、受ける機会を渡す。自分の受け幅を保ち、途中の敵の受けと全員パスの危険も比較。推定手駒での味方の直後の上がり機会：パス${handoff[3]}%、受け幅を保って受け・攻め${handoff[4]}%。王・玉で受ける可能性は推定候補から評価。`;
+    }
     let match = String(detail || "").match(/^high_score_(\d+)$/);
     if(match) return language === "zh" ? `争取${match[1]}分的获胜` : `${match[1]}点の上がりを狙う`;
     match = String(detail || "").match(/^attack_conditional_shi_royal_finish_(\d+)$/);
