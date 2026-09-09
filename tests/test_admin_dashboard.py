@@ -16,7 +16,11 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="scoreAuditView"' in admin
     assert 'id="scoreAuditStatusFilter"' in admin
     assert 'id="scoreAuditDialog"' in admin
-    assert '"/admin/api/score-attack/audit?' in admin
+    assert 'id="scoreAuditBoard"' in admin
+    assert 'id="scoreAuditReplayButton"' in admin
+    assert "function renderScoreAuditBoard" in admin
+    assert "function toggleScoreAuditReplay" in admin
+    assert "/admin/api/score-attack/audit?" in admin
     assert 'data-tab="analytics"' in admin
     assert 'data-tab="aiMetrics"' in admin
     assert 'data-tab="members"' in admin

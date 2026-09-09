@@ -192,6 +192,44 @@
     .score-audit-moves { max-height: 360px; overflow: auto; }
     .score-audit-moves table { min-width: 500px; }
     .score-audit-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .score-audit-board-wrap { width: fit-content; max-width: 100%; margin: 12px auto; padding: 8px; overflow: hidden; border: 3px solid #8b5a2b; background: #d1ab75; }
+    .score-audit-board { --audit-cell: min(39px, calc((100vw - 150px) / 8)); --audit-gap: 5px; display: grid; grid-template-columns: repeat(8, var(--audit-cell)); grid-template-rows: repeat(8, var(--audit-cell)); gap: var(--audit-gap); width: fit-content; user-select: none; container-type: inline-size; }
+    .score-audit-cell { position: relative; display: flex; min-width: 0; align-items: center; justify-content: center; border: 1px dashed rgba(139, 90, 43, .38); }
+    .score-audit-piece { display: flex; width: 80%; height: 94%; align-items: center; justify-content: center; background: linear-gradient(135deg, #fceeb5, #e6c875); clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%); filter: drop-shadow(1px 2px 2px rgb(0 0 0 / 28%)); }
+    .score-audit-piece span { color: #1f2b9c; font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif; font-size: clamp(12px, 2.5vw, 20px); font-weight: 900; line-height: 1; transform: translateY(3px); }
+    .score-audit-piece.team-b span { color: #b62020; }
+    .score-audit-piece.seat-A { transform: rotate(0deg); }
+    .score-audit-piece.seat-B { transform: rotate(-90deg); }
+    .score-audit-piece.seat-C { transform: rotate(180deg); }
+    .score-audit-piece.seat-D { transform: rotate(90deg); }
+    .score-audit-piece.is-hidden, .score-audit-piece.is-face-down { opacity: .42; filter: none; }
+    .score-audit-piece.is-hidden { background: #f6f2e8; }
+    .score-audit-piece.is-final-attack { background: linear-gradient(135deg, #f7e1a0, #f1c40f); outline: 3px solid #b74a18; outline-offset: -2px; opacity: 1; z-index: 3; }
+    .score-audit-piece.is-final-attack span { color: #a40000; }
+    .score-audit-piece.is-replay-new { animation: score-audit-piece-arrive 360ms ease-out both; }
+    .score-audit-piece.is-replay-new.seat-A { --audit-replay-x: 0%; --audit-replay-y: 70%; }
+    .score-audit-piece.is-replay-new.seat-B { --audit-replay-x: 70%; --audit-replay-y: 0%; }
+    .score-audit-piece.is-replay-new.seat-C { --audit-replay-x: 0%; --audit-replay-y: -70%; }
+    .score-audit-piece.is-replay-new.seat-D { --audit-replay-x: -70%; --audit-replay-y: 0%; }
+    @keyframes score-audit-piece-arrive { from { opacity: .2; translate: var(--audit-replay-x) var(--audit-replay-y); scale: .72; } to { opacity: 1; translate: 0 0; scale: 1; } }
+    .score-audit-seat-label { z-index: 2; display: flex; align-items: center; justify-content: center; border: 2px solid #8b5a2b; background: #f4efdf; color: #b00000; font-size: clamp(14px, 2.8vw, 21px); font-weight: 900; }
+    .score-audit-seat-label.is-winner { border-color: #c24f16; box-shadow: 0 0 8px rgb(194 79 22 / 42%); }
+    .score-audit-seat-label.seat-A .score-audit-seat-content { transform: rotate(0deg); }
+    .score-audit-seat-label.seat-B .score-audit-seat-content { transform: rotate(-90deg); }
+    .score-audit-seat-label.seat-C .score-audit-seat-content { transform: rotate(180deg); }
+    .score-audit-seat-label.seat-D .score-audit-seat-content { transform: rotate(90deg); }
+    .score-audit-seat-content { display: flex; flex: 0 0 auto; width: calc(25cqw - 8px); flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.2; }
+    .score-audit-seat-heading { font-size: clamp(10px, 3cqw, 12px); }
+    .score-audit-move-number { position: absolute; z-index: 5; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 1px; border: 1px solid rgb(17 24 39 / 55%); border-radius: 50%; background: #fff; color: #111827; font-size: 10px; font-weight: 900; line-height: 1; }
+    .score-audit-move-number.seat-A { top: 0; left: 50%; transform: translate(-50%, -52%); }
+    .score-audit-move-number.seat-B { top: 50%; left: 0; transform: translate(-52%, -50%) rotate(-90deg); }
+    .score-audit-move-number.seat-C { bottom: 0; left: 50%; transform: translate(-50%, 52%) rotate(180deg); }
+    .score-audit-move-number.seat-D { top: 50%; right: 0; transform: translate(52%, -50%) rotate(90deg); }
+    .score-audit-center-score { grid-column: 4 / 6; grid-row: 4 / 6; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; border: 2px dashed #8b5a2b; background: rgb(244 239 223 / 94%); color: #2b2b2b; font-size: clamp(9px, 2vw, 13px); font-weight: 900; line-height: 1.35; text-align: center; }
+    .score-audit-center-score strong { display: block; }
+    .score-audit-play-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 10px 0; }
+    .score-audit-play-actions button.is-playing { border-color: var(--danger); color: var(--danger); }
+    @media (max-width: 900px) { .score-audit-board-wrap { padding: 5px; border-width: 2px; } .score-audit-board { --audit-gap: 3px; --audit-cell: min(36px, calc((100vw - 96px) / 8)); } .score-audit-piece span { font-size: clamp(14px, 2.8vw, 21px); } .score-audit-move-number { min-width: 14px; height: 14px; font-size: 8px; } }
     [hidden] { display: none !important; }
     @media (max-width: 900px) {
       .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -644,22 +682,314 @@
       return "-";
     }
 
+    // The audit viewer deliberately follows the research-kifu viewer's board
+    // geometry.  Keep this copy namespaced so the admin page can replay an
+    // archive round without loading the public library's script state.
+    const SCORE_AUDIT_SEATS = ["A", "B", "C", "D"];
+    const SCORE_AUDIT_HAND_KEYS = {A: "p0", B: "p1", C: "p2", D: "p3"};
+    const SCORE_AUDIT_SLOTS = {
+      A: {receive: [[3, 7], [4, 7], [5, 7], [6, 7]], attack: [[3, 8], [4, 8], [5, 8], [6, 8]]},
+      B: {receive: [[7, 6], [7, 5], [7, 4], [7, 3]], attack: [[8, 6], [8, 5], [8, 4], [8, 3]]},
+      C: {receive: [[6, 2], [5, 2], [4, 2], [3, 2]], attack: [[6, 1], [5, 1], [4, 1], [3, 1]]},
+      D: {receive: [[2, 3], [2, 4], [2, 5], [2, 6]], attack: [[1, 3], [1, 4], [1, 5], [1, 6]]},
+    };
+    const SCORE_AUDIT_LABELS = {
+      A: {column: "4 / 6", row: "6"},
+      B: {column: "6", row: "4 / 6"},
+      C: {column: "4 / 6", row: "3"},
+      D: {column: "3", row: "4 / 6"},
+    };
+    const SCORE_AUDIT_SKIPPED_CELLS = new Set(["5,6", "6,5", "5,3", "3,5"]);
+    let scoreAuditDetailItem = null;
+    let scoreAuditReplayToken = 0;
+    let scoreAuditReplayRunning = false;
+
+    function removeScoreAuditPiece(pieces, target) {
+      const candidates = target === "王" ? ["王", "玉"] : target === "玉" ? ["玉", "王"] : [target];
+      for (const candidate of candidates) {
+        const index = pieces.indexOf(candidate);
+        if (index >= 0) {
+          pieces.splice(index, 1);
+          return;
+        }
+      }
+    }
+
+    function scoreAuditHandPieces(payload, seat) {
+      const text = String(payload.hand?.[SCORE_AUDIT_HAND_KEYS[seat]] || "");
+      if (text) return Array.from(text);
+      const fallback = Array.isArray(payload.hands?.[seat]) ? payload.hands[seat] : [];
+      const labels = {"1": "し", "2": "香", "3": "馬", "4": "銀", "5": "金", "6": "角", "7": "飛", "8": "玉", "9": "王", shi: "し", kin: "金", gin: "銀", kei: "桂", kyo: "香", hi: "飛", kaku: "角", ou: "王", gyoku: "玉"};
+      return fallback.map(piece => labels[String(piece)] || String(piece));
+    }
+
+    function buildScoreAuditFinalState(payload, rowsOverride = null) {
+      const board = Object.fromEntries(SCORE_AUDIT_SEATS.map(seat => [seat, {receive: [], attack: []}]));
+      const remaining = Object.fromEntries(SCORE_AUDIT_SEATS.map(seat => [seat, scoreAuditHandPieces(payload, seat)]));
+      const faceDownReceives = new Set();
+      const attackNumbers = new Map();
+      const receiveCounts = {A: 0, B: 0, C: 0, D: 0};
+      const attackCounts = {A: 0, B: 0, C: 0, D: 0};
+      let lastAttackSeat = null;
+      let attackSequenceNumber = 0;
+      const rows = Array.isArray(rowsOverride) ? rowsOverride : (Array.isArray(payload.game) ? payload.game : []);
+      rows.forEach(row => {
+        const seat = SCORE_AUDIT_SEATS[Number(row?.[0])];
+        if (!seat) return;
+        const receive = String(row?.[1] || "");
+        const attack = String(row?.[2] || "");
+        if (receive && receive !== "パス") {
+          const receiveIndex = receiveCounts[seat];
+          if (lastAttackSeat === null || lastAttackSeat === seat) faceDownReceives.add(`${seat}:${receiveIndex}`);
+          board[seat].receive.push(receive);
+          receiveCounts[seat] += 1;
+          removeScoreAuditPiece(remaining[seat], receive);
+        }
+        if (attack) {
+          const attackIndex = attackCounts[seat];
+          board[seat].attack.push(attack);
+          attackSequenceNumber += 1;
+          attackNumbers.set(`${seat}:${attackIndex}`, attackSequenceNumber);
+          attackCounts[seat] += 1;
+          removeScoreAuditPiece(remaining[seat], attack);
+          lastAttackSeat = seat;
+        }
+      });
+      return {board, remaining, faceDownReceives, attackNumbers};
+    }
+
+    function createScoreAuditPiece(piece, seat, options = {}) {
+      const element = document.createElement("div");
+      element.className = `score-audit-piece seat-${seat} ${seat === "B" || seat === "D" ? "team-b" : "team-a"}`;
+      if (options.hidden) element.classList.add("is-hidden");
+      if (options.faceDown) element.classList.add("is-face-down");
+      if (options.finalAttack) element.classList.add("is-final-attack");
+      if (options.replayNew) element.classList.add("is-replay-new");
+      const value = document.createElement("span");
+      value.textContent = piece;
+      element.appendChild(value);
+      return element;
+    }
+
+    function renderScoreAuditBoard(payload, options = {}) {
+      const container = options.container || document.getElementById("scoreAuditBoard");
+      if (!container) return;
+      container.replaceChildren();
+      const rows = Array.isArray(options.rows) ? options.rows : null;
+      const finalState = buildScoreAuditFinalState(payload, rows);
+      const slotMap = new Map();
+      const hiddenMap = new Map();
+      const isFinished = options.finished !== false;
+      const winner = isFinished ? String(payload.winner || "") : "";
+      const latestAction = options.latestAction || null;
+
+      SCORE_AUDIT_SEATS.forEach(seat => {
+        ["receive", "attack"].forEach(kind => {
+          SCORE_AUDIT_SLOTS[seat][kind].forEach(([column, row], index) => slotMap.set(`${column},${row}`, {seat, kind, index}));
+        });
+        const remaining = [...finalState.remaining[seat]];
+        const slots = [
+          ...SCORE_AUDIT_SLOTS[seat].receive.map((position, index) => ({position, kind: "receive", index})),
+          ...SCORE_AUDIT_SLOTS[seat].attack.map((position, index) => ({position, kind: "attack", index})),
+        ];
+        slots.forEach(slot => {
+          if (finalState.board[seat][slot.kind][slot.index]) return;
+          const piece = remaining.shift();
+          if (piece) hiddenMap.set(`${slot.position[0]},${slot.position[1]}`, {seat, piece});
+        });
+      });
+
+      for (let row = 1; row <= 8; row += 1) {
+        for (let column = 1; column <= 8; column += 1) {
+          const key = `${column},${row}`;
+          if (SCORE_AUDIT_SKIPPED_CELLS.has(key)) continue;
+          const labelSeat = SCORE_AUDIT_SEATS.find(seat => {
+            const label = SCORE_AUDIT_LABELS[seat];
+            return label.column.startsWith(String(column)) && label.row.startsWith(String(row));
+          });
+          if (labelSeat) {
+            const label = document.createElement("div");
+            label.className = `score-audit-seat-label seat-${labelSeat}`;
+            if (winner === labelSeat) label.classList.add("is-winner");
+            label.style.gridColumn = SCORE_AUDIT_LABELS[labelSeat].column;
+            label.style.gridRow = SCORE_AUDIT_LABELS[labelSeat].row;
+            const content = document.createElement("div");
+            content.className = "score-audit-seat-content";
+            const heading = document.createElement("div");
+            heading.className = "score-audit-seat-heading";
+            heading.textContent = labelSeat;
+            content.appendChild(heading);
+            label.title = labelSeat;
+            label.setAttribute("aria-label", labelSeat);
+            label.appendChild(content);
+            container.appendChild(label);
+            continue;
+          }
+
+          const cell = document.createElement("div");
+          cell.className = "score-audit-cell";
+          cell.style.gridColumn = String(column);
+          cell.style.gridRow = String(row);
+          const slot = slotMap.get(key);
+          if (slot) {
+            const piece = finalState.board[slot.seat][slot.kind][slot.index];
+            const isFinalAttack = slot.kind === "attack" && winner === slot.seat
+              && slot.index === finalState.board[slot.seat].attack.length - 1;
+            if (piece) {
+              const isReplayNew = latestAction && latestAction.seat === slot.seat
+                && latestAction.kind === slot.kind && latestAction.index === slot.index;
+              cell.appendChild(createScoreAuditPiece(piece, slot.seat, {
+                faceDown: slot.kind === "receive" && finalState.faceDownReceives.has(`${slot.seat}:${slot.index}`),
+                finalAttack: isFinalAttack,
+                replayNew: isReplayNew,
+              }));
+              if (slot.kind === "attack") {
+                const moveNumber = finalState.attackNumbers.get(`${slot.seat}:${slot.index}`);
+                if (moveNumber) {
+                  const number = document.createElement("span");
+                  number.className = `score-audit-move-number seat-${slot.seat}`;
+                  number.textContent = String(moveNumber);
+                  cell.appendChild(number);
+                }
+              }
+            } else if (hiddenMap.has(key)) {
+              const hidden = hiddenMap.get(key);
+              cell.appendChild(createScoreAuditPiece(hidden.piece, hidden.seat, {hidden: true}));
+            }
+          }
+          container.appendChild(cell);
+        }
+      }
+
+      const score = document.createElement("div");
+      score.className = "score-audit-center-score";
+      const round = document.createElement("strong");
+      round.textContent = `第${Number(payload.round_index || 1)}局`;
+      const scoreValues = isFinished ? (payload.score_after || {}) : (payload.score_before || payload.score_after || {});
+      const ac = document.createElement("span");
+      ac.textContent = `AC ${Number(scoreValues.AC || 0)}`;
+      const bd = document.createElement("span");
+      bd.textContent = `BD ${Number(scoreValues.BD || 0)}`;
+      score.append(round, ac, bd);
+      container.appendChild(score);
+    }
+
+    function scoreAuditReplayFrames(payload) {
+      const sourceRows = Array.isArray(payload.moves) && payload.moves.length ? payload.moves : (Array.isArray(payload.game) ? payload.game : []);
+      const completedRows = [];
+      const frames = [];
+      let lastAttackSeat = null;
+      const counts = Object.fromEntries(SCORE_AUDIT_SEATS.map(seat => [seat, {receive: 0, attack: 0}]));
+      sourceRows.forEach(sourceRow => {
+        if (!Array.isArray(sourceRow) || sourceRow.length < 3) return;
+        const row = [String(sourceRow[0]), String(sourceRow[1] || ""), String(sourceRow[2] || "")];
+        const seat = SCORE_AUDIT_SEATS[Number(row[0])];
+        if (!seat) return;
+        const receive = row[1];
+        const attack = row[2];
+        if (receive === "パス") {
+          completedRows.push(row);
+          frames.push({rows: completedRows.map(item => [...item]), latestAction: null, label: `${seat}: パス`, delay: 520});
+          return;
+        }
+        let rowIndex = -1;
+        if (receive) {
+          const isFaceDown = lastAttackSeat === null || lastAttackSeat === seat;
+          rowIndex = completedRows.length;
+          completedRows.push([row[0], receive, ""]);
+          const receiveIndex = counts[seat].receive;
+          counts[seat].receive += 1;
+          frames.push({
+            rows: completedRows.map(item => [...item]),
+            latestAction: {seat, kind: "receive", index: receiveIndex},
+            label: isFaceDown ? `${seat}: ${receive}を伏せる（非公開）` : `${seat}: ${receive}で受ける`,
+            delay: 620,
+          });
+        }
+        if (attack) {
+          if (rowIndex >= 0) completedRows[rowIndex] = [row[0], receive, attack];
+          else completedRows.push([row[0], "", attack]);
+          const attackIndex = counts[seat].attack;
+          counts[seat].attack += 1;
+          lastAttackSeat = seat;
+          frames.push({rows: completedRows.map(item => [...item]), latestAction: {seat, kind: "attack", index: attackIndex}, label: `${seat}: ${attack}で攻める`, delay: 760});
+        }
+      });
+      return frames;
+    }
+
+    function updateScoreAuditReplayControls(label = "棋譜再生") {
+      const button = document.getElementById("scoreAuditReplayButton");
+      if (button) {
+        button.textContent = label;
+        button.classList.toggle("is-playing", scoreAuditReplayRunning);
+      }
+    }
+
+    function stopScoreAuditReplay({restoreFinal = true, clearStatus = false} = {}) {
+      scoreAuditReplayToken += 1;
+      scoreAuditReplayRunning = false;
+      updateScoreAuditReplayControls("棋譜再生");
+      if (restoreFinal && scoreAuditDetailItem?.payload) renderScoreAuditBoard(scoreAuditDetailItem.payload);
+      if (clearStatus) {
+        const status = document.getElementById("scoreAuditReplayStatus");
+        if (status) status.textContent = "";
+      }
+    }
+
+    async function toggleScoreAuditReplay() {
+      if (scoreAuditReplayRunning) {
+        stopScoreAuditReplay({restoreFinal: true, clearStatus: true});
+        return;
+      }
+      const payload = scoreAuditDetailItem?.payload;
+      const status = document.getElementById("scoreAuditReplayStatus");
+      if (!payload) {
+        if (status) status.textContent = "棋譜データの読み込みに失敗しました。";
+        return;
+      }
+      const frames = scoreAuditReplayFrames(payload);
+      if (!frames.length) {
+        if (status) status.textContent = "再生できる手順がありません。";
+        return;
+      }
+      const token = ++scoreAuditReplayToken;
+      scoreAuditReplayRunning = true;
+      updateScoreAuditReplayControls("停止");
+      renderScoreAuditBoard(payload, {rows: [], finished: false});
+      if (status) status.textContent = "棋譜を再生しています。";
+      await new Promise(resolve => setTimeout(resolve, 620));
+      for (const frame of frames) {
+        if (token !== scoreAuditReplayToken || !scoreAuditReplayRunning) return;
+        renderScoreAuditBoard(payload, {rows: frame.rows, finished: false, latestAction: frame.latestAction});
+        if (status) status.textContent = frame.label;
+        await new Promise(resolve => setTimeout(resolve, frame.delay));
+      }
+      if (token !== scoreAuditReplayToken || !scoreAuditReplayRunning) return;
+      scoreAuditReplayRunning = false;
+      renderScoreAuditBoard(payload);
+      updateScoreAuditReplayControls("もう一度再生");
+      if (status) status.textContent = "再生が終了しました。";
+    }
+
     async function openScoreAuditDetail(candidate) {
       const dialog = document.getElementById("scoreAuditDialog");
       const body = document.getElementById("scoreAuditDialogBody");
+      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
+      scoreAuditDetailItem = null;
       body.innerHTML = '<p class="muted">棋譜を読み込んでいます...</p>';
       dialog.showModal();
       try {
         const item = await api(`/admin/api/score-attack/audit/${encodeURIComponent(candidate)}`, {
           headers: SCORE_AUDIT_HEADERS,
         });
+        scoreAuditDetailItem = item;
         const payload = item.payload || {};
-        const seats = ["A", "B", "C", "D"];
-        const hands = Object.entries(payload.hands || {}).map(([seat, hand]) =>
-          `<div><span class="muted">${escapeHtml(seat)}の手駒</span><strong>${escapeHtml((hand || []).join(" "))}</strong></div>`
+        const hands = SCORE_AUDIT_SEATS.map(seat =>
+          `<div><span class="muted">${escapeHtml(seat)}の手駒</span><strong>${escapeHtml(scoreAuditHandPieces(payload, seat).join(" "))}</strong></div>`
         ).join("");
         const moves = (payload.moves || []).map((row, index) => `
-          <tr><td>${index + 1}</td><td>${escapeHtml(seats[Number(row?.[0])] || row?.[0] || "-")}</td><td>${escapeHtml(scoreAuditMoveLabel(row))}</td></tr>
+          <tr><td>${index + 1}</td><td>${escapeHtml(SCORE_AUDIT_SEATS[Number(row?.[0])] || row?.[0] || "-")}</td><td>${escapeHtml(scoreAuditMoveLabel(row))}</td></tr>
         `).join("");
         const history = (item.history || []).map(entry => `
           <div class="event-row"><span class="event-time">${escapeHtml(formatDate(entry.changed_at, true))}</span><span>${escapeHtml(scoreAuditStatusLabel(entry.status))}${entry.note ? ` / ${escapeHtml(entry.note)}` : ""}</span></div>
@@ -674,6 +1004,8 @@
             <div><span class="muted">結果</span><strong>${escapeHtml(item.winner ? `${item.winner}側・${item.gained_score || 0}点` : "-")}</strong></div>
           </div>
           <p>${(item.reasons || []).map(reason => escapeHtml(reason)).join("<br>") || '<span class="muted">自動検証で問題は見つかっていません。</span>'}</p>
+          <div class="score-audit-board-wrap"><div id="scoreAuditBoard" class="score-audit-board" aria-label="監査棋譜の盤面"></div></div>
+          <div class="score-audit-play-actions"><button id="scoreAuditReplayButton" class="button" type="button">棋譜再生</button><span id="scoreAuditReplayStatus" class="status" role="status" aria-live="polite"></span></div>
           <div class="score-audit-meta">${hands || '<div class="muted">手駒を表示できません。</div>'}</div>
           <div class="score-audit-moves"><table><thead><tr><th>手数</th><th>手番</th><th>内容</th></tr></thead><tbody>${moves || '<tr><td colspan="3" class="muted">手順を表示できません。</td></tr>'}</tbody></table></div>
           <h3 class="subheading">変更履歴</h3>
@@ -684,6 +1016,8 @@
             ${canRestore ? '<button class="button" id="scoreAuditRestoreFromDetail" type="button">採用に戻す</button>' : ""}
           </div>
         `;
+        renderScoreAuditBoard(payload);
+        document.getElementById("scoreAuditReplayButton")?.addEventListener("click", toggleScoreAuditReplay);
         document.getElementById("scoreAuditExcludeFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "excluded", true));
         document.getElementById("scoreAuditRestoreFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "eligible", true));
       } catch (error) {
@@ -1615,7 +1949,14 @@
     document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
     document.getElementById("scoreAuditRefresh").addEventListener("click", loadScoreAudit);
     document.getElementById("scoreAuditStatusFilter").addEventListener("change", loadScoreAudit);
-    document.getElementById("scoreAuditDialogClose").addEventListener("click", () => document.getElementById("scoreAuditDialog").close());
+    document.getElementById("scoreAuditDialogClose").addEventListener("click", () => {
+      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
+      document.getElementById("scoreAuditDialog").close();
+    });
+    document.getElementById("scoreAuditDialog").addEventListener("close", () => {
+      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
+      scoreAuditDetailItem = null;
+    });
     document.getElementById("logoutButton").addEventListener("click", async () => {
       await api("/admin/api/logout", {method: "POST"}).catch(() => {});
       showLogin();
