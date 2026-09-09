@@ -1341,7 +1341,9 @@ def test_kyosha_receive_plan_keeps_public_fourth_silver_for_followup() -> None:
     )
     assert stored_plan is not None
     assert stored_plan.action == receive
-    assert stored_plan.followup_attack_piece == "4"
+    # The dedicated lance tactic keeps its own continuation; the generic
+    # response cache must not manufacture another one from a root-only result.
+    assert stored_plan.followup_attack_piece is None
 
     apply_public("A", receive)
     attack = a_agent._select_rule_based_action(

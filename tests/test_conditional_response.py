@@ -71,7 +71,7 @@ def test_conditional_response_key_does_not_read_opponent_hands() -> None:
     assert first_key == second_key
 
 
-def test_searched_receive_and_followup_are_reused_from_dictionary() -> None:
+def test_searched_receive_is_reused_without_inventing_a_followup() -> None:
     reset_conditional_response_runtime()
     state = _receive_state()
     agent = _agent_for(state)
@@ -114,14 +114,13 @@ def test_searched_receive_and_followup_are_reused_from_dictionary() -> None:
     assert stored is not None
     assert reused == stored
     assert reused.action == selected
-    assert reused.followup_attack_piece == "4"
+    assert reused.followup_attack_piece is None
     assert clone.last_conditional_response_hit is True
-    clone._record_conditional_response_followup(used=True)
     snapshot = clone.conditional_response_dictionary_snapshot()
     assert snapshot["hits"] == 1
     assert snapshot["receive_hits"] == 1
     assert snapshot["foreground_hits"] == 1
-    assert snapshot["followup_hits"] == 1
+    assert snapshot["followup_hits"] == 0
     assert snapshot["estimated_saved_ms"] == 1000.0
 
     merged = merge_conditional_response_snapshots([snapshot, snapshot])
@@ -206,10 +205,86 @@ def test_illegal_cached_response_is_discarded() -> None:
     assert snapshot["size"] == 0
 
 
+def test_review_b_turn6_cached_receive_keeps_three_gold_attack() -> None:
+    """2026-09-09 round 3: receiving partner's lance must not force lone rook.
+
+    Repeat with the cache enabled/disabled and every seat rotation. The fixture
+    uses real public actions; the original server cache is not in the report,
+    so a root-only depth-three result exercises its storage/reuse boundary.
+    """
+    for rotation in range(4):
+        for cached in (False, True):
+            seats = "ABCD"
+            def seat(p):
+                return seats[(seats.index(p) + rotation) % 4]
+            state = GoitaState(
+                hands={seat(p): list(h) for p, h in {
+                    "A": "73134621", "B": "15275514",
+                    "C": "85161349", "D": "41213112",
+                }.items()},
+                dealer=seat("A"),
+            )
+            player = seat("B")
+            agent = RuleBasedAgent()
+            agent.bind_player(player)
+            agent._ensure_trackers(state)
+            agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+            agent.TIME_SEARCH_CACHE_ENABLED = False
+            agent.TIME_SEARCH_PREDICTION_CACHE_ENABLED = False
+            agent.TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED = False
+            prefix = (
+                ("A", ("attack_after_block", "1", "3")),
+                ("B", ("pass", None, None)),
+                ("C", ("pass", None, None)),
+                ("D", ("receive", "3", None)),
+                ("D", ("attack", None, "2")),
+                ("A", ("pass", None, None)),
+            )
+            for p, action in prefix:
+                p = seat(p)
+                assert action in state.legal_actions(p)
+                kind, block, attack = action
+                if kind == "pass":
+                    state.apply_pass(p)
+                elif kind == "receive":
+                    state.apply_receive(p, block)
+                elif kind == "attack":
+                    state.apply_attack(p, attack)
+                else:
+                    state.apply_attack_after_block(p, block, attack)
+                agent.on_public_action(state, p, action)
+            receive = ("receive", "2", None)
+            if cached:
+                actions = state.legal_actions(player)
+                baseline = copy.deepcopy(agent)._select_rule_based_action(state, player, actions)
+                result = TimedSearchResult(
+                    action=receive, depth=3, samples=32, nodes=100,
+                    elapsed_seconds=0.1, value=500.0, margin=100.0,
+                    agreement=0.75, decisive=True,
+                )
+                plan = agent._remember_conditional_response_plan(
+                    state, player, actions, baseline, receive, result,
+                    source="default",
+                )
+                assert plan is not None and plan.followup_attack_piece is None
+                assert agent.select_action(state, player, actions) == receive
+                assert agent.last_decision_reason == "response_dictionary"
+                assert agent.last_conditional_response_hit
+            state.apply_receive(player, "2")
+            agent.on_public_action(state, player, receive)
+            assert sorted(state.hands[player]) == list("1145557")
+            assert agent._track[id(state)]["pending_conditional_response_attack_piece"] is None
+            chosen = agent.select_action(state, player, state.legal_actions(player))
+            assert chosen == ("attack", None, "5"), (rotation, cached, chosen)
+            assert agent.last_decision_reason != "response_dictionary"
+            assert not agent.last_score_fallback_detail.startswith("conditional_response_followup_")
+
+
 if __name__ == "__main__":
     test_rule_based_agent_uses_conditional_response_mixin()
     test_conditional_response_key_does_not_read_opponent_hands()
-    test_searched_receive_and_followup_are_reused_from_dictionary()
+    test_searched_receive_is_reused_without_inventing_a_followup()
     test_runtime_totals_survive_agent_replacement()
     test_illegal_cached_response_is_discarded()
+    test_review_b_turn6_cached_receive_keeps_three_gold_attack()
     print("CONDITIONAL_RESPONSE_TEST_OK")

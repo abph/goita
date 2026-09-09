@@ -152,10 +152,14 @@ cases:
       - 受け後に味方への合図、リーチ、確定上がり、敵の上がり阻止がある枝
     forbidden:
       - 手駒ランクだけでパスを確定し、受け後の一手を見ない
+      - 応答計画の受け探索に、別の簡易評価で選んだ攻めを探索済みの続きとして付け足す
     reason: 受け自体の価値は、その後に何を攻められるかで大きく変わる
     regression:
       state: partial
-      note: 時間制限付き探索と受け後探索に接続済み。指導局面の追加テストが必要
+      note: 時間制限付き探索と受け後探索に接続済み。応答計画は探索した受け・パスのみ再利用し、攻めは通常の戦略と探索で評価する。全局面の網羅は未完了
+      tests:
+        - tests/test_conditional_response.py::test_review_b_turn6_cached_receive_keeps_three_gold_attack
+      example: Bが味方Dの香を受けた後、しし銀金金金飛から単発の飛でなく金を選ぶ。金と飛が共に他家残り1枚でも、金3枚の継続性を通常評価へ反映する
 
   - id: REC-009
     status: confirmed

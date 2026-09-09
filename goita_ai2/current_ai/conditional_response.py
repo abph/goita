@@ -1,6 +1,7 @@
 """Stores reusable responses for publicly identical receive positions.
-Each entry keeps pass/receive together with the planned follow-up attack, while
-strict public-state keys and legality checks prevent stale plans from playing.
+Each entry reuses the searched pass/receive decision. The subsequent attack is
+chosen by the normal attack policy, because the root search result does not
+provide a validated attack continuation.
 """
 
 from __future__ import annotations
@@ -229,7 +230,7 @@ class ConditionalResponseMixin:
         """Return an exact public-information key without opponent hands."""
         tracker = self._track.get(id(state)) or {}
         payload = {
-            "version": 1,
+            "version": 2,
             "player": player,
             "state": {
                 "dealer": state.dealer,
@@ -371,16 +372,13 @@ class ConditionalResponseMixin:
         if selected_action != search_result.action:
             return None
 
-        followup = None
-        if selected_action[0] == "receive":
-            followup = self._low_reentry_followup_piece(
-                state,
-                player,
-                str(selected_action[1]),
-            )
+        # The search result certifies only the root response. Do not attach an
+        # independently ranked attack and present it as the searched sequence.
+        # After receiving, select_action evaluates the attack with the normal
+        # strategy and search, including continuation and defensive value.
         plan = ConditionalResponsePlan(
             action=selected_action,
-            followup_attack_piece=followup,
+            followup_attack_piece=None,
             baseline_action=baseline_action,
             source=str(source),
             depth=int(search_result.depth),
