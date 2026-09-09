@@ -1,0 +1,45 @@
+#aiReviewReportDialog {
+  width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  box-sizing: border-box; overflow: auto; padding: 24px;
+  border: 1px solid #c4cdbd; border-radius: 16px; color: #263128;
+  background: #fffefa; box-shadow: 0 20px 70px #0004;
+}
+#aiReviewReportDialog::backdrop { background: #18251ed0; }
+#aiReviewReportDialog[open] { display: flex; flex-direction: column; }
+#aiReviewReportDialog > section { min-height: 0; overflow-y: auto; flex: 1 1 auto; padding-right: 4px; }
+.ai-review-heading, #aiReviewProgress, #aiReviewStatus, .ai-review-navigation { flex-shrink: 0; }
+#aiReviewReportDialog [hidden], #aiReviewReportOpen[hidden] { display: none !important; }
+.ai-review-heading { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+.ai-review-heading h2 { font-size: 1.2rem; margin: 0; }
+#aiReviewClose { font-size: 1.3rem; padding: 2px 12px; }
+.ai-review-muted { color: #59655a; font-size: .85rem; }
+#aiReviewStatus { font-size: .9rem; padding: 10px; background: #edf3e9; border-radius: 8px; }
+.ai-review-turns { max-height: 230px; overflow: auto; display: grid; gap: 8px; margin-bottom: 16px; }
+.ai-review-turns button { display: grid; gap: 5px; width: 100%; text-align: left; background: white; padding: 12px; border: 1px solid #b8c3b5; border-radius: 8px; }
+.ai-review-turns button[aria-pressed="true"] { border: 2px solid #406943; background: #eaf3e7; }
+.ai-review-turns span { font-size: .9rem; }
+#aiReviewReportDialog label { display: block; font-weight: 600; margin: 15px 0 6px; }
+#aiReviewReportDialog label span { font-size: .75rem; color: #66705f; margin-left: 8px; }
+#aiReviewReportDialog input:not([type="checkbox"]), #aiReviewReportDialog textarea, #aiReviewReportDialog select {
+  width: 100%; box-sizing: border-box; font: inherit; padding: 10px; background: white; color: #263128; border: 1px solid #aab6a5; border-radius: 6px;
+}
+#aiReviewReportDialog textarea { resize: vertical; }
+#aiReviewReportDialog input:disabled { background: #edf0e9; color: #7a8275; }
+#aiReviewReportDialog .ai-review-check { font-size: .9rem; font-weight: normal; display: flex; align-items: center; gap: 8px; }
+#aiReviewUnknown { width: auto; }
+#aiReviewPosition { margin: 18px 0; overflow-wrap: anywhere; }
+#aiReviewPosition h3 { font-size: 1rem; }
+#aiReviewPosition table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+#aiReviewPosition th, #aiReviewPosition td { padding: 8px 5px; border-bottom: 1px solid #dce2d7; text-align: left; }
+.ai-review-actor { background: #edf3e9; }
+.ai-review-thought, .ai-review-selected, #aiReviewPreview { white-space: pre-wrap; overflow-wrap: anywhere; }
+#aiReviewPreview { font: inherit; padding: 16px; background: #f2f4ed; border-radius: 8px; }
+.ai-review-navigation, .ai-review-exports { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+#aiReviewNext, #aiReviewSave { background: #365c3d; color: white; border: 1px solid #365c3d; }
+.ai-review-turn-button { margin-left: auto; font-size: .75rem; padding: 3px 8px; }
+#aiReviewReportOpen { margin-top: 12px; }
+@media (max-width: 560px) {
+  #aiReviewReportDialog { padding: 16px; width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  #aiReviewPosition table { font-size: .75rem; }
+  .ai-review-heading h2 { font-size: 1.05rem; }
+}

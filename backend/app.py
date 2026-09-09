@@ -83,6 +83,7 @@ from backend.member_kifu import MemberKifuStore
 from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
 from backend.retire_room_kifu import retire_room_kifu
+from backend.ai_review_report import build_review_snapshot, log_turn_numbers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -2810,7 +2811,9 @@ def _state_public_view(
             state,
             revealed_hand_seats,
         ),
-        "log": log[-200:],
+        "log": log if game_obj.get("is_debug_room") else log[-200:],
+        "log_turn_numbers": log_turn_numbers(log) if game_obj.get("is_debug_room") else log_turn_numbers(log)[-200:],
+        "review_round_id": game_obj.get("member_kifu_round_id") if game_obj.get("is_debug_room") else None,
         "finished": finished,
         "winner": winner,
         "player_names": player_names,
@@ -6052,6 +6055,27 @@ app.include_router(create_member_room_router(
     MEMBER_STORE, _member_room_options, _room_management_payload,
     _update_room_management, _vacate_room_seat,
 ))
+
+
+@app.get("/games/{game_id}/ai_review_snapshot")
+async def ai_review_snapshot(game_id: str, round_id: str, client_id: str = ""):
+    async with _game_turn_lock(game_id):
+        game = GAMES.get(game_id)
+        if game_id != DEBUG_GID or not game or not game.get("is_debug_room"):
+            raise HTTPException(403, "デバッグルームで作成してください。")
+        _require_human_seat_owner(game, "A", client_id)
+        if round_id != game.get("member_kifu_round_id"):
+            raise HTTPException(409, "局が切り替わりました。最新のログから選び直してください。")
+        if not game.get("is_started"):
+            raise HTTPException(409, "対局を開始してから作成してください。")
+        try:
+            snapshot = build_review_snapshot(
+                game, apply_action=_apply_action, new_board=_new_board_snapshot,
+                update_board=_update_board_snapshot,
+            )
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+        return JSONResponse(snapshot, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/games/{game_id}/kifu", response_class=PlainTextResponse)
