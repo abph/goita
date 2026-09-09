@@ -221,3 +221,25 @@ cases:
       state: partial
       note: 攻め評価と代表攻めテンプレートに反映済み
 
+  - id: ATT-013
+    status: confirmed
+    title: 攻め駒の目的を固定攻め順より先に再評価する
+    classification: attack_intent_lifecycle
+    priority: critical
+    conditions:
+      - 攻め駒を、王玉を誘う・味方へ合図する・味方へ届けるなど明確な目的で出す
+      - その攻めに対する全員の応答がパス、または目的と違う受けになる
+      - 同じ目的を続けられる合法手と、固定攻め順の候補がある
+    required:
+      - 攻め駒ごとに目的を記録する
+      - 目的が未達なら、目的の継続手と固定順を同じ評価で比較する
+      - 目的が達成・阻止されたら、その目的を終了して別の計画へ移る
+    forbidden:
+      - 固定攻め順だけを理由に、未達の目的を無視する
+      - 棋譜1件だけの駒順を専用規則として追加する
+    reason: 攻めの駒は何を出すかだけでなく、何を起こすために出すかで価値が変わる。目的が未達の局面では、最初の判断理由を継続して再評価する
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_intent.py::test_attack_intent_reconsiders_fixed_sequence_after_all_passes
+        - tests/test_attack_intent.py::test_attack_intent_is_archived_when_enemy_uses_royal

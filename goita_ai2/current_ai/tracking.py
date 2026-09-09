@@ -44,6 +44,12 @@ class TrackingMixin:
             my_attack_count=0,
             my_attack_history=[],
             special_attack_plan=self._special_attack_sequence_plan(cnt_all),
+            # ``special_attack_plan`` は駒の順番、こちらは各攻めの目的。
+            # 目的のライフサイクルは AttackIntentMixin が管理します。
+            planned_attack_intent=None,
+            attack_intent=None,
+            attack_intent_history=[],
+            last_attack_intent_comparison=None,
             shallow_eight_card_plan=None,
             kg_plan_active=(("9" in init_hand) and ("8" in init_hand)),
             kg_second=None,
@@ -148,6 +154,13 @@ class TrackingMixin:
             return
 
         action_type, block, attack = action
+        update_attack_intent = getattr(
+            self,
+            "_update_attack_intent_from_public_action",
+            None,
+        )
+        if callable(update_attack_intent):
+            update_attack_intent(state, player, action)
         visible_block = block
         if action_type == "attack_after_block" and player != self.me:
             visible_block = None

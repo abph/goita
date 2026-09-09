@@ -6,6 +6,7 @@ Posterior probability and inference confidence combine their resulting values.
 
 from __future__ import annotations
 
+import copy
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -80,6 +81,16 @@ class InformationSetSearchMixin:
         )
         projected["hidden_block_counts"] = dict(
             tracker.get("hidden_block_counts", {})
+        )
+        projected["planned_attack_intent"] = copy.deepcopy(
+            tracker.get("planned_attack_intent")
+        )
+        projected["attack_intent"] = copy.deepcopy(tracker.get("attack_intent"))
+        projected["attack_intent_history"] = copy.deepcopy(
+            tracker.get("attack_intent_history", [])
+        )
+        projected["last_attack_intent_comparison"] = copy.deepcopy(
+            tracker.get("last_attack_intent_comparison")
         )
 
         public_models = {}

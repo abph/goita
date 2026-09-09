@@ -437,6 +437,19 @@ class ConditionalResponseMixin:
             if plan.action[0] == "receive"
             else None
         )
+        if plan.action[0] == "receive" and plan.followup_attack_piece is not None:
+            self._set_attack_intent_plan(
+                state,
+                self.me,
+                kind="continue_pressure",
+                attack_piece=plan.followup_attack_piece,
+                source="conditional_response_dictionary",
+                target_team="any",
+                evidence={
+                    "root_action": list(plan.action),
+                    "source": str(plan.source),
+                },
+            )
 
     def conditional_response_dictionary_snapshot(self) -> Dict[str, object]:
         return self._conditional_response_dictionary.snapshot()

@@ -381,6 +381,53 @@ cases:
     reason: 次の敵にしが少なそうで味方もしを受けられそうでも、次の敵がリーチしていないなら差し込みの絶対条件を満たさない。通常の攻め評価で香を選ぶ
     regression: covered
 
+  - id: KIFU-015
+    status: confirmed
+    linked_policy: ATT-013
+    title: 王玉を誘う飛攻めが全員パスしたら目的を再評価する
+    dealer: A
+    hands:
+      A: 銀馬馬王金し香し
+      B: 金銀金し玉し銀し
+      C: し香角角し馬し馬
+      D: 飛香し銀し飛香金
+    prefix:
+      - [A, し, 馬]
+      - [B, パス, null]
+      - [C, 馬, null]
+      - [C, null, 馬]
+      - [D, パス, null]
+      - [A, パス, null]
+      - [B, パス, null]
+      - [C, し, 角]
+      - [D, パス, null]
+      - [A, パス, null]
+      - [B, 玉, null]
+      - [B, null, 銀]
+      - [C, パス, null]
+      - [D, 銀, null]
+      - [D, null, 飛]
+      - [A, パス, null]
+      - [B, パス, null]
+      - [C, パス, null]
+    actor: D
+    current_attack: 飛
+    actual:
+      type: receive_and_attack
+      block: し
+      attack: 飛
+    previous_ai:
+      type: receive_and_attack
+      block: し
+      attack: 香
+    expected:
+      intent_kind: force_enemy_royal
+      purpose: 王玉を誘う
+      compare_with: two_kyosha_big_pair
+      candidate_scores_required: true
+    reason: Dの飛は敵に王玉を使わせる目的で出した。A・B・Cが全員パスしても目的は未達なので、固定攻め順の香より先に飛の継続を再評価する
+    regression: covered
+
   - id: KIFU-013
     status: confirmed
     linked_policy: REC-002

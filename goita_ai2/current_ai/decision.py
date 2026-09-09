@@ -145,6 +145,7 @@ class DecisionMixin:
             "safe_nonking_third",
             "upside_finish",
             "shi_insertion",
+            "attack_intent",
         }
         if reason in strong_reasons:
             return "strong"
@@ -436,6 +437,7 @@ class DecisionMixin:
         """Compare the rule-based choice with a public-information search."""
         self.last_attack_candidate_scores = []
         self.last_attack_candidate_snapshot = {}
+        self.last_attack_intent_comparison = None
         started = self._begin_performance_decision()
         try:
             chosen = self._select_action_with_measurement(state, player, actions)
@@ -454,11 +456,15 @@ class DecisionMixin:
             return
 
         score_by_action = {}
+        role_by_action = {}
         for item in self.last_attack_candidate_scores:
             action = tuple(item.get("action", ()))
             score = item.get("score")
             if len(action) == 3 and isinstance(score, (int, float)):
                 score_by_action[action] = float(score)
+            role = item.get("candidate_role")
+            if len(action) == 3 and role is not None:
+                role_by_action[action] = str(role)
 
         by_piece = {}
         piece_order = []
@@ -471,6 +477,9 @@ class DecisionMixin:
                 "attack": str(attack),
                 "score": round(score, 1) if score is not None else None,
             }
+            role = role_by_action.get(tuple(action))
+            if role is not None:
+                candidate["candidate_role"] = role
             if attack not in by_piece:
                 by_piece[attack] = candidate
                 piece_order.append(attack)
@@ -502,11 +511,14 @@ class DecisionMixin:
             score_gap = None
             if chosen_score is not None and alternative_score is not None:
                 score_gap = round(float(chosen_score) - float(alternative_score), 1)
-            compact_alternatives.append({
+            compact = {
                 "attack": item["attack"],
                 "score": alternative_score,
                 "score_gap": score_gap,
-            })
+            }
+            if item.get("candidate_role") is not None:
+                compact["candidate_role"] = item["candidate_role"]
+            compact_alternatives.append(compact)
 
         block_alternatives = []
         if chosen[0] == "attack_after_block" and chosen[1] is not None:
@@ -561,18 +573,27 @@ class DecisionMixin:
         )
         if not compact_alternatives and not block_alternatives and not has_hidden_block:
             return
+        chosen_entry = {
+            "block": str(chosen[1]) if chosen[1] is not None else None,
+            "attack": str(chosen[2]),
+            "score": round(chosen_score, 1) if chosen_score is not None else None,
+        }
+        chosen_role = role_by_action.get(tuple(chosen))
+        if chosen_role is not None:
+            chosen_entry["candidate_role"] = chosen_role
+
         self.last_attack_candidate_snapshot = {
             "version": 2,
-            "chosen": {
-                "block": str(chosen[1]) if chosen[1] is not None else None,
-                "attack": str(chosen[2]),
-                "score": round(chosen_score, 1) if chosen_score is not None else None,
-            },
+            "chosen": chosen_entry,
             "alternatives": compact_alternatives,
             "block_alternatives": block_alternatives,
             "decision_reason": str(self.last_decision_reason or ""),
             "decision_detail": str(self.last_score_fallback_detail or ""),
         }
+        if isinstance(self.last_attack_intent_comparison, dict):
+            self.last_attack_candidate_snapshot["attack_intent"] = copy.deepcopy(
+                self.last_attack_intent_comparison
+            )
 
     def _select_action_with_measurement(
         self,
@@ -834,13 +855,22 @@ class DecisionMixin:
             ):
                 tracker = self._track.get(id(state))
                 if tracker is not None:
-                    tracker["pending_low_reentry_attack_piece"] = (
-                        self._low_reentry_followup_piece(
+                    followup_piece = self._low_reentry_followup_piece(
+                        state,
+                        player,
+                        str(search_result.action[1]),
+                    )
+                    tracker["pending_low_reentry_attack_piece"] = followup_piece
+                    if followup_piece is not None:
+                        self._set_attack_intent_plan(
                             state,
                             player,
-                            str(search_result.action[1]),
+                            kind="preserve_followup",
+                            attack_piece=followup_piece,
+                            source="low_reentry_receive_search",
+                            target_team="any",
+                            evidence={"received_piece": str(search_result.action[1])},
                         )
-                    )
             if shi_insertion_search:
                 self._commit_shi_insertion_root(
                     state,
@@ -1056,6 +1086,17 @@ class DecisionMixin:
         tracker["pending_kyosha_receive_attack_piece"] = (
             self._low_reentry_followup_piece(state, player, "2")
         )
+        followup_piece = tracker.get("pending_kyosha_receive_attack_piece")
+        if followup_piece is not None:
+            self._set_attack_intent_plan(
+                state,
+                player,
+                kind="preserve_followup",
+                attack_piece=followup_piece,
+                source="kyosha_receive_followup",
+                target_team="any",
+                evidence={"received_piece": "2"},
+            )
 
     def _should_deep_search_low_reentry_receive(
         self,
@@ -1180,6 +1221,7 @@ class DecisionMixin:
         self._set_decision_reason("")
         self._set_score_fallback_detail("")
         self.last_attack_candidate_scores = []
+        self.last_attack_intent_comparison = None
         self.last_ally_reach_comparison = None
 
         if self.me is None:
@@ -1401,6 +1443,7 @@ class DecisionMixin:
                 win_now_actions.sort(key=lambda x: x[0], reverse=True)
                 chosen = win_now_actions[0][1]
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                self._activate_attack_intent_from_action(state, player, chosen)
                 tr["pending_ally_force_king_attack_piece"] = None
                 self._set_decision_reason("win_now")
                 return chosen
@@ -1409,6 +1452,7 @@ class DecisionMixin:
             for act in attack_actions:
                 if act[2] == pending_piece:
                     tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                    self._activate_attack_intent_from_action(state, player, act)
                     tr["pending_ally_force_king_attack_piece"] = None
                     self._set_decision_reason("score_fallback")
                     self._set_score_fallback_detail("attack_force_enemy_king")
@@ -1793,6 +1837,15 @@ class DecisionMixin:
             self._commit_branched_attack_choice(state, branched_choice)
             return branched_choice.action
 
+        intent_action = self._attack_intent_continuation_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if intent_action is not None:
+            return intent_action
+
         special_sequence_action = self._special_attack_sequence_action(
             state,
             player,
@@ -1817,7 +1870,22 @@ class DecisionMixin:
                 )
             else:
                 plan_label = tr.get("special_attack_plan", {}).get("label", "special") if tr is not None else "special"
-                self._set_score_fallback_detail(f"attack_sequence_{plan_label}")
+                comparison = (
+                    tr.get("last_attack_intent_comparison")
+                    if tr is not None
+                    else None
+                )
+                if (
+                    isinstance(comparison, dict)
+                    and comparison.get("selected") == "baseline"
+                    and comparison.get("baseline_action") == list(special_sequence_action)
+                ):
+                    self._set_score_fallback_detail(
+                        f"attack_intent_{comparison.get('kind')}_"
+                        f"replan_{plan_label}_{attack}"
+                    )
+                else:
+                    self._set_score_fallback_detail(f"attack_sequence_{plan_label}")
             return special_sequence_action
 
         shallow_eight_card = self._eight_card_shallow_plan_action(
@@ -2046,12 +2114,28 @@ class DecisionMixin:
 
         if tr is not None:
             if best_action[0] == "receive":
-                tr["pending_ally_force_king_attack_piece"] = self._ally_force_king_attack_piece_after_receive(
+                force_piece = self._ally_force_king_attack_piece_after_receive(
                     state,
                     player,
                     best_action[0],
                     best_action[1],
                 )
+                tr["pending_ally_force_king_attack_piece"] = force_piece
+                if force_piece is not None:
+                    self._set_attack_intent_plan(
+                        state,
+                        player,
+                        kind="force_enemy_royal",
+                        attack_piece=force_piece,
+                        source="ally_receive",
+                        target_team="enemy",
+                        success_condition={"receive_piece": ["8", "9"]},
+                        evidence={
+                            "received_piece": str(best_action[1]),
+                            "current_attack": str(state.current_attack),
+                            "ally": tr.get("ally"),
+                        },
+                    )
             if best_action[0] in ("attack", "attack_after_block"):
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best_action[2] in ("8", "9") and tr.get("kg_second") is None:

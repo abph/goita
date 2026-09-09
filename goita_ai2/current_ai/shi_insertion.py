@@ -507,6 +507,19 @@ class ShiInsertionStrategyMixin:
             tracker["pending_shi_insertion_attack_piece"] = str(
                 recommended["followup"]
             )
+            self._set_attack_intent_plan(
+                state,
+                player,
+                kind="deliver_to_ally",
+                attack_piece=str(recommended["followup"]),
+                source="shi_insertion",
+                target_team="ally",
+                evidence={
+                    "root_action": list(action),
+                    "current_attack": str(analysis.get("current_attack")),
+                    "attacker": str(analysis.get("attacker")),
+                },
+            )
             tracker["pending_shi_insertion_wait"] = None
         if tracker is not None:
             tracker["pending_shi_insertion_wait"] = (
@@ -545,6 +558,19 @@ class ShiInsertionStrategyMixin:
         route = max(routes, key=lambda item: float(item["score"]))
         if action[0] == "receive":
             tracker["pending_shi_insertion_attack_piece"] = str(route["followup"])
+            self._set_attack_intent_plan(
+                state,
+                player,
+                kind="deliver_to_ally",
+                attack_piece=str(route["followup"]),
+                source="shi_insertion",
+                target_team="ally",
+                evidence={
+                    "root_action": list(action),
+                    "current_attack": str(analysis.get("current_attack")),
+                    "attacker": str(analysis.get("attacker")),
+                },
+            )
             tracker["pending_shi_insertion_wait"] = None
         elif action[0] == "pass":
             tracker["pending_shi_insertion_wait"] = {

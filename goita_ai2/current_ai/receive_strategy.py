@@ -252,6 +252,20 @@ class ReceiveStrategyMixin:
         )
         if weak_shi_signal_receive:
             tr["pending_weak_hand_shi_signal"] = True
+            self._set_attack_intent_plan(
+                state,
+                player,
+                kind="signal_ally_shi",
+                attack_piece="1",
+                source="weak_hand_shi_signal",
+                target_team="ally",
+                success_condition={"receive_piece": ["1"]},
+                evidence={
+                    "current_attack": str(current_attack),
+                    "attacker": str(attacker),
+                    "absolute_rank": absolute_rank,
+                },
+            )
             self._set_decision_reason("score_fallback")
             self._set_score_fallback_detail(
                 f"enemy_dealer_first_next_abs{absolute_rank}_weak_shi_signal_receive"

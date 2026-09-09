@@ -11,6 +11,7 @@ from goita_ai2.current_ai.attack_planning import AttackPlanningMixin
 from goita_ai2.current_ai.ally_reach import AllyReachMixin
 from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
 from goita_ai2.current_ai.attack_plan_templates import AttackPlanTemplateMixin
+from goita_ai2.current_ai.attack_intent import AttackIntentMixin
 from goita_ai2.current_ai.background_search import BackgroundSearchMixin
 from goita_ai2.current_ai.branched_attack_generator import BranchedAttackGeneratorMixin
 from goita_ai2.current_ai.branched_attack_inference import BranchedAttackInferenceMixin
@@ -48,6 +49,7 @@ class RuleBasedAgent(
     DecisionMixin,
     PerformanceMetricsMixin,
     TrackingMixin,
+    AttackIntentMixin,
     HandEvaluationMixin,
     ForcedPlansMixin,
     ForcedWinPlannerMixin,
@@ -123,6 +125,10 @@ class RuleBasedAgent(
         self.TATEWARI_BONUS = 800.0
         self.CONTINUOUS_ATTACK_BONUS = 500.0
         self.ATTACK_STRATEGY_BONUS = 120.0
+        # 攻め順とは別に、攻めた目的を短く保持して再評価する。
+        self.ATTACK_INTENT_ENABLED = True
+        self.ATTACK_INTENT_CONTINUATION_BONUS = 180.0
+        self.ATTACK_INTENT_MIN_MARGIN = 0.0
         self.RECEIVE_KEEP_PENALTY = 25.0
         self.ENEMY_FIRST_ATTACK_POLICY = "hand_strength"
         self.USE_RELATIVE_HAND_RANK = True
@@ -395,6 +401,7 @@ class RuleBasedAgent(
         self.last_score_fallback_detail = ""
         self.last_attack_candidate_scores: List[dict] = []
         self.last_attack_candidate_snapshot: Dict[str, object] = {}
+        self.last_attack_intent_comparison: Optional[Dict[str, object]] = None
         self.last_information_set_search = None
         self.last_rule_search_authority = "ordinary"
         self.last_search_skip_reason = ""

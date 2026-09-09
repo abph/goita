@@ -19,7 +19,8 @@ from goita_ai2.current_ai.prediction_cache import PredictionSample
 PIECES = tuple(str(index) for index in range(1, 10))
 
 # These fields are all derived from the observer's hand and public actions.
-# Local attack plans and previous search outputs are intentionally excluded.
+# The active attack purpose is included because an unresolved purpose changes
+# the policy even when the visible board is otherwise identical.
 _PUBLIC_TRACKER_FIELDS = (
     "ally",
     "public_seen_counts",
@@ -46,6 +47,10 @@ _PUBLIC_TRACKER_FIELDS = (
     "active_attack_context",
     "my_last_receive_piece",
     "my_last_received_attack",
+    # 攻めの目的は自分の公開済み行動から生じる局面文脈であり、
+    # 同じ公開盤面でも未達の目的があるかで次の候補が変わる。
+    "planned_attack_intent",
+    "attack_intent",
 )
 
 
