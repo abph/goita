@@ -99,6 +99,7 @@ class TrackingMixin:
             active_forced_win_plan=None,
             last_time_limited_search=None,
             my_last_receive_piece=None,
+            my_last_received_attack=None,
             enemy_pending_shi_receive_players=set(),
             enemy_team_rejected_shi_attack=False,
             active_attack_context=None,
@@ -150,6 +151,13 @@ class TrackingMixin:
         visible_block = block
         if action_type == "attack_after_block" and player != self.me:
             visible_block = None
+
+        if player == self.me and action_type == "receive":
+            active_context = tr.get("active_attack_context") or {}
+            received_attack = active_context.get("piece")
+            tr["my_last_received_attack"] = (
+                str(received_attack) if received_attack is not None else None
+            )
 
         self._update_public_hand_model(state, tr, player, action_type, visible_block, attack)
 
@@ -241,6 +249,7 @@ class TrackingMixin:
             tr["pending_kyosha_receive_attack_piece"] = None
             tr["pending_conditional_response_attack_piece"] = None
             tr["my_last_receive_piece"] = None
+            tr["my_last_received_attack"] = None
 
         if action_type in ("receive", "attack_after_block") and visible_block is not None:
             if visible_block in tr["public_seen_counts"]:

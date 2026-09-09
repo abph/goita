@@ -178,6 +178,86 @@ def test_three_shi_is_preferred_over_singletons_after_receiving_big_piece() -> N
     assert d_agent.last_score_fallback_detail == "attack_three_shi_after_big_receive"
 
 
+def test_four_shi_route_survives_royal_receive_of_big_attack() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("22141543"),
+            "B": list("53367412"),
+            "C": list("19175165"),
+            "D": list("13111428"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+
+    actions = (
+        ("C", ("attack_after_block", "1", "5")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("receive", "5", None)),
+        ("B", ("attack", None, "3")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "3", None)),
+        ("A", ("attack", None, "5")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("attack_after_block", "1", "4")),
+        ("B", ("receive", "4", None)),
+        ("B", ("attack", None, "3")),
+        ("C", ("receive", "9", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("receive", "8", None)),
+    )
+    for action_player, action in actions:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    d_agent = agents["D"]
+    assert d_agent._track[id(state)]["my_last_receive_piece"] == "8"
+    assert d_agent._track[id(state)]["my_last_received_attack"] == "6"
+    assert d_agent._single_middle_after_big_receive_first_attack_penalty(
+        state,
+        "D",
+        "attack",
+        "4",
+    ) == d_agent.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY
+    shi_score = d_agent._score_attack_phase(
+        state,
+        "D",
+        "attack",
+        None,
+        "1",
+        has_non_king_attack_option=True,
+    )
+    gold_score = d_agent._score_attack_phase(
+        state,
+        "D",
+        "attack",
+        None,
+        "4",
+        has_non_king_attack_option=True,
+    )
+    assert shi_score > gold_score
+
+    chosen = d_agent.select_action(state, "D", state.legal_actions("D"))
+
+    assert chosen == ("attack", None, "1")
+    assert d_agent.last_score_fallback_detail == "attack_four_shi_over_single_middle"
+
+
 def test_four_shi_receive_returns_shi_over_singleton_attacks() -> None:
     state = GoitaState(
         hands={

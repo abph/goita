@@ -192,10 +192,17 @@ class AttackStrategyMixin:
     def _multi_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
         tr = self._track.get(id(state))
         hand = state.hands[player]
+        received_big_attack = (
+            tr is not None
+            and tr.get("my_last_received_attack") in ("6", "7")
+        )
         if (
             tr is None
             or int(tr.get("my_attack_count", 0)) != 0
-            or tr.get("my_last_receive_piece") not in ("6", "7")
+            or (
+                tr.get("my_last_receive_piece") not in ("6", "7")
+                and not received_big_attack
+            )
             or hand.count("1") < 3
             or hand.count("8") + hand.count("9") > 1
             or any(hand.count(piece) >= 2 for piece in ("2", "3", "4", "5", "6", "7"))

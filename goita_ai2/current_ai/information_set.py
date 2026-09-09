@@ -44,6 +44,8 @@ _PUBLIC_TRACKER_FIELDS = (
     "shi_attack_mode",
     "enemy_team_rejected_shi_attack",
     "active_attack_context",
+    "my_last_receive_piece",
+    "my_last_received_attack",
 )
 
 
