@@ -1353,7 +1353,9 @@ class DecisionMixin:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 self._set_decision_reason("shi_insertion")
                 self._set_score_fallback_detail(
-                    f"shi_insertion_followup_{planned_piece}"
+                    self._shi_insertion_detail(
+                        tr.get("last_shi_insertion_analysis"), "followup", planned_piece,
+                    )
                 )
                 return planned_attack
 
@@ -1592,7 +1594,7 @@ class DecisionMixin:
             followup = str(recommended.get("followup", "1"))
             self._set_decision_reason("shi_insertion")
             self._set_score_fallback_detail(
-                f"shi_insertion_{timing}_{followup}"
+                self._shi_insertion_detail(analysis, timing, followup)
             )
             return shi_insertion_action
 

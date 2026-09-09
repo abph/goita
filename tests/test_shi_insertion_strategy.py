@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 from goita_ai2.current_ai.agent import RuleBasedAgent
 from goita_ai2.state import GoitaState
 
@@ -159,10 +161,91 @@ def test_delayed_plan_waits_only_one_cycle() -> None:
     assert {route["timing"] for route in analysis["routes"]} == {"immediate"}
 
 
+def _review_c_turn7(rotation=0):
+    seats = "ABCD"
+    def seat(p):
+        return seats[(seats.index(p) + rotation) % 4]
+    state = GoitaState({seat(p): list(h) for p, h in {
+        "A": "31251532", "B": "21611134", "C": "44158741", "D": "51162793",
+    }.items()}, dealer=seat("A"))
+    agent = RuleBasedAgent()
+    player = seat("C")
+    agent.bind_player(player)
+    agent._ensure_trackers(state)
+    agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+    agent.TIME_SEARCH_CACHE_ENABLED = False
+    agent.TIME_SEARCH_PREDICTION_CACHE_ENABLED = False
+    agent.TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED = False
+    for p, action in (
+        ("A", ("attack_after_block", "3", "2")),
+        ("B", ("pass", None, None)), ("C", ("pass", None, None)),
+        ("D", ("receive", "2", None)), ("D", ("attack", None, "7")),
+        ("A", ("pass", None, None)), ("B", ("pass", None, None)),
+    ):
+        assert action in state.legal_actions(seat(p))
+        _apply_public(state, agent, seat(p), action)
+    return state, agent, player
+
+
+def test_review_c_turn7_receives_before_lance_and_attacks_three_silver():
+    for rotation in range(4):
+        state, agent, player = _review_c_turn7(rotation)
+        analysis = agent._shi_insertion_plan_analysis(state, player, state.legal_actions(player))
+        assert analysis["recommended"]["followup"] == "4"
+        assert analysis["recommended"]["timing"] == "immediate"
+        assert analysis["uncovered_next_attack_weight"] > 0
+        lance = next(r for r in analysis["next_attack_candidates"] if r["piece"] == "2")
+        assert not lance["can_receive"] and lance["weight"] > 0
+        assert any(r["root_action"][0] == "pass" for r in analysis["routes"])
+        assert all("common_attack_evaluation" in r["components"] for r in analysis["followups"])
+        receive = agent.select_action(state, player, state.legal_actions(player))
+        assert receive == ("receive", "7", None)
+        assert agent.last_score_fallback_detail == "shi_insertion_immediate_4_avoid_2"
+        _apply_public(state, agent, player, receive)
+        assert sorted(state.hands[player]) == list("1144458")
+        attack = agent.select_action(state, player, state.legal_actions(player))
+        assert attack == ("attack", None, "4")
+        assert agent.last_score_fallback_detail == "shi_insertion_followup_4_avoid_2"
+
+
+def test_wait_exposure_uses_own_coverage_and_not_real_opponent_hands():
+    state, agent, player = _review_c_turn7()
+    original = agent._shi_insertion_plan_analysis(state, player, state.legal_actions(player))
+    tracker_before = copy.deepcopy(agent._track[id(state)])
+    state.hands["A"], state.hands["D"] = state.hands["D"], state.hands["A"]
+    changed = agent._shi_insertion_plan_analysis(state, player, state.legal_actions(player))
+    assert changed == original
+    assert agent._track[id(state)] == tracker_before
+    # Coverage counterfactual: having a lance removes the uncovered next attack.
+    state.hands[player].append("2")
+    exposure, _ = agent._shi_insertion_wait_risk(state, player)
+    assert exposure == 0
+
+
+def test_enemy_shi_possession_reduces_both_pressure_and_ally_delivery():
+    state, agent, player = _review_c_turn7()
+    def score(enemy_probability):
+        agent._shi_insertion_piece_probability = lambda s, p, seat, piece: (
+            enemy_probability if seat == "D" else 1.0
+        )
+        return agent._shi_insertion_followup_score(
+            state, player, "7", "1", downstream="D", downstream_hidden_count=0,
+        )[1]
+    blocked = score(1.0)
+    open_route = score(0.0)
+    assert blocked["ally_reach_probability"] == 0
+    assert blocked["shi_pressure"] == 0
+    assert open_route["ally_reach_probability"] > 0
+    assert open_route["shi_pressure"] > 0
+
+
 if __name__ == "__main__":
     test_shi_insertion_compares_every_legal_followup()
     test_one_downstream_hidden_block_raises_shi_insertion_value()
     test_both_royals_are_better_than_one_royal()
     test_immediate_receive_keeps_the_planned_shi_followup()
     test_delayed_plan_waits_only_one_cycle()
+    test_review_c_turn7_receives_before_lance_and_attacks_three_silver()
+    test_wait_exposure_uses_own_coverage_and_not_real_opponent_hands()
+    test_enemy_shi_possession_reduces_both_pressure_and_ally_delivery()
     print("SHI_INSERTION_STRATEGY_TEST_OK")

@@ -184,15 +184,19 @@ cases:
     classification: opponent_followup
     priority: high
     conditions:
-      - 敵の2つ目の攻めに対して受けとパスが合法
-      - パスすれば同じ敵に3つ目の攻めが回る可能性が高い
-    required: 敵の推定手駒から3つ目の攻め候補を生成し、その後の受けまで比較する
+      - 敵の攻めに対して受けとパスが合法
+      - パスすれば同じ敵に次の攻めが回る可能性が高い
+    required: 攻め順と公開履歴に基づく敵の推定手駒から次の攻め候補を挙げ、待った場合の受け幅と今受けた後の攻めを比較する
     forbidden:
       - 現在の駒を温存できるという理由だけでパスする
+      - 初手の飛だけから香2枚や3しを断定する
     reason: 温存の価値は、次に出される駒を実際に受けられる場合にだけ成立する
     regression:
       state: partial
-      note: 分岐付き攻め計画と時間制限付き探索へ接続。代表棋譜テストは追加予定
+      note: 最後の受け手の計画に、公開推定の所持確率と枚数を重みにした次の攻め候補を接続。実際の攻め選択確率ではない。一般の受け局面への拡張は未完了
+      tests:
+        - tests/test_shi_insertion_strategy.py::test_review_c_turn7_receives_before_lance_and_attacks_three_silver
+      example: C手番7でしし銀銀銀金飛玉を持つ。香がないので敵の次の香を待つ危険を評価し、飛を受けて銀を攻める
 
   - id: REC-011
     status: confirmed

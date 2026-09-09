@@ -5684,7 +5684,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         conditional_tsume: "条件付きの上がり筋を優先",
         inferred_endgame: "手駒推定に基づく終盤判断",
         upside_finish: "確定上がりを基準に高得点を狙う",
-        shi_insertion: "受ける時機と差し込みを比較",
+        shi_insertion: "受ける時機と攻め方を比較",
         responded: "味方の反応に合わせる判断",
         branched_plan: "分岐付き攻め計画",
         time_search: "時間制限付き探索",
@@ -5860,6 +5860,14 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return "Receive after comparing the lines because passing would make re-entry unlikely";
         return "パスすると再び参加しにくいため、探索で比較して同じ駒で受ける";
     }
+    match = String(detail || "").match(/^shi_insertion_(immediate|followup)_([1-9])_avoid_([1-9])$/);
+    if(match) {
+        const attack = gameLogCandidatePieceLabel(match[2], language);
+        const threat = gameLogCandidatePieceLabel(match[3], language);
+        if(language === "en") return `Compare waiting against taking the attack now: a possible ${threat} next would be unreceivable. Use ${attack} after receiving, considering continuation and defensive coverage.`;
+        if(language === "zh") return `比较等待与立即接牌：对手接下来可能打出无法接的${threat}。综合连续进攻与防守范围，接牌后以${attack}进攻。`;
+        return `待つと次に${threat}を出されて受けられなくなる可能性を比較。攻めの継続性と受け幅を評価し、今受けて${attack}で攻める計画`;
+    }
     match = String(detail || "").match(/^shi_insertion_(immediate|delayed)_([1-9])$/);
     if(match) {
         const timing = match[1] === "delayed";
@@ -5879,7 +5887,7 @@ function localizeGameLogAiDetail(detail, language) {
         const piece = gameLogCandidatePieceLabel(match[1], language);
         if(language === "zh") return `继续差入计划，以${piece}进攻`;
         if(language === "en") return `Continue the insertion plan by attacking with ${piece}`;
-        return `差し込み計画を継続し、${piece}で攻める`;
+        return `受け後の攻め計画を継続し、${piece}で攻める`;
     }
     if(/^enemy_first_(pass|receive)_hand_strength_/.test(String(detail || ""))) {
         const receives = String(detail).includes("_receive_");

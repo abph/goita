@@ -18,6 +18,17 @@ Action = Tuple[str, Optional[str], Optional[str]]
 class ShiInsertionStrategyMixin:
     """Builds and scores receive-first plans that may insert shi to the ally."""
 
+    @staticmethod
+    def _shi_insertion_detail(analysis, timing, piece):
+        detail = f"shi_insertion_{timing}_{piece}"
+        if piece != "1" and timing in ("immediate", "followup") and analysis:
+            uncovered = [row for row in analysis.get("next_attack_candidates", ())
+                         if not row["can_receive"] and row["weight"] > 0]
+            if uncovered:
+                threat = max(uncovered, key=lambda row: row["weight"])["piece"]
+                detail += f"_avoid_{threat}"
+        return detail
+
     def _shi_insertion_piece_probability(
         self,
         state,
@@ -116,17 +127,7 @@ class ShiInsertionStrategyMixin:
                 downstream,
                 "1",
             )
-            components["shi_pressure"] = float(self.SHI_INSERTION_SHI_ATTACK_VALUE)
             components["information_value"] = float(self.SHI_INSERTION_INFORMATION_VALUE)
-            components["ally_reach_probability"] = (
-                ally_shi_probability * float(self.SHI_INSERTION_ALLY_PROGRESS_VALUE)
-            )
-
-            ally_cards = len(state.hands.get(ally, ()))
-            if ally_cards <= 2:
-                components["ally_near_finish"] = 110.0 * ally_shi_probability
-            elif ally_cards <= 4:
-                components["ally_near_reach"] = 70.0 * ally_shi_probability
 
             if downstream_hidden_count == 1:
                 # The first hidden block is frequently shi. Treat this as soft
@@ -139,6 +140,20 @@ class ShiInsertionStrategyMixin:
                     downstream_shi_probability
                     - float(self.SHI_INSERTION_ONE_HIDDEN_SHI_REDUCTION),
                 )
+            # Marginal approximation: possessing shi does not mean the partner
+            # gets a turn to receive it. The intervening opponent acts first.
+            delivery_probability = (1.0 - downstream_shi_probability) * ally_shi_probability
+            components["shi_pressure"] = (
+                (1.0 - downstream_shi_probability) * float(self.SHI_INSERTION_SHI_ATTACK_VALUE)
+            )
+            components["ally_reach_probability"] = (
+                delivery_probability * float(self.SHI_INSERTION_ALLY_PROGRESS_VALUE)
+            )
+            ally_cards = len(state.hands.get(ally, ()))
+            if ally_cards <= 2:
+                components["ally_near_finish"] = 110.0 * delivery_probability
+            elif ally_cards <= 4:
+                components["ally_near_reach"] = 70.0 * delivery_probability
             components["downstream_interception_risk"] = (
                 -downstream_shi_probability
                 * float(self.SHI_INSERTION_INTERCEPTION_PENALTY)
@@ -152,6 +167,34 @@ class ShiInsertionStrategyMixin:
         if attack_piece in ("8", "9") and len(state.hands[player]) > 2:
             components["early_royal_attack"] = -80.0
         return sum(components.values()), components
+
+    def _shi_insertion_wait_risk(self, state, player):
+        """Estimate exposure to possible next attacks, using public beliefs.
+
+        These weights describe plausible attacks, not a calibrated prediction
+        of the opponent's policy. Never read their real hidden hand.
+        """
+        tracker = self._track[id(state)]
+        hand = state.hands[player]
+        candidates = []
+        for piece in PIECE_TOTALS:
+            probability = self._shi_insertion_piece_probability(
+                state, player, state.attacker, piece,
+            )
+            if probability <= 0:
+                continue
+            estimate = self._estimated_current_piece(tracker, state.attacker, piece) or {}
+            # A repeated attack becomes more plausible with estimated copies.
+            weight = probability * max(1.0, float(estimate.get("expected", 1.0)))
+            can_receive = piece in hand or (
+                piece not in ("1", "2") and any(royal in hand for royal in ("8", "9"))
+            )
+            candidates.append({"piece": piece, "weight": weight, "can_receive": can_receive})
+        total = sum(row["weight"] for row in candidates)
+        for row in candidates:
+            row["weight"] /= total
+        exposure = sum(row["weight"] for row in candidates if not row["can_receive"])
+        return exposure, candidates
 
     def _shi_insertion_plan_analysis(
         self,
@@ -208,6 +251,14 @@ class ShiInsertionStrategyMixin:
         if not followups:
             return None
 
+        # Use the same post-receive attack evaluation as ordinary play, with a
+        # scale conversion to the tactical route scores. Keep the real tracker
+        # untouched while updating the simulated public receive event.
+        after_receive = copy.deepcopy(state)
+        attack_agent = copy.deepcopy(self)
+        attack_agent._track[id(after_receive)] = copy.deepcopy(tracker)
+        after_receive.apply_receive(player, current_attack)
+        attack_agent.on_public_action(after_receive, player, receive_action)
         scored_followups = []
         for action in followups:
             attack_piece = str(action[2])
@@ -219,6 +270,12 @@ class ShiInsertionStrategyMixin:
                 downstream=downstream,
                 downstream_hidden_count=downstream_hidden_count,
             )
+            common = attack_agent._score_attack_phase(
+                after_receive, player, "attack", None, attack_piece,
+                has_non_king_attack_option=any(a[2] not in ("8", "9") for a in followups),
+            )
+            components["common_attack_evaluation"] = common * self.SHI_INSERTION_COMMON_ATTACK_WEIGHT
+            score += components["common_attack_evaluation"]
             scored_followups.append({
                 "action": action,
                 "attack": attack_piece,
@@ -248,6 +305,8 @@ class ShiInsertionStrategyMixin:
             and str(pending_wait.get("attacker")) == str(state.attacker)
         )
 
+        wait_exposure, next_attacks = self._shi_insertion_wait_risk(state, player)
+        wait_penalty = wait_exposure * self.SHI_INSERTION_LOST_RECEIVE_PENALTY
         routes = []
         for followup in scored_followups:
             immediate_score = (
@@ -296,6 +355,7 @@ class ShiInsertionStrategyMixin:
                     + repeat_probability * extra_block_value
                     - repeated_attack_risk
                     - immediate_danger * 1.35
+                    - wait_penalty
                 )
                 routes.append({
                     "timing": "delayed",
@@ -310,8 +370,22 @@ class ShiInsertionStrategyMixin:
                         "extra_hidden_block": repeat_probability * extra_block_value,
                         "repeat_attack_risk": -repeated_attack_risk,
                         "enemy_progress_risk": -immediate_danger * 1.35,
+                        "lost_receive_opportunity": -wait_penalty,
                     },
                 })
+
+        if remaining_max <= 0 and not waited_once:
+            # Passing still deserves comparison when the same attack cannot
+            # repeat. Discount a waiting opportunity by uncovered next attacks.
+            best_now = max(routes, key=lambda item: float(item["score"]))
+            routes.append({
+                "timing": "wait", "root_action": pass_action,
+                "followup": best_now["followup"],
+                "score": round(float(best_now["score"]) - wait_penalty - matching_receive, 3),
+                "components": {"future_opportunity_upper_estimate": float(best_now["score"]),
+                               "lost_receive_opportunity": -wait_penalty,
+                               "current_receive_opportunity": -matching_receive},
+            })
 
         routes.sort(key=lambda item: float(item["score"]), reverse=True)
         if not routes:
@@ -327,6 +401,9 @@ class ShiInsertionStrategyMixin:
             "royal_count": royal_count,
             "final_responder": final_responder,
             "waited_once": waited_once,
+            "next_attack_candidates": next_attacks,
+            "uncovered_next_attack_weight": wait_exposure,
+            "next_attack_estimate_kind": "public_holding_weighted_heuristic",
             "followups": scored_followups,
             "routes": routes[: max(2, int(self.SHI_INSERTION_MAX_ROUTES))],
             "recommended": best,
