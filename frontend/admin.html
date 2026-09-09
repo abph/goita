@@ -189,7 +189,7 @@
     .score-audit-dialog-inner { padding: 18px; }
     .score-audit-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .score-audit-dialog-header h2 { margin: 0; font-size: 20px; }
-    .score-audit-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+    .score-audit-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
     .score-audit-meta div { padding: 9px; border: 1px solid var(--line); background: var(--surface); }
     .score-audit-meta strong { display: block; margin-top: 3px; }
     .score-audit-moves { max-height: 360px; overflow: auto; }
@@ -209,12 +209,6 @@
     .score-audit-piece.is-hidden { background: #f6f2e8; }
     .score-audit-piece.is-final-attack { background: linear-gradient(135deg, #f7e1a0, #f1c40f); outline: 3px solid #b74a18; outline-offset: -2px; opacity: 1; z-index: 3; }
     .score-audit-piece.is-final-attack span { color: #a40000; }
-    .score-audit-piece.is-replay-new { animation: score-audit-piece-arrive 360ms ease-out both; }
-    .score-audit-piece.is-replay-new.seat-A { --audit-replay-x: 0%; --audit-replay-y: 70%; }
-    .score-audit-piece.is-replay-new.seat-B { --audit-replay-x: 70%; --audit-replay-y: 0%; }
-    .score-audit-piece.is-replay-new.seat-C { --audit-replay-x: 0%; --audit-replay-y: -70%; }
-    .score-audit-piece.is-replay-new.seat-D { --audit-replay-x: -70%; --audit-replay-y: 0%; }
-    @keyframes score-audit-piece-arrive { from { opacity: .2; translate: var(--audit-replay-x) var(--audit-replay-y); scale: .72; } to { opacity: 1; translate: 0 0; scale: 1; } }
     .score-audit-seat-label { z-index: 2; display: flex; align-items: center; justify-content: center; border: 2px solid #8b5a2b; background: #f4efdf; color: #b00000; font-size: clamp(14px, 2.8vw, 21px); font-weight: 900; }
     .score-audit-seat-label.is-winner { border-color: #c24f16; box-shadow: 0 0 8px rgb(194 79 22 / 42%); }
     .score-audit-seat-label.seat-A .score-audit-seat-content { transform: rotate(0deg); }
@@ -230,8 +224,6 @@
     .score-audit-move-number.seat-D { top: 50%; right: 0; transform: translate(52%, -50%) rotate(90deg); }
     .score-audit-center-score { grid-column: 4 / 6; grid-row: 4 / 6; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; border: 2px dashed #8b5a2b; background: rgb(244 239 223 / 94%); color: #2b2b2b; font-size: clamp(9px, 2vw, 13px); font-weight: 900; line-height: 1.35; text-align: center; }
     .score-audit-center-score strong { display: block; }
-    .score-audit-play-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 10px 0; }
-    .score-audit-play-actions button.is-playing { border-color: var(--danger); color: var(--danger); }
     @media (max-width: 900px) { .score-audit-board-wrap { padding: 5px; border-width: 2px; } .score-audit-board { --audit-gap: 3px; --audit-cell: min(36px, calc((100vw - 96px) / 8)); } .score-audit-piece span { font-size: clamp(14px, 2.8vw, 21px); } .score-audit-move-number { min-width: 14px; height: 14px; font-size: 8px; } }
     [hidden] { display: none !important; }
     @media (max-width: 900px) {
@@ -614,6 +606,7 @@
     const SCORE_AUDIT_HEADERS = {"X-Goita-Member": "1"};
     const SCORE_AUDIT_PAGE_SIZE = 100;
     let scoreAuditOffset = 0;
+    let scoreAuditScanTimer = null;
 
     function scoreAuditStatusLabel(status) {
       return SCORE_AUDIT_STATUS_LABELS[status] || status || "-";
@@ -638,7 +631,7 @@
       return inspect;
     }
 
-    function renderScoreAuditRows(items = []) {
+    function renderScoreAuditRows(items = [], emptyMessage = "該当する棋譜はありません。") {
       const rows = items.map(item => {
         const score = item.score || {};
         const metadata = item.metadata || {};
@@ -654,7 +647,7 @@
           <td><div class="score-audit-actions">${scoreAuditActionButtons(item)}</div></td>
         </tr>`;
       }).join("");
-      document.getElementById("scoreAuditRows").innerHTML = rows || '<tr><td colspan="7" class="muted">該当する棋譜はありません。</td></tr>';
+      document.getElementById("scoreAuditRows").innerHTML = rows || `<tr><td colspan="7" class="muted">${escapeHtml(emptyMessage)}</td></tr>`;
       document.querySelectorAll(".score-audit-detail").forEach(button => {
         button.addEventListener("click", () => openScoreAuditDetail(button.dataset.candidate));
       });
@@ -679,6 +672,18 @@
       }
     }
 
+    function scheduleScoreAuditScanPoll(scanning) {
+      if (scoreAuditScanTimer !== null) {
+        clearTimeout(scoreAuditScanTimer);
+        scoreAuditScanTimer = null;
+      }
+      if (!scanning || !document.getElementById("scoreAuditView").classList.contains("active")) return;
+      scoreAuditScanTimer = setTimeout(() => {
+        scoreAuditScanTimer = null;
+        loadScoreAudit();
+      }, 1200);
+    }
+
     async function loadScoreAudit({resetPage = false} = {}) {
       const status = document.getElementById("scoreAuditStatus");
       const filter = document.getElementById("scoreAuditStatusFilter").value;
@@ -694,7 +699,7 @@
           headers: SCORE_AUDIT_HEADERS,
         });
         renderScoreAuditSummary(data.summary || {});
-        renderScoreAuditRows(data.items || []);
+        renderScoreAuditRows(data.items || [], data.scanning ? "監査結果を準備しています..." : "該当する棋譜はありません。");
         const shown = Number(data.shown ?? data.items?.length ?? 0);
         const total = Number(data.total || 0);
         renderScoreAuditPagination({total, shown, offset: scoreAuditOffset});
@@ -702,10 +707,17 @@
           scoreAuditOffset = Math.max(0, Math.floor((total - 1) / SCORE_AUDIT_PAGE_SIZE) * SCORE_AUDIT_PAGE_SIZE);
           return loadScoreAudit();
         }
-        status.textContent = total
-          ? `${scoreAuditOffset + 1}〜${scoreAuditOffset + shown}件を表示しています（${total}件中）。`
-          : "該当する棋譜はありません。";
+        scheduleScoreAuditScanPoll(Boolean(data.scanning));
+        if (data.scanning) {
+          const scan = data.scan || {};
+          status.textContent = `監査を更新しています...（${Number(scan.processed || 0)} / ${Number(scan.total || 0)}局）`;
+        } else {
+          status.textContent = total
+            ? `${scoreAuditOffset + 1}〜${scoreAuditOffset + shown}件を表示しています（${total}件中）。`
+            : "該当する棋譜はありません。";
+        }
       } catch (error) {
+        scheduleScoreAuditScanPoll(false);
         if (error.status === 401) showLogin();
         status.textContent = error.message;
         renderScoreAuditSummary({});
@@ -743,8 +755,6 @@
     };
     const SCORE_AUDIT_SKIPPED_CELLS = new Set(["5,6", "6,5", "5,3", "3,5"]);
     let scoreAuditDetailItem = null;
-    let scoreAuditReplayToken = 0;
-    let scoreAuditReplayRunning = false;
 
     function removeScoreAuditPiece(pieces, target) {
       const candidates = target === "王" ? ["王", "玉"] : target === "玉" ? ["玉", "王"] : [target];
@@ -806,7 +816,6 @@
       if (options.hidden) element.classList.add("is-hidden");
       if (options.faceDown) element.classList.add("is-face-down");
       if (options.finalAttack) element.classList.add("is-final-attack");
-      if (options.replayNew) element.classList.add("is-replay-new");
       const value = document.createElement("span");
       value.textContent = piece;
       element.appendChild(value);
@@ -823,7 +832,6 @@
       const hiddenMap = new Map();
       const isFinished = options.finished !== false;
       const winner = isFinished ? String(payload.winner || "") : "";
-      const latestAction = options.latestAction || null;
 
       SCORE_AUDIT_SEATS.forEach(seat => {
         ["receive", "attack"].forEach(kind => {
@@ -878,12 +886,9 @@
             const isFinalAttack = slot.kind === "attack" && winner === slot.seat
               && slot.index === finalState.board[slot.seat].attack.length - 1;
             if (piece) {
-              const isReplayNew = latestAction && latestAction.seat === slot.seat
-                && latestAction.kind === slot.kind && latestAction.index === slot.index;
               cell.appendChild(createScoreAuditPiece(piece, slot.seat, {
                 faceDown: slot.kind === "receive" && finalState.faceDownReceives.has(`${slot.seat}:${slot.index}`),
                 finalAttack: isFinalAttack,
-                replayNew: isReplayNew,
               }));
               if (slot.kind === "attack") {
                 const moveNumber = finalState.attackNumbers.get(`${slot.seat}:${slot.index}`);
@@ -916,108 +921,9 @@
       container.appendChild(score);
     }
 
-    function scoreAuditReplayFrames(payload) {
-      const sourceRows = Array.isArray(payload.moves) && payload.moves.length ? payload.moves : (Array.isArray(payload.game) ? payload.game : []);
-      const completedRows = [];
-      const frames = [];
-      let lastAttackSeat = null;
-      const counts = Object.fromEntries(SCORE_AUDIT_SEATS.map(seat => [seat, {receive: 0, attack: 0}]));
-      sourceRows.forEach(sourceRow => {
-        if (!Array.isArray(sourceRow) || sourceRow.length < 3) return;
-        const row = [String(sourceRow[0]), String(sourceRow[1] || ""), String(sourceRow[2] || "")];
-        const seat = SCORE_AUDIT_SEATS[Number(row[0])];
-        if (!seat) return;
-        const receive = row[1];
-        const attack = row[2];
-        if (receive === "パス") {
-          completedRows.push(row);
-          frames.push({rows: completedRows.map(item => [...item]), latestAction: null, label: `${seat}: パス`, delay: 520});
-          return;
-        }
-        let rowIndex = -1;
-        if (receive) {
-          const isFaceDown = lastAttackSeat === null || lastAttackSeat === seat;
-          rowIndex = completedRows.length;
-          completedRows.push([row[0], receive, ""]);
-          const receiveIndex = counts[seat].receive;
-          counts[seat].receive += 1;
-          frames.push({
-            rows: completedRows.map(item => [...item]),
-            latestAction: {seat, kind: "receive", index: receiveIndex},
-            label: isFaceDown ? `${seat}: ${receive}を伏せる（非公開）` : `${seat}: ${receive}で受ける`,
-            delay: 620,
-          });
-        }
-        if (attack) {
-          if (rowIndex >= 0) completedRows[rowIndex] = [row[0], receive, attack];
-          else completedRows.push([row[0], "", attack]);
-          const attackIndex = counts[seat].attack;
-          counts[seat].attack += 1;
-          lastAttackSeat = seat;
-          frames.push({rows: completedRows.map(item => [...item]), latestAction: {seat, kind: "attack", index: attackIndex}, label: `${seat}: ${attack}で攻める`, delay: 760});
-        }
-      });
-      return frames;
-    }
-
-    function updateScoreAuditReplayControls(label = "棋譜再生") {
-      const button = document.getElementById("scoreAuditReplayButton");
-      if (button) {
-        button.textContent = label;
-        button.classList.toggle("is-playing", scoreAuditReplayRunning);
-      }
-    }
-
-    function stopScoreAuditReplay({restoreFinal = true, clearStatus = false} = {}) {
-      scoreAuditReplayToken += 1;
-      scoreAuditReplayRunning = false;
-      updateScoreAuditReplayControls("棋譜再生");
-      if (restoreFinal && scoreAuditDetailItem?.payload) renderScoreAuditBoard(scoreAuditDetailItem.payload);
-      if (clearStatus) {
-        const status = document.getElementById("scoreAuditReplayStatus");
-        if (status) status.textContent = "";
-      }
-    }
-
-    async function toggleScoreAuditReplay() {
-      if (scoreAuditReplayRunning) {
-        stopScoreAuditReplay({restoreFinal: true, clearStatus: true});
-        return;
-      }
-      const payload = scoreAuditDetailItem?.payload;
-      const status = document.getElementById("scoreAuditReplayStatus");
-      if (!payload) {
-        if (status) status.textContent = "棋譜データの読み込みに失敗しました。";
-        return;
-      }
-      const frames = scoreAuditReplayFrames(payload);
-      if (!frames.length) {
-        if (status) status.textContent = "再生できる手順がありません。";
-        return;
-      }
-      const token = ++scoreAuditReplayToken;
-      scoreAuditReplayRunning = true;
-      updateScoreAuditReplayControls("停止");
-      renderScoreAuditBoard(payload, {rows: [], finished: false});
-      if (status) status.textContent = "棋譜を再生しています。";
-      await new Promise(resolve => setTimeout(resolve, 620));
-      for (const frame of frames) {
-        if (token !== scoreAuditReplayToken || !scoreAuditReplayRunning) return;
-        renderScoreAuditBoard(payload, {rows: frame.rows, finished: false, latestAction: frame.latestAction});
-        if (status) status.textContent = frame.label;
-        await new Promise(resolve => setTimeout(resolve, frame.delay));
-      }
-      if (token !== scoreAuditReplayToken || !scoreAuditReplayRunning) return;
-      scoreAuditReplayRunning = false;
-      renderScoreAuditBoard(payload);
-      updateScoreAuditReplayControls("もう一度再生");
-      if (status) status.textContent = "再生が終了しました。";
-    }
-
     async function openScoreAuditDetail(candidate) {
       const dialog = document.getElementById("scoreAuditDialog");
       const body = document.getElementById("scoreAuditDialogBody");
-      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
       scoreAuditDetailItem = null;
       body.innerHTML = '<p class="muted">棋譜を読み込んでいます...</p>';
       dialog.showModal();
@@ -1027,12 +933,6 @@
         });
         scoreAuditDetailItem = item;
         const payload = item.payload || {};
-        const hands = SCORE_AUDIT_SEATS.map(seat =>
-          `<div><span class="muted">${escapeHtml(seat)}の手駒</span><strong>${escapeHtml(scoreAuditHandPieces(payload, seat).join(" "))}</strong></div>`
-        ).join("");
-        const moves = (payload.moves || []).map((row, index) => `
-          <tr><td>${index + 1}</td><td>${escapeHtml(SCORE_AUDIT_SEATS[Number(row?.[0])] || row?.[0] || "-")}</td><td>${escapeHtml(scoreAuditMoveLabel(row))}</td></tr>
-        `).join("");
         const history = (item.history || []).map(entry => `
           <div class="event-row"><span class="event-time">${escapeHtml(formatDate(entry.changed_at, true))}</span><span>${escapeHtml(scoreAuditStatusLabel(entry.status))}${entry.note ? ` / ${escapeHtml(entry.note)}` : ""}</span></div>
         `).join("");
@@ -1042,14 +942,9 @@
           <div class="score-audit-meta">
             <div><span class="muted">棋譜</span><strong>${escapeHtml(item.match_id || "-")} / ${escapeHtml(item.round_index ?? "-")}</strong></div>
             <div><span class="muted">状態</span><strong class="score-audit-status ${escapeHtml(item.status)}">${escapeHtml(scoreAuditStatusLabel(item.status))}</strong></div>
-            <div><span class="muted">開始点</span><strong>AC ${escapeHtml(item.score?.AC ?? "-")} / BD ${escapeHtml(item.score?.BD ?? "-")}</strong></div>
-            <div><span class="muted">結果</span><strong>${escapeHtml(item.winner ? `${item.winner}側・${item.gained_score || 0}点` : "-")}</strong></div>
           </div>
-          <p>${(item.reasons || []).map(reason => escapeHtml(reason)).join("<br>") || '<span class="muted">自動検証で問題は見つかっていません。</span>'}</p>
+          ${(item.reasons || []).length ? `<p>${item.reasons.map(reason => escapeHtml(reason)).join("<br>")}</p>` : ""}
           <div class="score-audit-board-wrap"><div id="scoreAuditBoard" class="score-audit-board" aria-label="監査棋譜の盤面"></div></div>
-          <div class="score-audit-play-actions"><button id="scoreAuditReplayButton" class="button" type="button">棋譜再生</button><span id="scoreAuditReplayStatus" class="status" role="status" aria-live="polite"></span></div>
-          <div class="score-audit-meta">${hands || '<div class="muted">手駒を表示できません。</div>'}</div>
-          <div class="score-audit-moves"><table><thead><tr><th>手数</th><th>手番</th><th>内容</th></tr></thead><tbody>${moves || '<tr><td colspan="3" class="muted">手順を表示できません。</td></tr>'}</tbody></table></div>
           <h3 class="subheading">変更履歴</h3>
           <div class="session-events">${history || '<span class="muted">まだ変更履歴はありません。</span>'}</div>
           <div class="field"><label for="scoreAuditNote">管理メモ（任意）</label><textarea id="scoreAuditNote" maxlength="500" placeholder="除外・再採用の理由を残せます">${escapeHtml(item.decision_note || "")}</textarea></div>
@@ -1059,7 +954,6 @@
           </div>
         `;
         renderScoreAuditBoard(payload);
-        document.getElementById("scoreAuditReplayButton")?.addEventListener("click", toggleScoreAuditReplay);
         document.getElementById("scoreAuditExcludeFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "excluded", true));
         document.getElementById("scoreAuditRestoreFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "eligible", true));
       } catch (error) {
@@ -2000,11 +1894,9 @@
       loadScoreAudit();
     });
     document.getElementById("scoreAuditDialogClose").addEventListener("click", () => {
-      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
       document.getElementById("scoreAuditDialog").close();
     });
     document.getElementById("scoreAuditDialog").addEventListener("close", () => {
-      stopScoreAuditReplay({restoreFinal: false, clearStatus: true});
       scoreAuditDetailItem = null;
     });
     document.getElementById("logoutButton").addEventListener("click", async () => {

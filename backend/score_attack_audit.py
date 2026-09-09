@@ -58,6 +58,7 @@ class ScoreAttackAuditStore:
                 """
                 CREATE TABLE IF NOT EXISTS score_attack_audit (
                     candidate_id TEXT PRIMARY KEY,
+                    source_revision TEXT NOT NULL DEFAULT '',
                     default_status TEXT NOT NULL,
                     status TEXT NOT NULL,
                     match_id TEXT NOT NULL,
@@ -75,6 +76,10 @@ class ScoreAttackAuditStore:
                 """
             )
             columns = {row[1] for row in connection.execute("PRAGMA table_info(score_attack_audit)")}
+            if "source_revision" not in columns:
+                connection.execute(
+                    "ALTER TABLE score_attack_audit ADD COLUMN source_revision TEXT NOT NULL DEFAULT ''"
+                )
             if "decision_note" not in columns:
                 connection.execute(
                     "ALTER TABLE score_attack_audit ADD COLUMN decision_note TEXT NOT NULL DEFAULT ''"
@@ -91,6 +96,19 @@ class ScoreAttackAuditStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS score_attack_audit_scan (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    revision TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'idle',
+                    processed INTEGER NOT NULL DEFAULT 0,
+                    total INTEGER NOT NULL DEFAULT 0,
+                    error TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
 
     @staticmethod
     def _decode(row: sqlite3.Row) -> Dict[str, Any]:
@@ -102,7 +120,7 @@ class ScoreAttackAuditStore:
                 value[field[:-5]] = [] if field == "reasons_json" else {}
         return value
 
-    def sync(self, record: Dict[str, Any]) -> Dict[str, Any]:
+    def sync(self, record: Dict[str, Any], source_revision: str = "") -> Dict[str, Any]:
         """Insert/update an automatic scan while preserving a manual decision."""
         candidate = str(record["candidate_id"])
         reasons = list(record.get("reasons") or [])
@@ -121,11 +139,12 @@ class ScoreAttackAuditStore:
             connection.execute(
                 """
                 INSERT INTO score_attack_audit
-                    (candidate_id, default_status, status, match_id, round_index,
+                    (candidate_id, source_revision, default_status, status, match_id, round_index,
                      score_ac, score_bd, winner, gained_score, reasons_json,
                      metadata_json, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(candidate_id) DO UPDATE SET
+                    source_revision = excluded.source_revision,
                     default_status = excluded.default_status,
                     match_id = excluded.match_id,
                     round_index = excluded.round_index,
@@ -138,6 +157,7 @@ class ScoreAttackAuditStore:
                 """,
                 (
                     candidate,
+                    str(source_revision or ""),
                     str(record.get("default_status") or "invalid"),
                     status,
                     str(record.get("match_id") or ""),
@@ -157,16 +177,112 @@ class ScoreAttackAuditStore:
             ).fetchone()
         return self._decode(row)
 
-    def list(self, status: Optional[str] = None) -> list[Dict[str, Any]]:
+    def list(
+        self, status: Optional[str] = None, source_revision: Optional[str] = None
+    ) -> list[Dict[str, Any]]:
         query = "SELECT * FROM score_attack_audit"
+        clauses = []
         args: tuple[Any, ...] = ()
+        if source_revision is not None:
+            clauses.append("source_revision = ?")
+            args += (str(source_revision),)
         if status and status != "all":
-            query += " WHERE status = ?"
-            args = (status,)
+            clauses.append("status = ?")
+            args += (status,)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY CASE status WHEN 'review' THEN 0 WHEN 'invalid' THEN 1 WHEN 'out_of_range' THEN 2 WHEN 'eligible' THEN 3 ELSE 4 END, match_id, round_index, candidate_id"
         with self._connect() as connection:
             rows = connection.execute(query, args).fetchall()
         return [self._decode(row) for row in rows]
+
+    def summary(self, source_revision: Optional[str] = None) -> Dict[str, int]:
+        clauses = []
+        args: tuple[Any, ...] = ()
+        if source_revision is not None:
+            clauses.append("source_revision = ?")
+            args += (str(source_revision),)
+        query = "SELECT status, COUNT(*) AS count FROM score_attack_audit"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " GROUP BY status"
+        result = {status: 0 for status in AUDIT_STATUSES}
+        with self._connect() as connection:
+            for row in connection.execute(query, args):
+                if row["status"] in result:
+                    result[row["status"]] = int(row["count"])
+        return result
+
+    def touch_source_revision(self, candidate: str, source_revision: str) -> Optional[Dict[str, Any]]:
+        """Mark an unchanged round as present in the latest archive revision."""
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE score_attack_audit SET source_revision = ? WHERE candidate_id = ?",
+                (str(source_revision or ""), str(candidate)),
+            )
+            row = connection.execute(
+                "SELECT * FROM score_attack_audit WHERE candidate_id = ?", (str(candidate),)
+            ).fetchone()
+        return self._decode(row) if row is not None else None
+
+    def scan_state(self) -> Dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT revision, status, processed, total, error, updated_at FROM score_attack_audit_scan WHERE id = 1"
+            ).fetchone()
+        if row is None:
+            return {"revision": "", "status": "idle", "processed": 0, "total": 0, "error": "", "updated_at": ""}
+        return dict(row)
+
+    def begin_scan(self, revision: str, total: int) -> Dict[str, Any]:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO score_attack_audit_scan
+                    (id, revision, status, processed, total, error, updated_at)
+                VALUES (1, ?, 'running', 0, ?, '', ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    revision = excluded.revision,
+                    status = excluded.status,
+                    processed = excluded.processed,
+                    total = excluded.total,
+                    error = excluded.error,
+                    updated_at = excluded.updated_at
+                """,
+                (str(revision), max(0, int(total)), _now()),
+            )
+        return self.scan_state()
+
+    def update_scan(self, revision: str, processed: int, total: int) -> Dict[str, Any]:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE score_attack_audit_scan
+                   SET processed = ?, total = ?, updated_at = ?
+                 WHERE id = 1 AND revision = ?
+                """,
+                (max(0, int(processed)), max(0, int(total)), _now(), str(revision)),
+            )
+        return self.scan_state()
+
+    def finish_scan(self, revision: str, total: int, error: str = "") -> Dict[str, Any]:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE score_attack_audit_scan
+                   SET status = ?, processed = ?, total = ?, error = ?, updated_at = ?
+                 WHERE id = 1 AND revision = ?
+                """,
+                (
+                    "error" if error else "complete",
+                    max(0, int(total)),
+                    max(0, int(total)),
+                    str(error or "")[:500],
+                    _now(),
+                    str(revision),
+                ),
+            )
+        return self.scan_state()
 
     def get(self, candidate: str) -> Optional[Dict[str, Any]]:
         with self._connect() as connection:

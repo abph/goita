@@ -18,9 +18,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter, deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional, Tuple, Set, Literal
+from typing import Any, Callable, Dict, List, Optional, Tuple, Set, Literal
 
 from fastapi import APIRouter, FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -3477,6 +3478,12 @@ _KIFU_ARCHIVE_CACHE_MTIME_NS: Optional[int] = None
 _KIFU_ARCHIVE_CACHE_PATH: Optional[Path] = None
 _KIFU_RANDOM_TRACE_CACHE: Optional[List[Dict[str, Any]]] = None
 _KIFU_RANDOM_TRACE_CACHE_MTIME_NS: Optional[int] = None
+_SCORE_AUDIT_SCAN_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="score-attack-audit")
+_SCORE_AUDIT_SCAN_LOCK = threading.Lock()
+_SCORE_AUDIT_SCAN_FUTURE: Optional[Future] = None
+_SCORE_AUDIT_SCAN_REVISION: Optional[str] = None
+_SCORE_AUDIT_RECORDS_CACHE: Optional[List[Dict[str, Any]]] = None
+_SCORE_AUDIT_RECORDS_CACHE_REVISION: Optional[str] = None
 
 
 def _load_kifu_archive() -> Dict[str, Any]:
@@ -3502,6 +3509,130 @@ def _load_kifu_archive() -> Dict[str, Any]:
     global _KIFU_RANDOM_TRACE_CACHE
     _KIFU_RANDOM_TRACE_CACHE = None
     return archive
+
+
+def _score_attack_archive_revision() -> Tuple[Path, str]:
+    path = archive_path(BASE_DIR)
+    try:
+        stat = path.stat()
+    except OSError as error:
+        raise ValueError("非公開の棋譜データが未登録か読み込めません。管理者ページから登録してください。") from error
+    revision = f"{path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
+    return path, revision
+
+
+def _score_attack_archive_round_count(archive: Dict[str, Any]) -> int:
+    return sum(
+        len(match.get("rounds", []))
+        for match in archive.get("matches", [])
+        if isinstance(match, dict) and isinstance(match.get("rounds"), list)
+    )
+
+
+def _run_score_attack_audit_scan(revision: str, archive: Dict[str, Any]) -> None:
+    global _SCORE_AUDIT_SCAN_FUTURE, _SCORE_AUDIT_SCAN_REVISION
+    global _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
+    store = audit_store_for(BASE_DIR)
+    total = _score_attack_archive_round_count(archive)
+    try:
+        processed = 0
+
+        def progress() -> None:
+            nonlocal processed
+            processed += 1
+            if processed == total or processed % 20 == 0:
+                store.update_scan(revision, processed, total)
+
+        records = _scan_score_attack_audit_records(
+            archive=archive,
+            revision=revision,
+            progress_callback=progress,
+            incremental=True,
+        )
+        store.finish_scan(revision, total)
+        with _SCORE_AUDIT_SCAN_LOCK:
+            _SCORE_AUDIT_RECORDS_CACHE = records
+            _SCORE_AUDIT_RECORDS_CACHE_REVISION = revision
+    except Exception as error:
+        store.finish_scan(revision, total, str(error))
+        LOGGER.exception("Score attack audit scan failed")
+    finally:
+        with _SCORE_AUDIT_SCAN_LOCK:
+            _SCORE_AUDIT_SCAN_FUTURE = None
+            _SCORE_AUDIT_SCAN_REVISION = revision
+
+
+def _start_score_attack_audit_scan() -> Dict[str, Any]:
+    global _SCORE_AUDIT_SCAN_FUTURE, _SCORE_AUDIT_SCAN_REVISION
+    global _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
+    _path, revision = _score_attack_archive_revision()
+    archive = _load_kifu_archive()
+    store = audit_store_for(BASE_DIR)
+    total = _score_attack_archive_round_count(archive)
+    with _SCORE_AUDIT_SCAN_LOCK:
+        state = store.scan_state()
+        if (
+            state.get("revision") == revision
+            and state.get("status") == "complete"
+        ):
+            return state
+        if (
+            _SCORE_AUDIT_SCAN_FUTURE is not None
+            and not _SCORE_AUDIT_SCAN_FUTURE.done()
+            and _SCORE_AUDIT_SCAN_REVISION == revision
+        ):
+            return state
+        store.begin_scan(revision, total)
+        _SCORE_AUDIT_RECORDS_CACHE = None
+        _SCORE_AUDIT_RECORDS_CACHE_REVISION = None
+        _SCORE_AUDIT_SCAN_REVISION = revision
+        _SCORE_AUDIT_SCAN_FUTURE = _SCORE_AUDIT_SCAN_EXECUTOR.submit(
+            _run_score_attack_audit_scan,
+            revision,
+            archive,
+        )
+        return store.scan_state()
+
+
+def _score_attack_audit_current_context() -> Tuple[str, Dict[str, Any], Any]:
+    _path, revision = _score_attack_archive_revision()
+    state = _start_score_attack_audit_scan()
+    store = audit_store_for(BASE_DIR)
+    return revision, state, store
+
+
+def _score_attack_audit_payload_for_candidate(
+    candidate: str,
+    archive: Dict[str, Any],
+    audit: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    expected_match = str(audit.get("match_id") or "")
+    expected_round = audit.get("round_index")
+    for match in archive.get("matches", []):
+        if not isinstance(match, dict) or str(match.get("id") or "") != expected_match:
+            continue
+        rounds = match.get("rounds")
+        if not isinstance(rounds, list):
+            continue
+        for position, round_obj in enumerate(rounds):
+            if isinstance(round_obj, dict):
+                try:
+                    round_index = int(round_obj.get("round_index") or position + 1)
+                except (TypeError, ValueError):
+                    round_index = position + 1
+            else:
+                round_index = position + 1
+            if expected_round is not None and round_index != expected_round:
+                continue
+            raw_round = round_obj if isinstance(round_obj, dict) else {"raw_round": round_obj}
+            if score_attack_candidate_id(match, raw_round, position) != candidate:
+                continue
+            try:
+                payload, _source = _archive_round_to_trace_payload(match, round_obj, position)
+                return _canonical_trace_payload(payload)
+            except (ValueError, TypeError, IndexError):
+                return None
+    return None
 
 
 def _require_private_archive_user(request: Request) -> None:
@@ -3546,17 +3677,12 @@ def score_attack_audit_list(
     if offset < 0:
         raise HTTPException(400, "監査一覧の開始位置が正しくありません。")
     try:
-        records = _score_attack_audit_records()
+        revision, scan_state, store = _score_attack_audit_current_context()
     except (ValueError, OSError) as error:
         raise HTTPException(503, str(error)) from error
-    all_items = [_score_attack_audit_item(item) for item in records]
-    items = all_items
-    if status != "all":
-        items = [item for item in items if item["status"] == status]
-    summary = {value: 0 for value in AUDIT_STATUSES}
-    for item in all_items:
-        if item["status"] in summary:
-            summary[item["status"]] += 1
+    audits = store.list(None if status == "all" else status, source_revision=revision)
+    items = [_score_attack_audit_item({"audit": audit}) for audit in audits]
+    summary = store.summary(source_revision=revision)
     total = len(items)
     page_items = items[offset:offset + limit]
     return {
@@ -3566,6 +3692,8 @@ def score_attack_audit_list(
         "shown": len(page_items),
         "offset": offset,
         "limit": limit,
+        "scanning": scan_state.get("status") == "running",
+        "scan": scan_state,
     }
 
 
@@ -3573,15 +3701,18 @@ def score_attack_audit_list(
 def score_attack_audit_detail(candidate_id: str, request: Request):
     _require_site_admin(request)
     try:
-        records = _score_attack_audit_records()
+        revision, scan_state, store = _score_attack_audit_current_context()
     except (ValueError, OSError) as error:
         raise HTTPException(503, str(error)) from error
-    item = next((value for value in records
-                 if value["audit"].get("candidate_id") == candidate_id), None)
-    if item is None:
+    audit = store.get(candidate_id)
+    if audit is None or audit.get("source_revision") != revision:
         raise HTTPException(404, "指定した棋譜監査が見つかりません。")
+    archive = _load_kifu_archive()
+    payload = _score_attack_audit_payload_for_candidate(candidate_id, archive, audit)
+    item = {"audit": audit, "payload": payload}
     result = _score_attack_audit_item(item, include_payload=True)
     result["history"] = audit_store_for(BASE_DIR).history(candidate_id)
+    result["scan"] = scan_state
     return result
 
 
@@ -3591,22 +3722,25 @@ def score_attack_audit_update(candidate_id: str, body: ScoreAttackAuditUpdate, r
     if body.status not in MANUAL_STATUSES:
         raise HTTPException(400, "採用・要確認・除外のいずれかを指定してください。")
     try:
-        records = _score_attack_audit_records()
-        item = next((value for value in records
-                     if value["audit"].get("candidate_id") == candidate_id), None)
-        if item is None:
+        revision, scan_state, store = _score_attack_audit_current_context()
+        audit = store.get(candidate_id)
+        if audit is None or audit.get("source_revision") != revision:
             raise HTTPException(404, "指定した棋譜監査が見つかりません。")
-        store = audit_store_for(BASE_DIR)
         updated = store.set_status(candidate_id, body.status, note=body.note)
+        if updated is None:
+            raise HTTPException(404, "指定した棋譜監査が見つかりません。")
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     except OSError as error:
         raise HTTPException(503, "監査状態を保存できません。保存先の設定を確認してください。") from error
-    global _KIFU_RANDOM_TRACE_CACHE
+    global _KIFU_RANDOM_TRACE_CACHE, _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
     _KIFU_RANDOM_TRACE_CACHE = None
-    updated_item = {"audit": updated, "payload": item.get("payload")}
+    _SCORE_AUDIT_RECORDS_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE_REVISION = None
+    updated_item = {"audit": updated}
     result = _score_attack_audit_item(updated_item, include_payload=False)
     result["history"] = store.history(candidate_id)
+    result["scan"] = scan_state
     return result
 
 
@@ -3627,8 +3761,15 @@ async def upload_private_archive(request: Request):
     except OSError as error:
         raise HTTPException(500, "棋譜を保存できません。保存先の設定を確認してください。") from error
     global _KIFU_ARCHIVE_CACHE, _KIFU_RANDOM_TRACE_CACHE
+    global _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
     _KIFU_ARCHIVE_CACHE = None
     _KIFU_RANDOM_TRACE_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE_REVISION = None
+    try:
+        _start_score_attack_audit_scan()
+    except (ValueError, OSError):
+        LOGGER.exception("Score attack audit scan could not be started after archive upload")
     return {"ok": True, **result}
 
 
@@ -3750,9 +3891,17 @@ def _archive_round_to_trace_payload(
     return payload, source
 
 
-def _score_attack_audit_records() -> List[Dict[str, Any]]:
-    """Scan the current private archive and preserve per-round admin decisions."""
-    archive = _load_kifu_archive()
+def _scan_score_attack_audit_records(
+    *,
+    archive: Optional[Dict[str, Any]] = None,
+    revision: Optional[str] = None,
+    progress_callback: Optional[Callable[[], None]] = None,
+    incremental: bool = False,
+) -> List[Dict[str, Any]]:
+    """Scan the private archive and preserve per-round admin decisions."""
+    archive = archive or _load_kifu_archive()
+    if revision is None:
+        _path, revision = _score_attack_archive_revision()
     store = audit_store_for(BASE_DIR)
     records: List[Dict[str, Any]] = []
     for match in archive.get("matches", []):
@@ -3771,6 +3920,14 @@ def _score_attack_audit_records() -> List[Dict[str, Any]]:
             except (TypeError, ValueError):
                 round_index = None
             score = _archive_score_pair(round_obj) if round_is_mapping else None
+            existing = store.get(identifier) if incremental else None
+            if existing is not None:
+                stored = store.touch_source_revision(identifier, revision)
+                if stored is not None:
+                    records.append({"audit": stored, "payload": None})
+                    if progress_callback is not None:
+                        progress_callback()
+                    continue
             default_status = "eligible"
             reasons: List[str] = []
             payload: Optional[Dict[str, Any]] = None
@@ -3823,8 +3980,59 @@ def _score_attack_audit_records() -> List[Dict[str, Any]]:
                 "reasons": reasons,
                 "metadata": metadata,
             }
-            stored = store.sync(record)
+            stored = store.sync(record, source_revision=revision)
             records.append({"audit": stored, "payload": payload})
+            if progress_callback is not None:
+                progress_callback()
+    return records
+
+
+def _score_attack_audit_records() -> List[Dict[str, Any]]:
+    """Return a current scan, waiting only when a gameplay path needs payloads."""
+    global _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
+    global _SCORE_AUDIT_SCAN_FUTURE, _SCORE_AUDIT_SCAN_REVISION
+    _path, revision = _score_attack_archive_revision()
+    archive = _load_kifu_archive()
+    with _SCORE_AUDIT_SCAN_LOCK:
+        if (
+            _SCORE_AUDIT_RECORDS_CACHE is not None
+            and _SCORE_AUDIT_RECORDS_CACHE_REVISION == revision
+        ):
+            return _SCORE_AUDIT_RECORDS_CACHE
+        future = _SCORE_AUDIT_SCAN_FUTURE
+        future_revision = _SCORE_AUDIT_SCAN_REVISION
+    if future is not None and not future.done():
+        if future_revision == revision:
+            future.result()
+        else:
+            future.result()
+        with _SCORE_AUDIT_SCAN_LOCK:
+            if (
+                _SCORE_AUDIT_RECORDS_CACHE is not None
+                and _SCORE_AUDIT_RECORDS_CACHE_REVISION == revision
+            ):
+                return _SCORE_AUDIT_RECORDS_CACHE
+    store = audit_store_for(BASE_DIR)
+    total = _score_attack_archive_round_count(archive)
+    store.begin_scan(revision, total)
+    processed = 0
+
+    def progress() -> None:
+        nonlocal processed
+        processed += 1
+        if processed == total or processed % 20 == 0:
+            store.update_scan(revision, processed, total)
+
+    records = _scan_score_attack_audit_records(
+        archive=archive,
+        revision=revision,
+        progress_callback=progress,
+        incremental=True,
+    )
+    store.finish_scan(revision, total)
+    with _SCORE_AUDIT_SCAN_LOCK:
+        _SCORE_AUDIT_RECORDS_CACHE = records
+        _SCORE_AUDIT_RECORDS_CACHE_REVISION = revision
     return records
 
 
@@ -3903,7 +4111,7 @@ def _score_attack_audit_item(item: Dict[str, Any], *, include_payload: bool = Fa
 
 def _random_trace_candidates() -> List[Dict[str, Any]]:
     global _KIFU_RANDOM_TRACE_CACHE, _KIFU_RANDOM_TRACE_CACHE_MTIME_NS
-    _load_kifu_archive()
+    archive = _load_kifu_archive()
     mtime_ns = _KIFU_ARCHIVE_CACHE_MTIME_NS
     if _KIFU_RANDOM_TRACE_CACHE is not None and _KIFU_RANDOM_TRACE_CACHE_MTIME_NS == mtime_ns:
         return _KIFU_RANDOM_TRACE_CACHE
@@ -3911,7 +4119,15 @@ def _random_trace_candidates() -> List[Dict[str, Any]]:
     for item in _score_attack_audit_records():
         audit = item["audit"]
         payload = item.get("payload")
-        if audit.get("status") != "eligible" or audit.get("default_status") in {"invalid", "out_of_range"} or payload is None:
+        if audit.get("status") != "eligible" or audit.get("default_status") in {"invalid", "out_of_range"}:
+            continue
+        if payload is None:
+            payload = _score_attack_audit_payload_for_candidate(
+                str(audit.get("candidate_id") or ""), archive, audit
+            )
+            if payload is not None:
+                item["payload"] = payload
+        if payload is None:
             continue
         source = {
             "match_id": audit.get("match_id"),

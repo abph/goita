@@ -54,6 +54,19 @@ def test_review_round_can_be_approved_for_score_attack(tmp_path):
     assert store.set_status("review", "eligible")["status"] == "eligible"
 
 
+def test_scan_revision_filters_old_rows_and_preserves_progress(tmp_path):
+    store = ScoreAttackAuditStore(tmp_path / "audit.sqlite3")
+    store.begin_scan("revision-1", 2)
+    store.sync(_record("current"), source_revision="revision-1")
+    store.update_scan("revision-1", 1, 2)
+    assert store.scan_state()["status"] == "running"
+    assert store.scan_state()["processed"] == 1
+    assert [row["candidate_id"] for row in store.list(source_revision="revision-1")] == ["current"]
+    store.sync(_record("old"), source_revision="revision-0")
+    assert store.list(source_revision="revision-1")[0]["candidate_id"] == "current"
+    assert store.finish_scan("revision-1", 2)["status"] == "complete"
+
+
 def test_candidate_id_changes_when_round_source_changes():
     match = {"id": "match-1"}
     first = {"round_index": 1, "score": [20, 30]}
