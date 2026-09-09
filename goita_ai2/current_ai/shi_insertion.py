@@ -196,6 +196,64 @@ class ShiInsertionStrategyMixin:
         exposure = sum(row["weight"] for row in candidates if not row["can_receive"])
         return exposure, candidates
 
+    def _shi_insertion_purpose_evidence(self, state, player, downstream, ally):
+        """Return evidence that the shi is meant to hand the turn to the ally.
+
+        A shi insertion is deliberately gated by purpose. Possessing two shi
+        and a royal is not enough: the next enemy must be close to a reach, or
+        the ally must be a publicly supported two-card finish candidate.
+        """
+        tracker = self._track.get(id(state)) or {}
+        joint = tracker.get("joint_hand_inference", {})
+        map_current = joint.get("map_current_counts", {}) if joint.get("feasible") else {}
+        enemy_map = map_current.get(downstream, {})
+        ally_map = map_current.get(ally, {})
+        enemy_shi = int(enemy_map.get("1", 0)) if enemy_map else None
+        ally_shi = int(ally_map.get("1", 0)) if ally_map else None
+        enemy_estimate = self._estimated_current_piece(tracker, downstream, "1") or {}
+        ally_estimate = self._estimated_current_piece(tracker, ally, "1") or {}
+        enemy_few = (
+            enemy_shi is not None and enemy_shi <= 2
+        ) or (
+            enemy_shi is None
+            and int(enemy_estimate.get("max", 99)) <= 2
+            and float(enemy_estimate.get("expected", 99.0)) <= 2.0
+        )
+        # A feasible joint count is stronger evidence than a posterior
+        # probability.  In particular, do not revive a zero-count ally with a
+        # broad 0.75 fallback: that would turn a missing shi into a guessed
+        # shi and defeat the purpose gate.
+        if ally_shi is not None:
+            ally_can_receive = ally_shi >= 1
+        else:
+            ally_can_receive = (
+                int(ally_estimate.get("min", 0)) >= 1
+                or self._shi_insertion_piece_probability(state, player, ally, "1") >= 0.75
+            )
+        enemy_reach = len(state.hands.get(downstream, ())) <= 2
+        ally_finish = (
+            len(state.hands.get(ally, ())) == 2
+            and ally_can_receive
+            and (
+                enemy_shi == 0
+                or (
+                    enemy_shi is None
+                    and int(enemy_estimate.get("max", 99)) <= 0
+                )
+            )
+        )
+        return {
+            "enemy": downstream,
+            "ally": ally,
+            "enemy_shi_estimate": enemy_shi if enemy_shi is not None else enemy_estimate,
+            "ally_shi_estimate": ally_shi if ally_shi is not None else ally_estimate,
+            "enemy_shi_few": enemy_few,
+            "ally_can_receive": ally_can_receive,
+            "enemy_reach_purpose": enemy_reach and enemy_few,
+            "ally_finish_purpose": ally_finish,
+            "purpose_confirmed": enemy_few and ally_can_receive and (enemy_reach or ally_finish),
+        }
+
     def _shi_insertion_plan_analysis(
         self,
         state,
@@ -242,6 +300,14 @@ class ShiInsertionStrategyMixin:
         downstream_hidden_count = int(
             tracker.get("hidden_block_counts", {}).get(downstream, 0)
         )
+        purpose = self._shi_insertion_purpose_evidence(
+            state,
+            player,
+            downstream,
+            self._ally_of(player),
+        )
+        if not purpose["purpose_confirmed"]:
+            return None
 
         followups = self._shi_insertion_followup_actions(
             state,
@@ -404,6 +470,7 @@ class ShiInsertionStrategyMixin:
             "next_attack_candidates": next_attacks,
             "uncovered_next_attack_weight": wait_exposure,
             "next_attack_estimate_kind": "public_holding_weighted_heuristic",
+            "purpose": purpose,
             "followups": scored_followups,
             "routes": routes[: max(2, int(self.SHI_INSERTION_MAX_ROUTES))],
             "recommended": best,

@@ -3,10 +3,10 @@ description: "これまでの棋譜指導から整理した、ごいたAIの判�
 runtime_connected: false
 summary:
   confirmed_policies: 62
-  regression_candidates: 13
+  regression_candidates: 14
   reference_cases: 5
   superseded_cases: 7
-  total_records: 87
+  total_records: 88
 status_order:
   - confirmed
   - reference

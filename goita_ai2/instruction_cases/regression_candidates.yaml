@@ -356,6 +356,31 @@ cases:
     reason: 4枚目の香であることは明らかで、敵がパスしにくい3つ目に残す
     regression: covered
 
+  - id: KIFU-014
+    status: confirmed
+    linked_policy: SHI-007
+    title: 敵のし不足だけでは差し込まず香を攻める
+    dealer: A
+    hands:
+      A: 金し金金角銀香し
+      B: 銀ししししし王飛
+      C: 角馬飛香し銀し馬
+      D: 金し角香し銀香玉
+    prefix:
+      - [A, し, 金]
+    actor: D
+    current_attack: 金
+    actual:
+      type: receive_and_attack
+      block: 金
+      attack: し
+    expected:
+      required_block: 金
+      attack: 香
+      forbidden: 目的未確認のし差し込み
+    reason: 次の敵にしが少なそうで味方もしを受けられそうでも、次の敵がリーチしていないなら差し込みの絶対条件を満たさない。通常の攻め評価で香を選ぶ
+    regression: covered
+
   - id: KIFU-013
     status: confirmed
     linked_policy: REC-002

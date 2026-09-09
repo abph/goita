@@ -112,25 +112,29 @@ cases:
 
   - id: SHI-007
     status: confirmed
-    title: 差し込みは原則としてしで行う
+    title: し差し込みは目的が確認できるときだけ行う
     classification: shi_insertion
     priority: high
     conditions:
-      - 味方がし攻めを過去に拒否された
-      - 敵のし在庫が少ないと推定できる
+      - 次に手番が来る敵のしが2枚以下と、公開履歴・手駒推定の両方から判断できる
+      - 味方がしを受けられる根拠がある（しの所持、し攻めの履歴、消去法など）
+      - 次の敵がリーチして確実に上がりそう、または味方が受ければ確定上がりになる
       - 自分が攻め3でしを出せる
-    required: 味方への再提案と敵への圧力を兼ねて、しの差し込みを候補にする
+    required: 条件がそろった場合だけ、しを差し込んで味方へ手番を渡す計画を比較する
     forbidden:
-      - 他の駒で同じ差し込み効果があると一般化する
+      - 敵のしが少ない根拠がないまま差し込みを選ぶ
+      - 味方がしを受けられる根拠がないまま差し込みを選ぶ
+      - 次の敵がリーチしていない局面で、し差し込みを目的なしに選ぶ
       - 味方のし所持だけを加点し、途中の敵に止められる可能性を無視する
       - し2枚と王玉があるだけで、3枚組の中駒より差し込みを優先する
-    reason: しは王玉で受けられず、残数推定と味方の受け直しを同時に利用できる
+    reason: し差し込みは、敵の上がりを止める手ではなく、敵のし不足と味方の受け直しを利用して手番を渡す戦術である。目的が確認できない局面では通常の攻め評価に戻す
     regression:
       state: covered
       tests:
         - tests/test_endgame_module.py::test_third_attack_inserts_shi_for_inferred_ally_finish
         - tests/test_shi_insertion_strategy.py::test_enemy_shi_possession_reduces_both_pressure_and_ally_delivery
-        - tests/test_shi_insertion_strategy.py::test_review_c_turn7_receives_before_lance_and_attacks_three_silver
+        - tests/test_shi_insertion_strategy.py::test_round6_d_turn4_uses_ordinary_kyosha_after_shi_purpose_gate
+        - tests/test_shi_insertion_strategy.py::test_review_c_turn7_does_not_insert_without_low_enemy_shi
 
   - id: SHI-008
     status: confirmed

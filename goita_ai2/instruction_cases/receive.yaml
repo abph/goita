@@ -195,7 +195,7 @@ cases:
       state: partial
       note: 最後の受け手の計画に、公開推定の所持確率と枚数を重みにした次の攻め候補を接続。実際の攻め選択確率ではない。一般の受け局面への拡張は未完了
       tests:
-        - tests/test_shi_insertion_strategy.py::test_review_c_turn7_receives_before_lance_and_attacks_three_silver
+        - tests/test_shi_insertion_strategy.py::test_review_c_turn7_does_not_insert_without_low_enemy_shi
       example: C手番7でしし銀銀銀金飛玉を持つ。香がないので敵の次の香を待つ危険を評価し、飛を受けて銀を攻める
 
   - id: REC-011
