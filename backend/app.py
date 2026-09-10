@@ -4280,7 +4280,38 @@ def _trace_row_to_action(state, player, row):
     return None
 
 
-def _debug_trace_action(game, state, player, legal_actions):
+def _trace_actions_match(
+    expected_action: Optional[Tuple[str, Optional[str], Optional[str]]],
+    actual_action: Optional[Tuple[str, Optional[str], Optional[str]]],
+    *,
+    ignore_hidden_block: bool = False,
+) -> bool:
+    """Compare trace actions while keeping hidden human blocks opaque.
+
+    The attack is public, but the block in a human player's
+    ``attack_after_block`` action is hidden from the other seats.  A different
+    hidden block therefore must not end the public trace as long as the
+    visible attack remains the same.
+    """
+    if expected_action is None or actual_action is None:
+        return False
+    if not ignore_hidden_block:
+        return expected_action == actual_action
+    if expected_action[0] != actual_action[0]:
+        return False
+    if expected_action[0] == "attack_after_block":
+        return expected_action[2] == actual_action[2]
+    return expected_action == actual_action
+
+
+def _debug_trace_action(
+    game,
+    state,
+    player,
+    legal_actions,
+    *,
+    allow_hidden_block_variation: bool = False,
+):
     if not game.get("trace_mode") or game.get("trace_diverged"):
         return None
     index = int(game.get("trace_move_index", 0))
@@ -4292,6 +4323,21 @@ def _debug_trace_action(game, state, player, legal_actions):
         return None
     if action in legal_actions:
         return action
+    if allow_hidden_block_variation:
+        matching_action = next(
+            (
+                candidate
+                for candidate in legal_actions
+                if _trace_actions_match(
+                    action,
+                    candidate,
+                    ignore_hidden_block=True,
+                )
+            ),
+            None,
+        )
+        if matching_action is not None:
+            return matching_action
     game["trace_diverged"] = True
     return None
 
@@ -6353,7 +6399,13 @@ async def _step_unlocked(game_id: str, req: StepRequest):
         raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
     
     action = req.action.to_tuple()
-    trace_expected = _debug_trace_action(game, state, player, [action])
+    trace_expected = _debug_trace_action(
+        game,
+        state,
+        player,
+        [action],
+        allow_hidden_block_variation=player in _human_seat_set(game),
+    )
     
     effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
 

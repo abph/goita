@@ -84,3 +84,75 @@ def test_random_trace_candidates_are_limited_to_fifty_starting_points(monkeypatc
         for item in candidates
     )
     assert all(item["payload"]["hands"] for item in candidates)
+
+
+def test_trace_keeps_following_public_attack_when_human_hidden_block_differs():
+    state = game_app.GoitaState(
+        hands={seat: ["1"] * 8 for seat in game_app.ALL_SEATS},
+        dealer="A",
+    )
+    game = {
+        "trace_mode": True,
+        "trace_diverged": False,
+        "trace_move_index": 0,
+        "trace_moves": [["0", "角", "馬"]],
+        "human_seats": {"A": "owner"},
+    }
+    actual = ("attack_after_block", "7", "3")
+
+    assert game_app._debug_trace_action(
+        game,
+        state,
+        "A",
+        [actual],
+        allow_hidden_block_variation=True,
+    ) == actual
+    assert game["trace_diverged"] is False
+
+
+def test_trace_still_diverges_when_human_public_attack_differs():
+    state = game_app.GoitaState(
+        hands={seat: ["1"] * 8 for seat in game_app.ALL_SEATS},
+        dealer="A",
+    )
+    game = {
+        "trace_mode": True,
+        "trace_diverged": False,
+        "trace_move_index": 0,
+        "trace_moves": [["0", "角", "馬"]],
+        "human_seats": {"A": "owner"},
+    }
+    actual = ("attack_after_block", "7", "4")
+
+    assert game_app._debug_trace_action(
+        game,
+        state,
+        "A",
+        [actual],
+        allow_hidden_block_variation=True,
+    ) is None
+    assert game["trace_diverged"] is True
+
+
+def test_trace_still_diverges_when_human_public_receive_differs():
+    state = game_app.GoitaState(
+        hands={seat: ["1"] * 8 for seat in game_app.ALL_SEATS},
+        dealer="A",
+    )
+    game = {
+        "trace_mode": True,
+        "trace_diverged": False,
+        "trace_move_index": 0,
+        "trace_moves": [["0", "し", ""]],
+        "human_seats": {"A": "owner"},
+    }
+    actual = ("receive", "2", None)
+
+    assert game_app._debug_trace_action(
+        game,
+        state,
+        "A",
+        [actual],
+        allow_hidden_block_variation=True,
+    ) is None
+    assert game["trace_diverged"] is True
