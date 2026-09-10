@@ -7063,6 +7063,7 @@ function analyticsAttribution() {
 function analyticsRoomType(roomId = gid) {
     if (!roomId || roomId === "lobby") return "lobby";
     if (roomId === DEBUG_GID) return "none";
+    if (isPersonalScoreRoom(roomId)) return "score_attack";
     if (PRIVATE_ROOM_IDS.has(roomId)) return "private";
     if (["main-e", "main-f"].includes(roomId)) return "public_ai";
     return isMainRoomId(roomId) ? "public_human" : "none";

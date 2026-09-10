@@ -44,6 +44,7 @@ ALLOWED_ROOM_TYPES = frozenset({
     "public_human",
     "public_ai",
     "private",
+    "score_attack",
     "none",
 })
 ALLOWED_DEVICES = frozenset({"mobile", "desktop", "tablet", "unknown"})

@@ -8,6 +8,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     lobby = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     admin = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
 
+    assert 'if (isPersonalScoreRoom(roomId)) return "score_attack";' in lobby
     assert 'id="lobbyAdminSettingsPanel"' not in lobby
     assert 'href="/admin/"' not in lobby
     assert "そろうごいた 管理者ページ" in admin
@@ -46,6 +47,7 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="privateAdRoomSelect"' in admin
     assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
+    assert 'score_attack: "スコアアタック"' in admin
     assert 'id="regionRows"' in admin
     assert 'id="countryRows"' in admin
     assert "地域（推定）" in admin

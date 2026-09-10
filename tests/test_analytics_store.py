@@ -43,12 +43,17 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
             "hand": "しししし",
         },
     )) is True
+    assert store.record_event(_event(
+        event="room_enter",
+        room_type="score_attack",
+    )) is True
 
     snapshot = store.snapshot(days=30)
     assert snapshot["visitors"] == 1
     assert snapshot["game_started"] == 1
     assert snapshot["host_game_starts"] == 1
     assert snapshot["pair_practice_games"] == 1
+    assert snapshot["room_entries"]["score_attack"] == 1
     assert snapshot["regions"] == [{
         "prefecture": "埼玉県",
         "visitors": 1,
