@@ -48,6 +48,19 @@ def test_rank_first_attempt_ties_and_name_changes(tmp_path, payload):
     assert store.read("member:one", retry)["is_best"]
 
 
+def test_player_audit_report_is_claimed_once(tmp_path, payload):
+    store = TraceStore(tmp_path / "trace.sqlite", clock=lambda: 1000)
+    attempt = store.start("member:one", False, "Player", payload, audit_candidate_id="candidate-1")
+    store.finish(attempt, payload["score_after"])
+    assert store.claim_audit_report("member:one", attempt) == {
+        "candidate_id": "candidate-1", "already_reported": False
+    }
+    assert store.claim_audit_report("member:one", attempt) == {
+        "candidate_id": "candidate-1", "already_reported": True
+    }
+    assert store.claim_audit_report("member:other", attempt) is None
+
+
 def test_history_pagination_names_and_best_after_lower_retry(tmp_path, payload):
     now = [1000]
     store = TraceStore(tmp_path / "trace.sqlite", clock=lambda: now[0])

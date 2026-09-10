@@ -54,6 +54,16 @@ def test_review_round_can_be_approved_for_score_attack(tmp_path):
     assert store.set_status("review", "eligible")["status"] == "eligible"
 
 
+def test_note_can_be_saved_without_changing_status(tmp_path):
+    store = ScoreAttackAuditStore(tmp_path / "audit.sqlite3")
+    store.sync(_record())
+    updated = store.set_note("candidate-1", "プレイヤー申告を確認")
+    assert updated["status"] == "eligible"
+    assert updated["decision_note"] == "プレイヤー申告を確認"
+    assert store.history("candidate-1")[0]["note"] == "プレイヤー申告を確認"
+    assert store.set_status("candidate-1", "excluded")["decision_note"] == "プレイヤー申告を確認"
+
+
 def test_scan_revision_filters_old_rows_and_preserves_progress(tmp_path):
     store = ScoreAttackAuditStore(tmp_path / "audit.sqlite3")
     store.begin_scan("revision-1", 2)

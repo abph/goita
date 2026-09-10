@@ -47,6 +47,7 @@ let traceOriginalFrames = [];
 let traceOriginalStep = 0;
 let traceOriginalTimer = null;
 let traceOriginalRequest = 0;
+let traceOriginalReported = false;
 let traceActionBusy = false;
 let traceHistoryRequest = 0;
 let traceHistoryOffset = 0;
@@ -95,6 +96,7 @@ async function openTraceResult(attemptId = '') {
     const data = await traceApi(`trace_results/${encodeURIComponent(id)}?mode=all`);
     if (generation !== traceResultRequest || !isScoreAttackRoom()) return;
     traceResultId = id;
+    traceOriginalReported = false;
     const scoreLabel = score => score.BD > score.AC ? `BD：${score.BD}点` : `AC：${score.AC}点`;
     traceElement('traceActualScore').textContent = scoreLabel(data.actual);
     traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
@@ -175,6 +177,13 @@ function closeTraceHistory() {
 
 async function openTraceOriginal() {
   const generation = ++traceOriginalRequest;
+  const reportButton = traceElement('traceReportButton');
+  const reportStatus = traceElement('traceReportStatus');
+  if (reportButton) {
+    reportButton.disabled = traceOriginalReported;
+    reportButton.textContent = traceOriginalReported ? '申告済み' : 'この棋譜は除外したほうがよい';
+  }
+  if (reportStatus) reportStatus.textContent = traceOriginalReported ? '管理者へ申告済みです。' : '';
   traceElement('traceResultStatus').textContent = '元の棋譜を読み込んでいます。';
   try {
     const data = await traceApi(`trace_results/${encodeURIComponent(traceResultId)}/original`);
@@ -188,6 +197,24 @@ async function openTraceOriginal() {
     traceElement('traceResultStatus').textContent = '';
   } catch (error) {
     if (generation === traceOriginalRequest) traceElement('traceResultStatus').textContent = error.message;
+  }
+}
+
+async function reportTraceOriginal() {
+  if (!traceResultId || traceOriginalReported) return;
+  if (!confirm('この棋譜を管理者の確認対象として申告しますか？')) return;
+  const button = traceElement('traceReportButton');
+  const status = traceElement('traceReportStatus');
+  if (button) button.disabled = true;
+  if (status) status.textContent = '申告しています...';
+  try {
+    const data = await traceApi(`trace_results/${encodeURIComponent(traceResultId)}/report`, {});
+    traceOriginalReported = true;
+    if (button) button.textContent = '申告済み';
+    if (status) status.textContent = data.already_reported ? 'すでに管理者へ申告済みです。' : '管理者へ申告しました。';
+  } catch (error) {
+    if (button) button.disabled = false;
+    if (status) status.textContent = error.message;
   }
 }
 
@@ -232,6 +259,7 @@ function closeTraceOriginal() {
   stopTraceOriginal();
   traceOriginalPayload = null;
   traceOriginalFrames = [];
+  traceElement('traceReportStatus').textContent = '';
   traceElement('traceOriginalBoard').replaceChildren();
   traceElement('traceOriginalModal').style.display = 'none';
   if (wasOpen && traceElement('traceResultModal').style.display === 'flex') traceElement('traceViewOriginalButton').focus();

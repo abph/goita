@@ -5449,7 +5449,7 @@
   <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="debugTraceTitle">
     <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="スコアアタックを閉じる">×</button>
     <h3 id="debugTraceTitle">スコアアタック</h3>
-    <button id="debugTraceRandomButton" class="score-attack-start" type="button" onclick="startRandomDebugTrace()">50点以下の棋譜からランダムに対戦</button>
+    <button id="debugTraceRandomButton" class="score-attack-start" type="button" onclick="startRandomDebugTrace()">スコアアタック開始</button>
     <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <p id="debugTraceStatus" class="settings-status" aria-live="polite"></p>
     <div class="settings-footer">
@@ -5509,6 +5509,10 @@
       <button id="traceOriginalPlay" type="button" onclick="playTraceOriginal()">棋譜再生</button>
       <button type="button" onclick="stepTraceOriginal(1)">次へ</button>
     </div>
+    <div class="trace-report-actions">
+      <button id="traceReportButton" type="button" onclick="reportTraceOriginal()">この棋譜は除外したほうがよい</button>
+      <span id="traceReportStatus" role="status" aria-live="polite"></span>
+    </div>
   </div>
 </div>
 <style>
@@ -5516,7 +5520,7 @@
   .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
   .trace-score-table { width:100%; border-collapse:collapse; font-size:14px; }
   .trace-score-table th,.trace-score-table td { padding:8px; border-bottom:1px solid #ccc; text-align:left; overflow-wrap:anywhere; }
-  .trace-score-summary { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:16px; font-weight:700; }
+  .trace-score-summary { display:flex; flex-wrap:wrap; gap:8px 18px; margin:0 0 32px; font-size:16px; font-weight:700; }
   .trace-score-lines { margin:18px 0 8px; display:grid; gap:10px; }
   .trace-score-line { display:grid; grid-template-columns:5em max-content minmax(0,1fr); gap:10px; align-items:center; }
   .trace-score-line > span { width:5em; flex:none; }
@@ -5526,6 +5530,8 @@
   .score-attack-description { max-width:620px; margin:12px auto 0; padding:0 16px; font-size:14px; line-height:1.8; text-align:left; }
   .trace-original-back { padding:0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
   .trace-original-back:focus-visible { outline:2px solid currentColor; outline-offset:4px; }
+  .trace-report-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:16px 0 4px; }
+  .trace-report-actions span { font-size:13px; }
   #traceResultStatus:empty { display:none; }
   .trace-ranking-scroll { max-height:280px; overflow:auto; margin-bottom:12px; }
   .trace-ranking-scroll table { min-width:480px; }

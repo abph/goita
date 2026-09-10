@@ -43,7 +43,9 @@ class TraceStore:
                     challenge TEXT NOT NULL REFERENCES trace_challenges(id),
                     started REAL NOT NULL, finished REAL, expires REAL,
                     ranked INTEGER NOT NULL, actual_ac INTEGER, actual_bd INTEGER,
-                    improvement INTEGER);
+                    improvement INTEGER,
+                    audit_candidate_id TEXT NOT NULL DEFAULT '',
+                    audit_reported_at REAL);
                 CREATE INDEX IF NOT EXISTS trace_owner_challenge ON trace_attempts(owner, challenge);
                 CREATE INDEX IF NOT EXISTS trace_ranking ON trace_attempts(challenge, ranked, improvement DESC);
                 CREATE INDEX IF NOT EXISTS trace_expiry ON trace_attempts(expires);
@@ -62,6 +64,10 @@ class TraceStore:
                     SELECT id, ROW_NUMBER() OVER (PARTITION BY owner,challenge ORDER BY started,id) AS n
                     FROM trace_attempts)
                     UPDATE trace_attempts SET attempt_no=(SELECT n FROM numbered WHERE numbered.id=trace_attempts.id)""")
+            if "audit_candidate_id" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN audit_candidate_id TEXT NOT NULL DEFAULT ''")
+            if "audit_reported_at" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN audit_reported_at REAL")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_sessions WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
@@ -112,7 +118,7 @@ class TraceStore:
         canonical["rules"] = "trace-current-v1"
         return hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
-    def start(self, owner, guest, name, payload, *, practice=False):
+    def start(self, owner, guest, name, payload, *, practice=False, audit_candidate_id=""):
         challenge = self.challenge_id(payload)
         attempt_id = secrets.token_urlsafe(24)
         now = self.clock()
@@ -123,9 +129,32 @@ class TraceStore:
                        (owner, name.strip()[:24] or ("ゲスト" if guest else "プレイヤー"), int(guest)))
             db.execute("INSERT OR IGNORE INTO trace_challenges VALUES (?,?)", (challenge, json.dumps(payload)))
             db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM trace_challenge_labels WHERE challenge=?)", (challenge, challenge))
-            db.execute("INSERT INTO trace_attempts(id,owner,challenge,started,expires,ranked,attempt_no) VALUES (?,?,?,?,?,?,?)",
-                       (attempt_id, owner, challenge, now, now + RETENTION if guest else None, int(first and not practice), attempt_no))
+            db.execute("""INSERT INTO trace_attempts(
+                id,owner,challenge,started,expires,ranked,attempt_no,audit_candidate_id
+            ) VALUES (?,?,?,?,?,?,?,?)""",
+                       (attempt_id, owner, challenge, now, now + RETENTION if guest else None,
+                        int(first and not practice), attempt_no, str(audit_candidate_id or "")))
         return attempt_id
+
+    def claim_audit_report(self, owner, attempt_id):
+        """Claim a player's report once and return the linked audit candidate."""
+        with self.db() as db:
+            row = db.execute(
+                "SELECT audit_candidate_id, audit_reported_at FROM trace_attempts WHERE id = ? AND owner = ?",
+                (attempt_id, owner),
+            ).fetchone()
+            if row is None:
+                return None
+            candidate = str(row["audit_candidate_id"] or "")
+            if not candidate:
+                return {"candidate_id": "", "already_reported": False}
+            already = row["audit_reported_at"] is not None
+            if not already:
+                db.execute(
+                    "UPDATE trace_attempts SET audit_reported_at = ? WHERE id = ? AND owner = ? AND audit_reported_at IS NULL",
+                    (self.clock(), attempt_id, owner),
+                )
+            return {"candidate_id": candidate, "already_reported": already}
 
     def finish(self, attempt_id, actual):
         with self.db() as db:

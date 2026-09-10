@@ -156,7 +156,7 @@ async function startRandomDebugTrace() {
   const button = document.getElementById('debugTraceRandomButton');
   const status = document.getElementById('debugTraceStatus');
   button.disabled = true;
-  status.textContent = '50点以下の棋譜からランダムに選んでいます。';
+  status.textContent = 'スコアアタックの棋譜を選んでいます。';
   try {
     const response = await fetch(`${API}/games/${gid}/trace_random_start`, {
       method:'POST', credentials:'same-origin',
@@ -167,7 +167,7 @@ async function startRandomDebugTrace() {
     if (!response.ok) throw new Error(data.detail || 'ランダム棋譜を選べませんでした。');
     closeDebugTrace();
     await refresh();
-    setHint('50点以下のランダム棋譜を開始しました。');
+    setHint('スコアアタックを開始しました。');
   } catch (error) {
     status.textContent = error.message;
   } finally {

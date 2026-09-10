@@ -3649,6 +3649,10 @@ private_archive_router = APIRouter(route_class=PrivateRoute)
 
 class ScoreAttackAuditUpdate(BaseModel):
     status: str = Field(min_length=1, max_length=32)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ScoreAttackAuditNoteUpdate(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
@@ -3712,6 +3716,31 @@ def score_attack_audit_detail(candidate_id: str, request: Request):
     item = {"audit": audit, "payload": payload}
     result = _score_attack_audit_item(item, include_payload=True)
     result["history"] = audit_store_for(BASE_DIR).history(candidate_id)
+    result["scan"] = scan_state
+    return result
+
+
+@private_archive_router.put("/admin/api/score-attack/audit/{candidate_id}/note")
+def score_attack_audit_note(candidate_id: str, body: ScoreAttackAuditNoteUpdate, request: Request):
+    _require_site_admin(request)
+    try:
+        revision, scan_state, store = _score_attack_audit_current_context()
+        audit = store.get(candidate_id)
+        if audit is None or audit.get("source_revision") != revision:
+            raise HTTPException(404, "指定した棋譜監査が見つかりません。")
+        updated = store.set_note(candidate_id, body.note)
+        if updated is None:
+            raise HTTPException(404, "指定した棋譜監査が見つかりません。")
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except OSError as error:
+        raise HTTPException(503, "監査メモを保存できません。保存先の設定を確認してください。") from error
+    global _KIFU_RANDOM_TRACE_CACHE, _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
+    _KIFU_RANDOM_TRACE_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE_REVISION = None
+    result = _score_attack_audit_item({"audit": updated}, include_payload=False)
+    result["history"] = store.history(candidate_id)
     result["scan"] = scan_state
     return result
 
@@ -5732,7 +5761,9 @@ def _canonical_trace_payload(payload):
             "score_before", "score_after", "winner", "gained_score", "anonymous", "player_names", "my_seat", "round_index")}
 
 
-async def _begin_trace_attempt(game_id, body, request, response, payload, *, practice=False):
+async def _begin_trace_attempt(
+    game_id, body, request, response, payload, *, practice=False, audit_candidate_id=""
+):
     async with _game_turn_lock(game_id):
         game = _trace_host(game_id, body)
         if game.get("trace_mode") and not game["state"].finished:
@@ -5741,12 +5772,16 @@ async def _begin_trace_attempt(game_id, body, request, response, payload, *, pra
         store = get_trace_store()
         owner, guest = store.identity(request, response, MEMBER_STORE, create=True)
         name = re.sub(r"[\x00-\x1f\x7f]", "", str(game.get("player_names", {}).get("A", "")))
-        attempt_id = store.start(owner, guest, name, payload, practice=practice)
+        attempt_id = store.start(
+            owner, guest, name, payload, practice=practice,
+            audit_candidate_id=audit_candidate_id,
+        )
         result = await _start_debug_trace_payload(game_id, payload, client_id=body.client_id, attempt_id=attempt_id)
         # Preserve the participant's display name on A; archive names stay private.
         GAMES[game_id]["player_names"]["A"] = name
         GAMES[game_id]["trace_challenge"] = store.challenge_id(payload)
         GAMES[game_id]["trace_payload"] = payload
+        GAMES[game_id]["trace_audit_candidate_id"] = str(audit_candidate_id or "")
         await manager.broadcast_update(game_id)
         return result
 
@@ -5781,14 +5816,17 @@ async def start_random_debug_trace(
     except ValueError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
     if not candidates:
-        raise HTTPException(status_code=404, detail="50点以下の棋譜が見つかりません。")
+        raise HTTPException(status_code=404, detail="スコアアタック対象の棋譜が見つかりません。")
     candidate = copy.deepcopy(random.choice(candidates))
     # Spectators see the game's public state; do not copy identifying archive
     # metadata into it, even when the starting player is an administrator.
     candidate["payload"]["player_names"] = {seat: f"プレイヤー{seat}" for seat in ALL_SEATS}
     candidate["source"] = {}
     try:
-        result = await _begin_trace_attempt(game_id, body, request, response, candidate["payload"])
+        result = await _begin_trace_attempt(
+            game_id, body, request, response, candidate["payload"],
+            audit_candidate_id=str(candidate.get("candidate_id") or ""),
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     result["eligible_count"] = len(candidates)
@@ -5809,7 +5847,10 @@ async def start_same_trace(game_id: str, body: DebugTraceRandomStartRequest, req
     game = _trace_host(game_id, body)
     if not game.get("trace_payload") or not game["state"].finished:
         raise HTTPException(409, "この部屋でスコアアタックが終了してから利用できます。")
-    return await _begin_trace_attempt(game_id, body, request, response, game["trace_payload"])
+    return await _begin_trace_attempt(
+        game_id, body, request, response, game["trace_payload"],
+        audit_candidate_id=str(game.get("trace_audit_candidate_id") or ""),
+    )
 
 
 @trace_router.get("/games/{game_id}/trace_results/history")
@@ -5837,6 +5878,43 @@ def trace_original(game_id: str, attempt_id: str, request: Request, response: Re
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     return {"payload": store.read(owner, attempt_id, original=True)}
+
+
+@trace_router.post("/games/{game_id}/trace_results/{attempt_id}/report")
+def report_trace_original(game_id: str, attempt_id: str, request: Request, response: Response):
+    """Send a player's score-attack concern to the administrator's review queue."""
+    _require_trace_room(game_id)
+    store = get_trace_store()
+    owner, _ = store.identity(request, response, MEMBER_STORE)
+    # This also verifies that the attempt belongs to this owner and is finished.
+    store.read(owner, attempt_id, original=True)
+    report = store.claim_audit_report(owner, attempt_id)
+    if report is None:
+        raise HTTPException(404, "記録が見つかりません。ゲストの保存期間は30日間です。")
+    candidate = report.get("candidate_id") or ""
+    if not candidate:
+        raise HTTPException(409, "この棋譜は管理者への申告対象を特定できません。")
+    try:
+        audit_store = audit_store_for(BASE_DIR)
+        audit = audit_store.get(candidate)
+        if audit is None:
+            raise HTTPException(404, "現在の監査一覧にこの棋譜がありません。")
+        if report.get("already_reported"):
+            return {"ok": True, "already_reported": True, "status": audit.get("status")}
+        updated = audit_store.set_status(
+            candidate, "review", updated_by="player_report", note="プレイヤーからの申告"
+        )
+        if updated is None:
+            raise HTTPException(404, "現在の監査一覧にこの棋譜がありません。")
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except OSError as error:
+        raise HTTPException(503, "申告を保存できません。保存先の設定を確認してください。") from error
+    global _KIFU_RANDOM_TRACE_CACHE, _SCORE_AUDIT_RECORDS_CACHE, _SCORE_AUDIT_RECORDS_CACHE_REVISION
+    _KIFU_RANDOM_TRACE_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE = None
+    _SCORE_AUDIT_RECORDS_CACHE_REVISION = None
+    return {"ok": True, "already_reported": False, "status": updated.get("status")}
 
 
 app.include_router(trace_router)

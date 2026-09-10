@@ -292,25 +292,53 @@ class ScoreAttackAuditStore:
         return self._decode(row) if row is not None else None
 
     def set_status(
-        self, candidate: str, status: str, updated_by: str = "admin", note: str = ""
+        self, candidate: str, status: str, updated_by: str = "admin", note: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         if status not in MANUAL_STATUSES:
             raise ValueError("監査状態が正しくありません。")
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT default_status FROM score_attack_audit WHERE candidate_id = ?", (candidate,)
+                "SELECT default_status, decision_note FROM score_attack_audit WHERE candidate_id = ?", (candidate,)
             ).fetchone()
             if row is None:
                 return None
             if row["default_status"] in {"invalid", "out_of_range"} and status == "eligible":
                 raise ValueError("形式不正または開始点数の対象外の棋譜は採用できません。")
+            saved_note = str(row["decision_note"] or "") if note is None else str(note or "")[:500]
+            changed_at = _now()
             connection.execute(
                 "UPDATE score_attack_audit SET status = ?, updated_at = ?, updated_by = ?, decision_note = ? WHERE candidate_id = ?",
-                (status, _now(), str(updated_by or "admin")[:80], str(note or "")[:500], candidate),
+                (status, changed_at, str(updated_by or "admin")[:80], saved_note, candidate),
             )
             connection.execute(
                 "INSERT INTO score_attack_audit_history (candidate_id, status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?)",
-                (candidate, status, str(note or "")[:500], _now(), str(updated_by or "admin")[:80]),
+                (candidate, status, saved_note, changed_at, str(updated_by or "admin")[:80]),
+            )
+            updated = connection.execute(
+                "SELECT * FROM score_attack_audit WHERE candidate_id = ?", (candidate,)
+            ).fetchone()
+        return self._decode(updated)
+
+    def set_note(
+        self, candidate: str, note: str, updated_by: str = "admin"
+    ) -> Optional[Dict[str, Any]]:
+        """Save an administrative note without changing the audit decision."""
+        note = str(note or "")[:500]
+        updated_by = str(updated_by or "admin")[:80]
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT status FROM score_attack_audit WHERE candidate_id = ?", (candidate,)
+            ).fetchone()
+            if row is None:
+                return None
+            changed_at = _now()
+            connection.execute(
+                "UPDATE score_attack_audit SET updated_at = ?, updated_by = ?, decision_note = ? WHERE candidate_id = ?",
+                (changed_at, updated_by, note, candidate),
+            )
+            connection.execute(
+                "INSERT INTO score_attack_audit_history (candidate_id, status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?)",
+                (candidate, row["status"], note, changed_at, updated_by),
             )
             updated = connection.execute(
                 "SELECT * FROM score_attack_audit WHERE candidate_id = ?", (candidate,)

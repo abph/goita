@@ -194,6 +194,7 @@
     .score-audit-meta strong { display: block; margin-top: 3px; }
     .score-audit-moves { max-height: 360px; overflow: auto; }
     .score-audit-moves table { min-width: 500px; }
+    .score-audit-note-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
     .score-audit-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .score-audit-board-wrap { width: fit-content; max-width: 100%; margin: 12px auto; padding: 8px; overflow: hidden; border: 3px solid #8b5a2b; background: #d1ab75; }
     .score-audit-board { --audit-cell: min(39px, calc((100vw - 150px) / 8)); --audit-gap: 5px; display: grid; grid-template-columns: repeat(8, var(--audit-cell)); grid-template-rows: repeat(8, var(--audit-cell)); gap: var(--audit-gap); width: fit-content; user-select: none; container-type: inline-size; }
@@ -625,7 +626,10 @@
       if (item.status === "eligible") {
         return `${inspect}<button class="button danger score-audit-status-button" type="button" data-candidate="${id}" data-status="excluded">除外</button>`;
       }
-      if (item.status === "excluded" || item.status === "review") {
+      if (item.status === "review") {
+        return `${inspect}<button class="button danger score-audit-status-button" type="button" data-candidate="${id}" data-status="excluded">除外</button><button class="button score-audit-status-button" type="button" data-candidate="${id}" data-status="eligible">採用に戻す</button>`;
+      }
+      if (item.status === "excluded") {
         return `${inspect}<button class="button score-audit-status-button" type="button" data-candidate="${id}" data-status="eligible">採用に戻す</button>`;
       }
       return inspect;
@@ -937,7 +941,7 @@
           <div class="event-row"><span class="event-time">${escapeHtml(formatDate(entry.changed_at, true))}</span><span>${escapeHtml(scoreAuditStatusLabel(entry.status))}${entry.note ? ` / ${escapeHtml(entry.note)}` : ""}</span></div>
         `).join("");
         const canRestore = item.status === "excluded" || item.status === "review";
-        const canExclude = item.status === "eligible";
+        const canExclude = item.status === "eligible" || item.status === "review";
         body.innerHTML = `
           <div class="score-audit-meta">
             <div><span class="muted">棋譜</span><strong>${escapeHtml(item.match_id || "-")} / ${escapeHtml(item.round_index ?? "-")}</strong></div>
@@ -947,13 +951,14 @@
           <div class="score-audit-board-wrap"><div id="scoreAuditBoard" class="score-audit-board" aria-label="監査棋譜の盤面"></div></div>
           <h3 class="subheading">変更履歴</h3>
           <div class="session-events">${history || '<span class="muted">まだ変更履歴はありません。</span>'}</div>
-          <div class="field"><label for="scoreAuditNote">管理メモ（任意）</label><textarea id="scoreAuditNote" maxlength="500" placeholder="除外・再採用の理由を残せます">${escapeHtml(item.decision_note || "")}</textarea></div>
+          <div class="field"><label for="scoreAuditNote">管理メモ（任意）</label><textarea id="scoreAuditNote" maxlength="500" placeholder="除外・再採用の理由を残せます">${escapeHtml(item.decision_note || "")}</textarea><div class="score-audit-note-actions"><button class="button" id="scoreAuditSaveNote" type="button">メモを保存</button><span id="scoreAuditNoteStatus" class="status" aria-live="polite"></span></div></div>
           <div class="score-audit-dialog-actions">
-            ${canExclude ? '<button class="button danger" id="scoreAuditExcludeFromDetail" type="button">この棋譜を除外</button>' : ""}
+            ${canExclude ? '<button class="button danger" id="scoreAuditExcludeFromDetail" type="button">除外</button>' : ""}
             ${canRestore ? '<button class="button" id="scoreAuditRestoreFromDetail" type="button">採用に戻す</button>' : ""}
           </div>
         `;
         renderScoreAuditBoard(payload);
+        document.getElementById("scoreAuditSaveNote")?.addEventListener("click", () => saveScoreAuditNote(candidate));
         document.getElementById("scoreAuditExcludeFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "excluded", true));
         document.getElementById("scoreAuditRestoreFromDetail")?.addEventListener("click", () => updateScoreAuditStatus(candidate, "eligible", true));
       } catch (error) {
@@ -962,14 +967,38 @@
       }
     }
 
+    async function saveScoreAuditNote(candidate) {
+      const note = document.getElementById("scoreAuditNote")?.value || "";
+      const button = document.getElementById("scoreAuditSaveNote");
+      const status = document.getElementById("scoreAuditNoteStatus");
+      if (!button) return;
+      button.disabled = true;
+      if (status) status.textContent = "保存しています...";
+      try {
+        await api(`/admin/api/score-attack/audit/${encodeURIComponent(candidate)}/note`, {
+          method: "PUT",
+          headers: SCORE_AUDIT_HEADERS,
+          body: JSON.stringify({note}),
+        });
+        if (status) status.textContent = "保存しました。";
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        if (status) status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function updateScoreAuditStatus(candidate, nextStatus, closeDialog = false) {
       if (nextStatus === "excluded" && !confirm("この棋譜を今後のスコアアタック出題から除外しますか？")) return;
-      const note = document.getElementById("scoreAuditNote")?.value || "";
+      const noteField = document.getElementById("scoreAuditNote");
+      const body = {status: nextStatus};
+      if (noteField) body.note = noteField.value || "";
       try {
         await api(`/admin/api/score-attack/audit/${encodeURIComponent(candidate)}`, {
           method: "PUT",
           headers: SCORE_AUDIT_HEADERS,
-          body: JSON.stringify({status: nextStatus, note}),
+          body: JSON.stringify(body),
         });
         if (closeDialog) document.getElementById("scoreAuditDialog").close();
         await loadScoreAudit();
