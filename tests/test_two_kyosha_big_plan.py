@@ -145,6 +145,61 @@ def test_two_kyosha_big_pair_without_royal_starts_kyosha_then_big() -> None:
     assert "2" in remaining or "7" in remaining
 
 
+def test_unconfirmed_first_attack_piece_is_preserved_for_next_hidden_block() -> None:
+    """Keep the first attack available until the ally publicly reacts to it."""
+    state = GoitaState(
+        hands={
+            "A": ["1", "1", "1", "2", "7", "3", "3", "6"],
+            "B": ["1", "1", "1", "5", "5", "5", "6", "8"],
+            "C": ["1", "2", "7", "6", "3", "3", "2", "6"],
+            "D": ["1", "1", "1", "2", "2", "7", "4", "9"],
+        },
+        dealer="C",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+
+    first = agent.select_action(state, "C", state.legal_actions("C"))
+    assert first[2] == "2"
+    state.apply_attack_after_block("C", first[1], first[2])
+    agent.on_public_action(state, "C", first)
+
+    for passer in ("D", "A", "B"):
+        state.apply_pass(passer)
+        agent.on_public_action(state, passer, ("pass", None, None))
+
+    second = agent.select_action(state, "C", state.legal_actions("C"))
+    assert second[0] == "attack_after_block"
+    assert second[2] == "6"
+    assert second[1] != "2"
+    assert "preserve_unconfirmed_first_attack_2" in agent.last_score_fallback_detail
+
+
+def test_first_attack_protection_clears_when_ally_receives_it() -> None:
+    state = GoitaState(
+        hands={
+            "A": ["1", "1", "1", "2", "7", "3", "3", "6"],
+            "B": ["1", "1", "1", "5", "5", "5", "6", "8"],
+            "C": ["1", "2", "7", "6", "3", "3", "2", "6"],
+            "D": ["1", "1", "1", "2", "2", "7", "4", "9"],
+        },
+        dealer="C",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+
+    first = agent.select_action(state, "C", state.legal_actions("C"))
+    assert first[2] == "2"
+    state.apply_attack_after_block("C", first[1], first[2])
+    agent.on_public_action(state, "C", first)
+    state.apply_pass("D")
+    agent.on_public_action(state, "D", ("pass", None, None))
+    state.apply_receive("A", "2")
+    agent.on_public_action(state, "A", ("receive", "2", None))
+
+    assert agent._unconfirmed_first_attack_piece_for_next_action(state, "C") is None
+
+
 def test_two_kyosha_big_pair_with_royal_starts_big_then_kyosha() -> None:
     state = _state(["1", "2", "2", "3", "4", "7", "7", "9"])
     agent = RuleBasedAgent()
@@ -232,7 +287,10 @@ def test_two_kyosha_middle_pair_royal_uses_kyosha_then_silver_after_receive() ->
     }
     assert first[2] == "2"
     assert second == ("attack_after_block", "1", "4")
-    assert agent.last_score_fallback_detail == "attack_sequence_two_kyosha_middle_pair_royal"
+    assert agent.last_score_fallback_detail == (
+        "attack_sequence_two_kyosha_middle_pair_royal_"
+        "preserve_unconfirmed_first_attack_2"
+    )
 
 
 def test_two_kyosha_middle_pair_royal_allows_horse_pair_and_big_piece() -> None:

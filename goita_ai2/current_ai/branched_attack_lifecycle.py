@@ -475,6 +475,20 @@ class BranchedAttackLifecycleMixin:
                 "planned_action_is_no_longer_legal",
             )
             return None
+        preserved_first_attack = self._unconfirmed_first_attack_piece_for_next_action(
+            state,
+            player,
+        )
+        if (
+            preserved_first_attack is not None
+            and action[0] == "attack_after_block"
+            and action[1] == preserved_first_attack
+        ):
+            self._invalidate_branched_attack_plan(
+                state,
+                "unconfirmed_first_attack_piece_must_be_preserved",
+            )
+            return None
         return action
 
     def _rebuild_branched_attack_plan(

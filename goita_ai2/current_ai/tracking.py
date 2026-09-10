@@ -72,6 +72,10 @@ class TrackingMixin:
 
             ally_responded_to_my_attacks=set(),
             ally_ignored_my_attacks=set(),
+            # The first attack remains protected from the next hidden block
+            # until the ally has publicly reacted to that same piece.  This is
+            # intentionally piece-agnostic (not limited to shi or kyosha).
+            unconfirmed_first_attack_piece=None,
             ally_pending_response_piece=None,
             ally_passed_my_shi_count=0,
             enemy_passed_my_shi_count=0,
@@ -272,6 +276,8 @@ class TrackingMixin:
             if player == tr.get("ally") and action_type == "receive":
                 if visible_block in tr.get("my_past_attacks", set()):
                     tr["ally_pending_response_piece"] = visible_block
+                    if visible_block == tr.get("unconfirmed_first_attack_piece"):
+                        tr["unconfirmed_first_attack_piece"] = None
                 else:
                     tr["ally_pending_response_piece"] = None
             if (
@@ -298,6 +304,13 @@ class TrackingMixin:
             if player == self.me:
                 tr["my_past_attacks"].add(attack)
                 my_attack_history = tr.setdefault("my_attack_history", [])
+                if not my_attack_history:
+                    tr["unconfirmed_first_attack_piece"] = str(attack)
+                else:
+                    # The protection is specifically for the next hidden
+                    # block after the first attack.  A new attack starts a
+                    # new public purpose and ends this one-shot guard.
+                    tr["unconfirmed_first_attack_piece"] = None
                 my_attack_history.append(attack)
                 # Normally select_action increments this before the public
                 # notification arrives. A restored game or kifu replay only
@@ -332,6 +345,8 @@ class TrackingMixin:
                 if attack in tr["my_past_attacks"]:
                     tr["ally_responded_to_my_attacks"].add(attack)
                     tr["ally_ignored_my_attacks"].discard(attack)
+                    if attack == tr.get("unconfirmed_first_attack_piece"):
+                        tr["unconfirmed_first_attack_piece"] = None
                 if attack == "1":
                     tr["ally_open_shi_attack_pending"] = True
                 else:
@@ -378,6 +393,8 @@ class TrackingMixin:
                         tr["my_open_shi_attack_pending"] = False
                     if attack in tr["my_past_attacks"]:
                         tr["ally_responded_to_my_attacks"].add(attack)
+                        if attack == tr.get("unconfirmed_first_attack_piece"):
+                            tr["unconfirmed_first_attack_piece"] = None
 
                     for past_attack in tr["my_past_attacks"]:
                         if past_attack != attack and past_attack not in tr["ally_responded_to_my_attacks"]:
@@ -448,3 +465,29 @@ class TrackingMixin:
         )
         if callable(refresh_probabilistic):
             refresh_probabilistic(state, player, action, tr)
+
+    def _unconfirmed_first_attack_piece_for_next_action(
+        self,
+        state,
+        player: Optional[str] = None,
+    ) -> Optional[str]:
+        """Return the first attack piece that must survive the next block.
+
+        This is a public-information guard.  It applies only while the
+        attacker is choosing the second attack, and only when the ally has
+        not yet received or replayed the first attack piece.
+        """
+        tr = self._track.get(id(state))
+        if tr is None:
+            return None
+        if int(tr.get("my_attack_count", 0)) != 1:
+            return None
+        history = tuple(str(piece) for piece in tr.get("my_attack_history", ()))
+        piece = tr.get("unconfirmed_first_attack_piece")
+        if piece is None or len(history) != 1 or history[0] != str(piece):
+            return None
+        if player is not None and str(piece) not in state.hands.get(player, ()):
+            return None
+        if str(piece) in tr.get("ally_responded_to_my_attacks", set()):
+            return None
+        return str(piece)

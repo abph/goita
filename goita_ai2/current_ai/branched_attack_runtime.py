@@ -174,6 +174,9 @@ class BranchedAttackRuntimeMixin:
                 "count_caps": tr.get("current_piece_count_caps", {}),
                 "my_attack_count": int(tr.get("my_attack_count", 0)),
                 "my_attacks": tr.get("my_attack_history", ()),
+                "unconfirmed_first_attack_piece": tr.get(
+                    "unconfirmed_first_attack_piece"
+                ),
                 "ally_attacks": tr.get("ally_past_attacks", set()),
                 "enemy_attacks": tr.get("enemy_past_attacks", set()),
                 "shi_attack_mode": bool(tr.get("shi_attack_mode")),
@@ -212,6 +215,10 @@ class BranchedAttackRuntimeMixin:
         tr = self._track.get(id(state))
         attack_number = int(tr.get("my_attack_count", 0)) + 1 if tr else 1
         hand = tuple(sorted(state.hands[player]))
+        preserved_first_attack = self._unconfirmed_first_attack_piece_for_next_action(
+            state,
+            player,
+        )
 
         def key(action: Action) -> tuple:
             action_type, block, attack = action
@@ -239,7 +246,15 @@ class BranchedAttackRuntimeMixin:
                 attack or "",
             )
 
-        roots = list(self._branched_root_attack_candidates(actions))
+        roots = [
+            action
+            for action in self._branched_root_attack_candidates(actions)
+            if not (
+                preserved_first_attack is not None
+                and action[0] == "attack_after_block"
+                and action[1] == preserved_first_attack
+            )
+        ]
         roots.sort(key=key, reverse=True)
         return tuple(roots[:max(0, int(self.BRANCHED_ATTACK_MAX_GENERIC_ROOTS))])
 

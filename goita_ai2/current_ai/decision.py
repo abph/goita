@@ -1812,7 +1812,22 @@ class DecisionMixin:
             elif source.startswith("representative:"):
                 template_id = source.split(":", 1)[1]
                 self._set_decision_reason("score_fallback")
+                preserved_first_attack = (
+                    self._unconfirmed_first_attack_piece_for_next_action(
+                        state,
+                        player,
+                    )
+                )
                 if (
+                    preserved_first_attack is not None
+                    and action_type == "attack_after_block"
+                    and block != preserved_first_attack
+                ):
+                    self._set_score_fallback_detail(
+                        f"attack_sequence_{template_id}_"
+                        f"preserve_unconfirmed_first_attack_{preserved_first_attack}"
+                    )
+                elif (
                     template_id.startswith("fourth_middle_finisher_")
                     and classified_detail not in (
                         "attack_piece_value",

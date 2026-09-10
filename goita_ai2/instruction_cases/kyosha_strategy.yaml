@@ -130,11 +130,12 @@ cases:
       - 攻め1は香
       - 攻め2は大駒ペア
       - 攻め3は香または大駒ペアを局面で選ぶ
-    reason: 香を先に試し、強い大駒ペアを中継と決定打に使う
+    reason: 香を先に試し、相方がまだ反応していない間は香を伏せず、強い大駒ペアを中継と決定打に使う
     regression:
       state: covered
       tests:
         - tests/test_two_kyosha_big_plan.py
+      additional_rule: 最初の攻め駒が相方に未確認なら、次の伏せ駒には同じ駒を使わない
 
   - id: KYO-008
     status: confirmed
@@ -191,4 +192,3 @@ cases:
       state: covered
       tests:
         - tests/test_attack_strategy_module.py::test_fourth_kyosha_is_reserved_after_receiving_gold
-

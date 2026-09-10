@@ -279,9 +279,19 @@ class AttackPlanTemplateMixin:
             return tuple()
         expected_block = template.expected_block(attack_number)
         future_required = Counter(template.attack_sequence[attack_number:])
+        preserved_first_attack = self._unconfirmed_first_attack_piece_for_next_action(
+            state,
+            player,
+        )
         candidates = []
         for action in self._branched_root_attack_candidates(actions):
             if action[2] != expected_attack:
+                continue
+            if (
+                preserved_first_attack is not None
+                and action[0] == "attack_after_block"
+                and action[1] == preserved_first_attack
+            ):
                 continue
             if expected_block is not None and expected_block in state.hands[player]:
                 if action[1] != expected_block:

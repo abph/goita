@@ -606,9 +606,21 @@ class BranchedAttackGeneratorMixin:
         if tr is not None:
             attack_number = int(tr.get("my_attack_count", 0)) + 1
 
+        preserved_first_attack = self._unconfirmed_first_attack_piece_for_next_action(
+            state,
+            player,
+        )
         plans: List[BranchedAttackPlan] = []
         for index, root_action in enumerate(
-            self._branched_root_attack_candidates(actions),
+            (
+                action
+                for action in self._branched_root_attack_candidates(actions)
+                if not (
+                    preserved_first_attack is not None
+                    and action[0] == "attack_after_block"
+                    and action[1] == preserved_first_attack
+                )
+            ),
             start=1,
         ):
             plans.append(self._build_branched_attack_plan(

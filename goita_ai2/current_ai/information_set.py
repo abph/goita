@@ -41,6 +41,7 @@ _PUBLIC_TRACKER_FIELDS = (
     "public_hand_models",
     "ally_responded_to_my_attacks",
     "ally_ignored_my_attacks",
+    "unconfirmed_first_attack_piece",
     "ally_shi_signal",
     "shi_attack_mode",
     "enemy_team_rejected_shi_attack",
