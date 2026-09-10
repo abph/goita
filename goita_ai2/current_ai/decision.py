@@ -618,6 +618,7 @@ class DecisionMixin:
         self.last_generic_response_tactical_shadow = {}
         self.last_generic_response_human_shadow = {}
         self.last_generic_response_priority = {}
+        self._time_search_kyosha_receiver_position = None
         if self.me is None:
             self.me = player
         elif self.me != player:
@@ -669,14 +670,15 @@ class DecisionMixin:
             )
             return response_plan.action
 
-        kyosha_pass_compare_search = (
-            not hard_locked
-            and self._should_compare_kyosha_pass_and_receive(
+        kyosha_receiver_position = None
+        if not hard_locked:
+            kyosha_receiver_position = self._kyosha_pass_compare_receiver_position(
                 state,
                 player,
                 actions,
             )
-        )
+        kyosha_pass_compare_search = kyosha_receiver_position is not None
+        self._time_search_kyosha_receiver_position = kyosha_receiver_position
         low_reentry_receive_search = (
             not hard_locked
             and not kyosha_pass_compare_search
@@ -813,6 +815,24 @@ class DecisionMixin:
             )
             search_snapshot["rule_authority"] = rule_authority
             search_snapshot["override_accepted"] = override_accepted
+            if kyosha_pass_compare_search:
+                search_snapshot["kyosha_receiver_position"] = kyosha_receiver_position
+                if kyosha_receiver_position == "later":
+                    later_min_margin = float(
+                        getattr(
+                            self,
+                            "KYOSHA_PASS_COMPARE_LATER_MIN_MARGIN",
+                            200.0,
+                        )
+                    )
+                    search_snapshot["kyosha_later_pass_preference"] = True
+                    search_snapshot["kyosha_later_min_margin"] = later_min_margin
+                    search_snapshot["kyosha_later_override_blocked"] = bool(
+                        search_result.action != baseline_action
+                        and search_result.action[0] == "receive"
+                        and not override_accepted
+                        and float(search_result.margin) <= later_min_margin
+                    )
             preview_tracker = preview._track.get(id(state))
             if preview_tracker is not None:
                 preview_tracker["last_time_limited_search"] = dict(search_snapshot)
@@ -1009,21 +1029,49 @@ class DecisionMixin:
         player: str,
         actions: List[Action],
     ) -> bool:
-        """Deeply compare passing an enemy lance with receiving it."""
+        """Deeply compare passing an enemy's first kyosha with receiving it."""
+        return self._kyosha_pass_compare_receiver_position(
+            state,
+            player,
+            actions,
+        ) is not None
+
+    def _kyosha_pass_compare_receiver_position(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[str]:
+        """Return the receiver's position for an enemy's first kyosha only."""
         if (
             state.phase != "receive"
             or state.current_attack != "2"
             or state.attacker is None
             or self._same_team(state.attacker, player)
         ):
-            return False
-        return bool(
-            any(action[0] == "pass" for action in actions)
-            and any(
-                action[0] == "receive" and action[1] == "2"
-                for action in actions
-            )
-        )
+            return None
+
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return None
+        attacker_model = tracker.get("public_hand_models", {}).get(state.attacker)
+        if not isinstance(attacker_model, dict):
+            return None
+        # Public tracking is updated when the attack is applied, so the
+        # current first lance is already counted once at receive time.
+        kyosha_count = int(attacker_model.get("attacks", {}).get("2", 0))
+        if kyosha_count != 1:
+            return None
+        if not any(action[0] == "pass" for action in actions):
+            return None
+        if not any(
+            action[0] == "receive" and action[1] == "2"
+            for action in actions
+        ):
+            return None
+
+        next_receiver = state.next_player(state.attacker)
+        return "immediate" if player == next_receiver else "later"
 
     def _low_reentry_followup_piece(
         self,

@@ -195,8 +195,27 @@ class TimedSearchMixin:
         margin: float,
         information_enabled: bool,
         information_confidence: float,
+        receiver_position: Optional[str] = None,
     ) -> bool:
         """Adopt either better depth-seven branch in a lance comparison."""
+        if receiver_position is None:
+            receiver_position = getattr(
+                self,
+                "_time_search_kyosha_receiver_position",
+                "immediate",
+            )
+        minimum_margin = float(self.KYOSHA_PASS_COMPARE_MIN_MARGIN)
+        if receiver_position == "later":
+            minimum_margin = max(
+                minimum_margin,
+                float(
+                    getattr(
+                        self,
+                        "KYOSHA_PASS_COMPARE_LATER_MIN_MARGIN",
+                        200.0,
+                    )
+                ),
+            )
         compared_actions = {baseline_action[0], best_action[0]}
         receive_action = (
             baseline_action
@@ -213,7 +232,7 @@ class TimedSearchMixin:
             and completed_depth
             >= int(self.KYOSHA_PASS_COMPARE_TARGET_DEPTH)
             and agreement >= float(self.KYOSHA_PASS_COMPARE_MIN_AGREEMENT)
-            and margin > float(self.KYOSHA_PASS_COMPARE_MIN_MARGIN)
+            and margin > minimum_margin
             and information_confidence
             >= float(self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE)
         )
@@ -2690,6 +2709,11 @@ class TimedSearchMixin:
                     float(information_set.confidence)
                     if information_enabled
                     else 0.0
+                ),
+                receiver_position=getattr(
+                    self,
+                    "_time_search_kyosha_receiver_position",
+                    "immediate",
                 ),
             )
         )

@@ -784,6 +784,64 @@ def test_debug_room_presence_is_completely_hidden() -> None:
                 app_module.manager.client_names[key] = old_value
 
 
+def test_score_attack_player_presence_is_visible_without_exposing_room() -> None:
+    score_room_id = "score-presence-test"
+    game = app_module.GAMES.get(score_room_id)
+    created = game is None
+    if game is None:
+        game = app_module._create_game_obj(dealer="A", ai_profile="current")
+        app_module.GAMES[score_room_id] = game
+    original_values = {
+        "human_seats": game.get("human_seats"),
+        "ai_seats": game.get("ai_seats"),
+        "player_names": game.get("player_names"),
+        "hidden_from_lobby": game.get("hidden_from_lobby"),
+        "owner_name": game.get("owner_name"),
+    }
+    connection_key = (score_room_id, "score-presence-player")
+    old_connections = app_module.manager.client_connections.get(connection_key)
+    old_name = app_module.manager.client_names.get(connection_key)
+    try:
+        game["human_seats"] = {"A": "score-presence-player"}
+        game["ai_seats"] = ["B", "C", "D"]
+        game["player_names"] = {"A": "スコア挑戦者", "B": "", "C": "", "D": ""}
+        game["hidden_from_lobby"] = True
+        game["owner_name"] = "スコアアタック"
+        app_module.manager.client_connections[connection_key] = {object()}
+        app_module.manager.client_names[connection_key] = "スコア挑戦者"
+
+        response = app_module.list_rooms()
+        people = response["site_people"]
+
+        assert {
+            "name": "スコア挑戦者",
+            "name_is_default": False,
+            "tag": "",
+            "location": "スコアアタック",
+            "role": "player",
+            "seat": "A",
+        } in people
+        assert score_room_id not in {room["game_id"] for room in response["rooms"]}
+        assert "スコア挑戦者" in str(people)
+    finally:
+        if game is not None:
+            for key, value in original_values.items():
+                if value is None:
+                    game.pop(key, None)
+                else:
+                    game[key] = value
+        if old_connections is None:
+            app_module.manager.client_connections.pop(connection_key, None)
+        else:
+            app_module.manager.client_connections[connection_key] = old_connections
+        if old_name is None:
+            app_module.manager.client_names.pop(connection_key, None)
+        else:
+            app_module.manager.client_names[connection_key] = old_name
+        if created:
+            app_module.GAMES.pop(score_room_id, None)
+
+
 def test_private_room_presence_masks_names_outside_the_same_room() -> None:
     app_module.setup_supporter_rooms()
     game_id = app_module.PRIVATE_A_GID

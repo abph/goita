@@ -313,6 +313,9 @@ class RuleBasedAgent(
         self.KYOSHA_PASS_COMPARE_MIN_AGREEMENT = 0.50
         self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE = 0.45
         self.KYOSHA_PASS_COMPARE_MIN_MARGIN = 0.0
+        # Later receivers should prefer passing when receiving is only
+        # modestly better; a clearly superior receive branch can still win.
+        self.KYOSHA_PASS_COMPARE_LATER_MIN_MARGIN = 200.0
         self.SHI_INSERTION_ENABLED = True
         self.SHI_INSERTION_MAX_FOLLOWUPS = 6
         self.SHI_INSERTION_MAX_ROUTES = 10

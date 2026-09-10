@@ -1204,6 +1204,114 @@ def test_kyosha_pass_compare_requires_a_completed_depth_seven_result() -> None:
     )
 
 
+def test_kyosha_pass_compare_later_receiver_prefers_pass_until_margin_is_clear() -> None:
+    agent = RuleBasedAgent()
+    agent._time_search_profile = "kyosha_pass_compare"
+    result = dict(
+        baseline_action=("pass", None, None),
+        best_action=("receive", "2", None),
+        completed_depth=7,
+        agreement=0.91,
+        margin=138.55,
+        information_enabled=True,
+        information_confidence=0.62,
+        receiver_position="later",
+    )
+
+    assert not agent._timed_search_kyosha_pass_compare_is_decisive(**result)
+
+    clear = dict(result)
+    clear["margin"] = 200.01
+    assert agent._timed_search_kyosha_pass_compare_is_decisive(**clear)
+
+
+def test_kyosha_pass_compare_only_targets_enemy_first_lance_and_tracks_receiver_position() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11234567"),
+            "B": list("11234567"),
+            "C": list("11234567"),
+            "D": list("11234567"),
+        },
+        dealer="A",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("B")
+    agent._ensure_trackers(state)
+    state.phase = "receive"
+    state.current_attack = "2"
+    state.attacker = "C"
+    state.turn = "B"
+    actions = [("pass", None, None), ("receive", "2", None)]
+    agent._track[id(state)]["enemy_attack_counts"]["C"] = 1
+    agent._track[id(state)]["public_hand_models"]["C"]["attacks"]["2"] = 1
+
+    assert agent._kyosha_pass_compare_receiver_position(state, "B", actions) == "later"
+    assert agent._should_compare_kyosha_pass_and_receive(state, "B", actions)
+
+    agent._track[id(state)]["public_hand_models"]["C"]["attacks"]["2"] = 2
+    assert agent._kyosha_pass_compare_receiver_position(state, "B", actions) is None
+    assert not agent._should_compare_kyosha_pass_and_receive(state, "B", actions)
+
+
+def test_round5_b_turn14_later_receiver_keeps_pass_for_first_kyosha() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("95142127"),
+            "B": list("14514216"),
+            "C": list("21815133"),
+            "D": list("16415337"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent._ensure_trackers(state)
+
+    def apply_public(player: str, action) -> None:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(player)
+        elif action_type == "receive":
+            state.apply_receive(player, block)
+        elif action_type == "attack":
+            state.apply_attack(player, attack)
+        else:
+            state.apply_attack_after_block(player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, player, action)
+
+    opening = (
+        ("A", ("attack_after_block", "1", "2")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("attack_after_block", "1", "7")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "7", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "3", None)),
+        ("C", ("attack", None, "2")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+    )
+    for player, action in opening:
+        apply_public(player, action)
+
+    agent = agents["B"]
+    legal = state.legal_actions("B")
+    assert agent._kyosha_pass_compare_receiver_position(state, "B", legal) == "later"
+    assert agent.select_action(state, "B", legal) == ("pass", None, None)
+    search = agent._track[id(state)]["last_time_limited_search"]
+    assert search["kyosha_receiver_position"] == "later"
+    assert search["kyosha_later_pass_preference"] is True
+    assert search["kyosha_later_override_blocked"] is True
+
+
 def test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse() -> None:
     clear_prediction_sample_cache()
     reset_time_search_budget_model()

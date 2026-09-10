@@ -4432,7 +4432,6 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             and connections
             and (
                 connected_game_id == DEBUG_GID
-                or is_score_room(connected_game_id)
                 or GAMES.get(connected_game_id, {}).get("is_debug_room", False)
             )
         }
@@ -4479,6 +4478,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 is_private_room = connected_game_id in PRIVATE_ROOM_NAMES
                 if is_main_room:
                     location = MAIN_ROOM_NAMES.get(connected_game_id, "公開部屋")
+                elif is_score_room(connected_game_id):
+                    location = "スコアアタック"
                 elif connected_game_id == DEBUG_GID or game.get("is_debug_room", False):
                     location = "デバッグルーム"
                 elif is_private_room:
