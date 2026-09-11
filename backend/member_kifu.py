@@ -130,7 +130,10 @@ class MemberKifuStore:
     def save_automatic(self, token, *, round_id, seat, payload):
         """Commit the opt-in, capacity check and deduplication in one transaction."""
         with self.members._db(write=True) as db:
-            owner = self._owner(db, token, paid=True)
+            owner = self._owner(db, token)
+            member = self.members._public(self.members._session_row(db, token))
+            if not self.members.can_save_kifu(member):
+                raise MemberError(403, "新規保存には有効な会員権限が必要です。")
             setting = db.execute("SELECT auto_save FROM member_kifu_settings WHERE member_id = ?", (owner,)).fetchone()
             if not setting or not setting["auto_save"]:
                 return None
@@ -138,9 +141,12 @@ class MemberKifuStore:
                 return None
             if seat not in ("A", "B", "C", "D") or payload.get("winner") not in ("A", "B", "C", "D"):
                 raise MemberError(409, "棋譜は終局後に保存できます")
-            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= self.LIMIT:
+            limit = self.LIMIT if member["paid_active"] else int(
+                getattr(self.members, "FREE_KIFU_LIMIT", self.FREE_LIMIT)
+            )
+            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= limit:
                 db.execute("UPDATE member_kifu_settings SET auto_save = 0 WHERE member_id = ?", (owner,))
-                return {"status": "limit", "member_id": owner}
+                return {"status": "limit", "member_id": owner, "limit": limit}
             saved = dict(payload, my_seat=seat, anonymous=False)
             now = datetime.now(timezone.utc)
             tags = automatic_hand_tags(saved, seat)

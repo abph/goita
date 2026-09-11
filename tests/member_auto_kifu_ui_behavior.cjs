@@ -11,7 +11,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   const listeners = {};
   const root = {innerHTML: '', querySelector: () => status, querySelectorAll: () => [],
     addEventListener: (name, fn) => {listeners[name] = fn;}};
-  let member = {member_id: 'qa-auto', paid_active: true, must_change_password: false, auto_save_kifu: false};
+  let member = {member_id: 'qa-auto', paid_active: true, can_save_kifu: true, kifu_limit: 1000, must_change_password: false, auto_save_kifu: false};
   let invalidations = 0, fail = false, lastRequest;
   const context = vm.createContext({
     document: {querySelectorAll: s => s === '[data-member-panel]' ? [root] : [],
@@ -50,6 +50,9 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(autoSave.checked, false);
   assert.equal(notice.hidden, false);
   assert.match(notice.textContent, /1000/);
+  member = {...member, paid_active: false, can_save_kifu: true, kifu_limit: 20, auto_save_kifu: true};
+  context.goitaMembers.automaticKifuResult({member_id: member.member_id, status: 'limit', limit: 20});
+  assert.match(notice.textContent, /20/);
   member = null;
   await context.goitaMembers.refresh();
   assert.equal(notice.hidden, true);

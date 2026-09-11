@@ -38,7 +38,12 @@ def test_auto_settings_off_by_default_and_authorized_api(library):
     assert MemberStore(members.path).kifu_auto_save(token) is True
     assert members.kifu_auto_save(other) is False
     members.update("alice", enabled=True, paid_enabled=False, paid_until=None)
-    assert client.post(url, json={"enabled": True}).status_code == 403
+    members.kifu_auto_save(token, False)
+    response = client.post(url, json={"enabled": True})
+    assert response.status_code == 200
+    assert response.json()["member"]["auto_save_kifu"] is True
+    assert response.json()["member"]["can_save_kifu"] is True
+    assert members.kifu_auto_save(token) is True
     assert client.post(url, json={"enabled": False}).status_code == 200
     members.logout(token)
     assert client.post(url, json={"enabled": True}).status_code == 401
@@ -71,6 +76,19 @@ def test_seated_connected_opted_in_named_seat_and_dedup(library):
     store.access(token, record["id"], action="delete")
     assert save_connected_round(store, game, connections) == []
     assert store.list(token) == []
+
+
+def test_free_member_auto_save_uses_twenty_record_limit(library):
+    store, members, token, other, client, game = library
+    _, free_token, _ = members.register("free-auto", "free-auto-password-2026", "testclient")
+    members.kifu_auto_save(free_token, True)
+    payload = {"winner": "A", "gained_score": 20}
+    for index in range(20):
+        result = store.save_automatic(free_token, round_id=f"free-{index}", seat="A", payload=payload)
+        assert result["status"] == "saved"
+    result = store.save_automatic(free_token, round_id="free-overflow", seat="A", payload=payload)
+    assert result == {"status": "limit", "member_id": "free-auto", "limit": 20}
+    assert members.kifu_auto_save(free_token) is False
 
 
 @pytest.mark.parametrize("hand, expected", [

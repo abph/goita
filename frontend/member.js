@@ -63,10 +63,6 @@
       let body;
       if (!member) {
         body = `<h4>${label("会員ログイン")}</h4>
-          <p class="member-help"><strong>${label("無料会員と支援者向けの会員機能です。")}</strong><br>
-          ${label("無料登録でも、棋譜を20局まで自分専用のライブラリに保存できます。")}<br>
-          ${label("有料会員になると、公開部屋でも全スタンプを使用できます。")}</p>
-          <p class="member-help"><a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援について")}</a></p>
           <form data-action="login">
           <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
           <label>${label("パスワード")}<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
@@ -74,7 +70,7 @@
         </form>
         <details class="member-register-details">
           <summary>${label("無料会員に登録")}</summary>
-          <p class="member-help">${label("無料会員は棋譜を20局まで保存できます。")}</p>
+          <p class="member-help">${label("無料会員は棋譜を20局まで自分専用のライブラリに保存できます。自動保存の設定があります。")}</p>
           <form data-action="register">
             <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
             <label>${label("パスワード")}<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
@@ -91,11 +87,10 @@
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
           <dt>${label("利用開始日")}</dt><dd>${escape(memberStartDate(member.created_at))} (JST)</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
-          <dt>${label("棋譜保存")}</dt><dd>${member.kifu_limit > 0 ? `${member.kifu_count} / ${member.kifu_limit}局` : label("新規保存不可")}</dd>
           ${member.research_enabled ? `<dt>${label("プラン")}</dt><dd>${label("研究用プラン")}</dd>` : ""}
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
-        <p class="member-help">${label("解約は以下のリンクからできます")}<br>
+        <p class="member-help">${label("支援・解約は以下のリンクからできます")}<br>
           <a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援・解約のご案内")}</a></p>
         <details><summary>${label("パスワード変更")}</summary>${passwordForm(false)}</details>
         <div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
@@ -113,7 +108,7 @@
     });
     const autoSave = document.getElementById("researchKifuAutoSave");
     autoSave.checked = !!member?.auto_save_kifu;
-    autoSave.disabled = !member || member.must_change_password || (!member.paid_active && !member.auto_save_kifu);
+    autoSave.disabled = !member || member.must_change_password || !member.can_save_kifu;
     roots.forEach(root => {
       if (member?.is_operator) root.insertAdjacentHTML("afterbegin", `<p class="member-operator-notice">${label("管理者用：一覧非表示・利用状況の記録対象外")}</p>`);
     });
@@ -304,10 +299,14 @@
     if (!member || data.member_id !== member.member_id) return;
     const messages = {
       saved: "棋譜を自動保存しました。",
-      limit: "保存上限の1000件に達したため、自動保存を停止しました。",
       unavailable: "棋譜を自動保存できませんでした。会員の有効期限を確認してください。",
       error: "棋譜を自動保存できませんでした。終局画面から手動で保存してください。",
     };
+    const limit = Number(data.limit || member.kifu_limit || 0);
+    const limitMessage = limit === 20
+      ? "保存上限の20件に達したため、自動保存を停止しました。"
+      : "保存上限の1000件に達したため、自動保存を停止しました。";
+    if (data.status === "limit") messages.limit = limitMessage;
     if (!messages[data.status]) return;
     if (data.status === "limit") { member.auto_save_kifu = false; render(); }
     if (data.status === "saved") {

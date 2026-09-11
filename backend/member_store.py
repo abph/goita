@@ -234,8 +234,8 @@ class MemberStore:
             member = self._public(self._session_row(db, token))
             if member["must_change_password"]:
                 raise MemberError(403, "先にパスワードを変更してください。")
-            if enabled is True and not member["paid_active"]:
-                raise MemberError(403, "新規保存には有効な有料権限が必要です。")
+            if enabled is True and not self.can_save_kifu(member):
+                raise MemberError(403, "新規保存には有効な会員権限が必要です。")
             if enabled is not None:
                 db.execute("INSERT INTO member_kifu_settings VALUES (?, ?) ON CONFLICT(member_id) DO UPDATE SET auto_save = excluded.auto_save",
                            (member["member_id"], int(enabled)))

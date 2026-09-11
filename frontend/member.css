@@ -46,6 +46,7 @@
   background: #fff; color: #20242a; font: inherit; font-size: 16px;
 }
 .member-panel button { width: auto; padding: 7px 12px; font-size: 13px; }
+.member-panel .research-kifu-item button { min-height: 28px; padding: 4px 7px; font-size: 11px; }
 .member-panel .member-primary { background: #176b57; color: #fff; border: 1px solid #176b57; }
 .member-panel .member-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .member-panel .member-info { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; margin: 0 0 20px; }

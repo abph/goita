@@ -27,8 +27,8 @@ start enabled with no paid or research permissions, and can save up to 20
 records in their personal library. Public registration accepts member IDs of
 5-32 characters; administrator-issued IDs retain the 4-32 character rule.
 Active paid members can use all stamps in
-public rooms and save up to 1,000 records. Automatic kifu saving remains a
-paid-member feature. My Page opens from the menu with Account and Kifu Library
+public rooms and save up to 1,000 records. Free members can also opt in to
+automatic kifu saving within their 20-record limit. My Page opens from the menu with Account and Kifu Library
 tabs. See `docs/member-kifu-library.md` for storage and access details.
 The lobby retains four stamps, and private/debug rooms retain all stamps.
 Public-room stamp requests validate current server-side membership, including
