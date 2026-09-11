@@ -292,6 +292,8 @@ class MemberStore:
 
     def register(self, member_id, password, source_key=""):
         member_id = normalize_member_id(member_id)
+        if len(member_id) < 5:
+            raise MemberError(400, "会員IDは5文字以上で入力してください。")
         validate_password(password)
         self._registration_attempt(source_key)
         encoded = hash_password(password)

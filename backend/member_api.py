@@ -38,9 +38,15 @@ class PrivateRoute(APIRoute):
                 response = JSONResponse({"detail": str(error)}, status_code=error.status)
             except HTTPException as error:
                 response = JSONResponse({"detail": error.detail}, status_code=error.status_code)
-            except RequestValidationError:
+            except RequestValidationError as error:
                 # Do not echo rejected credential fields in validation responses.
-                response = JSONResponse({"detail": "入力内容を確認してください。"}, status_code=422)
+                detail = "入力内容を確認してください。"
+                if request.url.path == "/api/member/register" and any(
+                    tuple(item.get("loc", ())[-1:]) == ("member_id",) and item.get("type") == "string_too_short"
+                    for item in error.errors()
+                ):
+                    detail = "会員IDは5文字以上で入力してください。"
+                response = JSONResponse({"detail": detail}, status_code=422)
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
             return response
@@ -58,7 +64,7 @@ class LoginInput(MemberInput):
 
 
 class RegisterInput(MemberInput):
-    member_id: str = Field(min_length=4, max_length=32)
+    member_id: str = Field(min_length=5, max_length=32)
     password: str = Field(min_length=8, max_length=128)
     confirm_password: str = Field(min_length=8, max_length=128)
 

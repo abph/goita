@@ -209,6 +209,10 @@
         delete body.confirm_password;
         delete body.username;
       }
+      if (action === "register" && String(body.member_id || "").trim().length < 5) {
+        status(t("会員IDは5文字以上で入力してください。"));
+        return;
+      }
     }
     busy = true;
     ++revision;

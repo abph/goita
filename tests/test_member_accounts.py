@@ -329,6 +329,17 @@ def test_public_registration_creates_free_account_and_logs_in(client, store):
     assert mismatch.status_code == 400
 
 
+def test_public_registration_requires_five_character_member_id(client, store):
+    response = client.post("/api/member/register", json={
+        "member_id": "abcd",
+        "password": PASSWORD,
+        "confirm_password": PASSWORD,
+    })
+    assert response.status_code == 422
+    assert response.json()["detail"] == "会員IDは5文字以上で入力してください。"
+    assert store.list_members() == []
+
+
 def test_public_registration_cannot_assign_admin_fields(client, store):
     response = client.post("/api/member/register", json={
         "member_id": "new-player",

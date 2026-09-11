@@ -69,6 +69,7 @@
     "マイページ": "My Page",
     "会員ログイン": "Member Login",
     "会員ID": "Member ID",
+    "会員IDは5文字以上で入力してください。": "The member ID must be at least 5 characters.",
     "パスワード": "Password",
     "仮パスワード": "Temporary Password",
     "現在のパスワード": "Current Password",

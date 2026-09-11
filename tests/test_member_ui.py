@@ -13,8 +13,8 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260911a"' in html
-    assert 'href="/static/member.css?v=20260908a"' in html
+    assert 'src="/static/member.js?v=20260911b"' in html
+    assert 'href="/static/member.css?v=20260911b"' in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():
@@ -92,6 +92,8 @@ def test_member_ui_offers_free_registration_and_quota():
     assert "canSaveKifu" in script
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert 'id="researchKifuQuota"' in html
+    assert "会員IDは5文字以上で入力してください。" in script
+    assert "length < 5" in script
 
 
 def test_member_page_hides_limit_and_reissue_notices():

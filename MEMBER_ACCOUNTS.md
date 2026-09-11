@@ -24,7 +24,9 @@ access logs are not removed by this setting.
 Members can be issued by an administrator or create a free account from the
 login panel. Self-registered accounts choose their password immediately,
 start enabled with no paid or research permissions, and can save up to 20
-records in their personal library. Active paid members can use all stamps in
+records in their personal library. Public registration accepts member IDs of
+5-32 characters; administrator-issued IDs retain the 4-32 character rule.
+Active paid members can use all stamps in
 public rooms and save up to 1,000 records. Automatic kifu saving remains a
 paid-member feature. My Page opens from the menu with Account and Kifu Library
 tabs. See `docs/member-kifu-library.md` for storage and access details.
