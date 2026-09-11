@@ -33,6 +33,7 @@ def automatic_hand_tags(payload, seat):
 
 class MemberKifuStore:
     LIMIT = 1000
+    FREE_LIMIT = 20
 
     def __init__(self, members):
         self.members = members
@@ -105,19 +106,25 @@ class MemberKifuStore:
     def save_many(self, token, records):
         """Save the complete import in one transaction, including capacity checks."""
         with self.members._db(write=True) as db:
-            owner = self._owner(db, token, paid=True)
-            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] + len(records) > self.LIMIT:
-                raise MemberError(409, "保存上限の1000件に達しました。不要な棋譜を削除してください。")
+            member_id = self._owner(db, token)
+            member = self.members._public(self.members._session_row(db, token))
+            if not self.members.can_save_kifu(member):
+                raise MemberError(403, "新規保存には有効な会員権限が必要です。")
+            limit = self.LIMIT if member["paid_active"] else int(
+                getattr(self.members, "FREE_KIFU_LIMIT", self.FREE_LIMIT)
+            )
+            if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (member_id,)).fetchone()[0] + len(records) > limit:
+                raise MemberError(409, f"保存上限の{limit}件に達しました。不要な棋譜を削除してください。")
             saved = []
             now = datetime.now(timezone.utc)
             for index, record in enumerate(records):
                 record_id = "K-" + secrets.token_hex(16)
                 created = (now - timedelta(microseconds=index)).isoformat(timespec="microseconds")
                 db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
-                    record_id, owner, created, record["title"], record["memo"],
+                    record_id, member_id, created, record["title"], record["memo"],
                     json.dumps(record["tags"], ensure_ascii=False), json.dumps(record["payload"], ensure_ascii=False),
                 ))
-                saved.append(self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, owner)).fetchone()))
+                saved.append(self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, member_id)).fetchone()))
             return saved
 
     def save_automatic(self, token, *, round_id, seat, payload):

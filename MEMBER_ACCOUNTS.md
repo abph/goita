@@ -21,10 +21,13 @@ events. The My Page notice identifies this mode. Ordinary login expiry remains
 longer identify an operator. Past analytics, pre-login activity and infrastructure
 access logs are not removed by this setting.
 
-Members are manually issued and change their temporary password on first login.
-My Page opens from the menu with Account and Kifu Library tabs. Active paid
-members can use all stamps in public rooms and save records to their personal
-library. See `docs/member-kifu-library.md` for storage and access details.
+Members can be issued by an administrator or create a free account from the
+login panel. Self-registered accounts choose their password immediately,
+start enabled with no paid or research permissions, and can save up to 20
+records in their personal library. Active paid members can use all stamps in
+public rooms and save up to 1,000 records. Automatic kifu saving remains a
+paid-member feature. My Page opens from the menu with Account and Kifu Library
+tabs. See `docs/member-kifu-library.md` for storage and access details.
 The lobby retains four stamps, and private/debug rooms retain all stamps.
 Public-room stamp requests validate current server-side membership, including
 expiry, suspension, password reset and account deletion, on every send.
@@ -60,6 +63,13 @@ expiry, suspension, password reset and account deletion, on every send.
    an 8-128 character password. The initial session can only change passwords
    or log out; it cannot access `/api/member/me` or paid authorization.
 
+Self-registered accounts appear in the same 会員管理 list with `自己登録`,
+their free/paid status, the current kifu count and the applicable limit. Use
+the list filter to review free accounts, paid accounts, self-registered
+accounts or suspended accounts. New free accounts do not require approval;
+disable an account when necessary, then use the existing reset or delete
+actions. Granting paid or research access remains an administrator action.
+
 Remembered sessions last 30 days, with up to 10 devices per member. Changing
 the password invalidates all existing sessions and issues one new session for
 the current device. A reset invalidates all sessions and the old password.
@@ -87,9 +97,10 @@ written to browser storage, analytics, game objects, or logs by these modules.
 
 Login and password-change attempts share per-member throttling (5 attempts
 per 15 minutes, cleared on successful verification) and a global 10/minute
-budget. Short-lived HMAC-keyed counters survive process restarts and are
-purged as new attempts arrive. They contain no raw IP addresses. These limits
-are deliberately conservative for a small manually managed membership.
+budget. Registration uses a separate global 20/minute budget and a per-source
+5/15-minute budget. Short-lived HMAC-keyed counters survive process restarts
+and are purged as new attempts arrive. They contain no raw IP addresses.
+These limits are deliberately conservative for a small membership.
 
 Store the database outside version control and public static directories.
 Use SQLite's backup API for backups of a running service, and protect backups

@@ -57,6 +57,12 @@ class LoginInput(MemberInput):
     password: str = Field(min_length=1, max_length=128)
 
 
+class RegisterInput(MemberInput):
+    member_id: str = Field(min_length=4, max_length=32)
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
 class PasswordInput(MemberInput):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
@@ -95,6 +101,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
             raise MemberError(400, "割り当てるプライベートルームを選択してください。")
 
     def with_settings(member, value):
+        member = store.with_usage(member)
         member["auto_save_kifu"] = False if member["must_change_password"] else store.kifu_auto_save(value)
         return member
 
@@ -122,9 +129,21 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
         set_session(request, response, value, seconds)
         return {"authenticated": True, "member": with_settings(member, value)}
 
+    @router.post("/api/member/register")
+    def register(request: Request, response: Response, data: RegisterInput):
+        if data.password != data.confirm_password:
+            raise MemberError(400, "確認用パスワードが一致しません。")
+        forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+        source_key = forwarded or (request.client.host if request.client else "unknown")
+        member, value, seconds = store.register(data.member_id, data.password, source_key)
+        # A new account is active immediately as a free member.
+        store.logout(token(request))
+        set_session(request, response, value, seconds)
+        return {"authenticated": True, "member": with_settings(member, value)}
+
     @router.get("/api/member/me")
     def me(request: Request):
-        return {"member": store.authenticate(token(request))}
+        return {"member": store.with_usage(store.authenticate(token(request)))}
 
     @router.post("/api/member/password")
     def password(request: Request, response: Response, data: PasswordInput):

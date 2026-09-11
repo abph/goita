@@ -162,6 +162,8 @@
     .persistence-warning { color: var(--danger); font-weight: 750; }
     .tabs { flex-wrap: wrap; }
     .member-admin-create { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 12px; }
+    .member-admin-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; }
+    .member-admin-toolbar label { display: grid; gap: 4px; }
     .member-admin-create .field { min-width: 0; }
     .member-admin-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; border-bottom: 1px solid var(--line); padding: 16px 0; }
     .member-admin-identity { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
@@ -295,7 +297,16 @@
         </div>
         <div id="memberAdminStatus" class="status" role="status" aria-live="polite"></div>
         <h3 class="subheading">会員一覧</h3>
-        <button id="memberRefresh" class="button" type="button">更新</button>
+        <div class="member-admin-toolbar">
+          <label>表示<select id="memberFilter">
+            <option value="all">すべて</option>
+            <option value="free">無料会員</option>
+            <option value="paid">有料会員</option>
+            <option value="self">自己登録</option>
+            <option value="disabled">停止中</option>
+          </select></label>
+          <button id="memberRefresh" class="button" type="button">更新</button>
+        </div>
         <div id="memberList"></div>
       </section>
 
@@ -1942,6 +1953,6 @@
       }
     })();
   </script>
-  <script defer src="/static/admin-members.js?v=20260906b"></script>
+  <script defer src="/static/admin-members.js?v=20260911a"></script>
 </body>
 </html>

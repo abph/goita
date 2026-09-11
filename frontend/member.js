@@ -63,23 +63,35 @@
       let body;
       if (!member) {
         body = `<h4>${label("会員ログイン")}</h4>
-          <p class="member-help"><strong>${label("支援者向けの会員機能です。")}</strong><br>
-          ${label("ログインすると、公開部屋でも全スタンプを使用でき、棋譜を自分専用のライブラリにサーバー保存できます。")}</p>
+          <p class="member-help"><strong>${label("無料会員と支援者向けの会員機能です。")}</strong><br>
+          ${label("無料登録でも、棋譜を20局まで自分専用のライブラリに保存できます。")}<br>
+          ${label("有料会員になると、公開部屋でも全スタンプを使用できます。")}</p>
           <p class="member-help"><a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援について")}</a></p>
           <form data-action="login">
           <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
           <label>${label("パスワード")}<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
           <div class="member-actions"><button class="member-primary" type="submit">${label("ログイン")}</button></div>
-        </form>`;
+        </form>
+        <details class="member-register-details">
+          <summary>${label("無料会員に登録")}</summary>
+          <p class="member-help">${label("無料会員は棋譜を20局まで保存できます。")}</p>
+          <form data-action="register">
+            <label>${label("会員ID")}<input name="member_id" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
+            <label>${label("パスワード")}<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+            <label>${label("パスワード（確認）")}<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+            <div class="member-actions"><button class="member-primary" type="submit">${label("登録して始める")}</button></div>
+          </form>
+        </details>`;
       } else if (member.must_change_password) {
         body = `<h4>${label("初回パスワード変更")}</h4><p>${label("会員ID")}：${escape(member.member_id)}</p>
           ${passwordForm(true)}<div class="member-actions"><button type="button" data-action="logout">${label("ログアウト")}</button></div>`;
       } else {
-        const plan = member.paid_active ? "有料権限：有効" : member.paid_enabled ? "有料権限：期限切れ" : "有料権限：無効";
+        const plan = member.paid_active ? "有料権限：有効" : member.paid_enabled ? "有料権限：期限切れ" : "無料会員";
         body = `<dl class="member-info">
           <dt>${label("会員ID")}</dt><dd>${escape(member.member_id)}</dd>
           <dt>${label("利用開始日")}</dt><dd>${escape(memberStartDate(member.created_at))} (JST)</dd>
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
+          <dt>${label("棋譜保存")}</dt><dd>${member.kifu_limit > 0 ? `${member.kifu_count} / ${member.kifu_limit}局` : label("新規保存不可")}</dd>
           ${member.research_enabled ? `<dt>${label("プラン")}</dt><dd>${label("研究用プラン")}</dd>` : ""}
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
         </dl>
@@ -95,7 +107,7 @@
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
-        ${member && !member.paid_active ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
+        ${member && !member.can_save_kifu ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>
         ${hasTabs && member.research_enabled ? `<div data-member-room id="${prefix}-room" role="tabpanel" aria-labelledby="${prefix}-room-tab" hidden></div>` : ""}`;
     });
@@ -126,7 +138,7 @@
     if (libraryRoot && libraryRoot !== root) selectTab(libraryRoot, "account");
     libraryRoot = root;
     selectTab(root, "library");
-    mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canUseAllStamps());
+    mountMemberKifuLibrary(root.querySelector("[data-member-library-slot]"), canSaveKifu());
     if (load) {
       resetMemberKifuDisclosures();
       resetMemberKifuLibrary();
@@ -221,7 +233,7 @@
       clearSecrets();
       busy = false;
       roots.forEach(root => root.querySelectorAll("button").forEach(button => { button.disabled = false; }));
-      if (libraryRoot) syncMemberKifuControls(canUseAllStamps());
+      if (libraryRoot) syncMemberKifuControls(canSaveKifu());
       if (pendingLibraryRefresh) {
         const options = pendingLibraryRefresh;
         pendingLibraryRefresh = null;
@@ -273,6 +285,17 @@
     if (!member || member.must_change_password || !member.paid_active) return false;
     return !member.paid_until || Date.now() < Date.parse(`${member.paid_until}T23:59:59.999+09:00`);
   }
+  function canSaveKifu() {
+    return !!member && !member.must_change_password && member.can_save_kifu === true;
+  }
+  function kifuStatus() {
+    if (!member) return null;
+    return {
+      count: Number(member.kifu_count || 0),
+      limit: Number(member.kifu_limit || 0),
+      canSave: canSaveKifu(),
+    };
+  }
   function automaticKifuResult(data) {
     if (!member || data.member_id !== member.member_id) return;
     const messages = {
@@ -293,7 +316,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, automaticKifuResult, shouldRecordAnalytics};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics};
   render();
   refresh();
 })();

@@ -79,6 +79,8 @@ def normalize_expiry(value: str | None) -> str | None:
 
 
 class MemberStore:
+    PAID_KIFU_LIMIT = 1000
+    FREE_KIFU_LIMIT = 20
     def __init__(self, path: Path, clock=time.time):
         self.path = Path(path)
         self.clock = clock
@@ -151,6 +153,10 @@ class MemberStore:
                     db.execute("ALTER TABLE members ADD COLUMN research_enabled INTEGER NOT NULL DEFAULT 0")
                 if "managed_room_id" not in columns:
                     db.execute("ALTER TABLE members ADD COLUMN managed_room_id TEXT NOT NULL DEFAULT ''")
+                if "registration_source" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN registration_source TEXT NOT NULL DEFAULT 'admin'")
+                if "last_login_at" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN last_login_at REAL")
                 db.execute("CREATE UNIQUE INDEX IF NOT EXISTS member_managed_room ON members(managed_room_id) WHERE managed_room_id <> ''")
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
@@ -185,11 +191,43 @@ class MemberStore:
             "is_operator": bool(row["is_operator"]),
             "research_enabled": bool(row["research_enabled"]),
             "managed_room_id": row["managed_room_id"],
+            "registration_source": row["registration_source"],
+            "last_login_at": row["last_login_at"],
         }
 
     def list_members(self):
         with self._db() as db:
-            return [self._public(row) for row in db.execute("SELECT * FROM members ORDER BY created_at DESC, member_id")]
+            rows = db.execute("""
+                SELECT m.*, COUNT(k.id) AS kifu_count
+                FROM members m
+                LEFT JOIN member_kifu k ON k.member_id = m.member_id
+                GROUP BY m.member_id
+                ORDER BY m.created_at DESC, m.member_id
+            """).fetchall()
+            return [self.with_usage(self._public(row), int(row["kifu_count"])) for row in rows]
+
+    def kifu_limit(self, member):
+        if member.get("paid_active"):
+            return int(self.PAID_KIFU_LIMIT)
+        if not member.get("paid_enabled"):
+            return int(self.FREE_KIFU_LIMIT)
+        return 0
+
+    def can_save_kifu(self, member):
+        return bool(member.get("paid_active") or not member.get("paid_enabled"))
+
+    def with_usage(self, member, count=None):
+        result = dict(member)
+        if count is None:
+            with self._db() as db:
+                count = db.execute(
+                    "SELECT COUNT(*) FROM member_kifu WHERE member_id = ?",
+                    (result["member_id"],),
+                ).fetchone()[0]
+        result["kifu_count"] = int(count)
+        result["kifu_limit"] = self.kifu_limit(result)
+        result["can_save_kifu"] = self.can_save_kifu(result)
+        return result
 
     def kifu_auto_save(self, token, enabled=None):
         with self._db(write=enabled is not None) as db:
@@ -222,8 +260,9 @@ class MemberStore:
             try:
                 db.execute("""INSERT INTO members
                            (member_id, password_hash, must_change_password, temporary_expires_at,
-                            enabled, paid_enabled, paid_until, created_at, updated_at, is_operator)
-                           VALUES (?, ?, 1, ?, 1, ?, ?, ?, ?, ?)""",
+                            enabled, paid_enabled, paid_until, created_at, updated_at, is_operator,
+                            registration_source, last_login_at)
+                           VALUES (?, ?, 1, ?, 1, ?, ?, ?, ?, ?, 'admin', NULL)""",
                            (member_id, encoded, now + TEMP_PASSWORD_SECONDS, int(paid_enabled), paid_until, now, now, int(is_operator)))
             except sqlite3.IntegrityError:
                 raise MemberError(409, "この会員IDは登録済みです。") from None
@@ -231,6 +270,45 @@ class MemberStore:
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
         return {"member": self._public(row), "temporary_password": temporary,
                 "temporary_expires_at": now + TEMP_PASSWORD_SECONDS}
+
+    def _registration_key(self, db, source_key):
+        secret = db.execute("SELECT value FROM member_meta WHERE key = 'throttle_secret'").fetchone()[0]
+        value = str(source_key or "unknown")[:256]
+        digest = hmac.new(secret.encode(), value.encode(), hashlib.sha256).hexdigest()
+        return "register:" + digest
+
+    def _registration_attempt(self, source_key):
+        now = self.clock()
+        with self._db(write=True) as db:
+            db.execute("DELETE FROM member_attempts WHERE expires_at <= ?", (now,))
+            limits = [("register:global", 20, 60), (self._registration_key(db, source_key), 5, 900)]
+            for key, limit, _seconds in limits:
+                row = db.execute("SELECT count FROM member_attempts WHERE key = ?", (key,)).fetchone()
+                if row and row[0] >= limit:
+                    raise MemberError(429, "登録回数が多いため、時間をおいてお試しください。")
+            for key, _limit, seconds in limits:
+                db.execute("""INSERT INTO member_attempts VALUES (?, 1, ?)
+                              ON CONFLICT(key) DO UPDATE SET count = count + 1""", (key, now + seconds))
+
+    def register(self, member_id, password, source_key=""):
+        member_id = normalize_member_id(member_id)
+        validate_password(password)
+        self._registration_attempt(source_key)
+        encoded = hash_password(password)
+        now = self.clock()
+        with self._db(write=True) as db:
+            try:
+                db.execute("""INSERT INTO members
+                           (member_id, password_hash, must_change_password, temporary_expires_at,
+                            enabled, paid_enabled, paid_until, created_at, updated_at, is_operator,
+                            registration_source, last_login_at)
+                           VALUES (?, ?, 0, NULL, 1, 0, NULL, ?, ?, 0, 'self', ?)""",
+                           (member_id, encoded, now, now, now))
+            except sqlite3.IntegrityError:
+                raise MemberError(409, "この会員IDは登録済みです。") from None
+            row = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
+            token, seconds = self._issue_session(db, row)
+        return self.with_usage(self._public(row)), token, seconds
 
     def _attempt_key(self, db, member_id):
         secret = db.execute("SELECT value FROM member_meta WHERE key = 'throttle_secret'").fetchone()[0]
@@ -269,6 +347,7 @@ class MemberStore:
     def login(self, member_id, password):
         normalized = member_id.strip().lower()
         self._attempt(normalized)
+        member_public = None
         with self._db(write=True) as db:
             row = db.execute("SELECT * FROM members WHERE member_id = ?", (normalized,)).fetchone()
             # An unknown account still pays the same password-verification cost.
@@ -279,8 +358,13 @@ class MemberStore:
             ):
                 raise MemberError(401, "会員IDまたはパスワードを確認してください。仮パスワードの期限切れは運営へお問い合わせください。")
             self._clear_attempt(db, normalized)
+            now = self.clock()
+            db.execute("UPDATE members SET last_login_at = ?, updated_at = ? WHERE member_id = ?",
+                       (now, now, normalized))
+            row = db.execute("SELECT * FROM members WHERE member_id = ?", (normalized,)).fetchone()
             token, seconds = self._issue_session(db, row)
-            return self._public(row), token, seconds
+            member_public = self._public(row)
+        return self.with_usage(member_public), token, seconds
 
     def _session_row(self, db, token):
         if not token or len(token) > 128:

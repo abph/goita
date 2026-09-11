@@ -3,9 +3,9 @@
 ## Storage and permissions
 
 - The My Page library is owned by the authenticated member, not by a room.
-- New saves and imports require active paid access and a completed initial password change.
+- Free accounts can save and import up to 20 records after registration. Active paid accounts can save and import up to 1,000 records. Both require a completed initial password change when one is pending; expired paid accounts retain existing records but cannot add new ones.
 - Reading, editing, exporting, and deleting existing records remain available after paid access expires.
-- The maximum is 1000 records per member, enforced inside the write transaction. The library does not display a limit notice until a save exceeds the limit.
+- The applicable limit is enforced inside the write transaction: 20 for free accounts and 1000 for active paid accounts. The library displays the current count and limit.
 - Records use the `member_kifu` table in the existing member database (`GOITA_MEMBER_DB_PATH`, or the member DB under `GOITA_PERSISTENT_DATA_DIR`). Keep this database on the persistent disk.
 - Deleting a member cascades to their records. Reissuing the same member ID does not restore them.
 - Library APIs require the member session cookie and same-origin custom header. A room administrator password grants no library access.

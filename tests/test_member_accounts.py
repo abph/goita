@@ -299,6 +299,47 @@ def test_full_http_flow_and_cookie_protection(client, store):
     assert client.get("/api/member/me").status_code == 401
 
 
+def test_public_registration_creates_free_account_and_logs_in(client, store):
+    response = client.post("/api/member/register", json={
+        "member_id": "new-player",
+        "password": PASSWORD,
+        "confirm_password": PASSWORD,
+    })
+    assert response.status_code == 200, response.text
+    member = response.json()["member"]
+    assert member["member_id"] == "new-player"
+    assert member["registration_source"] == "self"
+    assert member["paid_enabled"] is False
+    assert member["paid_active"] is False
+    assert member["kifu_count"] == 0
+    assert member["kifu_limit"] == 20
+    assert member["can_save_kifu"] is True
+    assert client.get("/api/member/me").status_code == 200
+    duplicate = client.post("/api/member/register", json={
+        "member_id": "new-player",
+        "password": PASSWORD,
+        "confirm_password": PASSWORD,
+    })
+    assert duplicate.status_code == 409
+    mismatch = client.post("/api/member/register", json={
+        "member_id": "another-player",
+        "password": PASSWORD,
+        "confirm_password": PASSWORD + "x",
+    })
+    assert mismatch.status_code == 400
+
+
+def test_public_registration_cannot_assign_admin_fields(client, store):
+    response = client.post("/api/member/register", json={
+        "member_id": "new-player",
+        "password": PASSWORD,
+        "confirm_password": PASSWORD,
+        "paid_enabled": True,
+    })
+    assert response.status_code == 422
+    assert store.list_members() == []
+
+
 def test_http_rejects_csrf_including_reads(client, store):
     _, token = ready(store)
     client.cookies.set(MEMBER_COOKIE, token)

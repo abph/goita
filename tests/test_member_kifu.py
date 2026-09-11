@@ -118,6 +118,17 @@ def test_round_trip_owner_and_other_device(library):
     assert client.post(url).status_code == 404
 
 
+def test_free_member_can_save_twenty_records(library):
+    store, members, token, other, client, game = library
+    _, free_token, _ = members.register("free-player", "free-password-2026", "testclient")
+    for index in range(20):
+        store.save(free_token, title=f"Free {index}", memo="", tags=[], payload={})
+    with pytest.raises(MemberError) as error:
+        store.save(free_token, title="Overflow", memo="", tags=[], payload={})
+    assert error.value.status == 409
+    assert "20件" in str(error.value)
+
+
 @pytest.mark.parametrize("suffix,body", [("", {}), ("/edit", {"title": "stolen"}), ("/delete", {})])
 def test_other_member_cannot_access_record(library, suffix, body):
     store, members, token, other, client, game = library

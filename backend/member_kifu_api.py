@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
 
 from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute
+from backend.member_store import MemberError
 from backend.kifu_import import parse_kifu_rounds
 from backend.research_kifu_store import RESEARCH_KIFU_TAGS, normalize_research_kifu_tags
 
@@ -63,13 +64,26 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def token(request):
         return request.cookies.get(MEMBER_COOKIE, "")
 
+    def require_kifu_save(request):
+        member = store.members.authenticate(token(request))
+        if not store.members.can_save_kifu(member):
+            raise MemberError(403, "新規保存には有効な会員権限が必要です。")
+        return member
+
     @router.post("/list")
     def list_records(request: Request):
-        return {"records": store.list(token(request)), "persistent": persistent, "limit": store.LIMIT}
+        member = store.members.authenticate(token(request))
+        return {
+            "records": store.list(token(request)),
+            "persistent": persistent,
+            "limit": store.LIMIT if member["paid_active"] else int(
+                getattr(store.members, "FREE_KIFU_LIMIT", store.FREE_LIMIT)
+            ),
+        }
 
     @router.post("/save")
     def save(request: Request, data: SaveInput):
-        store.members.authenticate(token(request), require_paid=True)
+        require_kifu_save(request)
         payload = snapshot(request, data.game_id, data.anonymous)
         payload["my_seat"] = data.my_seat or ""
         record = store.save(token(request), title=data.title.strip() or f"第{payload.get('round_index', 1)}局",
@@ -78,7 +92,7 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
 
     @router.post("/import")
     def import_record(request: Request, data: ImportInput):
-        store.members.authenticate(token(request), require_paid=True)
+        require_kifu_save(request)
         try:
             payloads = parse_kifu_rounds(data.kifu_text, parse)
         except ValueError as error:

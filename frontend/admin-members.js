@@ -7,6 +7,7 @@
   let generation = 0;
   let rooms = [];
   let members = [];
+  const filter = document.getElementById("memberFilter");
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[c]);
@@ -47,17 +48,27 @@
       `会員ID: ${id}\n仮パスワード: ${data.temporary_password}\n有効期限: ${expiry} (JST)`;
   }
 
-  async function load() {
-    try {
-      const data = await request();
-      rooms = data.rooms || [];
-      members = data.members;
-      document.querySelector('#memberCreateForm [name="managed_room_id"]').innerHTML = roomOptions();
-      document.getElementById("memberPersistence").textContent = data.persistent
-        ? "会員情報の永続保存：有効" : "会員情報はローカル保存です。本番環境では永続保存先を設定してください。";
-      list.innerHTML = data.members.length ? data.members.map(member => `<form class="member-admin-row" data-id="${esc(member.member_id)}">
+  function dateLabel(value) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "未ログイン";
+    return new Date(value * 1000).toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"});
+  }
+
+  function matchesFilter(member) {
+    switch (filter?.value || "all") {
+      case "free": return !member.paid_enabled;
+      case "paid": return member.paid_active;
+      case "self": return member.registration_source === "self";
+      case "disabled": return !member.enabled;
+      default: return true;
+    }
+  }
+
+  function renderMembers() {
+    const visible = members.filter(matchesFilter);
+    list.innerHTML = visible.length ? visible.map(member => `<form class="member-admin-row" data-id="${esc(member.member_id)}">
         <div class="member-admin-identity"><strong>${esc(member.member_id)}</strong>
-          <span class="muted">${member.must_change_password ? "初回変更待ち" : "登録済み"} / ${member.paid_active ? "有料権限：有効" : "有料権限：無効・期限切れ"}</span></div>
+          <span class="muted">${member.enabled ? (member.must_change_password ? "初回変更待ち" : "有効") : "停止中"} / ${member.paid_active ? "有料会員" : member.paid_enabled ? "有料期限切れ" : "無料会員"} / ${member.registration_source === "self" ? "自己登録" : "管理者発行"}</span>
+          <span class="muted">棋譜 ${Number(member.kifu_count || 0)} / ${member.kifu_limit > 0 ? Number(member.kifu_limit) : "保存不可"}局 ・ 最終ログイン：${esc(dateLabel(member.last_login_at))}</span></div>
         <label class="member-admin-check"><input type="checkbox" name="enabled" ${member.enabled ? "checked" : ""}>ログイン可</label>
         <label class="member-admin-check"><input type="checkbox" name="paid_enabled" ${member.paid_enabled ? "checked" : ""}>有料権限</label>
         <label class="member-admin-check"><input type="checkbox" name="research_enabled" ${member.research_enabled ? "checked" : ""}>研究用プラン</label>
@@ -67,7 +78,18 @@
         <div class="member-admin-actions"><button class="button" type="submit">保存</button>
           <button class="button" type="button" data-reset>仮パスワード再発行</button>
           <button class="button" type="button" data-delete>削除</button></div>
-      </form>`).join("") : '<p class="muted">会員はまだ登録されていません。</p>';
+      </form>`).join("") : '<p class="muted">該当する会員はいません。</p>';
+  }
+
+  async function load() {
+    try {
+      const data = await request();
+      rooms = data.rooms || [];
+      members = data.members;
+      document.querySelector('#memberCreateForm [name="managed_room_id"]').innerHTML = roomOptions();
+      document.getElementById("memberPersistence").textContent = data.persistent
+        ? "会員情報の永続保存：有効" : "会員情報はローカル保存です。本番環境では永続保存先を設定してください。";
+      renderMembers();
     } catch (error) { status.textContent = error.message; }
   }
 
@@ -148,6 +170,7 @@
     }
   });
   document.getElementById("memberRefresh").addEventListener("click", () => { hideCredential(); load(); });
+  filter?.addEventListener("change", renderMembers);
   function clear() {
     ++generation;
     hideCredential();
