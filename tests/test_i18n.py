@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260911b"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260911b"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260912a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260912a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -186,6 +186,62 @@ def test_research_kifu_tags_are_translated() -> None:
         assert source in english
 
 
+def test_score_attack_ui_is_translated() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+    score_scripts = "\n".join(
+        (ROOT / "frontend" / name).read_text(encoding="utf-8")
+        for name in ["score-rankings.js", "score-rooms.js", "kifu-files.js", "trace-results.js"]
+    )
+
+    for source in [
+        "スコアアタック",
+        "スコアアタックに挑戦する",
+        "ランキングを見る",
+        "棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。",
+        "スコアアタック開始",
+        "挑戦履歴・ランキング",
+        "スコアアタックのランキング",
+        "スコアアタックの結果",
+        "元の対局",
+        "元々の棋譜を見る",
+        "この棋譜のランキング",
+        "スコアアタックの挑戦履歴・ランキング",
+        "元々の棋譜を見る：結果に戻る",
+    ]:
+        assert source in html
+        assert source in chinese
+        assert source in english
+
+    for source in [
+        "結果を見る",
+        "結果を読み込んでいます。",
+        "元の棋譜を読み込んでいます。",
+        "スコアアタックを開始しました。",
+        "スコアアタックの棋譜を選んでいます。",
+        "スコアアタックのルームで開いてください。",
+    ]:
+        assert source in score_scripts
+        assert source in chinese
+        assert source in english
+
+    for source in [
+        "スコアアタック終了。元棋譜との差　AC：",
+        "元の対局との差　",
+        "（日本時間）",
+        "（★は自己ベスト）",
+        "（ゲスト）",
+        "（自分）",
+        "回目",
+        "位",
+        "局",
+        "点",
+    ]:
+        assert source in chinese
+        assert source in english
+
+
 if __name__ == "__main__":
     test_language_switcher_and_translation_runtime_are_loaded()
     test_dynamic_ui_and_ai_help_follow_selected_language()
@@ -193,4 +249,5 @@ if __name__ == "__main__":
     test_hand_reveal_confirmation_is_translated()
     test_lobby_certification_and_hand_limit_are_translated()
     test_research_kifu_tags_are_translated()
+    test_score_attack_ui_is_translated()
     print("I18N_TEST_OK")
