@@ -30,6 +30,7 @@ def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_tr
     assert result["ok"] is True
     game = debug_trace = game_app.GAMES[game_app.DEBUG_GID]
     assert game["trace_mode"] is True
+    assert game["trace_analysis_enabled"] is True
     assert game["trace_original_round"] == 3
     assert game["human_seats"] == {"A": "owner"}
     assert game["ai_seats"] == ["B", "C", "D"]
@@ -45,14 +46,16 @@ def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_tr
     result = game_app._apply_agent_turn(game, "C")
     assert result["status"] == "ok"
     assert game["trace_move_index"] == 1
-    assert game["log"][-1].endswith("[TRACE]")
+    assert "[TRACE]" in game["log"][-1]
+    assert "TRACE-ANALYSIS:C" in game["log"][-1]
     # The imported format omits D/A's passes before B's next recorded move.
     # They must be replayed by the live engine to keep the trace cursor aligned.
     assert game["state"].turn == "D"
     result = game_app._apply_agent_turn(game, "D")
     assert result["status"] == "ok"
     assert game["trace_move_index"] == 2
-    assert game["log"][-1].endswith("[TRACE]")
+    assert "[TRACE]" in game["log"][-1]
+    assert "TRACE-ANALYSIS:D" in game["log"][-1]
     assert game["state"].turn == "A"
 
 
@@ -156,3 +159,55 @@ def test_trace_still_diverges_when_human_public_receive_differs():
         allow_hidden_block_variation=True,
     ) is None
     assert game["trace_diverged"] is True
+
+
+def test_trace_shadow_analysis_compares_forced_move_without_mutating_live_agent():
+    state = game_app.GoitaState(
+        hands={
+            "A": ["1", "1", "2", "3", "4", "4", "7", "8"],
+            "B": ["1", "1", "1", "3", "5", "5", "6", "9"],
+            "C": ["1", "1", "2", "2", "4", "5", "5", "6"],
+            "D": ["1", "1", "1", "2", "3", "3", "4", "7"],
+        },
+        dealer="C",
+    )
+
+    class FakeAgent:
+        def __init__(self):
+            self._track = {id(state): {"marker": "live"}}
+            self._my_initial_hands_by_state_id = {id(state): ["1"]}
+            self.last_decision_reason = "live-reason"
+            self.last_score_fallback_detail = ""
+            self.last_attack_candidate_snapshot = {}
+
+        def select_action(self, shadow_state, player, actions):
+            assert id(shadow_state) in self._track
+            self.last_decision_reason = "shadow-reason"
+            self.last_score_fallback_detail = "shadow-detail"
+            self.last_attack_candidate_snapshot = {
+                "chosen": {"attack": "5", "score": 12.5},
+                "alternatives": [{"attack": "4", "score": 8.0}],
+            }
+            return actions[0]
+
+        def cancel_background_search(self):
+            return None
+
+    agent = FakeAgent()
+    state.current_attack = "1"
+    state.attacker = "D"
+    state.phase = "receive"
+    state.turn = "C"
+    source = ("pass", None, None)
+    analysis = game_app._analyze_trace_action(agent, state, "C", source)
+
+    assert analysis["source_action"] == source
+    assert analysis["ai_action"] == state.legal_actions("C")[0]
+    assert analysis["match"] is True
+    assert analysis["reason"] == "shadow-reason"
+    assert analysis["candidates"] == "第一候補=金(12.5), 代替=銀(8.0)"
+    assert agent.last_decision_reason == "live-reason"
+    formatted = game_app._format_trace_analysis(analysis, "C")
+    assert "TRACE-ANALYSIS:C" in formatted
+    assert "元棋譜=パス" in formatted
+    assert "現AI候補=パス" in formatted

@@ -6255,7 +6255,8 @@ function gameLogUiLabels(language) {
             turn: "Turn", event: "Game", decision: "Decision",
             receiveDecision: "Receive", attackDecision: "Attack",
             blockDecision: "Hidden piece", passDecision: "Pass",
-            candidates: "Candidates", time: "Thinking time", empty: "No log entries yet.",
+            candidates: "Candidates", traceAnalysis: "Trace analysis",
+            time: "Thinking time", empty: "No log entries yet.",
         };
     }
     if(language === "zh") {
@@ -6264,7 +6265,8 @@ function gameLogUiLabels(language) {
             turn: "回合", event: "对局", decision: "判断",
             receiveDecision: "防守判断", attackDecision: "进攻判断",
             blockDecision: "暗置判断", passDecision: "跳过判断",
-            candidates: "候选比较", time: "思考时间", empty: "暂无日志。",
+            candidates: "候选比较", traceAnalysis: "轨迹分析",
+            time: "思考时间", empty: "暂无日志。",
         };
     }
     return {
@@ -6272,7 +6274,8 @@ function gameLogUiLabels(language) {
         turn: "手番", event: "対局", decision: "判断",
         receiveDecision: "受け判断", attackDecision: "攻め判断",
         blockDecision: "伏せ判断", passDecision: "パス判断",
-        candidates: "候補比較", time: "思考時間", empty: "ログはまだありません。",
+        candidates: "候補比較", traceAnalysis: "トレース分析",
+        time: "思考時間", empty: "ログはまだありません。",
     };
 }
 
@@ -6291,6 +6294,7 @@ function stripGameLogTechnicalDetails(entry) {
     return String(entry ?? "")
         .replace(/\s*\[AI:[^\]]+\]/g, "")
         .replace(/\s*\[AI-CANDIDATES:[^\]]+\]/g, "")
+        .replace(/\s*\[TRACE-ANALYSIS:[^\]]+\]/g, "")
         .replace(/\s*\[PERF\(ms\):[^\]]+\]/g, "")
         .trimEnd();
 }
@@ -6367,6 +6371,9 @@ function gameLogThoughtRows(entry, language) {
     for(const match of source.matchAll(/\[AI-CANDIDATES:([^\]]+)\]/g)) {
         const value = localizeGameLogAttackCandidates(match[1], language, meta.candidateKind);
         if(value) rows.push({label: labels.candidates, value: trimGameLogDecoration(value)});
+    }
+    for(const match of source.matchAll(/\[TRACE-ANALYSIS:([^\]]+)\]/g)) {
+        rows.push({label: labels.traceAnalysis, value: trimGameLogDecoration(match[1])});
     }
     for(const match of source.matchAll(/\[PERF\(ms\):([^\]]+)\]/g)) {
         rows.push({label: labels.time, value: trimGameLogDecoration(localizeGameLogPerformance(match[1], language))});

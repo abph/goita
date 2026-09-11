@@ -2484,6 +2484,159 @@ def _format_ai_attack_candidates(agent: Any) -> str:
     return f" [AI-CANDIDATES:{payload}]"
 
 
+def _trace_piece_label(piece: Optional[str]) -> str:
+    if piece is None:
+        return ""
+    return str(PIECE_KANJI.get(str(piece), piece))
+
+
+def _trace_action_label(
+    action: Optional[Tuple[str, Optional[str], Optional[str]]],
+    *,
+    hide_block: bool = True,
+) -> str:
+    """Return a compact, user-facing label for a trace comparison."""
+    if action is None:
+        return "不明"
+    action_type, block, attack = action
+    if action_type == "pass":
+        return "パス"
+    if action_type == "receive":
+        return f"{_trace_piece_label(block)}で受ける"
+    if action_type == "attack":
+        return f"{_trace_piece_label(attack)}で攻める"
+    if action_type == "attack_after_block":
+        if hide_block:
+            return f"伏せて{_trace_piece_label(attack)}で攻める"
+        return f"{_trace_piece_label(block)}を伏せて{_trace_piece_label(attack)}で攻める"
+    return f"{action_type}({_trace_piece_label(block)},{_trace_piece_label(attack)})"
+
+
+def _trace_analysis_candidate_labels(agent: Any) -> str:
+    """Format the shadow decision's attack candidates without exposing blocks."""
+    snapshot = getattr(agent, "last_attack_candidate_snapshot", None)
+    if not isinstance(snapshot, dict):
+        return ""
+    entries = []
+    chosen = snapshot.get("chosen")
+    if isinstance(chosen, dict) and chosen.get("attack") is not None:
+        score = chosen.get("score")
+        entries.append(
+            f"第一候補={_trace_piece_label(chosen.get('attack'))}"
+            + (f"({score})" if score is not None else "")
+        )
+    alternatives = snapshot.get("alternatives")
+    if isinstance(alternatives, list):
+        for item in alternatives:
+            if not isinstance(item, dict) or item.get("attack") is None:
+                continue
+            score = item.get("score")
+            entries.append(
+                f"代替={_trace_piece_label(item.get('attack'))}"
+                + (f"({score})" if score is not None else "")
+            )
+    return ", ".join(entries[:4])
+
+
+def _trace_legal_candidate_labels(
+    actions: List[Tuple[str, Optional[str], Optional[str]]],
+) -> str:
+    labels = []
+    for action in actions:
+        label = _trace_action_label(action)
+        if label not in labels:
+            labels.append(label)
+    return ", ".join(labels[:8])
+
+
+def _analyze_trace_action(
+    agent: Any,
+    state: GoitaState,
+    player: str,
+    trace_action: Tuple[str, Optional[str], Optional[str]],
+) -> Optional[Dict[str, Any]]:
+    """Evaluate a forced trace action on an isolated state and agent copy."""
+    started = time.perf_counter()
+    shadow_state = None
+    shadow_agent = None
+    try:
+        shadow_state = copy.deepcopy(state)
+        shadow_agent = copy.deepcopy(agent)
+        source_state_id = id(state)
+        shadow_state_id = id(shadow_state)
+        # These stores are keyed by ``id(state)``.  Remap them in the copy so
+        # an already installed attack plan remains part of the comparison.
+        for attribute in (
+            "_track",
+            "_my_initial_hands_by_state_id",
+            "_active_branched_attack_plans",
+        ):
+            value = getattr(shadow_agent, attribute, None)
+            if not isinstance(value, dict):
+                continue
+            if source_state_id in value:
+                value[shadow_state_id] = value.pop(source_state_id)
+        legal_actions = shadow_state.legal_actions(player)
+        selected = shadow_agent.select_action(shadow_state, player, legal_actions)
+        reason = str(getattr(shadow_agent, "last_decision_reason", "") or "").strip()
+        detail = str(getattr(shadow_agent, "last_score_fallback_detail", "") or "").strip()
+        candidates = _trace_analysis_candidate_labels(shadow_agent)
+        if not candidates:
+            candidates = _trace_legal_candidate_labels(legal_actions)
+        return {
+            "source_action": tuple(trace_action),
+            "ai_action": tuple(selected),
+            "match": tuple(selected) == tuple(trace_action),
+            "reason": reason,
+            "detail": detail,
+            "candidates": candidates,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+        }
+    except Exception as error:
+        LOGGER.warning("Trace shadow analysis failed for %s: %s", player, error)
+        return {
+            "source_action": tuple(trace_action),
+            "ai_action": None,
+            "match": None,
+            "reason": "分析失敗",
+            "detail": type(error).__name__,
+            "candidates": "",
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+        }
+    finally:
+        if shadow_agent is not None:
+            cancel = getattr(shadow_agent, "cancel_background_search", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception:
+                    pass
+
+
+def _format_trace_analysis(analysis: Optional[Dict[str, Any]], player: str) -> str:
+    if not isinstance(analysis, dict):
+        return ""
+    source = _trace_action_label(analysis.get("source_action"))
+    selected = _trace_action_label(analysis.get("ai_action"))
+    match = analysis.get("match")
+    match_label = "一致" if match is True else "不一致" if match is False else "判定不能"
+    reason = str(analysis.get("reason") or "理由なし")
+    detail = str(analysis.get("detail") or "")
+    candidates = str(analysis.get("candidates") or "")
+    parts = [
+        f" [TRACE-ANALYSIS:{player} 元棋譜={source} / 現AI候補={selected} / {match_label} / 理由={reason}",
+    ]
+    if detail:
+        parts.append(f" 詳細={detail}")
+    if candidates:
+        parts.append(f" 候補={candidates}")
+    elapsed = analysis.get("elapsed_ms")
+    if isinstance(elapsed, (int, float)):
+        parts.append(f" 分析={elapsed:.0f}ms")
+    parts.append("]")
+    return "".join(parts)
+
+
 AI_CANDIDATE_LOG_PATTERN = re.compile(r"\s*\[AI-CANDIDATES:[^\]]+\]")
 
 
@@ -4400,11 +4553,14 @@ def _apply_agent_turn(
             and game.get("debug_dictionary_narrowing", False)
         )
     trace_used = False
+    trace_analysis = None
     trace_action = _debug_trace_action(game, state, player, acts)
     if trace_action is not None:
         agent_action = trace_action
         game["trace_move_index"] = int(game.get("trace_move_index", 0)) + 1
         trace_used = True
+        if player in _ai_seat_set(game) and game.get("trace_analysis_enabled", True):
+            trace_analysis = _analyze_trace_action(agent, state, player, trace_action)
     elif forced_action is not None and forced_action in acts:
         agent_action = forced_action
     else:
@@ -4435,6 +4591,7 @@ def _apply_agent_turn(
     log_str += str(log_suffix or "")
     if trace_used:
         log_str += " [TRACE]"
+        log_str += _format_trace_analysis(trace_analysis, player)
     log.append(log_str)
     if forced_action is None and player in _ai_seat_set(game) and board_targets:
         game.setdefault("ai_board_explanations", []).append({
@@ -5645,6 +5802,10 @@ async def _start_debug_trace_payload(
     trace_game["trace_moves"] = _expand_trace_moves(payload)
     trace_game["trace_move_index"] = 0
     trace_game["trace_diverged"] = False
+    # Trace moves are forced for replay, but each AI move is also evaluated on
+    # an isolated copy so the log can compare the source move with the current
+    # AI's actual preference without changing the live game.
+    trace_game["trace_analysis_enabled"] = True
     trace_game["trace_original_round"] = int(payload.get("round_index") or 1)
     trace_game["trace_original_score_before"] = dict(payload.get("score_before") or {"AC": 0, "BD": 0})
     trace_game["trace_original_score_after"] = dict(payload.get("score_after") or {})

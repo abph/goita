@@ -49,6 +49,7 @@ def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
     strip_source = HTML[strip_start:strip_end]
     assert r"/\s*\[AI:[^\]]+\]/g" in strip_source
     assert r"/\s*\[AI-CANDIDATES:[^\]]+\]/g" in strip_source
+    assert r"/\s*\[TRACE-ANALYSIS:[^\]]+\]/g" in strip_source
     assert r"/\s*\[PERF\(ms\):[^\]]+\]/g" in strip_source
 
     thought_start = HTML.index("function gameLogThoughtRows(")
@@ -56,6 +57,7 @@ def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
     thought_source = HTML[thought_start:thought_end]
     assert "localizeGameLogAiDecision" in thought_source
     assert "localizeGameLogAttackCandidates" in thought_source
+    assert "labels.traceAnalysis" in thought_source
     assert "localizeGameLogPerformance" in thought_source
     assert 'receiveDecision: "受け判断"' in HTML
     assert 'attackDecision: "攻め判断"' in HTML
