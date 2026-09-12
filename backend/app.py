@@ -4686,7 +4686,12 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 elif connected_game_id == DEBUG_GID or game.get("is_debug_room", False):
                     location = "デバッグルーム"
                 elif is_private_room:
-                    location = PRIVATE_ROOM_NAMES[connected_game_id]
+                    location = (
+                        PRIVATE_ROOM_NAMES[connected_game_id]
+                        if connected_game_id in LOBBY_PRIVATE_ROOM_IDS
+                        and not game.get("hidden_from_lobby", False)
+                        else "プライベートルーム"
+                    )
                 else:
                     location = "プライベートルーム"
                 resolved_name = seat_name or connection_name

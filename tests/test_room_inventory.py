@@ -911,6 +911,84 @@ def test_private_room_presence_masks_names_outside_the_same_room() -> None:
             app_module.manager.client_names[key] = old_name
 
 
+def test_hidden_private_room_presence_uses_generic_location() -> None:
+    old_settings = dict(app_module.LOBBY_ROOM_SETTINGS)
+    game_ids = ("room-bronze-03", "room-copper-04")
+    old_game_values = {
+        game_id: (
+            app_module.GAMES[game_id].get("human_seats"),
+            app_module.GAMES[game_id].get("player_names"),
+        )
+        for game_id in game_ids
+    }
+    connection_keys = {
+        (game_id, f"hidden-private-room-person-{index}")
+        for index, game_id in enumerate(game_ids)
+    }
+    old_connections = {
+        key: app_module.manager.client_connections.get(key)
+        for key in connection_keys
+    }
+    old_names = {
+        key: app_module.manager.client_names.get(key)
+        for key in connection_keys
+    }
+
+    try:
+        # The bronze room is direct-access only; copper becomes hidden when
+        # the lobby's configured private-room count is reduced.
+        app_module.LOBBY_ROOM_SETTINGS["private_room_count"] = 2
+        app_module.setup_supporter_rooms()
+
+        for index, game_id in enumerate(game_ids):
+            game = app_module.GAMES[game_id]
+            client_id = f"hidden-private-room-person-{index}"
+            key = (game_id, client_id)
+            game["human_seats"] = {"B": client_id}
+            game["player_names"] = {"A": "", "B": "非公開の名前", "C": "", "D": ""}
+            app_module.manager.client_connections[key] = {object()}
+            app_module.manager.client_names[key] = "非公開の名前"
+
+            people = app_module.list_rooms()["site_people"]
+            assert {
+                "name": "＊＊＊＊",
+                "name_is_default": False,
+                "tag": "",
+                "location": "プライベートルーム",
+                "role": "player",
+                "seat": "B",
+            } in people
+
+            same_room_people = app_module.list_rooms(
+                viewer_game_id=game_id,
+                client_id=client_id,
+            )["site_people"]
+            assert {
+                "name": "非公開の名前",
+                "name_is_default": False,
+                "tag": "",
+                "location": "プライベートルーム",
+                "role": "player",
+                "seat": "B",
+            } in same_room_people
+    finally:
+        app_module.LOBBY_ROOM_SETTINGS.update(old_settings)
+        app_module.setup_supporter_rooms()
+        for game_id, (human_seats, player_names) in old_game_values.items():
+            app_module.GAMES[game_id]["human_seats"] = human_seats
+            app_module.GAMES[game_id]["player_names"] = player_names
+        for key, connections in old_connections.items():
+            if connections is None:
+                app_module.manager.client_connections.pop(key, None)
+            else:
+                app_module.manager.client_connections[key] = connections
+        for key, name in old_names.items():
+            if name is None:
+                app_module.manager.client_names.pop(key, None)
+            else:
+                app_module.manager.client_names[key] = name
+
+
 if __name__ == "__main__":
     test_private_b_uses_updated_entry_password()
     test_room_names_allow_twelve_characters_without_changing_player_name_limit()
@@ -931,4 +1009,5 @@ if __name__ == "__main__":
     test_site_presence_prioritizes_the_viewers_location_and_seat_order()
     test_debug_room_presence_is_completely_hidden()
     test_private_room_presence_masks_names_outside_the_same_room()
+    test_hidden_private_room_presence_uses_generic_location()
     print("ROOM_INVENTORY_TEST_OK")
