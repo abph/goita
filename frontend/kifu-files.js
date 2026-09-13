@@ -138,6 +138,7 @@ function syncDebugTraceMenu() {
 
 function openDebugTrace() {
   if (typeof gid === 'undefined' || !isScoreAttackRoom()) return;
+  syncScoreAttackMemberPrompt();
   document.getElementById('debugTraceRandomButton').disabled = mySeat !== 'A' || debugTraceStarting;
   document.getElementById('debugTraceStatus').textContent = debugTraceStarting
     ? '対戦を準備しています。' : mySeat === 'A' ? '' : 'A席に着席すると対戦を開始できます。';

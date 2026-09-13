@@ -7,6 +7,7 @@
   let libraryRoot = null;
   let roomRoot = null;
   let sessionResolved = false;
+  let registrationRequested = false;
   let pendingLibraryRefresh = null;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -106,6 +107,19 @@
         <div data-member-library-slot></div></div>
         ${hasTabs && member.research_enabled ? `<div data-member-room id="${prefix}-room" role="tabpanel" aria-labelledby="${prefix}-room-tab" hidden></div>` : ""}`;
     });
+    if (registrationRequested) {
+      if (member) {
+        registrationRequested = false;
+      } else {
+        const activeRoot = roots.find(root => root.classList.contains("active"));
+        const details = activeRoot?.querySelector(".member-register-details")
+          || roots.map(root => root.querySelector(".member-register-details")).find(Boolean);
+        if (details) {
+          details.open = true;
+          registrationRequested = false;
+        }
+      }
+    }
     const autoSave = document.getElementById("researchKifuAutoSave");
     autoSave.checked = !!member?.auto_save_kifu;
     autoSave.disabled = !member || member.must_change_password || !member.can_save_kifu;
@@ -295,6 +309,15 @@
       canSave: canSaveKifu(),
     };
   }
+  function isGuest() {
+    return sessionResolved && !member;
+  }
+  function requestRegistration() {
+    registrationRequested = true;
+    const activeRoot = roots.find(root => root.classList.contains("active"));
+    const details = activeRoot?.querySelector(".member-register-details");
+    if (details) details.open = true;
+  }
   function automaticKifuResult(data) {
     if (!member || data.member_id !== member.member_id) return;
     const messages = {
@@ -319,7 +342,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration};
   render();
   refresh();
 })();
