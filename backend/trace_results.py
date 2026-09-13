@@ -224,14 +224,17 @@ class TraceStore:
                 for row in rows]}
 
     def period_ranking(self, period="daily", *, owner=None):
-        if period not in ("daily", "weekly"):
+        if period not in ("daily", "weekly", "weekly_previous"):
             raise HTTPException(400, "ランキングの期間を確認してください。")
         now = self.clock()
         today = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
         start = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        if period == "weekly":
+        if period in ("weekly", "weekly_previous"):
             start -= timedelta(days=start.weekday())
-        end = start + timedelta(days=7 if period == "weekly" else 1)
+            if period == "weekly_previous":
+                start -= timedelta(days=7)
+        weekly = period in ("weekly", "weekly_previous")
+        end = start + timedelta(days=7 if weekly else 1)
         with self.db() as db:
             rows = db.execute("""WITH days AS (
                 SELECT owner, date(finished,'unixepoch','+9 hours') AS day,
@@ -246,7 +249,7 @@ class TraceStore:
             SELECT totals.*, name, guest, RANK() OVER (ORDER BY points DESC) AS position
             FROM totals JOIN trace_people USING(owner)
             ORDER BY points DESC, name, owner""",
-                (start.timestamp(), end.timestamp(), now, period)).fetchall()
+                (start.timestamp(), end.timestamp(), now, "weekly" if weekly else "daily")).fetchall()
         return {"period": period, "start_date": start.date().isoformat(),
                 "end_date": (end - timedelta(days=1)).date().isoformat(),
                 "total": len(rows), "ranking": [

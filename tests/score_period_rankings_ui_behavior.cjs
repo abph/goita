@@ -11,7 +11,7 @@ const path = require('node:path');
     let fail = false, empty = false, holdDaily = false, heldRoute, notifyHeld;
     const held = new Promise(resolve => {notifyHeld = resolve;});
     const data = period => ({period,start_date:'2026-09-07',end_date:'2026-09-13',total:empty ? 0 : 1,
-      ranking:empty ? [] : [{rank:1,name:'<img src=x onerror=alert(1)>',guest:true,self:true,score:period === 'weekly' ? 80 : -70,games:3}]});
+      ranking:empty ? [] : [{rank:1,name:'<img src=x onerror=alert(1)>',guest:true,self:true,score:period === 'weekly' ? 80 : period === 'weekly_previous' ? 42 : -70,games:3}]});
     page.on('pageerror', error => errors.push(error.message));
     await page.routeWebSocket('**/*', socket => socket.close());
     await page.route('**/*', route => {
@@ -22,7 +22,7 @@ const path = require('node:path');
         const file = path.resolve(root,url.pathname === '/' ? 'index.html' : url.pathname.slice(8));
         return file.startsWith(root + path.sep) && fs.existsSync(file) ? route.fulfill({path:file}) : route.fulfill({status:404,body:''});
       }
-      calls.push({path:url.pathname,headers:route.request().headers()});
+      calls.push({path:url.pathname,period:url.searchParams.get('period'),headers:route.request().headers()});
       if (url.pathname === '/api/score-attack/rankings') {
         const period = url.searchParams.get('period');
         if (holdDaily && period === 'daily') {heldRoute = route; notifyHeld(); return;}
@@ -39,10 +39,20 @@ const path = require('node:path');
     await page.locator('#scoreRankingsEntry').click();
     await page.locator('#scoreRankingsRows tr').waitFor();
     assert.match(await page.locator('#scoreRankingsRows').textContent(),/-70点/);
+    assert.equal(await page.locator('#scoreWeekNavigation').isVisible(),false);
     assert.equal(await page.locator('#scoreRankingsRows img').count(),0);
     await page.locator('#scorePeriodweekly').click();
     await page.waitForFunction(()=>document.getElementById('scoreRankingsRows').textContent.includes('80点'));
     assert.match(await page.locator('#scoreRankingsNote').textContent(),/マイナスの日は0点/);
+    assert.equal(await page.locator('#scoreWeekNavigation').isVisible(),true);
+    await page.locator('#scoreWeekPrevious').click();
+    await page.waitForFunction(()=>document.getElementById('scoreRankingsRows').textContent.includes('42点'));
+    assert.ok(calls.some(call=>call.path === '/api/score-attack/rankings' && call.period === 'weekly_previous'));
+    assert.match(await page.locator('#scoreRankingsPeriod').textContent(),/2026-09-07 〜 2026-09-13/);
+    assert.match(await page.locator('#scoreRankingsNote').textContent(),/前週分/);
+    await page.locator('#scoreWeekCurrent').click();
+    await page.waitForFunction(()=>document.getElementById('scoreRankingsRows').textContent.includes('80点'));
+    assert.equal(await page.locator('#scorePeriodweekly').getAttribute('aria-pressed'),'true');
     assert.equal(page.url(),'http://goita.test/');
     assert.ok(!calls.some(call=>call.path === '/api/score-attack/enter' || call.path.includes('/games/score-')));
     await page.keyboard.press('Escape');

@@ -10,19 +10,26 @@ async function openScoreRankings(period = 'daily') {
     modal.querySelector('.settings-modal-close').focus();
   }
   const generation = ++scoreRankingsRequest;
-  const weekly = period === 'weekly';
+  const weekly = period !== 'daily';
+  const previousWeek = period === 'weekly_previous';
   for (const value of ['daily', 'weekly']) {
-    element(`scorePeriod${value}`).setAttribute('aria-pressed', String(period === value));
+    element(`scorePeriod${value}`).setAttribute('aria-pressed', String(value === (weekly ? 'weekly' : 'daily')));
   }
+  element('scoreWeekNavigation').hidden = !weekly;
+  element('scoreWeekCurrent').setAttribute('aria-pressed', String(weekly && !previousWeek));
+  element('scoreWeekPrevious').setAttribute('aria-pressed', String(previousWeek));
   element('scoreRankingsScoreHeader').textContent = weekly ? '合計点数' : '合計点差';
   element('scoreRankingsNote').textContent = weekly
-    ? '日ごとの合計点差を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。'
+    ? previousWeek
+      ? '前週分の対戦結果をもとに集計しています。日ごとのマイナスは0点として合計します。'
+      : '日ごとの合計点差を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。'
     : '今日終了した対戦の「元の対局との差」を合計します。';
   element('scoreRankingsPeriod').textContent = '';
   element('scoreRankingsStatus').textContent = 'ランキングを読み込んでいます。';
   element('scoreRankingsRows').replaceChildren();
   try {
-    const response = await fetch(`${API}/api/score-attack/rankings?period=${period}`, {
+    const apiPeriod = previousWeek ? 'weekly_previous' : period;
+    const response = await fetch(`${API}/api/score-attack/rankings?period=${apiPeriod}`, {
       credentials:'same-origin', cache:'no-store', headers:{'X-Goita-Member':'1'},
     });
     const data = await response.json();

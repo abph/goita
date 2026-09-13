@@ -48,6 +48,14 @@ def test_daily_and_weekly_floor_daily_total_and_recalculate_today(tmp_path, payl
     assert store.period_ranking("daily")["ranking"] == []
     now[0] = stamp("2026-09-14T00:00:00")
     assert store.period_ranking("weekly")["ranking"] == []
+    previous_week = store.period_ranking("weekly_previous", owner="member:one")
+    assert (previous_week["start_date"], previous_week["end_date"]) == (
+        "2026-09-07",
+        "2026-09-13",
+    )
+    assert [row["score"] for row in previous_week["ranking"]] == [80, 50, 0]
+    own = next(row for row in previous_week["ranking"] if row["self"])
+    assert own["rank"] == 2 and own["games"] == 4
 
 
 def test_period_ranking_limit_and_no_private_identifiers(tmp_path, payload):
@@ -68,6 +76,8 @@ def test_lobby_rankings_allow_visitors_without_room_or_new_identity(trace_client
     visitor = TestClient(game_app.app, headers={"X-Goita-Member":"1"})
     response = visitor.get("/api/score-attack/rankings?period=weekly")
     assert response.status_code == 200 and response.json()["ranking"] == []
+    previous = visitor.get("/api/score-attack/rankings?period=weekly_previous")
+    assert previous.status_code == 200 and previous.json()["ranking"] == []
     assert response.headers["Cache-Control"] == "no-store"
     assert not visitor.cookies and set(game_app.GAMES) == before
     assert visitor.get("/api/score-attack/rankings?period=bad").status_code == 400
