@@ -5293,6 +5293,7 @@
           <label for="setAiProfile">AIの選択</label>
           <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
             <option value="current">強化中AI</option>
+            <option value="intermediate_middle2" selected>中級者（中2）</option>
             <option value="intermediate_middle">中級者（中）</option>
             <option value="intermediate_lower">中級者（下）</option>
             <option value="beginner_upper">初級者（上）</option>
@@ -8148,6 +8149,7 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel) return;
     const fallback = {
         current: "強化中AI",
+        intermediate_middle2: "中級者（中2）",
         intermediate_middle: "中級者（中）",
         intermediate_lower: "中級者（下）",
         beginner_upper: "初級者（上）"
@@ -8160,8 +8162,8 @@ function populateAiProfileSelect(profiles, selected) {
         opt.textContent = uiText(label);
         sel.appendChild(opt);
     });
-    sel.value = selected || "current";
-    if (!sel.value) sel.value = "current";
+    sel.value = selected || "intermediate_middle2";
+    if (!sel.value) sel.value = "intermediate_middle2";
 }
 
 function renderAdminSeatManagement(seats = []) {
@@ -9703,7 +9705,7 @@ async function saveRoomManagement() {
     const newName = document.getElementById("setRoomName").value;
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
-    const aiProfile = document.getElementById("setAiProfile")?.value || "current";
+    const aiProfile = document.getElementById("setAiProfile")?.value || "intermediate_middle2";
     const showLegalActions = document.getElementById("checkShowLegalActions")?.checked === true;
     const showLog = document.getElementById("checkShowLog")?.checked === true;
     const requestBody = {

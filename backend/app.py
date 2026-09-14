@@ -34,6 +34,7 @@ from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperRuleBasedAgent
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
+from goita_ai2.rule_based_intermediate_middle2 import RuleBasedAgent as IntermediateMiddle2RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 from goita_ai2.current_ai.telemetry import (
@@ -242,9 +243,10 @@ TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 DEAL_MODE_OPTIONS = frozenset({"normal", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
-DEFAULT_AI_PROFILE = "current"
+DEFAULT_AI_PROFILE = "intermediate_middle2"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
+    "intermediate_middle2": {"label": "中級者（中2）", "class": IntermediateMiddle2RuleBasedAgent},
     "intermediate_middle": {"label": "中級者（中）", "class": IntermediateMiddleRuleBasedAgent},
     "intermediate_lower": {"label": "中級者（下）", "class": IntermediateLowerRuleBasedAgent},
     "beginner_upper": {"label": "初級者（上）", "class": BeginnerUpperRuleBasedAgent},
@@ -5905,7 +5907,7 @@ async def enter_score_room(body: ScoreRoomEntry, request: Request, response: Res
                         if is_score_room(key) and value.get("score_owner") == owner), None)
         if game_id is None:
             game_id = "score-" + secrets.token_urlsafe(18)
-            game = _create_game_obj(dealer="A", ai_profile="current")
+            game = _create_game_obj(dealer="A", ai_profile="intermediate_middle2")
             game.update(score_owner=owner, score_last_active=time.monotonic(),
                         hidden_from_lobby=True, owner_name="スコアアタック",
                         human_seats={"A": body.client_id}, ai_seats=["B", "C", "D"])

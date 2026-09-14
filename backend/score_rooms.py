@@ -19,6 +19,21 @@ def is_score_room(game_id):
     return str(game_id).startswith(PREFIX)
 
 
+def score_room_http_action_allowed(method, action):
+    """Return whether an owner may use an HTTP route inside a score room."""
+    action = action or ""
+    if method == "GET":
+        return action in {"state", "legal_actions", "kifu"} or bool(
+            re.fullmatch(r"trace_results/(latest|history|[^/]+(?:/original)?)", action)
+        )
+    if method == "POST":
+        return action in {
+            "step", "cpu_step", "set_name", "trace_random_start", "score_reset",
+            "score_activity", "chat", "chat/ask_ai",
+        } or bool(re.fullmatch(r"trace_results/[^/]+/report", action))
+    return False
+
+
 class ScoreRoomGuard:
     """Protect every HTTP and WebSocket route before existing game handlers."""
     def __init__(self, app, games, identity, expire):
@@ -51,9 +66,7 @@ class ScoreRoomGuard:
                     raise HTTPException(403, "このルームでは利用できません。")
             else:
                 method = scope.get("method")
-                allowed = ((method == "GET" and (action in {"state", "legal_actions", "kifu"}
-                            or re.fullmatch(r"trace_results/(latest|history|[^/]+(?:/original)?)", action or "")))
-                           or (method == "POST" and action in {"step", "cpu_step", "set_name", "trace_random_start", "score_reset", "score_activity", "chat", "chat/ask_ai"}))
+                allowed = score_room_http_action_allowed(method, action)
                 if not allowed:
                     raise HTTPException(403, "スコアアタックではこの操作は利用できません。")
                 # Polling and AI turns must never keep an unattended room alive.

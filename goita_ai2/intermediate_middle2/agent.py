@@ -1,0 +1,426 @@
+"""中級者（中2）AIの本体となるRuleBasedAgentを定義します。
+2026年9月14日時点の強化中AIを独立保存した基準実装です。
+判断に使う各種設定値を保持し、攻め・受け・推定などのモジュールを一つに組み立てます。
+このファイル自身は細かな戦略を持たず、AI全体の構成と共通状態を管理します。
+"""
+
+from __future__ import annotations
+
+from typing import Dict, List, Optional
+
+from goita_ai2.intermediate_middle2.attack_planning import AttackPlanningMixin
+from goita_ai2.intermediate_middle2.ally_reach import AllyReachMixin
+from goita_ai2.intermediate_middle2.attack_strategy import AttackStrategyMixin
+from goita_ai2.intermediate_middle2.attack_plan_templates import AttackPlanTemplateMixin
+from goita_ai2.intermediate_middle2.attack_intent import AttackIntentMixin
+from goita_ai2.intermediate_middle2.background_search import BackgroundSearchMixin
+from goita_ai2.intermediate_middle2.branched_attack_generator import BranchedAttackGeneratorMixin
+from goita_ai2.intermediate_middle2.branched_attack_inference import BranchedAttackInferenceMixin
+from goita_ai2.intermediate_middle2.branched_attack_evaluator import BranchedAttackEvaluatorMixin
+from goita_ai2.intermediate_middle2.branched_attack_lifecycle import BranchedAttackLifecycleMixin
+from goita_ai2.intermediate_middle2.branched_attack_runtime import BranchedAttackRuntimeMixin
+from goita_ai2.intermediate_middle2.conditional_response import ConditionalResponseMixin
+from goita_ai2.intermediate_middle2.decision import DecisionMixin
+from goita_ai2.intermediate_middle2.endgame import EndgameMixin
+from goita_ai2.intermediate_middle2.forced_plans import ForcedPlansMixin
+from goita_ai2.intermediate_middle2.forced_win_planner import ForcedWinPlannerMixin
+from goita_ai2.intermediate_middle2.generic_response_pattern import (
+    GenericResponsePatternMixin,
+)
+from goita_ai2.intermediate_middle2.hand_evaluation import HandEvaluationMixin
+from goita_ai2.intermediate_middle2.information_set import InformationSetMixin
+from goita_ai2.intermediate_middle2.information_set_action_model import InformationSetActionModelMixin
+from goita_ai2.intermediate_middle2.information_set_policy import InformationSetPolicyMixin
+from goita_ai2.intermediate_middle2.information_set_search import InformationSetSearchMixin
+from goita_ai2.intermediate_middle2.inference import PublicInferenceMixin
+from goita_ai2.intermediate_middle2.performance import PerformanceMetricsMixin
+from goita_ai2.intermediate_middle2.prediction_cache import PredictionCacheMixin
+from goita_ai2.intermediate_middle2.probabilistic_hand_inference import (
+    ProbabilisticHandInferenceMixin,
+)
+from goita_ai2.intermediate_middle2.receive_strategy import ReceiveStrategyMixin
+from goita_ai2.intermediate_middle2.search_cache import SearchCacheMixin
+from goita_ai2.intermediate_middle2.search_budget import SearchBudgetMixin
+from goita_ai2.intermediate_middle2.shi_insertion import ShiInsertionStrategyMixin
+from goita_ai2.intermediate_middle2.timed_search import TimedSearchMixin
+from goita_ai2.intermediate_middle2.tracking import TrackingMixin
+from goita_ai2.intermediate_middle2.upside_finish import UpsideFinishMixin
+
+class RuleBasedAgent(
+    DecisionMixin,
+    PerformanceMetricsMixin,
+    TrackingMixin,
+    AttackIntentMixin,
+    HandEvaluationMixin,
+    ForcedPlansMixin,
+    ForcedWinPlannerMixin,
+    BranchedAttackGeneratorMixin,
+    BranchedAttackInferenceMixin,
+    BranchedAttackEvaluatorMixin,
+    BranchedAttackLifecycleMixin,
+    AttackPlanTemplateMixin,
+    BranchedAttackRuntimeMixin,
+    GenericResponsePatternMixin,
+    ConditionalResponseMixin,
+    ProbabilisticHandInferenceMixin,
+    InformationSetMixin,
+    InformationSetActionModelMixin,
+    InformationSetPolicyMixin,
+    InformationSetSearchMixin,
+    SearchCacheMixin,
+    PredictionCacheMixin,
+    SearchBudgetMixin,
+    BackgroundSearchMixin,
+    TimedSearchMixin,
+    UpsideFinishMixin,
+    EndgameMixin,
+    AttackPlanningMixin,
+    AttackStrategyMixin,
+    ShiInsertionStrategyMixin,
+    ReceiveStrategyMixin,
+    AllyReachMixin,
+    PublicInferenceMixin,
+):
+    def __init__(self, name: str = "RuleBased"):
+        self.name = name
+        self.me: Optional[str] = None
+
+        self._track: Dict[int, dict] = {}
+        self._my_initial_hands_by_state_id: Dict[int, List[str]] = {}
+        self._relative_hand_rank_table: Optional[Dict[str, Dict[str, str]]] = None
+        self._initialize_performance_metrics()
+        self._initialize_branched_attack_lifecycle()
+        self.last_upside_finish_metrics: Dict[str, object] = {}
+
+        self.WIN_NOW_BONUS = 10_000.0
+        self.WIN_AFTER_RECEIVE_BONUS = 9_000.0
+
+        self.KING_ATTACK_PENALTY = 300.0
+
+        self.FIRST_ENEMY_RECEIVE_BONUS = 500.0
+        self.FIRST_ENEMY_PASS_BONUS = 500.0
+        self.FIRST_ENEMY_KING_RECEIVE_PENALTY = 12000.0
+
+        self.ALLY_REACH_HANDOFF_ENABLED = True
+        self.ALLY_REACH_HANDOFF_SAMPLE_COUNT = 256
+        self.ALLY_REACH_HANDOFF_MIN_SAMPLES = 64
+        self.ALLY_REACH_HANDOFF_MIN_EFFECTIVE_SAMPLES = 8
+        self.ALLY_REACH_HANDOFF_MAX_SECONDS = 0.5
+        self.ALLY_REACH_HANDOFF_MIN_CHANCE = 0.05
+        self.ALLY_REACH_HANDOFF_MIN_ADVANTAGE = 0.02
+        self.last_ally_reach_comparison = None
+
+        self.LAST_ONE_BONUS = 65.0
+
+        self.KING_GYOKU_FORCE_ORDER = True
+        self.FORCE_KING_GYOKU_ON_THIRD_ATTACK = True
+
+        self.PREFER_PUBLIC_SAFE_NONKING_ON_THIRD_ATTACK = True
+
+        self.PUBLIC_SAFE_ATTACK_BONUS_HIGH = 60.0
+        self.PUBLIC_SAFE_ATTACK_BONUS_MID = 30.0
+        self.PUBLIC_SAFE_ATTACK_BONUS_LOW = 10.0
+
+        self.KAKARI_GOTAE_BONUS = 100.0
+        self.ABSOLUTE_SAFE_BONUS = 1000.0
+        self.TATEWARI_BONUS = 800.0
+        self.CONTINUOUS_ATTACK_BONUS = 500.0
+        self.ATTACK_STRATEGY_BONUS = 120.0
+        # 攻め順とは別に、攻めた目的を短く保持して再評価する。
+        self.ATTACK_INTENT_ENABLED = True
+        self.ATTACK_INTENT_CONTINUATION_BONUS = 180.0
+        self.ATTACK_INTENT_MIN_MARGIN = 0.0
+        self.RECEIVE_KEEP_PENALTY = 25.0
+        self.ENEMY_FIRST_ATTACK_POLICY = "hand_strength"
+        self.USE_RELATIVE_HAND_RANK = True
+        self.USE_PUBLIC_HAND_INFERENCE = True
+        self.USE_WEAK_SHI_ATTACK_STRATEGY = True
+        self.USE_ENEMY_SHI_RESPONSE = False
+        self.WEAK_SHI_ATTACK_BONUS = 120.0
+        self.SHI_ATTACK_MODE_BONUS = 520.0
+        self.DEALER_FOUR_SHI_BLOCK_SHI_BONUS = 220.0
+        self.NON_WEAK_SHI_ATTACK_PENALTY = 220.0
+        self.WEAK_SHI_FALLBACK_HIGH_POINT_WEIGHT = 2.0
+        self.SHI_ATTACK_PREPARE_PASS_BONUS = 180.0
+        self.ENEMY_SHI_PASS_BONUS = 250.0
+        self.ENEMY_SHI_RECEIVE_PENALTY = 180.0
+        self.DEALER_OPENING_PLAN_ATTACK_BONUS = 220.0
+        self.DEALER_OPENING_PLAN_BLOCK_PENALTY = 700.0
+        self.DEALER_SURPLUS_FOUR_MIDDLE_BLOCK_BONUS = 260.0
+        self.OPPONENT_FIRST_ATTACK_STRATEGY_SAFE_PENALTY = {
+            "1": 40.0,
+            "2": 80.0,
+            "3": 55.0,
+            "4": 55.0,
+            "5": 55.0,
+            "6": 70.0,
+            "7": 70.0,
+        }
+        self.INFER_REPEAT_RECEIVE_PASS_BONUS = 14.0
+        self.INFER_REPEAT_RECEIVE_PENALTY = 10.0
+        self.INFER_ATTACK_EXHAUSTED_BONUS = 35.0
+        self.INFER_ATTACK_OVERLAP_PENALTY = 8.0
+        self.INFER_KAKARI_BLOCKED_PENALTY = 22.0
+        self.INFER_KAKARI_CLEAR_BONUS = 25.0
+        self.INFER_BLOCK_KEEP_BONUS = 14.0
+        self.INFER_ALLY_STRATEGY_KEEP_BONUS = 18.0
+        self.INFER_SHI_ATTACK_ALLY_BONUS = 25.0
+        self.INFER_SHI_ATTACK_ENEMY_PENALTY = 14.0
+        self.INFER_FORCE_KING_PRESSURE_BONUS = 18.0
+        self.KAKARI_SATURATION_RECEIVE_BONUS = 280.0
+        self.KAKARI_SATURATION_ATTACK_BONUS = 150.0
+        self.KAKARI_SATURATION_ALLY_REMAINING_BONUS = 45.0
+        self.ALLY_FORCE_KING_RECEIVE_BONUS = 720.0
+        self.ALLY_FORCE_KING_ATTACK_BONUS = 950.0
+        self.ALLY_STRONG_FOLLOWUP_RECEIVE_BONUS = 620.0
+        self.ENDGAME_PAIR_SCORE_WEIGHT = 1.6
+        self.ENDGAME_PAIR_KING_RECEIVE_BONUS = 18.0
+        self.ENDGAME_PAIR_UNCERTAIN_PENALTY = 16.0
+        self.ENDGAME_MIXED_SHI_PAIR_BONUS = 180.0
+        self.ENDGAME_SHI_PAIR_PENALTY = 180.0
+        self.CONDITIONAL_SHI_ROYAL_ROUTE_BASE_BONUS = 280.0
+        self.CONDITIONAL_SHI_ROYAL_ROUTE_SCORE_WEIGHT = 8.0
+        self.REACH_AVOIDANCE_CONDITIONAL_TSUME_MIN_RISK_GAP = 0.05
+        self.SHI_SASHIKOMI_WAIT_BONUS = 180.0
+        self.SHI_SASHIKOMI_ATTACK_BONUS = 520.0
+        self.EXACT_FORCED_WIN_MAX_HAND = 6
+        self.EXACT_FORCED_WIN_MAX_DEPTH = 18
+        self.SHI_EXHAUST_RECEIVE_BONUS = 760.0
+        self.SHI_EXHAUST_ATTACK_BONUS = 620.0
+        self.ENEMY_TEAM_ONE_SHI_ATTACK_BONUS = 1100.0
+        self.ENEMY_TEAM_TWO_SHI_ATTACK_BONUS = 780.0
+        self.WEAK_SHI_ENDGAME_MIXED_BLOCK_BONUS = 180.0
+        self.PRESERVE_WIN_ATTACK_PASS_BONUS = 26000.0
+        self.PRESERVE_WIN_ATTACK_RECEIVE_PENALTY = 12000.0
+        self.FUSE_KYOSHA_BLOCK_PENALTY = 90.0
+        self.FUSE_KING_BLOCK_PENALTY = 80.0
+        self.FUSE_KEEP_LAST_SHI_PENALTY = 35.0
+        self.FUSE_ENEMY_SHI_THREAT_BLOCK_PENALTY = 110.0
+        self.FUSE_THIRD_BLOCK_KING_SHI_BONUS = 60.0
+        self.FUSE_ATTACK_SATURATION_BLOCK_BONUS = 30.0
+        self.FUSE_KEEP_KIN_GIN_RECEIVE_BONUS = 10.0
+        self.SECOND_KYOSHA_KEEP_SINGLE_SHI_BLOCK_PENALTY = 260.0
+        self.SECOND_KYOSHA_LOW_MIDDLE_BLOCK_BONUS = 120.0
+        self.LOWER_ATTACK_SHAPE_BLOCK_BONUS = 55.0
+        self.LOWER_ATTACK_SHAPE_ATTACK_PENALTY = 70.0
+        self.TOP_ATTACK_SHAPE_BLOCK_PENALTY = 35.0
+        self.SAME_PIECE_PAIR_SPEND_PENALTY = 75.0
+        self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY = 220.0
+        self.FOURTH_MIDDLE_EARLY_ATTACK_DELAY_PENALTY = 2400.0
+        self.FOURTH_MIDDLE_WEAK_SECOND_BRIDGE_PENALTY = 1000.0
+        self.FOURTH_MIDDLE_THIRD_ATTACK_BONUS = 1400.0
+        self.TWO_SHI_SECOND_ATTACK_SIGNAL_PENALTY = 220.0
+        self.SINGLE_MIDDLE_OVER_FOUR_SHI_SIGNAL_PENALTY = 260.0
+        self.FOUR_SHI_AFTER_BIG_RECEIVE_FIRST_ATTACK_BONUS = 420.0
+        self.ALLY_GUARANTEED_WIN_GIVE_WAY_MAX_SCORE = 30.0
+        self.ROYAL_WAIT_SHI_BASE_BONUS = 20.0
+        self.ROYAL_WAIT_SHI_PRESSURE_WEIGHT = 70.0
+        self.ROYAL_WAIT_SHI_PRESSURE_CAP = 3.0
+        self.GENERAL_ATTACK_PLAN_WEIGHT = 0.65
+        self.GENERAL_ATTACK_PLAN_BONUS_CAP = 240.0
+        self.GENERAL_ATTACK_PLAN_FINISH_WEIGHT = 2.0
+        self.GENERAL_ATTACK_PLAN_EARLY_ROYAL_PENALTY = 160.0
+        self.GENERAL_ATTACK_PLAN_SHI_PENALTY = 20.0
+        self.GENERAL_ATTACK_PLAN_SHI_MODE_BONUS = 80.0
+        self.GENERAL_ATTACK_PLAN_KYOSHA_BONUS = 10.0
+        self.GENERAL_ATTACK_PLAN_INFERENCE_CAP = 90.0
+        self.GENERAL_ATTACK_PLAN_PUBLIC_SAFETY_CAP = 60.0
+        self.GENERAL_ATTACK_PLAN_PAST_ATTACK_BONUS = 55.0
+        self.GENERAL_ATTACK_PLAN_CONTINUATION_BONUS = 90.0
+        self.GENERAL_ATTACK_PLAN_KAKARI_BONUS = 65.0
+        self.GENERAL_ATTACK_PLAN_SHAPE_WEIGHT = 8.0
+        self.GENERAL_ATTACK_PLAN_THIRD_FOURTH_BONUS = 70.0
+        self.GENERAL_ATTACK_PLAN_FUTURE_BLOCK_WEIGHT = 0.25
+        self.GENERAL_ATTACK_PLAN_KEEP_LAST_SHI_PENALTY = 35.0
+        self.EIGHT_CARD_SHALLOW_FUTURE_WEIGHT = 1.35
+        self.EIGHT_CARD_SHALLOW_RECEIVE_WIDTH_WEIGHT = 7.0
+        self.BRANCHED_ATTACK_ENABLED = True
+        self.BRANCHED_ATTACK_MAX_SECONDS = 0.08
+        self.BRANCHED_ATTACK_MAX_TEMPLATE_PLANS = 6
+        self.BRANCHED_ATTACK_MAX_GENERIC_ROOTS = 6
+        self.BRANCHED_ATTACK_MAX_TOTAL_PLANS = 10
+        self.BRANCHED_ATTACK_MAX_EVALUATED_PLANS = 8
+        self.BRANCHED_ATTACK_GENERIC_MAX_FAILURE_RISK = 0.35
+        self.BRANCHED_ATTACK_GENERIC_MIN_RECEIVE_WIDTH = 2.0
+        self.BRANCHED_ATTACK_CACHE_ENABLED = True
+        self.BRANCHED_ATTACK_CACHE_MAX_ENTRIES = 128
+        self.BRANCHED_ATTACK_CACHE_TTL_SECONDS = 600.0
+        self.BRANCHED_ATTACK_INFERENCE_CACHE_MAX_ENTRIES = 512
+        self._initialize_branched_attack_inference()
+        self._initialize_branched_attack_runtime()
+        self.PROBABILISTIC_HAND_INITIAL_SAMPLE_COUNT = 256
+        self.PROBABILISTIC_HAND_INITIAL_MAX_SAMPLES = 2048
+        self.PROBABILISTIC_HAND_TOP_CANDIDATES = 12
+        self.PROBABILISTIC_HAND_MAX_RETAINED_CANDIDATES = 128
+        self.PROBABILISTIC_HAND_MIN_RETAINED_CANDIDATES = 12
+        self.PROBABILISTIC_HAND_MIN_CANDIDATE_PROBABILITY = 0.0005
+        self.PROBABILISTIC_HAND_CACHE_MAX_ENTRIES = 128
+        self.PROBABILISTIC_HAND_REFRESH_MAX_SECONDS = 0.03
+        self.PROBABILISTIC_HAND_AUTO_REFRESH = True
+        self.BRANCHED_ATTACK_PROBABILISTIC_SAMPLE_COUNT = 32
+        self.BRANCHED_ATTACK_PROBABILISTIC_MAX_SECONDS = 0.025
+        self._initialize_probabilistic_hand_inference()
+        self.TIME_SEARCH_ENABLED = True
+        self.TIME_SEARCH_HARD_MAX_SECONDS = 20.0
+        self.TIME_SEARCH_MAX_SECONDS = 1.0
+        self.TIME_SEARCH_SAMPLE_COUNT = 80
+        self.TIME_SEARCH_ROOT_BEAM = 10
+        self.TIME_SEARCH_BRANCH_BEAM = 3
+        self.TIME_SEARCH_MAX_DEPTH = 11
+        self.TIME_SEARCH_MAX_NODES = 250_000
+        self.TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED = True
+        self.TIME_SEARCH_ADAPTIVE_BUDGET_WARMUP = 4
+        self.TIME_SEARCH_ADAPTIVE_MIN_SECONDS = 0.15
+        self.TIME_SEARCH_ADAPTIVE_MIN_SAMPLES = 8
+        self.TIME_SEARCH_ADAPTIVE_EWMA_ALPHA = 0.25
+        self.TIME_SEARCH_RULE_PRIOR_WEIGHT = 120.0
+        self.TIME_SEARCH_BASELINE_PRIOR = 180.0
+        self.TIME_SEARCH_STABLE_MARGIN = 450.0
+        self.TIME_SEARCH_OVERRIDE_MARGIN = 300.0
+        self.TIME_SEARCH_OVERRIDE_AGREEMENT = 0.75
+        self.TIME_SEARCH_EARLY_OVERRIDE_MIN_DEPTH = 7
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MIN_DEPTH = 7
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_AGREEMENT = 0.70
+        self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN = 600.0
+        self.TIME_SEARCH_INFORMATION_SET_ENABLED = True
+        self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_WEIGHT = 0.18
+        self.TIME_SEARCH_INFORMATION_SET_ACTION_PRIOR_CAP = 200.0
+        self.WEAK_FIRST_RECEIVE_SEARCH_MAX_SECONDS = 5.0
+        self.WEAK_FIRST_RECEIVE_SEARCH_SAMPLE_COUNT = 64
+        self.WEAK_FIRST_RECEIVE_SEARCH_MAX_DEPTH = 11
+        self.WEAK_FIRST_RECEIVE_SEARCH_MAX_NODES = 500_000
+        self.WEAK_FIRST_RECEIVE_SEARCH_TARGET_DEPTH = 9
+        self.WEAK_FIRST_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH = 7
+        self.WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_AGREEMENT = 0.40
+        self.WEAK_FIRST_RECEIVE_SEARCH_OVERRIDE_MARGIN = 2500.0
+        self.WEAK_FIRST_RECEIVE_SEARCH_MIN_CONFIDENCE = 0.45
+        self.LOW_REENTRY_RECEIVE_SEARCH_MIN_OVERRIDE_DEPTH = 5
+        self.LOW_REENTRY_RECEIVE_SEARCH_OVERRIDE_AGREEMENT = 0.65
+        self.LOW_REENTRY_RECEIVE_SEARCH_OVERRIDE_MARGIN = 200.0
+        self.LOW_REENTRY_RECEIVE_SEARCH_MIN_CONFIDENCE = 0.55
+        self.LOW_REENTRY_RECEIVE_SEARCH_MAX_SECONDS = 20.0
+        self.LOW_REENTRY_RECEIVE_SEARCH_SAMPLE_COUNT = 64
+        self.LOW_REENTRY_RECEIVE_SEARCH_MAX_DEPTH = 7
+        self.LOW_REENTRY_RECEIVE_SEARCH_MAX_NODES = 500_000
+        self.LOW_REENTRY_RECEIVE_SEARCH_TARGET_DEPTH = 7
+        self.LOW_REENTRY_RECEIVE_MAX_EFFECTIVE_SCORE = 1.75
+        self.LOW_REENTRY_RECEIVE_SHI_WEIGHT = 0.25
+        self.LOW_REENTRY_RECEIVE_KYOSHA_WEIGHT = 0.65
+        self.KYOSHA_PASS_COMPARE_MAX_SECONDS = 10.0
+        self.KYOSHA_PASS_COMPARE_SAMPLE_COUNT = 80
+        self.KYOSHA_PASS_COMPARE_MAX_DEPTH = 7
+        self.KYOSHA_PASS_COMPARE_MAX_NODES = 500_000
+        self.KYOSHA_PASS_COMPARE_TARGET_DEPTH = 7
+        self.KYOSHA_PASS_COMPARE_MIN_AGREEMENT = 0.50
+        self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE = 0.45
+        self.KYOSHA_PASS_COMPARE_MIN_MARGIN = 0.0
+        # Later receivers should prefer passing when receiving is only
+        # modestly better; a clearly superior receive branch can still win.
+        self.KYOSHA_PASS_COMPARE_LATER_MIN_MARGIN = 200.0
+        self.SHI_INSERTION_ENABLED = True
+        self.SHI_INSERTION_MAX_FOLLOWUPS = 6
+        self.SHI_INSERTION_MAX_ROUTES = 10
+        self.SHI_INSERTION_MIN_ROUTE_MARGIN = 1.0
+        self.SHI_INSERTION_COMMON_ATTACK_WEIGHT = 0.2
+        self.SHI_INSERTION_LOST_RECEIVE_PENALTY = 180.0
+        self.SHI_INSERTION_SHI_ATTACK_VALUE = 150.0
+        self.SHI_INSERTION_INFORMATION_VALUE = 38.0
+        self.SHI_INSERTION_ALLY_PROGRESS_VALUE = 95.0
+        self.SHI_INSERTION_ONE_HIDDEN_VALUE = 72.0
+        self.SHI_INSERTION_ONE_HIDDEN_SHI_REDUCTION = 0.28
+        self.SHI_INSERTION_INTERCEPTION_PENALTY = 105.0
+        self.SHI_INSERTION_ONE_ROYAL_VALUE = 48.0
+        self.SHI_INSERTION_BOTH_ROYALS_VALUE = 105.0
+        self.SHI_INSERTION_MATCHING_RECEIVE_VALUE = 36.0
+        self.SHI_INSERTION_EXTRA_BLOCK_VALUE = 42.0
+        self.SHI_INSERTION_WAIT_AFTER_ONE_HIDDEN_VALUE = 24.0
+        self.SHI_INSERTION_REPEAT_ATTACK_PENALTY = 42.0
+        self.SHI_INSERTION_ENEMY_PROGRESS_PENALTY = 52.0
+        self.SHI_INSERTION_SEARCH_MAX_SECONDS = 5.0
+        self.SHI_INSERTION_SEARCH_SAMPLE_COUNT = 64
+        self.SHI_INSERTION_SEARCH_MAX_DEPTH = 7
+        self.SHI_INSERTION_SEARCH_MAX_NODES = 500_000
+        self.SHI_INSERTION_SEARCH_TARGET_DEPTH = 7
+        self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_MARGIN = 50.0
+        self.ZERO_SHI_STOP_SIGNAL_OVERRIDE_AGREEMENT = 0.55
+        self.ZERO_SHI_STOP_SIGNAL_MIN_CONFIDENCE = 0.50
+        self.UPSIDE_FINISH_ENABLED = True
+        self.UPSIDE_FINISH_MAX_HAND_SIZE = 4
+        self.UPSIDE_FINISH_MAX_SECONDS = 10.0
+        self.UPSIDE_FINISH_SAMPLE_COUNT = 80
+        self.UPSIDE_FINISH_MAX_DEPTH = 15
+        self.UPSIDE_FINISH_MAX_NODES = 500_000
+        self.UPSIDE_FINISH_MATCH_TARGET = 150
+        self.UPSIDE_FINISH_BASE_RISK = 0.08
+        self.UPSIDE_FINISH_TRAILING_50_RISK = 0.14
+        self.UPSIDE_FINISH_TRAILING_80_RISK = 0.20
+        self.UPSIDE_FINISH_LEADING_RISK = 0.05
+        self.UPSIDE_FINISH_STRONG_VALUE_RISK = 0.20
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_HIGH = 0.40
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_SAFE = 0.80
+        self.UPSIDE_FINISH_STRONG_VALUE_MIN_EXPECTED_GAIN = 5.0
+        self.UPSIDE_FINISH_STRONG_VALUE_MAX_SCORE_LEAD = 49
+        self.UPSIDE_FINISH_MIN_CONFIDENCE = 0.55
+        self.UPSIDE_FINISH_CONFIDENCE_REFERENCE = 0.60
+        self.UPSIDE_FINISH_CONFIDENCE_RISK_WEIGHT = 0.10
+        self.UPSIDE_FINISH_UNKNOWN_RISK_WEIGHT = 0.50
+        self.UPSIDE_FINISH_MIN_HIGH_SCORE_PROBABILITY = 0.25
+        self.UPSIDE_FINISH_MIN_SAFE_RETENTION_PROBABILITY = 0.70
+        self.UPSIDE_FINISH_MAX_UNKNOWN_PROBABILITY = 0.15
+        self.UPSIDE_FINISH_MAX_MATCH_LOSS_PROBABILITY = 0.05
+        self.UPSIDE_FINISH_MIN_EXPECTED_GAIN = 3.0
+        self.TIME_SEARCH_CACHE_ENABLED = True
+        self.TIME_SEARCH_CACHE_MAX_ENTRIES = 128
+        self.TIME_SEARCH_CACHE_TTL_SECONDS = 600.0
+        self.TIME_SEARCH_PREDICTION_CACHE_ENABLED = True
+        self.TIME_SEARCH_PREDICTION_CACHE_WAIT_SECONDS = 0.12
+        self.CONDITIONAL_RESPONSE_ENABLED = True
+        self.CONDITIONAL_RESPONSE_MAX_ENTRIES = 512
+        self.CONDITIONAL_RESPONSE_TTL_SECONDS = 3600.0
+        self.CONDITIONAL_RESPONSE_MIN_DEPTH = 3
+        self._initialize_search_cache()
+        self._initialize_prediction_cache()
+        self._initialize_conditional_response_dictionary()
+        self._initialize_time_search_budget()
+        self.TIME_SEARCH_BACKGROUND_ENABLED = True
+        self.TIME_SEARCH_BACKGROUND_MAX_PASSES = 3
+        # One highest-probability path retained the same hit rate in the
+        # baseline while substantially reducing speculative CPU usage.
+        self.TIME_SEARCH_BACKGROUND_MAX_BRANCHES = 1
+        self.TIME_SEARCH_BACKGROUND_MAX_ACTIONS = 4
+        self.TIME_SEARCH_BACKGROUND_BRANCH_WIDTH = 2
+        self.TIME_SEARCH_BACKGROUND_INFERENCE_SAMPLES = 1
+        # Measured pre-reading retained every cache hit with pass/attack only,
+        # while receive and hidden-block forecasts added speculative CPU cost.
+        self.TIME_SEARCH_BACKGROUND_ALLOWED_SAMPLED_ACTIONS = ("pass", "attack")
+        # After an initial observation window, low-value speculative kinds are
+        # sampled periodically instead of consuming search time every turn.
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_ENABLED = True
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_MIN_SCHEDULED = 16
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_CONTEXT_MIN_SCHEDULED = 8
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_MIN_HIT_RATE = 0.06
+        self.TIME_SEARCH_BACKGROUND_ADAPTIVE_PROBE_INTERVAL = 8
+        self._initialize_background_search()
+        self.last_decision_reason = ""
+        self.last_score_fallback_detail = ""
+        self.last_attack_candidate_scores: List[dict] = []
+        self.last_attack_candidate_snapshot: Dict[str, object] = {}
+        self.last_attack_intent_comparison: Optional[Dict[str, object]] = None
+        self.last_information_set_search = None
+        self.last_rule_search_authority = "ordinary"
+        self.last_search_skip_reason = ""
+
+    def bind_player(self, player: str) -> None:
+        if self.me is None:
+            self.me = player
+        elif self.me != player:
+            raise ValueError(f"{self.name}: already bound to {self.me}, cannot bind to {player}")
+
+    def _same_team(self, p1: str, p2: str) -> bool:
+        return (
+            (p1 in ("A", "C") and p2 in ("A", "C")) or
+            (p1 in ("B", "D") and p2 in ("B", "D"))
+        )
+
+    def _ally_of(self, me: str) -> str:
+        return "C" if me == "A" else "A" if me == "C" else "D" if me == "B" else "B"

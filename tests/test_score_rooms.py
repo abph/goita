@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from backend import app as game_app
-from backend.score_rooms import IDLE_SECONDS, is_score_room
+from backend.score_rooms import IDLE_SECONDS, is_score_room, score_room_http_action_allowed
 from test_trace_results import payload, trace_client
 
 
@@ -23,6 +23,12 @@ def enter(client, client_id="owner"):
     response = client.post("/api/score-attack/enter", json={"client_id": client_id, "name": "挑戦者"})
     assert response.status_code == 200, response.text
     return response.json()["game_id"]
+
+
+def test_score_room_guard_allows_record_report_but_keeps_other_mutations_blocked():
+    assert score_room_http_action_allowed("POST", "trace_results/attempt-1/report")
+    assert not score_room_http_action_allowed("POST", "trace_results/attempt-1/retry")
+    assert not score_room_http_action_allowed("PUT", "trace_results/attempt-1/report")
 
 
 def begin(client, room):
