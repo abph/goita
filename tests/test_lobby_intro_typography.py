@@ -7,10 +7,14 @@ HTML = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encodin
 def test_lobby_intro_uses_scoped_typography_classes():
     assert '<div class="lobby-intro">' in HTML
     assert '<div class="lobby-brand-lockup">' in HTML
+    assert '<div class="lobby-brand-row">' in HTML
     assert '<p class="lobby-brand-certification">日本ごいた協会認定</p>' in HTML
     assert '<p class="lobby-brand-subtitle">オンライン対局室</p>' in HTML
     assert "grid-template-columns: auto auto;" in HTML
     assert "grid-row: 1 / 3;" in HTML
+    assert ".lobby-toolbar .lobby-menu-label { display: none; }" in HTML
+    assert 'aria-label="メニュー"' in HTML
+    assert "transform: translateY(-50%);" in HTML
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
     assert HTML.count('class="lobby-purpose-option"') == 7

@@ -885,6 +885,12 @@
         padding: 28px 0 34px;
         text-align: center;
     }
+    .lobby-brand-row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
     .lobby-brand-lockup {
         display: inline-grid;
         grid-template-columns: auto auto;
@@ -1065,6 +1071,13 @@
         .lobby-brand-lockup { column-gap: 7px; }
         .lobby-brand-certification { font-size: 9px; }
         .lobby-brand-subtitle { font-size: 11px; }
+        .lobby-toolbar .lobby-menu-label { display: none; }
+        .lobby-toolbar .header-menu-trigger {
+            width: 36px;
+            min-height: 36px;
+            justify-content: center;
+            padding: 0;
+        }
         .lobby-purpose-title { padding: 14px 11px 10px; font-size: 18px; }
         .lobby-purpose-subtitle { padding: 15px 10px 10px 0; font-size: 13px; }
         .lobby-purpose-option { min-height: 58px; padding: 8px 32px 8px 10px; }
@@ -1073,9 +1086,10 @@
     }
     .lobby-toolbar {
         position: absolute;
-        top: 12px;
-        left: 0;
+        top: 50%;
+        left: auto;
         right: 0;
+        transform: translateY(-50%);
         z-index: 3;
         display: flex;
         align-items: center;
@@ -1239,9 +1253,9 @@
             display: none;
         }
         .lobby-toolbar {
-            position: static;
-            align-items: flex-start;
-            padding-top: 10px;
+            position: absolute;
+            align-items: center;
+            padding-top: 0;
         }
         .lobby-footer-links {
             flex-wrap: nowrap;
@@ -1306,6 +1320,12 @@
     }
     .lobby-room-section h2 {
         font-size: 20px;
+    }
+    @media (max-width: 360px) {
+        .lobby-intro h1 { font-size: 26px; }
+        .lobby-brand-lockup { column-gap: 5px; }
+        .lobby-brand-certification { font-size: 8px; }
+        .lobby-brand-subtitle { font-size: 10px; }
     }
     .lobby-room-section > p {
         font-size: 13px;
@@ -4722,21 +4742,23 @@
 
 <div id="lobbyView">
   <div id="lobbyPieceBackground" class="lobby-piece-background" aria-hidden="true"></div>
-  <div class="lobby-toolbar">
-    <div class="header-menu" data-header-menu>
-      <button class="lobby-settings-button header-menu-trigger" type="button" aria-expanded="false" aria-controls="lobbyHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span>メニュー</span></button>
-      <div id="lobbyHeaderMenu" class="header-menu-popup" hidden>
-        <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
-        <button class="header-menu-item" type="button" onclick="openLobbySettings()">設定</button>
-        <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
-      </div>
-    </div>
-  </div>
   <div class="lobby-intro">
-     <div class="lobby-brand-lockup">
-       <p class="lobby-brand-certification">日本ごいた協会認定</p>
-       <h1>そろうごいた</h1>
-       <p class="lobby-brand-subtitle">オンライン対局室</p>
+     <div class="lobby-brand-row">
+       <div class="lobby-brand-lockup">
+         <p class="lobby-brand-certification">日本ごいた協会認定</p>
+         <h1>そろうごいた</h1>
+         <p class="lobby-brand-subtitle">オンライン対局室</p>
+       </div>
+       <div class="lobby-toolbar">
+         <div class="header-menu" data-header-menu>
+           <button class="lobby-settings-button header-menu-trigger" type="button" aria-label="メニュー" aria-expanded="false" aria-controls="lobbyHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span class="lobby-menu-label">メニュー</span></button>
+           <div id="lobbyHeaderMenu" class="header-menu-popup" hidden>
+             <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
+             <button class="header-menu-item" type="button" onclick="openLobbySettings()">設定</button>
+             <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
+           </div>
+         </div>
+       </div>
      </div>
   </div>
 

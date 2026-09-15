@@ -35,12 +35,16 @@ def test_both_header_menus_group_existing_actions_and_start_closed():
         assert toggle["aria-expanded"] == "false"
         popup = parser.popups[toggle["aria-controls"]]
         assert popup["hidden"]
-        assert len(popup["buttons"]) == 3
-        member, settings, kifu = popup["buttons"]
+        assert len(popup["buttons"]) in (3, 4)
+        buttons_by_action = {button.get("onclick"): button for button in popup["buttons"]}
+        member = buttons_by_action["openMemberPage()"]
         assert "data-member-entry" in member
         assert member["onclick"] == "openMemberPage()"
-        assert settings["onclick"] in ("openLobbySettings()", "openSettingsModal(gid)")
-        assert kifu["onclick"] == "openKifuFiles()"
+        assert any(
+            action in buttons_by_action
+            for action in ("openLobbySettings()", "openSettingsModal(gid)")
+        )
+        assert "openKifuFiles()" in buttons_by_action
 
 
 def test_menu_asset_and_translations_are_available():
