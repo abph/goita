@@ -28,8 +28,9 @@ def test_player_tag_controls_and_transport_are_present() -> None:
         "tournament",
     ):
         assert f'<option value="{value}">' in html
-    assert 'wsParams.set("tag", personalSettings.playerTag)' in html
-    assert 'tag: normalizePlayerTag(personalSettings.playerTag)' in html
+    assert 'wsParams.set("tag", playerTag)' in html
+    assert 'tag: activePlayerTag(gid)' in html
+    assert 'tag: activePlayerTag("lobby")' in html
     assert 'const playerTags = state.player_tags' in html
     assert 'buildPlayerTagBadge(item?.tag, "chat-player-tag")' not in html
     assert 'buildPlayerTagBadge(person?.tag, "lobby-player-tag")' in html

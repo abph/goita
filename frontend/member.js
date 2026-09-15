@@ -8,6 +8,7 @@
   let roomRoot = null;
   let sessionResolved = false;
   let registrationRequested = false;
+  let libraryRequested = false;
   let pendingLibraryRefresh = null;
   const t = value => typeof uiText === "function" ? uiText(value) : value;
   const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -118,6 +119,15 @@
           details.open = true;
           registrationRequested = false;
         }
+      }
+    }
+    if (libraryRequested) {
+      const activeRoot = roots.find(root => root.classList.contains("active"));
+      if (member && !member.must_change_password && activeRoot) {
+        showLibrary(activeRoot);
+        libraryRequested = false;
+      } else if (sessionResolved) {
+        libraryRequested = false;
       }
     }
     const autoSave = document.getElementById("researchKifuAutoSave");
@@ -318,6 +328,14 @@
     const details = activeRoot?.querySelector(".member-register-details");
     if (details) details.open = true;
   }
+  function requestLibrary() {
+    libraryRequested = true;
+    const activeRoot = roots.find(root => root.classList.contains("active"));
+    if (member && !member.must_change_password && activeRoot) {
+      showLibrary(activeRoot);
+      libraryRequested = false;
+    }
+  }
   function automaticKifuResult(data) {
     if (!member || data.member_id !== member.member_id) return;
     const messages = {
@@ -342,7 +360,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration, requestLibrary};
   render();
   refresh();
 })();
