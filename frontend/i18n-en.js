@@ -206,6 +206,8 @@
     "© そろうごいた": "© Solo Goita",
     "オンライン対局室へようこそ。": "Welcome to the online game rooms.",
     "日本ごいた協会認定　オンライン対局室へようこそ。": "Welcome to the JAPAN GOITA ASSOCIATION-certified online game rooms.",
+    "日本ごいた協会認定": "JAPAN GOITA ASSOCIATION Certified",
+    "オンライン対局室": "Online Game Rooms",
     "何をしてみますか？": "What would you like to do?",
     "とりあえず対局したい": "Play a game",
     "AIとの練習や、人との対局へ進みます。": "Practice against AI or play with other people.",

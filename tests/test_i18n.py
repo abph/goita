@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260915e"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260915e"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260916a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260916a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -132,11 +132,14 @@ def test_lobby_feature_guide_is_translated() -> None:
     chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
     english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
 
-    assert "日本ごいた協会認定　オンライン対局室へようこそ。" in html
+    assert "日本ごいた協会認定　オンライン対局室へようこそ。" not in html
+    assert "日本ごいた協会認定" in html
+    assert "オンライン対局室" in html
     assert "日本ごいた協会に認定されました。" not in html
     assert "「5し」以上の配牌はまだ実装していません" not in html
     for source in [
-        "日本ごいた協会認定　オンライン対局室へようこそ。",
+        "日本ごいた協会認定",
+        "オンライン対局室",
         "何をしてみますか？",
         "とりあえず対局したい",
         "ごいたを研究したい",

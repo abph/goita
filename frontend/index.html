@@ -882,17 +882,45 @@
         isolation: isolate;
     }
     .lobby-intro {
-        padding: 28px 0 18px;
+        padding: 28px 0 34px;
         text-align: center;
     }
-    .lobby-intro h1 {
-        margin-bottom: 8px;
-        font-size: 30px;
+    .lobby-brand-lockup {
+        display: inline-grid;
+        grid-template-columns: auto auto;
+        grid-template-rows: 1fr 1fr;
+        column-gap: 12px;
+        align-items: center;
+        text-align: left;
     }
-    .lobby-intro-lead {
+    .lobby-intro h1 {
+        grid-column: 2;
+        grid-row: 1 / 3;
+        margin: 0;
+        font-size: 36px;
+        line-height: 1.18;
+        white-space: nowrap;
+    }
+    .lobby-brand-certification,
+    .lobby-brand-subtitle {
+        margin: 0;
         color: #555;
-        font-size: 15px;
         font-weight: bold;
+        line-height: 1.35;
+    }
+    .lobby-brand-certification {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: end;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+    }
+    .lobby-brand-subtitle {
+        grid-column: 1;
+        grid-row: 2;
+        align-self: start;
+        font-size: 15px;
+        letter-spacing: 0.12em;
     }
     .lobby-feature-row {
         display: grid;
@@ -941,7 +969,10 @@
         text-align: center;
     }
     .lobby-purpose-guide {
+        border-style: dashed;
+        border-color: rgba(139, 90, 43, 0.55);
         background: rgba(255, 253, 245, 0.96);
+        box-shadow: 0 2px 7px rgba(79, 52, 29, 0.055);
     }
     .lobby-purpose-stage { display: grid; }
     .lobby-purpose-panel {
@@ -1029,9 +1060,11 @@
         }
     }
     @media (max-width: 520px) {
-        .lobby-intro { padding: 20px 0; }
-        .lobby-intro h1 { font-size: 24px; }
-        .lobby-intro-lead { font-size: 13px; }
+        .lobby-intro { padding: 20px 0 28px; }
+        .lobby-intro h1 { font-size: 28px; }
+        .lobby-brand-lockup { column-gap: 7px; }
+        .lobby-brand-certification { font-size: 9px; }
+        .lobby-brand-subtitle { font-size: 11px; }
         .lobby-purpose-title { padding: 14px 11px 10px; font-size: 18px; }
         .lobby-purpose-subtitle { padding: 15px 10px 10px 0; font-size: 13px; }
         .lobby-purpose-option { min-height: 58px; padding: 8px 32px 8px 10px; }
@@ -4700,8 +4733,11 @@
     </div>
   </div>
   <div class="lobby-intro">
-     <h1>そろうごいた</h1>
-     <p class="lobby-intro-lead">日本ごいた協会認定　オンライン対局室へようこそ。</p>
+     <div class="lobby-brand-lockup">
+       <p class="lobby-brand-certification">日本ごいた協会認定</p>
+       <h1>そろうごいた</h1>
+       <p class="lobby-brand-subtitle">オンライン対局室</p>
+     </div>
   </div>
 
   <div class="lobby-feature-row">
@@ -5852,8 +5888,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260915e"></script>
-<script src="/static/i18n.js?v=20260915e"></script>
+<script src="/static/i18n-en.js?v=20260916a"></script>
+<script src="/static/i18n.js?v=20260916a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">

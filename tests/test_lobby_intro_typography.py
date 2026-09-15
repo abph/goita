@@ -6,15 +6,25 @@ HTML = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encodin
 
 def test_lobby_intro_uses_scoped_typography_classes():
     assert '<div class="lobby-intro">' in HTML
-    assert '<p class="lobby-intro-lead">' in HTML
+    assert '<div class="lobby-brand-lockup">' in HTML
+    assert '<p class="lobby-brand-certification">日本ごいた協会認定</p>' in HTML
+    assert '<p class="lobby-brand-subtitle">オンライン対局室</p>' in HTML
+    assert "grid-template-columns: auto auto;" in HTML
+    assert "grid-row: 1 / 3;" in HTML
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
     assert HTML.count('class="lobby-purpose-option"') == 7
+    assert "border-style: dashed;" in HTML
+    assert "border-color: rgba(139, 90, 43, 0.55);" in HTML
+    assert "box-shadow: 0 2px 7px rgba(79, 52, 29, 0.055);" in HTML
 
 
 def test_lobby_intro_has_smaller_mobile_typography():
-    assert ".lobby-intro h1 { font-size: 24px; }" in HTML
-    assert ".lobby-intro-lead { font-size: 13px; }" in HTML
+    assert ".lobby-intro {\n        padding: 28px 0 34px;" in HTML
+    assert ".lobby-intro { padding: 20px 0 28px; }" in HTML
+    assert ".lobby-intro h1 { font-size: 28px; }" in HTML
+    assert ".lobby-brand-certification { font-size: 9px; }" in HTML
+    assert ".lobby-brand-subtitle { font-size: 11px; }" in HTML
     assert ".lobby-purpose-option { min-height: 58px;" in HTML
 
 
