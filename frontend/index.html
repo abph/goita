@@ -901,32 +901,52 @@
         gap: 18px;
         margin-bottom: 24px;
     }
-    .lobby-purpose-title {
+    .lobby-section-card {
+        border: 1px solid #b68a55;
+        border-radius: 10px;
+        box-shadow: 0 5px 14px rgba(79, 52, 29, 0.1);
+        overflow: hidden;
+    }
+    .lobby-section-heading {
+        box-sizing: border-box;
+        min-height: 53px;
         margin: 0;
-        padding: 16px 13px 11px;
+        padding: 15px 13px 11px;
+        border-bottom: 1px solid rgba(139, 90, 43, 0.28);
         color: #4e3825;
-        font-size: 17px;
+        font-size: 20px;
+        text-align: center;
+    }
+    .lobby-purpose-header-stage {
+        display: grid;
+        border-bottom: 1px solid rgba(139, 90, 43, 0.28);
+    }
+    .lobby-purpose-header {
+        grid-area: 1 / 1;
+        display: flex;
+        align-items: stretch;
+        min-width: 0;
+    }
+    .lobby-purpose-header.is-inactive,
+    .lobby-purpose-panel.is-inactive {
+        visibility: hidden;
+        pointer-events: none;
+    }
+    .lobby-purpose-title {
+        flex: 1;
+        margin: 0;
+        padding: 16px 13px 12px;
+        color: #4e3825;
+        font-size: 20px;
         text-align: center;
     }
     .lobby-purpose-guide {
-        border: 2px solid #b68a55;
-        border-radius: 10px;
         background: rgba(255, 253, 245, 0.96);
-        box-shadow: 0 3px 8px rgba(79, 52, 29, 0.12);
-        overflow: hidden;
     }
     .lobby-purpose-stage { display: grid; }
     .lobby-purpose-panel {
         grid-area: 1 / 1;
         min-width: 0;
-    }
-    .lobby-purpose-panel.is-inactive {
-        visibility: hidden;
-        pointer-events: none;
-    }
-    .lobby-purpose-question-row {
-        display: flex;
-        align-items: center;
     }
     .lobby-purpose-back-arrow {
         align-self: stretch;
@@ -943,20 +963,20 @@
     .lobby-purpose-back-arrow:focus-visible {
         background: #fff8df;
     }
-    .lobby-purpose-question {
+    .lobby-purpose-subtitle {
         flex: 1;
         margin: 0;
-        padding: 11px 12px 8px 0;
+        padding: 17px 12px 12px 0;
         color: #4e3825;
-        font-size: 13px;
+        font-size: 14px;
         text-align: left;
     }
-    .lobby-purpose-question:focus { outline: none; }
+    .lobby-purpose-subtitle:focus { outline: none; }
     .lobby-purpose-option {
         display: block;
         width: 100%;
-        min-height: 72px;
-        padding: 10px 36px 10px 13px;
+        min-height: 66px;
+        padding: 9px 34px 9px 12px;
         border: 0;
         border-top: 1px solid rgba(139, 90, 43, 0.28);
         border-radius: 0;
@@ -985,12 +1005,12 @@
     .lobby-purpose-option strong {
         margin-bottom: 3px;
         color: #6d461f;
-        font-size: 14px;
+        font-size: 13px;
         line-height: 1.4;
     }
     .lobby-purpose-option span {
         color: #5d5148;
-        font-size: 11px;
+        font-size: 10px;
         line-height: 1.65;
     }
     .lobby-feature-guide-status {
@@ -1012,10 +1032,10 @@
         .lobby-intro { padding: 20px 0; }
         .lobby-intro h1 { font-size: 24px; }
         .lobby-intro-lead { font-size: 13px; }
-        .lobby-purpose-title { padding: 14px 11px 9px; font-size: 15px; }
-        .lobby-purpose-question { font-size: 12px; }
-        .lobby-purpose-option { min-height: 62px; padding: 9px 34px 9px 11px; }
-        .lobby-purpose-option strong { margin-bottom: 2px; font-size: 13px; }
+        .lobby-purpose-title { padding: 14px 11px 10px; font-size: 18px; }
+        .lobby-purpose-subtitle { padding: 15px 10px 10px 0; font-size: 13px; }
+        .lobby-purpose-option { min-height: 58px; padding: 8px 32px 8px 10px; }
+        .lobby-purpose-option strong { margin-bottom: 2px; font-size: 12px; }
         .lobby-purpose-option span { font-size: 10px; }
     }
     .lobby-toolbar {
@@ -1256,6 +1276,77 @@
     }
     .lobby-room-section > p {
         font-size: 13px;
+    }
+    .lobby-room-category-nav {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) 42px;
+        align-items: stretch;
+        max-width: 520px;
+        margin: 14px auto 20px;
+        border: 1px solid #b68a55;
+        border-radius: 8px;
+        background: #fffdf5;
+        overflow: hidden;
+    }
+    .lobby-room-category-arrow,
+    .lobby-room-category-tab {
+        min-height: 34px;
+        border: 0;
+        background: transparent;
+        color: #5f4935;
+        cursor: pointer;
+        font-weight: 800;
+    }
+    .lobby-room-category-arrow {
+        font-size: 18px;
+    }
+    .lobby-room-category-arrow:first-child { border-right: 1px solid rgba(139, 90, 43, 0.28); }
+    .lobby-room-category-arrow:last-child { border-left: 1px solid rgba(139, 90, 43, 0.28); }
+    .lobby-room-category-arrow:disabled {
+        color: #c5b9ac;
+        cursor: default;
+    }
+    .lobby-room-category-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+    .lobby-room-category-tab {
+        padding: 4px 8px;
+        font-size: 13px;
+    }
+    .lobby-room-category-tab + .lobby-room-category-tab {
+        border-left: 1px solid rgba(139, 90, 43, 0.2);
+    }
+    .lobby-room-category-tab[aria-selected="true"] {
+        background: #8b5a2b;
+        color: #fffdf5;
+    }
+    .lobby-room-category-arrow:not(:disabled):hover,
+    .lobby-room-category-arrow:not(:disabled):focus-visible,
+    .lobby-room-category-tab:hover,
+    .lobby-room-category-tab:focus-visible {
+        background: #f3df9d;
+        color: #4e3825;
+    }
+    .lobby-room-panel { animation: lobby-room-panel-in 0.16s ease; }
+    .lobby-room-panel[hidden] { display: none; }
+    @keyframes lobby-room-panel-in {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .lobby-room-panel-description {
+        margin: 0 0 18px;
+        color: #555;
+        font-size: 13px;
+        line-height: 1.6;
+        text-align: center;
+    }
+    #lobbyView > .lobby-room-section {
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 5px 14px rgba(79, 52, 29, 0.1);
+    }
+    .lobby-room-section-body {
+        padding: 0 20px 24px;
     }
     .lobby-whisper {
         position: relative;
@@ -1508,7 +1599,7 @@
 
     @media (max-width: 701px) {
       .lobby-room-section {
-        padding: 16px 0 !important;
+        padding: 0 !important;
       }
       .lobby-room-section h2 {
         margin-bottom: 8px;
@@ -1519,6 +1610,19 @@
         font-size: 11px;
         line-height: 1.5 !important;
       }
+      .lobby-room-category-nav {
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+        margin: 10px 10px 14px;
+      }
+      .lobby-room-category-arrow,
+      .lobby-room-category-tab { min-height: 32px; }
+      .lobby-room-category-tab { padding: 3px 4px; font-size: 11px; }
+      .lobby-room-panel-description {
+        margin: 0 12px 12px;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .lobby-room-section-body { padding: 0 0 16px; }
       .room-card-container {
         display: grid;
         grid-template-columns: repeat(2, 154px);
@@ -4612,8 +4716,20 @@
   </div>
 
   <div class="lobby-feature-row">
-    <section class="lobby-purpose-guide" aria-labelledby="lobbyPurposeTitle">
-      <h2 id="lobbyPurposeTitle" class="lobby-purpose-title">何をしてみますか？</h2>
+    <section class="lobby-purpose-guide lobby-section-card">
+      <div class="lobby-purpose-header-stage">
+        <div id="lobbyPurposeHomeHeader" class="lobby-purpose-header" aria-hidden="false">
+          <h2 id="lobbyPurposeTitle" class="lobby-purpose-title">何をしてみますか？</h2>
+        </div>
+        <div id="lobbyPurposePlayHeader" class="lobby-purpose-header is-inactive" aria-hidden="true" inert>
+          <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
+          <h2 class="lobby-purpose-subtitle" tabindex="-1">人間とAI、どちらと対局しますか？</h2>
+        </div>
+        <div id="lobbyPurposeStudyHeader" class="lobby-purpose-header is-inactive" aria-hidden="true" inert>
+          <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
+          <h2 class="lobby-purpose-subtitle" tabindex="-1">どのように研究しますか？</h2>
+        </div>
+      </div>
       <div class="lobby-purpose-stage">
        <div id="lobbyPurposeHome" class="lobby-purpose-panel" aria-hidden="false">
          <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('play')">
@@ -4626,10 +4742,6 @@
          </button>
        </div>
        <div id="lobbyPurposePlay" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
-         <div class="lobby-purpose-question-row">
-           <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
-           <h3 class="lobby-purpose-question" tabindex="-1">人間とAI、どちらと対局しますか？</h3>
-         </div>
          <button class="lobby-purpose-option" type="button" onclick="startGuidedMatch('ai')">
            <strong>AIと対局してみたい</strong>
            <span>「AI練習中」にして、AIとごいたへ移動します。</span>
@@ -4640,10 +4752,6 @@
          </button>
        </div>
        <div id="lobbyPurposeStudy" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
-         <div class="lobby-purpose-question-row">
-           <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
-           <h3 class="lobby-purpose-question" tabindex="-1">どのように研究しますか？</h3>
-         </div>
          <button class="lobby-purpose-option" type="button" onclick="guideToPrivateRooms('deal')">
            <strong>よくある手駒で練習する</strong>
            <span>高頻度配牌を利用できるルームへ案内します。</span>
@@ -4660,12 +4768,14 @@
       </div>
     </section>
 
-    <section class="card score-attack-entry" aria-labelledby="scoreAttackSectionTitle">
-      <h2 id="scoreAttackSectionTitle">スコアアタック</h2>
-      <p class="score-attack-description">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</p>
-      <div class="score-attack-entry-actions">
-        <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button>
-        <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
+    <section class="card score-attack-entry lobby-section-card" aria-labelledby="scoreAttackSectionTitle">
+      <h2 id="scoreAttackSectionTitle" class="lobby-section-heading">スコアアタック</h2>
+      <div class="score-attack-entry-body">
+        <p class="score-attack-description">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</p>
+        <div class="score-attack-entry-actions">
+          <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button>
+          <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
+        </div>
       </div>
     </section>
   </div>
@@ -4688,23 +4798,33 @@
     <button id="dailyMoveOpenButton" class="daily-move-open" type="button">挑戦する</button>
   </section>
 
-  <div class="card lobby-room-section" style="margin-bottom: 24px; text-align: center; padding: 30px;">
-    <h2>🌐 公開部屋</h2>
-    <p style="margin-bottom: 20px; color: #555;">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
-    <div id="lobbyMainRoom" class="room-card-container">
+  <section id="lobbyRoomsSection" class="card lobby-room-section lobby-section-card" style="margin-bottom: 24px; text-align: center;">
+    <h2 class="lobby-section-heading">対局ルーム</h2>
+    <div class="lobby-room-section-body">
+     <div class="lobby-room-category-nav">
+      <button id="lobbyPublicRoomsArrow" class="lobby-room-category-arrow" type="button" onclick="showLobbyRoomCategory('public', true)" aria-label="公開部屋を表示" disabled>←</button>
+      <div class="lobby-room-category-tabs" role="tablist" aria-label="表示する対局ルーム">
+        <button id="lobbyPublicRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-selected="true" aria-controls="lobbyPublicRoomsPanel" onclick="showLobbyRoomCategory('public')" onkeydown="handleLobbyRoomCategoryKeydown(event)">公開部屋</button>
+        <button id="lobbyPrivateRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-selected="false" aria-controls="lobbyPrivateRoomsSection" onclick="showLobbyRoomCategory('private')" onkeydown="handleLobbyRoomCategoryKeydown(event)" tabindex="-1">プライベートルーム</button>
       </div>
-  </div>
+      <button id="lobbyPrivateRoomsArrow" class="lobby-room-category-arrow" type="button" onclick="showLobbyRoomCategory('private', true)" aria-label="プライベートルームを表示">→</button>
+     </div>
 
-  <div id="lobbyPrivateRoomsSection" class="card lobby-room-section" style="background: #fffdf5; border-color: #8b5a2b; padding: 20px;">
-    <h2 style="color: #8b5a2b; margin-top: 0; text-align: center;">🏯 プライベートルーム</h2>
-    <p style="margin-bottom: 15px; color: #555; text-align: center; line-height: 1.6;">
-      支援していただいた方のための専用ルームです。<br>
-      ＊<b>プライベートA・Bは、どなたでも自由に使えます。</b>
-    </p>
-    <p id="lobbyFeatureGuideStatus" class="lobby-feature-guide-status" role="status" aria-live="polite" hidden></p>
-    <div id="lobbyRoomList" class="room-card-container">
-      </div>
-  </div>
+     <div id="lobbyPublicRoomsPanel" class="lobby-room-panel" role="tabpanel" aria-labelledby="lobbyPublicRoomsTab">
+      <p class="lobby-room-panel-description">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
+      <div id="lobbyMainRoom" class="room-card-container"></div>
+     </div>
+
+     <div id="lobbyPrivateRoomsSection" class="lobby-room-panel" role="tabpanel" aria-labelledby="lobbyPrivateRoomsTab" hidden>
+      <p class="lobby-room-panel-description">
+        支援していただいた方のための専用ルームです。<br>
+        ＊<b>プライベートA・Bは、どなたでも自由に使えます。</b>
+      </p>
+      <p id="lobbyFeatureGuideStatus" class="lobby-feature-guide-status" role="status" aria-live="polite" hidden></p>
+      <div id="lobbyRoomList" class="room-card-container"></div>
+     </div>
+    </div>
+  </section>
 
   <footer class="lobby-footer">
     <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
@@ -5729,7 +5849,8 @@
   .trace-history-scroll th,.trace-history-scroll td { padding:6px 5px; white-space:nowrap; }
   .trace-history-scroll button { font-size:13px; }
   .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
-  .score-attack-entry { display:flex; flex-direction:column; justify-content:center; text-align:center; margin:0; padding:24px; }
+  .score-attack-entry { display:flex; flex-direction:column; text-align:center; margin:0; padding:0; background:rgba(255,249,232,0.94); }
+  .score-attack-entry-body { display:flex; flex:1; flex-direction:column; justify-content:center; padding:24px; }
   .score-attack-entry-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:18px; }
   .score-attack-entry-actions button { padding:12px 14px; }
   .score-period-table td:not(:nth-child(2)),.score-period-table th { white-space:nowrap; }
@@ -5746,8 +5867,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260915b"></script>
-<script src="/static/i18n.js?v=20260915b"></script>
+<script src="/static/i18n-en.js?v=20260915c"></script>
+<script src="/static/i18n.js?v=20260915c"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -8161,15 +8282,26 @@ function showLobbyPurposeStep(step) {
         play: document.getElementById("lobbyPurposePlay"),
         study: document.getElementById("lobbyPurposeStudy"),
     };
+    const headers = {
+        home: document.getElementById("lobbyPurposeHomeHeader"),
+        play: document.getElementById("lobbyPurposePlayHeader"),
+        study: document.getElementById("lobbyPurposeStudyHeader"),
+    };
     const target = panels[step] || panels.home;
-    Object.values(panels).forEach(panel => {
-        if (!panel) return;
-        const inactive = panel !== target;
-        panel.classList.toggle("is-inactive", inactive);
-        panel.toggleAttribute("inert", inactive);
-        panel.setAttribute("aria-hidden", String(inactive));
+    const targetHeader = headers[step] || headers.home;
+    [panels, headers].forEach(group => Object.values(group).forEach(element => {
+        if (!element) return;
+        const inactive = element !== (group === panels ? target : targetHeader);
+        element.classList.toggle("is-inactive", inactive);
+        element.toggleAttribute("inert", inactive);
+        element.setAttribute("aria-hidden", String(inactive));
+    }));
+    requestAnimationFrame(() => {
+        const focusTarget = step === "home"
+            ? target?.querySelector(".lobby-purpose-option")
+            : targetHeader?.querySelector(".lobby-purpose-subtitle");
+        focusTarget?.focus();
     });
-    requestAnimationFrame(() => target?.querySelector(step === "home" ? ".lobby-purpose-option" : ".lobby-purpose-question")?.focus());
 }
 
 async function startGuidedMatch(kind) {
@@ -8188,6 +8320,7 @@ async function startGuidedMatch(kind) {
 function guideToPrivateRooms(kind) {
     const status = document.getElementById("lobbyFeatureGuideStatus");
     const target = document.getElementById("lobbyPrivateRoomsSection");
+    showLobbyRoomCategory("private");
     if (status) {
         status.textContent = uiText(kind === "hand"
             ? "プライベートルームに入り、A席に着いて「メニュー → 設定 → 対局設定」から手札を指定できます。"
@@ -8195,7 +8328,37 @@ function guideToPrivateRooms(kind) {
         );
         status.hidden = false;
     }
-    target?.scrollIntoView({behavior: "smooth", block: "start"});
+    requestAnimationFrame(() => target?.scrollIntoView({behavior: "smooth", block: "start"}));
+}
+
+function showLobbyRoomCategory(category, focusTab = false) {
+    const showPrivate = category === "private";
+    const publicPanel = document.getElementById("lobbyPublicRoomsPanel");
+    const privatePanel = document.getElementById("lobbyPrivateRoomsSection");
+    const publicTab = document.getElementById("lobbyPublicRoomsTab");
+    const privateTab = document.getElementById("lobbyPrivateRoomsTab");
+    const publicArrow = document.getElementById("lobbyPublicRoomsArrow");
+    const privateArrow = document.getElementById("lobbyPrivateRoomsArrow");
+
+    if (publicPanel) publicPanel.hidden = showPrivate;
+    if (privatePanel) privatePanel.hidden = !showPrivate;
+    if (publicTab) {
+        publicTab.setAttribute("aria-selected", String(!showPrivate));
+        publicTab.tabIndex = showPrivate ? -1 : 0;
+    }
+    if (privateTab) {
+        privateTab.setAttribute("aria-selected", String(showPrivate));
+        privateTab.tabIndex = showPrivate ? 0 : -1;
+    }
+    if (publicArrow) publicArrow.disabled = !showPrivate;
+    if (privateArrow) privateArrow.disabled = showPrivate;
+    if (focusTab) requestAnimationFrame(() => (showPrivate ? privateTab : publicTab)?.focus());
+}
+
+function handleLobbyRoomCategoryKeydown(event) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    showLobbyRoomCategory(event.key === "ArrowRight" ? "private" : "public", true);
 }
 
 function syncScoreAttackMemberPrompt() {

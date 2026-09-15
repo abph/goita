@@ -8,7 +8,7 @@ def test_mobile_lobby_room_list_uses_two_columns():
     assert "grid-template-columns: repeat(2, 154px);" in HTML
     assert "margin-inline: -17px;" in HTML
     assert "justify-content: center;" in HTML
-    assert HTML.count('class="card lobby-room-section"') == 2
+    assert HTML.count('class="card lobby-room-section lobby-section-card"') == 1
 
 
 def test_mobile_room_cards_shrink_without_losing_square_shape():

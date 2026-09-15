@@ -7,15 +7,15 @@ HTML = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encodin
 def test_lobby_intro_uses_scoped_typography_classes():
     assert '<div class="lobby-intro">' in HTML
     assert '<p class="lobby-intro-lead">' in HTML
-    assert '<section class="lobby-purpose-guide"' in HTML
-    assert HTML.count('class="lobby-purpose-guide"') == 1
+    assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
+    assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
     assert HTML.count('class="lobby-purpose-option"') == 7
 
 
 def test_lobby_intro_has_smaller_mobile_typography():
     assert ".lobby-intro h1 { font-size: 24px; }" in HTML
     assert ".lobby-intro-lead { font-size: 13px; }" in HTML
-    assert ".lobby-purpose-option { min-height: 62px;" in HTML
+    assert ".lobby-purpose-option { min-height: 58px;" in HTML
 
 
 def test_lobby_feature_guide_has_play_and_study_steps():
@@ -39,7 +39,7 @@ def test_lobby_guide_and_score_attack_are_separate_stable_columns():
     assert ".lobby-purpose-stage { display: grid; }" in HTML
     assert "grid-area: 1 / 1;" in HTML
     assert 'class="lobby-purpose-panel is-inactive"' in HTML
-    assert 'panel.toggleAttribute("inert", inactive);' in HTML
+    assert 'element.toggleAttribute("inert", inactive);' in HTML
 
 
 def test_lobby_submenus_use_compact_arrow_back_controls():
@@ -47,8 +47,18 @@ def test_lobby_submenus_use_compact_arrow_back_controls():
     assert HTML.count('aria-label="最初の選択に戻る"') == 2
     assert 'class="lobby-purpose-back"' not in HTML
     assert ".lobby-purpose-option strong" in HTML
-    assert "font-size: 14px;" in HTML
-    assert "font-size: 11px;" in HTML
+    assert "font-size: 13px;" in HTML
+    assert "font-size: 10px;" in HTML
+
+
+def test_lobby_questions_replace_the_main_guide_heading():
+    assert 'id="lobbyPurposeHomeHeader"' in HTML
+    assert 'id="lobbyPurposePlayHeader"' in HTML
+    assert 'id="lobbyPurposeStudyHeader"' in HTML
+    assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのように研究しますか？</h2>' in HTML
+    assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">人間とAI、どちらと対局しますか？</h2>' in HTML
+    assert '.lobby-purpose-title {' in HTML
+    assert 'font-size: 20px;' in HTML
 
 
 def test_guided_match_uses_temporary_player_tags():
@@ -68,5 +78,27 @@ def test_preset_hand_indicator_is_rendered_below_seat_a():
 def test_lobby_room_section_headings_and_descriptions_are_compact():
     assert ".lobby-room-section h2" in HTML
     assert "font-size: 20px;" in HTML
-    assert ".lobby-room-section > p" in HTML
+    assert ".lobby-room-panel-description" in HTML
     assert "font-size: 13px;" in HTML
+
+
+def test_public_and_private_rooms_share_one_switchable_section():
+    assert HTML.count('class="card lobby-room-section lobby-section-card"') == 1
+    assert 'id="lobbyRoomsSection"' in HTML
+    assert 'id="lobbyPublicRoomsPanel"' in HTML
+    assert 'id="lobbyPrivateRoomsSection"' in HTML
+    assert 'id="lobbyPublicRoomsArrow"' in HTML
+    assert 'id="lobbyPrivateRoomsArrow"' in HTML
+    assert 'function showLobbyRoomCategory(category, focusTab = false)' in HTML
+    assert 'function handleLobbyRoomCategoryKeydown(event)' in HTML
+    assert 'showLobbyRoomCategory("private");' in HTML
+    assert ".lobby-room-category-tab { min-height: 32px; }" in HTML
+    assert "min-height: 34px;" in HTML
+
+
+def test_three_lobby_features_use_consistent_section_cards():
+    assert HTML.count("lobby-section-card") >= 4
+    assert '<h2 id="scoreAttackSectionTitle" class="lobby-section-heading">' in HTML
+    assert '<h2 class="lobby-section-heading">対局ルーム</h2>' in HTML
+    assert 'class="score-attack-entry-body"' in HTML
+    assert 'class="lobby-room-section-body"' in HTML
