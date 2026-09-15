@@ -5745,6 +5745,7 @@
     <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <div id="debugTraceMemberPrompt" class="score-attack-member-prompt" hidden>
       <p><strong>無料会員なら、スコアアタックの挑戦履歴を継続して保存できます。</strong></p>
+      <p>会員で週間ランキングに入賞すると、1位は金の称号・限定スタンプ・棋譜保存枠＋10局、2位は銀の称号・＋5局、3位は銅の称号・＋3局を獲得できます。</p>
       <p>棋譜も最大20局まで自分専用のライブラリに保存でき、自動保存も利用できます。</p>
       <button type="button" onclick="openScoreAttackMemberRegistration()">無料会員に登録する</button>
     </div>
@@ -5867,8 +5868,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260915d"></script>
-<script src="/static/i18n.js?v=20260915d"></script>
+<script src="/static/i18n-en.js?v=20260915e"></script>
+<script src="/static/i18n.js?v=20260915e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -7560,10 +7561,10 @@ const CHAT_STAMP_DEFINITIONS = Object.freeze([
   { id: "leave_it", label: "あとはまかせた！", emoji: "🫡" },
   { id: "got_me", label: "やられた！", emoji: "😅" },
   { id: "goita_fun", label: "ごいたのしい！", emoji: "王" },
-  { id: "weekly_champion", label: "週間王者！", pickerLabel: "週間王者", emoji: "🥇", rewardOnly: true },
+  { id: "weekly_champion", label: "週間王者！", pickerLabel: "週間王者", emoji: "王", asset: "king", rewardOnly: true },
 ]);
 const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice"]);
-const CHAT_STAMP_ASSET_VERSION = "20260824b";
+const CHAT_STAMP_ASSET_VERSION = "20260915a";
 let desktopRoomChatHeightObserver = null;
 let desktopRoomLogHeightObserver = null;
 let localChatNotices = [];
@@ -11568,7 +11569,7 @@ function chatStampDefinition(stampId){
 function buildChatStampVisual(definition, owner, decorative = false){
   const visual = document.createElement("span");
   visual.className = "chat-stamp-visual";
-  if(definition.rewardOnly){
+  if(definition.rewardOnly && !definition.asset){
     const fallback = document.createElement("span");
     fallback.className = "chat-stamp-emoji";
     fallback.setAttribute("aria-hidden", "true");
@@ -11596,7 +11597,7 @@ function buildChatStampVisual(definition, owner, decorative = false){
     fallback.hidden = false;
     owner?.classList.remove("has-image");
   }, { once: true });
-  image.src = `/static/stamps/${encodeURIComponent(definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
+  image.src = `/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
 
   visual.append(image, fallback);
   return visual;

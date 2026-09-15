@@ -65,6 +65,7 @@
     "スコアアタック開始": "Start Score Attack",
     "挑戦履歴・ランキング": "Attempt History & Rankings",
     "無料会員なら、スコアアタックの挑戦履歴を継続して保存できます。": "Free members can keep their Score Attack history.",
+    "会員で週間ランキングに入賞すると、1位は金の称号・限定スタンプ・棋譜保存枠＋10局、2位は銀の称号・＋5局、3位は銅の称号・＋3局を獲得できます。": "Members who place in the weekly ranking earn a title and extra record slots: 1st gets Gold, the exclusive stamp, and 10 slots; 2nd gets Silver and 5 slots; 3rd gets Bronze and 3 slots.",
     "棋譜も最大20局まで自分専用のライブラリに保存でき、自動保存も利用できます。": "You can also save up to 20 game records in your personal library and use automatic saving.",
     "無料会員に登録する": "Create a Free Account",
     "スコアアタックのランキング": "Score Attack Rankings",

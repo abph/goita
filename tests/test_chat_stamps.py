@@ -25,7 +25,7 @@ def test_stamp_controls_are_available_in_lobby_and_room_chat() -> None:
     assert "fallback.hidden = true;" in HTML
     assert "if(box._chatRenderKey === renderKey) return;" in HTML
     assert "box._chatRenderKey = renderKey;" in HTML
-    assert "/static/stamps/${encodeURIComponent(definition.id)}.png" in HTML
+    assert "/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png" in HTML
     assert 'pickerLabel: "よろしく"' in HTML
     assert 'pickerLabel: "ありがとう"' in HTML
     assert 'pickerLabel: "考え中"' in HTML
@@ -71,6 +71,8 @@ def test_stamp_catalog_matches_available_stamps() -> None:
     assert app_module.CHAT_STAMPS == expected_stamps
     for stamp_id in set(expected_stamps) - {"weekly_champion"}:
         assert (ROOT / "frontend" / "stamps" / f"{stamp_id}.png").is_file()
+    assert (ROOT / "frontend" / "stamps" / "king.png").is_file()
+    assert 'asset: "king"' in HTML
 
 
 async def _test_stamp_delivery() -> None:
