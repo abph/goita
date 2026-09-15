@@ -235,6 +235,7 @@ CHAT_STAMPS = {
     "leave_it": "あとはまかせた！",
     "got_me": "やられた！",
     "goita_fun": "ごいたのしい！",
+    "weekly_champion": "週間王者！",
 }
 AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
@@ -1460,10 +1461,28 @@ def _require_member_admin(request: Request) -> None:
         raise HTTPException(status_code=503, detail="会員管理には永続保存先を設定してください。")
 
 
+_SCORE_REWARD_SETTLEMENT_LOCK = threading.Lock()
+_SCORE_REWARD_SETTLED_WEEK = ""
+
+
+def _settle_weekly_score_rewards() -> None:
+    global _SCORE_REWARD_SETTLED_WEEK
+    with _SCORE_REWARD_SETTLEMENT_LOCK:
+        try:
+            previous = get_trace_store().weekly_award_candidates()
+            if previous["week_start"] == _SCORE_REWARD_SETTLED_WEEK:
+                return
+            MEMBER_STORE.grant_weekly_score_awards(previous["week_start"], previous["candidates"])
+            _SCORE_REWARD_SETTLED_WEEK = previous["week_start"]
+        except (OSError, sqlite3.Error):
+            LOGGER.warning("Weekly score reward settlement is temporarily unavailable.")
+
+
 app.include_router(create_member_router(
     MEMBER_STORE, _require_member_admin, persistent=MEMBER_PERSISTENT,
     force_secure=bool(os.environ.get("RENDER")),
     room_options=lambda: _member_room_options(),
+    settle_rewards=_settle_weekly_score_rewards,
 ))
 
 
@@ -4629,6 +4648,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
     def build_site_people() -> List[Dict[str, Any]]:
         candidates: Dict[str, Tuple[int, str, Dict[str, Any]]] = {}
+        reward_title_cache: Dict[str, Any] = {}
         hidden_debug_clients = {
             connected_client_id
             for (connected_game_id, connected_client_id), connections
@@ -4715,6 +4735,17 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 priority = 2 if seat else 1
 
             previous = candidates.get(client_id)
+            if not person.get("name_is_default") and person.get("name") != "＊＊＊＊":
+                try:
+                    connection = next(iter(connections))
+                    member_token = connection.cookies.get(MEMBER_COOKIE, "")
+                    if member_token not in reward_title_cache:
+                        reward_title_cache[member_token] = MEMBER_STORE.active_score_title_for_token(member_token)
+                    title = reward_title_cache[member_token]
+                    if title:
+                        person["score_title"] = title
+                except (MemberError, StopIteration):
+                    pass
             if previous is None or priority > previous[0]:
                 candidates[client_id] = (priority, connected_game_id, person)
 
@@ -5888,13 +5919,18 @@ class ScoreRoomEntry(BaseModel):
 @trace_router.get("/api/score-attack/rankings")
 def score_period_rankings(request: Request, response: Response, period: str = "daily"):
     store = get_trace_store()
+    _settle_weekly_score_rewards()
     owner = None
     try:
         owner, _ = store.identity(request, response, MEMBER_STORE)
     except HTTPException as error:
         if error.status_code != 401:
             raise
-    return store.period_ranking(period, owner=owner)
+    def reward_lookup(member_ids, week_start, selected_period):
+        if selected_period == "weekly_previous":
+            return MEMBER_STORE.score_awards_for_members(member_ids, week_start)
+        return MEMBER_STORE.score_awards_for_members(member_ids)
+    return store.period_ranking(period, owner=owner, reward_lookup=reward_lookup)
 
 
 @trace_router.post("/api/score-attack/enter")
@@ -6279,10 +6315,20 @@ async def set_player_name(game_id: str, req: NameRequest):
 
 
 PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice"})
+REWARD_CHAT_STAMP_IDS = frozenset({"weekly_champion"})
 
 
 def _require_chat_stamp_access(game_id: str, stamp_id: str, request: Request):
     if not stamp_id or stamp_id in PUBLIC_CHAT_STAMP_IDS:
+        return
+    if stamp_id in REWARD_CHAT_STAMP_IDS:
+        require_member_origin(request)
+        try:
+            member = MEMBER_STORE.with_usage(MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, "")))
+            if not member.get("score_champion_stamp"):
+                raise MemberError(403, "週間1位の限定スタンプです。")
+        except MemberError as error:
+            raise HTTPException(error.status, str(error)) from None
         return
     if game_id in PRIVATE_ROOM_NAMES or game_id == DEBUG_GID:
         return

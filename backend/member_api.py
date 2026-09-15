@@ -92,11 +92,26 @@ class UpdateInput(MemberInput):
     managed_room_id: str | None = Field(default=None, max_length=64)
 
 
+class RewardSettingsInput(MemberInput):
+    free_base_limit: int = Field(ge=1, le=10000)
+    paid_base_limit: int = Field(ge=1, le=10000)
+    rank1_bonus: int = Field(ge=0, le=1000)
+    rank2_bonus: int = Field(ge=0, le=1000)
+    rank3_bonus: int = Field(ge=0, le=1000)
+    reward_bonus_cap: int = Field(ge=0, le=10000)
+
+
+class KifuQuotaInput(MemberInput):
+    admin_kifu_bonus: int = Field(ge=0, le=10000)
+    note: str = Field(default="", max_length=500)
+
+
 class AutoKifuInput(MemberInput):
     enabled: StrictBool
 
 
-def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False, room_options=lambda: []):
+def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False,
+                         room_options=lambda: [], settle_rewards=lambda: None):
     router = APIRouter(route_class=PrivateRoute)
 
     def token(request):
@@ -107,6 +122,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
             raise MemberError(400, "割り当てるプライベートルームを選択してください。")
 
     def with_settings(member, value):
+        settle_rewards()
         member = store.with_usage(member)
         member["auto_save_kifu"] = False if member["must_change_password"] else store.kifu_auto_save(value)
         return member
@@ -149,6 +165,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
 
     @router.get("/api/member/me")
     def me(request: Request):
+        settle_rewards()
         return {"member": store.with_usage(store.authenticate(token(request)))}
 
     @router.post("/api/member/password")
@@ -172,7 +189,14 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
     @router.get("/admin/api/members")
     def members(request: Request):
         require_admin(request)
-        return {"members": store.list_members(), "persistent": persistent, "rooms": room_options()}
+        settle_rewards()
+        return {"members": store.list_members(), "persistent": persistent, "rooms": room_options(),
+                "reward_settings": store.reward_settings()}
+
+    @router.put("/admin/api/members/settings/rewards")
+    def reward_settings(request: Request, data: RewardSettingsInput):
+        require_admin(request)
+        return {"reward_settings": store.update_reward_settings(**data.model_dump())}
 
     @router.post("/admin/api/members")
     def create(request: Request, data: CreateInput):
@@ -185,6 +209,11 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
         require_admin(request)
         validate_room(data.managed_room_id)
         return {"member": store.update(member_id, **data.model_dump())}
+
+    @router.put("/admin/api/members/{member_id}/kifu-quota")
+    def kifu_quota(request: Request, member_id: str, data: KifuQuotaInput):
+        require_admin(request)
+        return {"member": store.update_admin_kifu_bonus(member_id, data.admin_kifu_bonus, data.note)}
 
     @router.post("/admin/api/members/{member_id}/reset-password")
     def reset(request: Request, member_id: str):

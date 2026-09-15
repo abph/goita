@@ -76,9 +76,7 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
         return {
             "records": store.list(token(request)),
             "persistent": persistent,
-            "limit": store.LIMIT if member["paid_active"] else int(
-                getattr(store.members, "FREE_KIFU_LIMIT", store.FREE_LIMIT)
-            ),
+            "limit": store.members.kifu_limit(member),
         }
 
     @router.post("/save")

@@ -223,7 +223,7 @@ class TraceStore:
                  "attempt_no": row["attempt_no"], "is_best": row["improvement"] == row["best_score"]}
                 for row in rows]}
 
-    def period_ranking(self, period="daily", *, owner=None):
+    def period_ranking(self, period="daily", *, owner=None, reward_lookup=None):
         if period not in ("daily", "weekly", "weekly_previous"):
             raise HTTPException(400, "ランキングの期間を確認してください。")
         now = self.clock()
@@ -250,12 +250,42 @@ class TraceStore:
             FROM totals JOIN trace_people USING(owner)
             ORDER BY points DESC, name, owner""",
                 (start.timestamp(), end.timestamp(), now, "weekly" if weekly else "daily")).fetchall()
+        member_ids = [row["owner"][7:] for row in rows if row["owner"].startswith("member:")]
+        rewards = reward_lookup(member_ids, start.date().isoformat(), period) if reward_lookup else {}
+        ranking = []
+        for row in rows[:100]:
+            item = {"rank": row["position"], "name": row["name"], "guest": bool(row["guest"]),
+                    "score": row["points"], "games": row["games"], "self": row["owner"] == owner}
+            if row["owner"].startswith("member:") and row["owner"][7:] in rewards:
+                item["reward"] = rewards[row["owner"][7:]]
+            ranking.append(item)
         return {"period": period, "start_date": start.date().isoformat(),
                 "end_date": (end - timedelta(days=1)).date().isoformat(),
-                "total": len(rows), "ranking": [
-                    {"rank": row["position"], "name": row["name"], "guest": bool(row["guest"]),
-                     "score": row["points"], "games": row["games"], "self": row["owner"] == owner}
-                    for row in rows[:100]]}
+                "total": len(rows), "ranking": ranking}
+
+    def weekly_award_candidates(self):
+        """Return last week's member finalists while keeping owner IDs out of public payloads."""
+        now = self.clock()
+        today = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
+        end = today.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=today.weekday())
+        start = end - timedelta(days=7)
+        with self.db() as db:
+            rows = db.execute("""WITH days AS (
+                SELECT owner, date(finished,'unixepoch','+9 hours') AS day,
+                       SUM(improvement) AS points
+                FROM trace_attempts WHERE finished >= ? AND finished < ? AND finished <= ?
+                GROUP BY owner, day
+            ), totals AS (
+                SELECT owner, SUM(CASE WHEN points < 0 THEN 0 ELSE points END) AS points
+                FROM days GROUP BY owner
+            )
+            SELECT owner, RANK() OVER (ORDER BY points DESC) AS position
+            FROM totals JOIN trace_people USING(owner) ORDER BY points DESC, name, owner""",
+                (start.timestamp(), end.timestamp(), now)).fetchall()
+        return {"week_start": start.date().isoformat(), "candidates": [
+            {"member_id": row["owner"][7:], "rank": int(row["position"])}
+            for row in rows if row["owner"].startswith("member:") and int(row["position"]) <= 3
+        ]}
 
     def latest(self, owner):
         with self.db() as db:

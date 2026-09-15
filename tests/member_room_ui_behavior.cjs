@@ -138,6 +138,7 @@ const path = require('node:path');
       research_enabled: true, managed_room_id: 'room-gold-01'},
       {member_id: 'normal', enabled: true, paid_enabled: true, paid_active: true}];
     const rooms = [{game_id: 'room-gold-01', name: '研究室A'}, {game_id: 'room-silver-02', name: '研究室B'}];
+    let rewardSettings = {free_base_limit:20, paid_base_limit:1000, rank1_bonus:10, rank2_bonus:5, rank3_bonus:3, reward_bonus_cap:100};
     let adminBody;
     await admin.route('**/*', async route => {
       const url = new URL(route.request().url());
@@ -146,17 +147,27 @@ const path = require('node:path');
         const html = fs.readFileSync(path.resolve(__dirname, '../frontend/admin.html'), 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '');
         return route.fulfill({contentType: 'text/html', body: html});
       }
-      let data = {members, rooms, persistent: true};
+      let data = {members, rooms, persistent: true, reward_settings: rewardSettings};
       if (route.request().method() === 'POST') {
         adminBody = route.request().postDataJSON();
         members.push({...adminBody, enabled: true, paid_active: true});
         data = {member: adminBody, temporary_password: 'test-password', temporary_expires_at: 1800000000};
       }
       if (route.request().method() === 'PUT') {
-        adminBody = route.request().postDataJSON();
-        const id = decodeURIComponent(url.pathname.split('/').pop());
-        members = members.map(m => m.member_id === id ? {...m, ...adminBody} : m);
-        data = {member: members.find(m => m.member_id === id)};
+        const body = route.request().postDataJSON();
+        if (url.pathname.endsWith('/settings/rewards')) {
+          rewardSettings = body;
+          data = {reward_settings: rewardSettings};
+        } else if (url.pathname.endsWith('/kifu-quota')) {
+          const id = decodeURIComponent(url.pathname.split('/').at(-2));
+          members = members.map(m => m.member_id === id ? {...m, admin_kifu_bonus: body.admin_kifu_bonus} : m);
+          data = {member: members.find(m => m.member_id === id)};
+        } else {
+          adminBody = body;
+          const id = decodeURIComponent(url.pathname.split('/').pop());
+          members = members.map(m => m.member_id === id ? {...m, ...adminBody} : m);
+          data = {member: members.find(m => m.member_id === id)};
+        }
       }
       return route.fulfill({json: data});
     });
@@ -168,6 +179,12 @@ const path = require('node:path');
       document.getElementById('membersView').classList.add('active');
       await goitaMemberAdmin.load();
     });
+    const rewardForm = admin.locator('#memberRewardSettings');
+    assert.equal(await rewardForm.locator('[name="free_base_limit"]').inputValue(), '20');
+    await rewardForm.locator('[name="rank1_bonus"]').fill('12');
+    await rewardForm.getByRole('button', {name: '保存枠・報酬設定を保存', exact: true}).click();
+    await admin.locator('#memberAdminStatus').getByText('棋譜保存枠と週次報酬を保存しました。', {exact: true}).waitFor();
+    assert.equal(rewardSettings.rank1_bonus, 12);
     const create = admin.locator('#memberCreateForm');
     assert.equal(await create.locator('[name="managed_room_id"]').isDisabled(), true);
     await create.locator('[name="member_id"]').fill('new-user');

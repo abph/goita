@@ -4693,7 +4693,7 @@
   <script defer src="/static/ai-review-report.js?v=20260909a"></script>
   <link rel="stylesheet" href="/static/member.css?v=20260911c" />
   <script defer src="/static/member-room.js?v=20260906b"></script>
-  <script defer src="/static/member.js?v=20260915a"></script>
+  <script defer src="/static/member.js?v=20260915b"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -5863,12 +5863,12 @@
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
 </style>
-<script src="/static/score-rankings.js?v=20260914a"></script>
+<script src="/static/score-rankings.js?v=20260915a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260915c"></script>
-<script src="/static/i18n.js?v=20260915c"></script>
+<script src="/static/i18n-en.js?v=20260915d"></script>
+<script src="/static/i18n.js?v=20260915d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -7560,6 +7560,7 @@ const CHAT_STAMP_DEFINITIONS = Object.freeze([
   { id: "leave_it", label: "あとはまかせた！", emoji: "🫡" },
   { id: "got_me", label: "やられた！", emoji: "😅" },
   { id: "goita_fun", label: "ごいたのしい！", emoji: "王" },
+  { id: "weekly_champion", label: "週間王者！", pickerLabel: "週間王者", emoji: "🥇", rewardOnly: true },
 ]);
 const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice"]);
 const CHAT_STAMP_ASSET_VERSION = "20260824b";
@@ -11317,6 +11318,13 @@ function buildSitePeopleFragment(sitePeople){
         name.textContent = rawName;
       }
       identity.appendChild(name);
+      if(person?.score_title?.medal){
+        const titleBadge = document.createElement("span");
+        titleBadge.className = "lobby-player-tag";
+        titleBadge.title = String(person.score_title.label || "");
+        titleBadge.textContent = String(person.score_title.medal);
+        identity.appendChild(titleBadge);
+      }
       const tagBadge = buildPlayerTagBadge(person?.tag, "lobby-player-tag");
       if(tagBadge) identity.appendChild(tagBadge);
 
@@ -11560,6 +11568,14 @@ function chatStampDefinition(stampId){
 function buildChatStampVisual(definition, owner, decorative = false){
   const visual = document.createElement("span");
   visual.className = "chat-stamp-visual";
+  if(definition.rewardOnly){
+    const fallback = document.createElement("span");
+    fallback.className = "chat-stamp-emoji";
+    fallback.setAttribute("aria-hidden", "true");
+    fallback.textContent = definition.emoji;
+    visual.append(fallback);
+    return visual;
+  }
   owner?.classList.add("has-image");
 
   const image = document.createElement("img");
@@ -11926,9 +11942,9 @@ function initializeChatStampPickers(){
     const showAllStamps = (kind === "lobby" && window.goitaMembers?.canUseAllStamps())
       || (kind === "room" && (PRIVATE_ROOM_IDS.has(gid) || gid === DEBUG_GID
         || (MAIN_ROOM_IDS.has(gid) && window.goitaMembers?.canUseAllStamps())));
-    const availableStamps = showAllStamps
-      ? CHAT_STAMP_DEFINITIONS
-      : CHAT_STAMP_DEFINITIONS.filter((definition) => PUBLIC_CHAT_STAMP_IDS.has(definition.id));
+    const availableStamps = CHAT_STAMP_DEFINITIONS.filter((definition) => definition.rewardOnly
+      ? window.goitaMembers?.canUseChampionStamp()
+      : showAllStamps || PUBLIC_CHAT_STAMP_IDS.has(definition.id));
     for(const definition of availableStamps){
       const button = document.createElement("button");
       button.type = "button";

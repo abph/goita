@@ -7,6 +7,7 @@
   let generation = 0;
   let rooms = [];
   let members = [];
+  let rewardSettings = null;
   const filter = document.getElementById("memberFilter");
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -75,6 +76,12 @@
         <label>管理する部屋<select name="managed_room_id" ${member.research_enabled ? "" : "disabled"}>${roomOptions(member)}</select></label>
         <label class="member-admin-check"><input type="checkbox" name="is_operator" ${member.is_operator ? "checked" : ""}>管理者用（一覧・利用状況から除外）</label>
         <label>有効期限（JST）<input type="date" name="paid_until" value="${esc(member.paid_until)}" min="2000-01-01" max="9998-12-31"></label>
+        <label>管理者追加枠<input type="number" name="admin_kifu_bonus" min="0" max="10000" value="${Number(member.admin_kifu_bonus || 0)}" required>
+          <span class="muted">基本 ${Number(member.kifu_base_limit || 0)} ＋ 報酬 ${Number(member.reward_kifu_bonus || 0)} ＋ 管理者 ${Number(member.admin_kifu_bonus || 0)}</span></label>
+        <label>変更メモ（任意）<input name="kifu_bonus_note" maxlength="500" placeholder="追加・変更理由"></label>
+        ${member.kifu_quota_history?.length ? `<details><summary>保存枠の変更履歴</summary>${member.kifu_quota_history.map(item =>
+          `<div class="muted">${esc(dateLabel(item.changed_at))}：${Number(item.old_bonus)} → ${Number(item.new_bonus)}局${item.note ? `（${esc(item.note)}）` : ""}</div>`
+        ).join("")}</details>` : ""}
         <div class="member-admin-actions"><button class="button" type="submit">保存</button>
           <button class="button" type="button" data-reset>仮パスワード再発行</button>
           <button class="button" type="button" data-delete>削除</button></div>
@@ -86,6 +93,11 @@
       const data = await request();
       rooms = data.rooms || [];
       members = data.members;
+      rewardSettings = data.reward_settings || null;
+      const settingsForm = document.getElementById("memberRewardSettings");
+      if (rewardSettings) for (const [key, value] of Object.entries(rewardSettings)) {
+        if (settingsForm.elements[key]) settingsForm.elements[key].value = value;
+      }
       document.querySelector('#memberCreateForm [name="managed_room_id"]').innerHTML = roomOptions();
       document.getElementById("memberPersistence").textContent = data.persistent
         ? "会員情報の永続保存：有効" : "会員情報はローカル保存です。本番環境では永続保存先を設定してください。";
@@ -138,8 +150,25 @@
         managed_room_id: form.elements.research_enabled.checked ? form.elements.managed_room_id.value : "",
         is_operator: form.elements.is_operator.checked,
       });
+      await request(`/${encodeURIComponent(form.dataset.id)}/kifu-quota`, "PUT", {
+        admin_kifu_bonus: Number(form.elements.admin_kifu_bonus.value),
+        note: form.elements.kifu_bonus_note.value,
+      });
       await load();
       status.textContent = "会員情報を保存しました。";
+    });
+  });
+  document.getElementById("memberRewardSettings").addEventListener("submit", event => {
+    event.preventDefault();
+    const form = event.target;
+    action(async () => {
+      const body = {};
+      for (const key of ["free_base_limit", "paid_base_limit", "rank1_bonus", "rank2_bonus", "rank3_bonus", "reward_bonus_cap"]) {
+        body[key] = Number(form.elements[key].value);
+      }
+      await request("/settings/rewards", "PUT", body);
+      await load();
+      status.textContent = "棋譜保存枠と週次報酬を保存しました。";
     });
   });
   list.addEventListener("click", event => {
@@ -177,7 +206,7 @@
     list.replaceChildren();
     document.getElementById("memberCreateForm").reset();
     document.querySelector('#memberCreateForm [name="managed_room_id"]').disabled = true;
-    rooms = []; members = [];
+    rooms = []; members = []; rewardSettings = null;
   }
   window.goitaMemberAdmin = {load, clear, hideCredential};
 })();

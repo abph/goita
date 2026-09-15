@@ -81,6 +81,8 @@ def normalize_expiry(value: str | None) -> str | None:
 class MemberStore:
     PAID_KIFU_LIMIT = 1000
     FREE_KIFU_LIMIT = 20
+    SCORE_REWARD_BONUSES = {1: 10, 2: 5, 3: 3}
+    SCORE_REWARD_BONUS_CAP = 100
     def __init__(self, path: Path, clock=time.time):
         self.path = Path(path)
         self.clock = clock
@@ -144,6 +146,32 @@ class MemberStore:
                         round_id TEXT NOT NULL,
                         PRIMARY KEY(member_id, round_id)
                     );
+                    CREATE TABLE IF NOT EXISTS member_reward_settings (
+                        id INTEGER PRIMARY KEY CHECK(id = 1),
+                        free_base_limit INTEGER NOT NULL,
+                        paid_base_limit INTEGER NOT NULL,
+                        rank1_bonus INTEGER NOT NULL,
+                        rank2_bonus INTEGER NOT NULL,
+                        rank3_bonus INTEGER NOT NULL,
+                        reward_bonus_cap INTEGER NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS member_score_awards (
+                        week_start TEXT NOT NULL,
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        rank INTEGER NOT NULL,
+                        kifu_bonus INTEGER NOT NULL,
+                        awarded_at REAL NOT NULL,
+                        PRIMARY KEY(week_start, member_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS member_kifu_quota_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        old_bonus INTEGER NOT NULL,
+                        new_bonus INTEGER NOT NULL,
+                        note TEXT NOT NULL,
+                        changed_at REAL NOT NULL
+                    );
                 """)
                 db.execute("BEGIN IMMEDIATE")
                 columns = {row[1] for row in db.execute("PRAGMA table_info(members)")}
@@ -157,6 +185,15 @@ class MemberStore:
                     db.execute("ALTER TABLE members ADD COLUMN registration_source TEXT NOT NULL DEFAULT 'admin'")
                 if "last_login_at" not in columns:
                     db.execute("ALTER TABLE members ADD COLUMN last_login_at REAL")
+                if "reward_kifu_bonus" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN reward_kifu_bonus INTEGER NOT NULL DEFAULT 0")
+                if "admin_kifu_bonus" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN admin_kifu_bonus INTEGER NOT NULL DEFAULT 0")
+                db.execute("""INSERT OR IGNORE INTO member_reward_settings VALUES
+                              (1, ?, ?, ?, ?, ?, ?, ?)""",
+                           (self.FREE_KIFU_LIMIT, self.PAID_KIFU_LIMIT,
+                            self.SCORE_REWARD_BONUSES[1], self.SCORE_REWARD_BONUSES[2],
+                            self.SCORE_REWARD_BONUSES[3], self.SCORE_REWARD_BONUS_CAP, self.clock()))
                 db.execute("CREATE UNIQUE INDEX IF NOT EXISTS member_managed_room ON members(managed_room_id) WHERE managed_room_id <> ''")
                 db.execute("INSERT OR IGNORE INTO member_meta VALUES ('throttle_secret', ?)", (secrets.token_hex(32),))
                 db.commit()
@@ -183,6 +220,7 @@ class MemberStore:
         today = datetime.fromtimestamp(self.clock(), JST).date().isoformat()
         paid_active = bool(row["enabled"] and row["paid_enabled"] and
                            (not row["paid_until"] or row["paid_until"] >= today))
+        keys = set(row.keys())
         return {
             "member_id": row["member_id"], "enabled": bool(row["enabled"]),
             "paid_enabled": bool(row["paid_enabled"]), "paid_until": row["paid_until"],
@@ -193,7 +231,40 @@ class MemberStore:
             "managed_room_id": row["managed_room_id"],
             "registration_source": row["registration_source"],
             "last_login_at": row["last_login_at"],
+            "reward_kifu_bonus": int(row["reward_kifu_bonus"]) if "reward_kifu_bonus" in keys else 0,
+            "admin_kifu_bonus": int(row["admin_kifu_bonus"]) if "admin_kifu_bonus" in keys else 0,
         }
+
+    @staticmethod
+    def _reward_settings_from_db(db):
+        row = db.execute("SELECT * FROM member_reward_settings WHERE id = 1").fetchone()
+        return {key: int(row[key]) for key in (
+            "free_base_limit", "paid_base_limit", "rank1_bonus", "rank2_bonus",
+            "rank3_bonus", "reward_bonus_cap",
+        )}
+
+    def reward_settings(self):
+        with self._db() as db:
+            return self._reward_settings_from_db(db)
+
+    def update_reward_settings(self, **values):
+        limits = {
+            "free_base_limit": (1, 10000), "paid_base_limit": (1, 10000),
+            "rank1_bonus": (0, 1000), "rank2_bonus": (0, 1000),
+            "rank3_bonus": (0, 1000), "reward_bonus_cap": (0, 10000),
+        }
+        for key, (minimum, maximum) in limits.items():
+            value = values.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+                raise MemberError(400, "棋譜保存枠の設定値を確認してください。")
+        if not values["rank1_bonus"] >= values["rank2_bonus"] >= values["rank3_bonus"]:
+            raise MemberError(400, "順位報酬は1位から順に同じか小さい値にしてください。")
+        with self._db(write=True) as db:
+            db.execute("""UPDATE member_reward_settings SET free_base_limit = ?, paid_base_limit = ?,
+                          rank1_bonus = ?, rank2_bonus = ?, rank3_bonus = ?, reward_bonus_cap = ?,
+                          updated_at = ? WHERE id = 1""",
+                       tuple(values[key] for key in limits) + (self.clock(),))
+            return self._reward_settings_from_db(db)
 
     def list_members(self):
         with self._db() as db:
@@ -204,30 +275,131 @@ class MemberStore:
                 GROUP BY m.member_id
                 ORDER BY m.created_at DESC, m.member_id
             """).fetchall()
-            return [self.with_usage(self._public(row), int(row["kifu_count"])) for row in rows]
+            settings = self._reward_settings_from_db(db)
+            return [self._with_usage_db(db, self._public(row), int(row["kifu_count"]), settings)
+                    for row in rows]
 
-    def kifu_limit(self, member):
+    def kifu_base_limit(self, member, settings=None):
+        settings = settings or self.reward_settings()
         if member.get("paid_active"):
-            return int(self.PAID_KIFU_LIMIT)
+            return settings["paid_base_limit"]
         if not member.get("paid_enabled"):
-            return int(self.FREE_KIFU_LIMIT)
+            return settings["free_base_limit"]
         return 0
+
+    def kifu_limit(self, member, settings=None):
+        base = self.kifu_base_limit(member, settings)
+        if not base:
+            return 0
+        return base + max(0, int(member.get("reward_kifu_bonus", 0))) + max(0, int(member.get("admin_kifu_bonus", 0)))
 
     def can_save_kifu(self, member):
         return bool(member.get("paid_active") or not member.get("paid_enabled"))
 
     def with_usage(self, member, count=None):
-        result = dict(member)
-        if count is None:
-            with self._db() as db:
+        with self._db() as db:
+            if count is None:
                 count = db.execute(
                     "SELECT COUNT(*) FROM member_kifu WHERE member_id = ?",
-                    (result["member_id"],),
+                    (member["member_id"],),
                 ).fetchone()[0]
+            return self._with_usage_db(db, member, count, self._reward_settings_from_db(db))
+
+    def _with_usage_db(self, db, member, count, settings):
+        result = dict(member)
+        current_week = (datetime.fromtimestamp(self.clock(), JST).date() -
+                        timedelta(days=datetime.fromtimestamp(self.clock(), JST).date().weekday()))
+        active_week = (current_week - timedelta(days=7)).isoformat()
+        awards = db.execute("""SELECT
+              SUM(CASE WHEN rank = 1 THEN 1 ELSE 0 END) AS gold,
+              SUM(CASE WHEN rank = 2 THEN 1 ELSE 0 END) AS silver,
+              SUM(CASE WHEN rank = 3 THEN 1 ELSE 0 END) AS bronze
+              FROM member_score_awards WHERE member_id = ?""", (result["member_id"],)).fetchone()
+        active = db.execute("SELECT rank FROM member_score_awards WHERE member_id = ? AND week_start = ?",
+                            (result["member_id"], active_week)).fetchone()
+        quota_rows = db.execute("""SELECT old_bonus, new_bonus, note, changed_at
+            FROM member_kifu_quota_history WHERE member_id = ? ORDER BY changed_at DESC, id DESC LIMIT 5""",
+            (result["member_id"],)).fetchall()
         result["kifu_count"] = int(count)
-        result["kifu_limit"] = self.kifu_limit(result)
+        result["kifu_base_limit"] = self.kifu_base_limit(result, settings)
+        result["kifu_limit"] = self.kifu_limit(result, settings)
         result["can_save_kifu"] = self.can_save_kifu(result)
+        history = {"gold": int(awards["gold"] or 0), "silver": int(awards["silver"] or 0),
+                   "bronze": int(awards["bronze"] or 0)}
+        result["score_award_history"] = history
+        result["score_champion_stamp"] = history["gold"] > 0
+        result["score_title"] = self._score_title(active["rank"]) if active else None
+        result["kifu_quota_history"] = [
+            {"old_bonus": int(row["old_bonus"]), "new_bonus": int(row["new_bonus"]),
+             "note": row["note"], "changed_at": float(row["changed_at"])} for row in quota_rows
+        ]
         return result
+
+    @staticmethod
+    def _score_title(rank):
+        names = {1: ("gold", "金の称号", "🥇"), 2: ("silver", "銀の称号", "🥈"), 3: ("bronze", "銅の称号", "🥉")}
+        key, label, medal = names[int(rank)]
+        return {"rank": int(rank), "key": key, "label": label, "medal": medal}
+
+    def grant_weekly_score_awards(self, week_start, candidates):
+        settings = self.reward_settings()
+        granted = []
+        with self._db(write=True) as db:
+            for candidate in candidates:
+                member_id, rank = str(candidate.get("member_id", "")), int(candidate.get("rank", 0))
+                if rank not in (1, 2, 3) or not member_id:
+                    continue
+                member = db.execute("SELECT reward_kifu_bonus FROM members WHERE member_id = ?", (member_id,)).fetchone()
+                if not member or db.execute("SELECT 1 FROM member_score_awards WHERE week_start = ? AND member_id = ?",
+                                            (week_start, member_id)).fetchone():
+                    continue
+                requested = settings[f"rank{rank}_bonus"]
+                bonus = min(requested, max(0, settings["reward_bonus_cap"] - int(member["reward_kifu_bonus"])))
+                db.execute("INSERT INTO member_score_awards VALUES (?, ?, ?, ?, ?)",
+                           (week_start, member_id, rank, bonus, self.clock()))
+                db.execute("UPDATE members SET reward_kifu_bonus = reward_kifu_bonus + ?, updated_at = ? WHERE member_id = ?",
+                           (bonus, self.clock(), member_id))
+                granted.append({"member_id": member_id, "rank": rank, "kifu_bonus": bonus})
+        return granted
+
+    def score_awards_for_members(self, member_ids, week_start=None):
+        member_ids = sorted({value for value in member_ids if value})
+        if not member_ids:
+            return {}
+        placeholders = ",".join("?" for _ in member_ids)
+        with self._db() as db:
+            if week_start:
+                rows = db.execute(f"SELECT member_id, rank, kifu_bonus FROM member_score_awards WHERE week_start = ? AND member_id IN ({placeholders})",
+                                  (week_start, *member_ids)).fetchall()
+            else:
+                current = datetime.fromtimestamp(self.clock(), JST).date()
+                active_week = (current - timedelta(days=current.weekday() + 7)).isoformat()
+                rows = db.execute(f"SELECT member_id, rank, kifu_bonus FROM member_score_awards WHERE week_start = ? AND member_id IN ({placeholders})",
+                                  (active_week, *member_ids)).fetchall()
+            return {row["member_id"]: {**self._score_title(row["rank"]), "kifu_bonus": int(row["kifu_bonus"])} for row in rows}
+
+    def active_score_title_for_token(self, token):
+        member = self.authenticate(token)
+        return self.score_awards_for_members([member["member_id"]]).get(member["member_id"])
+
+    def update_admin_kifu_bonus(self, member_id, bonus, note=""):
+        if not isinstance(bonus, int) or isinstance(bonus, bool) or not 0 <= bonus <= 10000:
+            raise MemberError(400, "管理者追加枠は0〜10000局で入力してください。")
+        note = str(note or "").strip()
+        if len(note) > 500:
+            raise MemberError(400, "変更メモは500文字以内で入力してください。")
+        with self._db(write=True) as db:
+            row = db.execute("SELECT admin_kifu_bonus FROM members WHERE member_id = ?", (member_id,)).fetchone()
+            if not row:
+                raise MemberError(404, "会員が見つかりません。")
+            old = int(row["admin_kifu_bonus"])
+            if old != bonus:
+                now = self.clock()
+                db.execute("UPDATE members SET admin_kifu_bonus = ?, updated_at = ? WHERE member_id = ?", (bonus, now, member_id))
+                db.execute("INSERT INTO member_kifu_quota_history(member_id, old_bonus, new_bonus, note, changed_at) VALUES (?, ?, ?, ?, ?)",
+                           (member_id, old, bonus, note, now))
+            updated = db.execute("SELECT * FROM members WHERE member_id = ?", (member_id,)).fetchone()
+            return self._with_usage_db(db, self._public(updated), db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (member_id,)).fetchone()[0], self._reward_settings_from_db(db))
 
     def kifu_auto_save(self, token, enabled=None):
         with self._db(write=enabled is not None) as db:

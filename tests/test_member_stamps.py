@@ -61,7 +61,7 @@ def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env
     client.cookies.set(MEMBER_COOKIE, "forged-session")
     assert send(client, room=room).status_code == 401
     login_paid(client, store)
-    for stamp in app_module.CHAT_STAMPS:
+    for stamp in set(app_module.CHAT_STAMPS) - app_module.REWARD_CHAT_STAMP_IDS:
         response = send(client, stamp, room)
         assert response.status_code == 200
         item = response.json()["chat_messages"][-1]
@@ -94,6 +94,17 @@ def test_private_and_debug_stamps_remain_available_without_membership(stamp_env)
     for room in (app_module.PRIVATE_A_GID, app_module.DEBUG_GID):
         assert send(client, room=room).status_code == 200
     assert client.post("/lobby/chat", json={"message": "", "stamp_id": "sorry"}).status_code == 401
+
+
+def test_weekly_champion_stamp_requires_a_first_place_award_and_stays_unlocked(stamp_env):
+    client, store = stamp_env
+    login_paid(client, store)
+    assert send(client, "weekly_champion", "main").status_code == 403
+    store.grant_weekly_score_awards("2026-08-24", [{"member_id": "tester", "rank": 1}])
+    store.update("tester", enabled=True, paid_enabled=False, paid_until=None)
+    response = send(client, "weekly_champion", "main")
+    assert response.status_code == 200
+    assert response.json()["chat_messages"][-1]["stamp_id"] == "weekly_champion"
 
 
 @pytest.mark.parametrize("room", ["main", "lobby"])

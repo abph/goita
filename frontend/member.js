@@ -91,6 +91,9 @@
           <dt>${label("プラン状態")}</dt><dd>${label(plan)}</dd>
           ${member.research_enabled ? `<dt>${label("プラン")}</dt><dd>${label("研究用プラン")}</dd>` : ""}
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
+          ${member.score_title ? `<dt>${label("スコアアタック称号")}</dt><dd>${escape(member.score_title.medal)} ${label(member.score_title.label)}</dd>` : ""}
+          <dt>${label("受賞履歴")}</dt><dd>🥇 ${Number(member.score_award_history?.gold || 0)} / 🥈 ${Number(member.score_award_history?.silver || 0)} / 🥉 ${Number(member.score_award_history?.bronze || 0)}</dd>
+          ${member.score_champion_stamp ? `<dt>${label("限定スタンプ")}</dt><dd>${label("週間王者スタンプ獲得済み")}</dd>` : ""}
         </dl>
         <p class="member-help">${label("支援・解約は以下のリンクからできます")}<br>
           <a href="https://vrcgoita.com/support/" target="_blank" rel="noopener noreferrer">${label("支援・解約のご案内")}</a></p>
@@ -308,6 +311,9 @@
     if (!member || member.must_change_password || !member.paid_active) return false;
     return !member.paid_until || Date.now() < Date.parse(`${member.paid_until}T23:59:59.999+09:00`);
   }
+  function canUseChampionStamp() {
+    return Boolean(member?.score_champion_stamp && !member?.must_change_password);
+  }
   function canSaveKifu() {
     return !!member && !member.must_change_password && member.can_save_kifu === true;
   }
@@ -344,9 +350,7 @@
       error: "棋譜を自動保存できませんでした。終局画面から手動で保存してください。",
     };
     const limit = Number(data.limit || member.kifu_limit || 0);
-    const limitMessage = limit === 20
-      ? "保存上限の20件に達したため、自動保存を停止しました。"
-      : "保存上限の1000件に達したため、自動保存を停止しました。";
+    const limitMessage = `保存上限の${limit}件に達したため、自動保存を停止しました。`;
     if (data.status === "limit") messages.limit = limitMessage;
     if (!messages[data.status]) return;
     if (data.status === "limit") { member.auto_save_kifu = false; render(); }
@@ -360,7 +364,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration, requestLibrary};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canUseChampionStamp, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration, requestLibrary};
   render();
   refresh();
 })();

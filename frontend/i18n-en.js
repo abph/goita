@@ -5,6 +5,13 @@
  */
 (() => {
   const exact = Object.freeze({
+    "スコアアタック称号": "Score Attack Title",
+    "受賞履歴": "Award History",
+    "限定スタンプ": "Exclusive Stamp",
+    "週間王者スタンプ獲得済み": "Weekly Champion stamp unlocked",
+    "金の称号": "Gold Title",
+    "銀の称号": "Silver Title",
+    "銅の称号": "Bronze Title",
     "参加した局の棋譜を自動保存する": "Automatically Save Participated Rounds",
     "棋譜をサーバーに自動保存": "Automatically Save Records to the Server",
     "棋譜をサーバーに手動保存": "Manually Save a Record to the Server",
@@ -746,6 +753,7 @@
   const simpleTranslate = (value) => exact[String(value ?? "")] ?? String(value ?? "");
 
   const rules = [
+    [/^保存上限の(\d+)件に達したため、自動保存を停止しました。$/, (_m, n) => `Automatic saving stopped because the ${n}-record limit was reached.`],
     [/^(\d+)位$/, (_m, n) => `Rank ${n}`],
     [/^(\d+)局$/, (_m, n) => `${n} games`],
     [/^([+-]?\d+|±\d+)点$/, (_m, score) => `${score} points`],

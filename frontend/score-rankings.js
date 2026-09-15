@@ -40,8 +40,9 @@ async function openScoreRankings(period = 'daily') {
     for (const item of data.ranking) {
       const row = document.createElement('tr');
       if (item.self) row.className = 'trace-ranking-self';
+      const reward = item.reward ? `${item.reward.medal} ` : '';
       for (const value of [`${item.rank}位`,
-        `${item.name}${item.guest ? '（ゲスト）' : ''}${item.self ? '（自分）' : ''}`,
+        `${reward}${item.name}${item.guest ? '（ゲスト）' : ''}${item.self ? '（自分）' : ''}`,
         weekly ? `${item.score}点` : traceSigned(item.score), `${item.games}局`]) {
         const cell = document.createElement('td');
         cell.textContent = value;

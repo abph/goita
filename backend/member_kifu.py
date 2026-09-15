@@ -110,9 +110,8 @@ class MemberKifuStore:
             member = self.members._public(self.members._session_row(db, token))
             if not self.members.can_save_kifu(member):
                 raise MemberError(403, "新規保存には有効な会員権限が必要です。")
-            limit = self.LIMIT if member["paid_active"] else int(
-                getattr(self.members, "FREE_KIFU_LIMIT", self.FREE_LIMIT)
-            )
+            limit = (self.LIMIT if member["paid_active"] and self.LIMIT != 1000 else
+                     self.members.kifu_limit(member, self.members._reward_settings_from_db(db)))
             if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (member_id,)).fetchone()[0] + len(records) > limit:
                 raise MemberError(409, f"保存上限の{limit}件に達しました。不要な棋譜を削除してください。")
             saved = []
@@ -141,9 +140,8 @@ class MemberKifuStore:
                 return None
             if seat not in ("A", "B", "C", "D") or payload.get("winner") not in ("A", "B", "C", "D"):
                 raise MemberError(409, "棋譜は終局後に保存できます")
-            limit = self.LIMIT if member["paid_active"] else int(
-                getattr(self.members, "FREE_KIFU_LIMIT", self.FREE_LIMIT)
-            )
+            limit = (self.LIMIT if member["paid_active"] and self.LIMIT != 1000 else
+                     self.members.kifu_limit(member, self.members._reward_settings_from_db(db)))
             if db.execute("SELECT COUNT(*) FROM member_kifu WHERE member_id = ?", (owner,)).fetchone()[0] >= limit:
                 db.execute("UPDATE member_kifu_settings SET auto_save = 0 WHERE member_id = ?", (owner,))
                 return {"status": "limit", "member_id": owner, "limit": limit}
