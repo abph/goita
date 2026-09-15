@@ -1281,43 +1281,43 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: stretch;
-        max-width: 620px;
-        margin: 0 auto 20px;
-        border: 1px solid #b68a55;
-        border-radius: 8px;
-        background: #fffdf5;
-        overflow: hidden;
+        width: 100%;
+        margin: 0 0 20px;
+        border-bottom: 1px solid rgba(139, 90, 43, 0.28);
     }
     .lobby-room-category-tab {
-        min-height: 34px;
+        min-height: 53px;
         padding: 4px 12px;
         border: 0;
         background: transparent;
         color: #5f4935;
         cursor: pointer;
         font-size: 13px;
-        font-weight: 800;
+        font-weight: 600;
     }
     .lobby-room-category-title {
         display: flex;
-        min-height: 34px;
         align-items: center;
         justify-content: center;
         margin: 0 !important;
-        padding: 0 18px;
-        border-right: 1px solid rgba(139, 90, 43, 0.28);
-        border-left: 1px solid rgba(139, 90, 43, 0.28);
+        border-bottom: 0;
         color: #3e3024;
         white-space: nowrap;
     }
     .lobby-room-category-tab[aria-selected="true"] {
-        background: #8b5a2b;
-        color: #fffdf5;
+        background: transparent;
+        color: #4e3825;
+        font-weight: 900;
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 6px;
     }
     .lobby-room-category-tab:hover,
     .lobby-room-category-tab:focus-visible {
-        background: #f3df9d;
+        background: transparent;
         color: #4e3825;
+        text-decoration: underline;
+        text-underline-offset: 6px;
     }
     .lobby-room-panel { animation: lobby-room-panel-in 0.16s ease; }
     .lobby-room-panel[hidden] { display: none; }
@@ -1603,11 +1603,9 @@
       }
       .lobby-room-category-nav {
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-        margin: 0 10px 14px;
+        margin: 0 0 14px;
       }
-      .lobby-room-category-tab { min-height: 32px; }
       .lobby-room-category-tab { padding: 3px 5px; font-size: 11px; }
-      .lobby-room-category-title { min-height: 32px; padding: 0 9px; }
       .lobby-room-panel-description {
         margin: 0 12px 12px;
         font-size: 11px;

@@ -93,8 +93,10 @@ def test_public_and_private_rooms_share_one_switchable_section():
     assert 'function showLobbyRoomCategory(category, focusTab = false)' in HTML
     assert 'function handleLobbyRoomCategoryKeydown(event)' in HTML
     assert 'showLobbyRoomCategory("private");' in HTML
-    assert ".lobby-room-category-tab { min-height: 32px; }" in HTML
-    assert "min-height: 34px;" in HTML
+    assert ".lobby-room-category-tab {\n        min-height: 53px;" in HTML
+    assert "text-decoration-thickness: 2px;" in HTML
+    assert "text-underline-offset: 6px;" in HTML
+    assert "border-right: 1px solid rgba(139, 90, 43, 0.28);" not in HTML
 
 
 def test_three_lobby_features_use_consistent_section_cards():
