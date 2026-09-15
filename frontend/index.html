@@ -1279,50 +1279,41 @@
     }
     .lobby-room-category-nav {
         display: grid;
-        grid-template-columns: 42px minmax(0, 1fr) 42px;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: stretch;
-        max-width: 520px;
-        margin: 14px auto 20px;
+        max-width: 620px;
+        margin: 0 auto 20px;
         border: 1px solid #b68a55;
         border-radius: 8px;
         background: #fffdf5;
         overflow: hidden;
     }
-    .lobby-room-category-arrow,
     .lobby-room-category-tab {
         min-height: 34px;
+        padding: 4px 12px;
         border: 0;
         background: transparent;
         color: #5f4935;
         cursor: pointer;
+        font-size: 13px;
         font-weight: 800;
     }
-    .lobby-room-category-arrow {
-        font-size: 18px;
-    }
-    .lobby-room-category-arrow:first-child { border-right: 1px solid rgba(139, 90, 43, 0.28); }
-    .lobby-room-category-arrow:last-child { border-left: 1px solid rgba(139, 90, 43, 0.28); }
-    .lobby-room-category-arrow:disabled {
-        color: #c5b9ac;
-        cursor: default;
-    }
-    .lobby-room-category-tabs {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-    }
-    .lobby-room-category-tab {
-        padding: 4px 8px;
-        font-size: 13px;
-    }
-    .lobby-room-category-tab + .lobby-room-category-tab {
-        border-left: 1px solid rgba(139, 90, 43, 0.2);
+    .lobby-room-category-title {
+        display: flex;
+        min-height: 34px;
+        align-items: center;
+        justify-content: center;
+        margin: 0 !important;
+        padding: 0 18px;
+        border-right: 1px solid rgba(139, 90, 43, 0.28);
+        border-left: 1px solid rgba(139, 90, 43, 0.28);
+        color: #3e3024;
+        white-space: nowrap;
     }
     .lobby-room-category-tab[aria-selected="true"] {
         background: #8b5a2b;
         color: #fffdf5;
     }
-    .lobby-room-category-arrow:not(:disabled):hover,
-    .lobby-room-category-arrow:not(:disabled):focus-visible,
     .lobby-room-category-tab:hover,
     .lobby-room-category-tab:focus-visible {
         background: #f3df9d;
@@ -1611,12 +1602,12 @@
         line-height: 1.5 !important;
       }
       .lobby-room-category-nav {
-        grid-template-columns: 36px minmax(0, 1fr) 36px;
-        margin: 10px 10px 14px;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        margin: 0 10px 14px;
       }
-      .lobby-room-category-arrow,
       .lobby-room-category-tab { min-height: 32px; }
-      .lobby-room-category-tab { padding: 3px 4px; font-size: 11px; }
+      .lobby-room-category-tab { padding: 3px 5px; font-size: 11px; }
+      .lobby-room-category-title { min-height: 32px; padding: 0 9px; }
       .lobby-room-panel-description {
         margin: 0 12px 12px;
         font-size: 11px;
@@ -4799,17 +4790,12 @@
   </section>
 
   <section id="lobbyRoomsSection" class="card lobby-room-section lobby-section-card" style="margin-bottom: 24px; text-align: center;">
-    <h2 class="lobby-section-heading">対局ルーム</h2>
+    <div class="lobby-room-category-nav" role="tablist" aria-label="表示する対局ルーム">
+      <button id="lobbyPublicRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-label="公開部屋を表示" aria-selected="true" aria-controls="lobbyPublicRoomsPanel" onclick="showLobbyRoomCategory('public')" onkeydown="handleLobbyRoomCategoryKeydown(event)">← 公開部屋</button>
+      <h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>
+      <button id="lobbyPrivateRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-label="プライベートルームを表示" aria-selected="false" aria-controls="lobbyPrivateRoomsSection" onclick="showLobbyRoomCategory('private')" onkeydown="handleLobbyRoomCategoryKeydown(event)" tabindex="-1">プライベート →</button>
+    </div>
     <div class="lobby-room-section-body">
-     <div class="lobby-room-category-nav">
-      <button id="lobbyPublicRoomsArrow" class="lobby-room-category-arrow" type="button" onclick="showLobbyRoomCategory('public', true)" aria-label="公開部屋を表示" disabled>←</button>
-      <div class="lobby-room-category-tabs" role="tablist" aria-label="表示する対局ルーム">
-        <button id="lobbyPublicRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-selected="true" aria-controls="lobbyPublicRoomsPanel" onclick="showLobbyRoomCategory('public')" onkeydown="handleLobbyRoomCategoryKeydown(event)">公開部屋</button>
-        <button id="lobbyPrivateRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-selected="false" aria-controls="lobbyPrivateRoomsSection" onclick="showLobbyRoomCategory('private')" onkeydown="handleLobbyRoomCategoryKeydown(event)" tabindex="-1">プライベートルーム</button>
-      </div>
-      <button id="lobbyPrivateRoomsArrow" class="lobby-room-category-arrow" type="button" onclick="showLobbyRoomCategory('private', true)" aria-label="プライベートルームを表示">→</button>
-     </div>
-
      <div id="lobbyPublicRoomsPanel" class="lobby-room-panel" role="tabpanel" aria-labelledby="lobbyPublicRoomsTab">
       <p class="lobby-room-panel-description">誰でも自由に参加・観戦できる対局室です。気軽に対局をお楽しみください。</p>
       <div id="lobbyMainRoom" class="room-card-container"></div>
@@ -8339,8 +8325,6 @@ function showLobbyRoomCategory(category, focusTab = false) {
     const privatePanel = document.getElementById("lobbyPrivateRoomsSection");
     const publicTab = document.getElementById("lobbyPublicRoomsTab");
     const privateTab = document.getElementById("lobbyPrivateRoomsTab");
-    const publicArrow = document.getElementById("lobbyPublicRoomsArrow");
-    const privateArrow = document.getElementById("lobbyPrivateRoomsArrow");
 
     if (publicPanel) publicPanel.hidden = showPrivate;
     if (privatePanel) privatePanel.hidden = !showPrivate;
@@ -8352,8 +8336,6 @@ function showLobbyRoomCategory(category, focusTab = false) {
         privateTab.setAttribute("aria-selected", String(showPrivate));
         privateTab.tabIndex = showPrivate ? 0 : -1;
     }
-    if (publicArrow) publicArrow.disabled = !showPrivate;
-    if (privateArrow) privateArrow.disabled = showPrivate;
     if (focusTab) requestAnimationFrame(() => (showPrivate ? privateTab : publicTab)?.focus());
 }
 

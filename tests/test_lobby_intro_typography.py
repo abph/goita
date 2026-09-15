@@ -87,8 +87,9 @@ def test_public_and_private_rooms_share_one_switchable_section():
     assert 'id="lobbyRoomsSection"' in HTML
     assert 'id="lobbyPublicRoomsPanel"' in HTML
     assert 'id="lobbyPrivateRoomsSection"' in HTML
-    assert 'id="lobbyPublicRoomsArrow"' in HTML
-    assert 'id="lobbyPrivateRoomsArrow"' in HTML
+    assert '← 公開部屋</button>' in HTML
+    assert 'プライベート →</button>' in HTML
+    assert '<h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>' in HTML
     assert 'function showLobbyRoomCategory(category, focusTab = false)' in HTML
     assert 'function handleLobbyRoomCategoryKeydown(event)' in HTML
     assert 'showLobbyRoomCategory("private");' in HTML
@@ -99,6 +100,6 @@ def test_public_and_private_rooms_share_one_switchable_section():
 def test_three_lobby_features_use_consistent_section_cards():
     assert HTML.count("lobby-section-card") >= 4
     assert '<h2 id="scoreAttackSectionTitle" class="lobby-section-heading">' in HTML
-    assert '<h2 class="lobby-section-heading">対局ルーム</h2>' in HTML
+    assert '<h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>' in HTML
     assert 'class="score-attack-entry-body"' in HTML
     assert 'class="lobby-room-section-body"' in HTML
