@@ -308,11 +308,14 @@
     });
   });
   function canUseAllStamps() {
-    if (!member || member.must_change_password || !member.paid_active) return false;
+    if (!member || member.must_change_password) return false;
+    if (member.is_operator) return true;
+    if (!member.paid_active) return false;
     return !member.paid_until || Date.now() < Date.parse(`${member.paid_until}T23:59:59.999+09:00`);
   }
   function canUseChampionStamp() {
-    return Boolean(member?.score_champion_stamp && !member?.must_change_password);
+    return Boolean(member && !member.must_change_password
+      && (member.is_operator || member.score_champion_stamp));
   }
   function canSaveKifu() {
     return !!member && !member.must_change_password && member.can_save_kifu === true;

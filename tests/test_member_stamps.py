@@ -52,6 +52,13 @@ def login_paid(client, store, temporary=False):
     return token
 
 
+def login_operator(client, store):
+    issued = store.create("operator", paid_enabled=False, is_operator=True)
+    _, token, _ = store.login("operator", issued["temporary_password"])
+    _, token, _ = store.change_password(token, issued["temporary_password"], "abcd1234")
+    client.cookies.set(MEMBER_COOKIE, token)
+
+
 @pytest.mark.parametrize("room", ["main", "lobby"])
 def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env, room):
     client, store = stamp_env
@@ -105,6 +112,16 @@ def test_weekly_champion_stamp_requires_a_first_place_award_and_stays_unlocked(s
     response = send(client, "weekly_champion", "main")
     assert response.status_code == 200
     assert response.json()["chat_messages"][-1]["stamp_id"] == "weekly_champion"
+
+
+@pytest.mark.parametrize("room", ["main", "lobby"])
+def test_operator_account_can_use_every_stamp_without_paid_or_reward_access(stamp_env, room):
+    client, store = stamp_env
+    login_operator(client, store)
+    for stamp in app_module.CHAT_STAMPS:
+        response = send(client, stamp, room)
+        assert response.status_code == 200
+        assert response.json()["chat_messages"][-1]["stamp_id"] == stamp
 
 
 @pytest.mark.parametrize("room", ["main", "lobby"])

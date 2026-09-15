@@ -6325,7 +6325,7 @@ def _require_chat_stamp_access(game_id: str, stamp_id: str, request: Request):
         require_member_origin(request)
         try:
             member = MEMBER_STORE.with_usage(MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, "")))
-            if not member.get("score_champion_stamp"):
+            if not member.get("is_operator") and not member.get("score_champion_stamp"):
                 raise MemberError(403, "週間1位の限定スタンプです。")
         except MemberError as error:
             raise HTTPException(error.status, str(error)) from None
@@ -6336,7 +6336,9 @@ def _require_chat_stamp_access(game_id: str, stamp_id: str, request: Request):
         raise HTTPException(403, "この場所ではこのスタンプは使えません。")
     require_member_origin(request)
     try:
-        MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, ""), require_paid=True)
+        member = MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, ""))
+        if not member.get("is_operator") and not member.get("paid_active"):
+            raise MemberError(403, "有効な有料権限が必要です。")
     except MemberError as error:
         raise HTTPException(error.status, "全スタンプを使うには、有効な有料会員でログインしてください。") from None
 
