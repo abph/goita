@@ -5923,65 +5923,10 @@
   .trace-history-scroll th,.trace-history-scroll td { padding:6px 5px; white-space:nowrap; }
   .trace-history-scroll button { font-size:13px; }
   .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
-  .score-attack-entry {
-    display:flex;
-    flex-direction:column;
-    text-align:center;
-    margin:0;
-    padding:0;
-    border-color:#78aeda;
-    background:linear-gradient(145deg, #f8fcff 0%, #eaf6ff 100%);
-    box-shadow:0 6px 16px rgba(38, 100, 153, 0.15);
-  }
-  .score-attack-entry .lobby-section-heading {
-    border-bottom-color:#b7d8f0;
-    background:#e2f2ff;
-    color:#215f91;
-  }
+  .score-attack-entry { display:flex; flex-direction:column; text-align:center; margin:0; padding:0; background:rgba(255,249,232,0.94); }
   .score-attack-entry-body { display:flex; flex:1; flex-direction:column; justify-content:center; padding:24px; }
-  .score-attack-entry .score-attack-description { color:#35566f; }
   .score-attack-entry-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:18px; }
-  .score-attack-entry-actions button {
-    padding:12px 14px;
-    border:1px solid #4c8fc5;
-    border-radius:8px;
-    font-weight:700;
-    cursor:pointer;
-    transition:transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
-  }
-  #scoreAttackEntry { background:#2e78b5; color:#fff; box-shadow:0 3px 8px rgba(35, 96, 146, 0.22); }
-  #scoreRankingsEntry { background:#f7fbff; color:#245f8e; }
-  .score-attack-entry-actions button:hover,
-  .score-attack-entry-actions button:focus-visible { transform:translateY(-2px); box-shadow:0 5px 11px rgba(35, 96, 146, 0.24); }
-  #scoreAttackEntry:hover,
-  #scoreAttackEntry:focus-visible { background:#24699f; }
-  #scoreRankingsEntry:hover,
-  #scoreRankingsEntry:focus-visible { background:#dcefff; }
-  #lobbyRoomsSection {
-    border-color:#d9867c;
-    background:linear-gradient(145deg, #fffaf9 0%, #fff0ed 100%);
-    box-shadow:0 6px 16px rgba(157, 55, 45, 0.14);
-  }
-  #lobbyRoomsSection .lobby-room-category-nav {
-    border-bottom-color:#edbeb8;
-    background:#ffebe8;
-  }
-  #lobbyRoomsSection .lobby-room-category-title { color:#9d352d; }
-  #lobbyRoomsSection .lobby-room-category-tab { color:#8c4c46; }
-  #lobbyRoomsSection .lobby-room-category-tab[aria-selected="true"],
-  #lobbyRoomsSection .lobby-room-category-tab:hover,
-  #lobbyRoomsSection .lobby-room-category-tab:focus-visible { color:#a62f25; }
-  #lobbyRoomsSection .room-card {
-    border-color:#ba4a40;
-    background:#ffe9df;
-    box-shadow:0 4px 10px rgba(139, 48, 39, 0.17);
-  }
-  #lobbyRoomsSection .room-card:hover {
-    background:#ffdbd2;
-    box-shadow:0 8px 17px rgba(139, 48, 39, 0.22);
-  }
-  #lobbyRoomsSection .room-card .room-heading,
-  #lobbyRoomsSection .room-card .center-info .title { color:#a62f25; }
+  .score-attack-entry-actions button { padding:12px 14px; }
   .score-period-table td:not(:nth-child(2)),.score-period-table th { white-space:nowrap; }
   .personal-score-room :is(#btnSpectator, #voiceChatBar, #handRevealPanel, #matchSettingsTab, #roomManagementTab, #matchSettingsPanel, #roomManagementPanel, #forceResetSettingsRow, #dealerDetails, #presetHandsDetails, #beginnerSupportSettingRow, .auto-play) { display:none !important; }
   .personal-score-room .settings-row:has(:is(#checkAutoRevealOwnHand, #checkAutoRevealAiHands, #checkShowAiThinkingBreakdown)) { display:none; }

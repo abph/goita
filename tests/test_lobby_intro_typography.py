@@ -125,14 +125,3 @@ def test_three_lobby_features_use_consistent_section_cards():
     assert '<h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>' in HTML
     assert 'class="score-attack-entry-body"' in HTML
     assert 'class="lobby-room-section-body"' in HTML
-
-
-def test_score_attack_and_game_rooms_have_distinct_pop_colors():
-    assert "border-color:#78aeda;" in HTML
-    assert "background:linear-gradient(145deg, #f8fcff 0%, #eaf6ff 100%);" in HTML
-    assert "#scoreAttackEntry { background:#2e78b5; color:#fff;" in HTML
-    assert "#lobbyRoomsSection {" in HTML
-    assert "border-color:#d9867c;" in HTML
-    assert "background:linear-gradient(145deg, #fffaf9 0%, #fff0ed 100%);" in HTML
-    assert "#lobbyRoomsSection .room-card {" in HTML
-    assert "border-color:#ba4a40;" in HTML
