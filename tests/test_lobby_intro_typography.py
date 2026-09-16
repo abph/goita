@@ -17,7 +17,7 @@ def test_lobby_intro_uses_scoped_typography_classes():
     assert "transform: translateY(-50%);" in HTML
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
-    assert HTML.count('class="lobby-purpose-option"') == 7
+    assert HTML.count('class="lobby-purpose-option"') == 9
     assert "border-style: dashed;" in HTML
     assert "border-color: rgba(139, 90, 43, 0.55);" in HTML
     assert "box-shadow: 0 2px 7px rgba(79, 52, 29, 0.055);" in HTML
@@ -36,13 +36,16 @@ def test_lobby_feature_guide_has_play_and_study_steps():
     assert 'id="lobbyPurposeHome"' in HTML
     assert 'id="lobbyPurposePlay"' in HTML
     assert 'id="lobbyPurposeStudy"' in HTML
+    assert 'id="lobbyPurposeDeal"' in HTML
     assert 'onclick="showLobbyPurposeStep(\'play\')"' in HTML
     assert 'onclick="showLobbyPurposeStep(\'study\')"' in HTML
     assert 'onclick="startGuidedMatch(\'ai\')"' in HTML
     assert 'onclick="startGuidedMatch(\'human\')"' in HTML
     assert 'onclick="openFeatureGuideLibrary()"' in HTML
-    assert 'onclick="guideToPrivateRooms(\'deal\')"' in HTML
-    assert 'onclick="guideToPrivateRooms(\'hand\')"' in HTML
+    assert 'onclick="showLobbyPurposeStep(\'deal\')"' in HTML
+    assert 'onclick="startGuidedPractice(\'frequent\')"' in HTML
+    assert 'onclick="startGuidedPractice(\'balanced\')"' in HTML
+    assert 'onclick="startGuidedPractice(\'preset\')"' in HTML
     assert 'id="lobbyPrivateRoomsSection"' in HTML
 
 
@@ -57,8 +60,9 @@ def test_lobby_guide_and_score_attack_are_separate_stable_columns():
 
 
 def test_lobby_submenus_use_compact_arrow_back_controls():
-    assert HTML.count('class="lobby-purpose-back-arrow"') == 2
+    assert HTML.count('class="lobby-purpose-back-arrow"') == 3
     assert HTML.count('aria-label="最初の選択に戻る"') == 2
+    assert HTML.count('aria-label="研究方法の選択に戻る"') == 1
     assert 'class="lobby-purpose-back"' not in HTML
     assert ".lobby-purpose-option strong" in HTML
     assert "font-size: 13px;" in HTML
@@ -69,8 +73,10 @@ def test_lobby_questions_replace_the_main_guide_heading():
     assert 'id="lobbyPurposeHomeHeader"' in HTML
     assert 'id="lobbyPurposePlayHeader"' in HTML
     assert 'id="lobbyPurposeStudyHeader"' in HTML
+    assert 'id="lobbyPurposeDealHeader"' in HTML
     assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのように研究しますか？</h2>' in HTML
     assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">人間とAI、どちらと対局しますか？</h2>' in HTML
+    assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのような手駒で練習しますか？</h2>' in HTML
     assert '.lobby-purpose-title {' in HTML
     assert 'font-size: 20px;' in HTML
 
@@ -80,7 +86,7 @@ def test_guided_match_uses_temporary_player_tags():
     assert 'const tag = aiMatch ? "ai_practice" : "human_match";' in HTML
     assert 'const roomId = aiMatch ? "main-e" : MAIN_GID;' in HTML
     assert 'featureGuideRoomTag = null;' in HTML
-    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY' not in HTML.split("async function startGuidedMatch", 1)[1].split("function guideToPrivateRooms", 1)[0]
+    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY' not in HTML.split("async function startGuidedMatch", 1)[1].split("let guidedPracticeStarting", 1)[0]
 
 
 def test_preset_hand_indicator_is_rendered_below_seat_a():
@@ -106,7 +112,7 @@ def test_public_and_private_rooms_share_one_switchable_section():
     assert '<h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>' in HTML
     assert 'function showLobbyRoomCategory(category, focusTab = false)' in HTML
     assert 'function handleLobbyRoomCategoryKeydown(event)' in HTML
-    assert 'showLobbyRoomCategory("private");' in HTML
+    assert 'onclick="showLobbyRoomCategory(\'private\')"' in HTML
     assert ".lobby-room-category-tab {\n        min-height: 53px;" in HTML
     assert "text-decoration-thickness: 2px;" in HTML
     assert "text-underline-offset: 6px;" in HTML

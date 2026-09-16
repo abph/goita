@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 
-from fastapi import HTTPException
-
 from backend import app as app_module
 from backend.frequent_deal import (
     TOP_100_HAND_STRUCTURES,
@@ -97,21 +95,38 @@ def test_frequent_deal_mode_updates_now_and_persists_to_next_round() -> None:
     asyncio.run(scenario())
 
 
-def test_public_rooms_reject_frequent_deal_setting() -> None:
+def test_public_rooms_accept_deal_setting_and_reset_when_host_leaves() -> None:
     async def scenario() -> None:
+        game_id = app_module.MAIN_GID
+        client_id = "public-deal-host"
+        previous = app_module.GAMES.get(game_id)
+        game = app_module._create_game_obj(dealer="A")
+        game["human_seats"] = {"A": client_id}
+        app_module.GAMES[game_id] = game
         try:
-            await app_module.update_deal_mode(
-                app_module.MAIN_GID,
+            saved = await app_module.update_deal_mode(
+                game_id,
                 app_module.DealModeUpdateRequest(
                     requester="A",
-                    client_id="unused",
+                    client_id=client_id,
                     mode="frequent",
                 ),
             )
-        except HTTPException as exc:
-            assert exc.status_code == 403
-        else:
-            raise AssertionError("Public rooms must reject high-frequency deals")
+            assert saved["applies_next_round"] is False
+            assert game["deal_mode"] == "frequent"
+            assert is_frequent_deal(game["init_hands"])
+
+            await app_module.release_seat(game_id, "A", client_id)
+            assert game["deal_mode"] == "normal"
+            assert game["next_deal_mode"] == "normal"
+            assert game["human_seats"] == {}
+        finally:
+            app_module._cancel_turn_timeout_task(game_id)
+            if previous is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous
+            app_module.GAME_TURN_LOCKS.pop(game_id, None)
 
     asyncio.run(scenario())
 
@@ -158,14 +173,15 @@ def test_preset_hands_take_priority_without_disabling_the_mode() -> None:
     asyncio.run(scenario())
 
 
-def test_frontend_contains_private_room_deal_setting() -> None:
+def test_frontend_contains_public_and_private_room_deal_setting() -> None:
     html = app_module.FRONTEND_DIR.joinpath("index.html").read_text(encoding="utf-8")
     assert 'id="dealModeSelect"' in html
     assert '<option value="normal" selected>通常配牌</option>' in html
     assert '<option value="balanced">均衡配牌（S・A・Xなし）</option>' in html
     assert '<option value="frequent">高頻度配牌（上位100）</option>' in html
     assert '<option value="frequent_200">実戦練習配牌（上位200）</option>' in html
-    assert "PRIVATE_ROOM_IDS.has(settingTargetGid || gid)" in html
+    assert "PRIVATE_ROOM_IDS.has(targetGid) || MAIN_ROOM_IDS.has(targetGid)" in html
+    assert 'id="activeDealModeBadge"' in html
     assert "/deal_mode" in html
     assert '["balanced", "frequent", "frequent_200"].includes(configured)' in html
     assert '["balanced", "frequent", "frequent_200"].includes(select.value)' in html
@@ -175,7 +191,7 @@ if __name__ == "__main__":
     test_top_100_structure_filter()
     test_frequent_deals_keep_the_full_deck_and_structure_limit()
     test_frequent_deal_mode_updates_now_and_persists_to_next_round()
-    test_public_rooms_reject_frequent_deal_setting()
+    test_public_rooms_accept_deal_setting_and_reset_when_host_leaves()
     test_preset_hands_take_priority_without_disabling_the_mode()
-    test_frontend_contains_private_room_deal_setting()
+    test_frontend_contains_public_and_private_room_deal_setting()
     print("FREQUENT_DEAL_TEST_OK")

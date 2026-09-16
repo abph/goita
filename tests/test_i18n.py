@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260916b"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260916b"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260916c"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260916c"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -148,6 +148,9 @@ def test_lobby_feature_guide_is_translated() -> None:
         "AIと対局してみたい",
         "誰かと対局したい",
         "よくある手駒で練習する",
+        "手駒の配り方を決めて、練習する",
+        "どのような手駒で練習しますか？",
+        "極端な強弱を除いて練習する",
         "手札を指定して練習する",
         "対局を振り返る",
         "手札指定 ON",

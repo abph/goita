@@ -652,13 +652,16 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
         if not isinstance(human_seats, dict):
             return
         removed = False
+        removed_seats: Set[str] = set()
         for seat, owner_client_id in list(human_seats.items()):
             if owner_client_id == client_id:
                 del human_seats[seat]
                 _clear_player_name(game, seat)
                 await voice_manager.disconnect_seat(game_id, seat, client_id)
                 removed = True
+                removed_seats.add(seat)
         if removed:
+            _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
             await manager.broadcast_update(game_id)
             await manager.broadcast_update("lobby")
     except asyncio.CancelledError:
@@ -712,6 +715,36 @@ def create_hands_for_deal_mode(
     raise RuntimeError(
         f"Failed to generate a {mode} deal after {max_retry} retries."
     )
+
+
+def _apply_deal_mode_to_unstarted_game(game: Dict[str, Any], mode: str) -> None:
+    """Replace only the pending deal while keeping room participation settings."""
+    dealer = str(game.get("dealer", "A"))
+    hands = create_hands_for_deal_mode(mode)
+    game["state"] = GoitaState(hands=hands, dealer=dealer)
+    game["init_hands"] = hands
+    game["board"] = _new_board_snapshot()
+    game["log"] = []
+    game["kifu_moves"] = []
+    game["ai_board_explanations"] = []
+    game["last_public_action"] = None
+    game["reveal_hands"] = False
+    game["revealed_hand_seats"] = []
+    game["auto_reveal_blocked_seats"] = []
+    game["deal_mode"] = mode
+    game["next_deal_mode"] = mode
+
+
+def _reset_public_deal_mode_after_host_leaves(
+    game_id: str,
+    game: Dict[str, Any],
+    removed_seats: Set[str],
+) -> None:
+    if not _is_main_game_id(game_id) or "A" not in removed_seats:
+        return
+    game["next_deal_mode"] = "normal"
+    if not game.get("is_started"):
+        _apply_deal_mode_to_unstarted_game(game, "normal")
 
 def build_hands_from_preset_counts(
     preset: Dict[str, Dict[str, int]],
@@ -2228,6 +2261,11 @@ class DealModeUpdateRequest(BaseModel):
     mode: str = "normal"
 
 
+class GuidedPracticeRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    practice_type: str = Field(min_length=1, max_length=32)
+
+
 class DebugAutoNextRoundRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
@@ -3188,6 +3226,8 @@ def setup_supporter_rooms():
             room["password"] = data["pass"]
             room["admin_password"] = data["admin"]
             room["owner_name"] = data["owner"]
+            if data["gid"] == "room-silver-02":
+                room["ai_seats"] = ["B", "C", "D"]
             GAMES[data["gid"]] = room
         GAMES[data["gid"]]["hidden_from_lobby"] = data["gid"] not in visible_room_ids
 
@@ -5429,10 +5469,10 @@ async def update_turn_time_limit(game_id: str, req: TurnTimeLimitUpdateRequest):
 
 @app.post("/games/{game_id}/deal_mode")
 async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
-    if game_id not in PRIVATE_ROOM_NAMES:
+    if game_id not in PRIVATE_ROOM_NAMES and not _is_main_game_id(game_id):
         raise HTTPException(
             status_code=403,
-            detail="High-frequency deals are available only in private rooms.",
+            detail="Deal settings are available only in public and private rooms.",
         )
     game = GAMES.get(game_id)
     if not game:
@@ -5448,19 +5488,7 @@ async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
     applies_next_round = bool(game.get("is_started"))
     game["next_deal_mode"] = mode
     if not applies_next_round:
-        dealer = game.get("dealer", "A")
-        hands = create_hands_for_deal_mode(mode)
-        game["state"] = GoitaState(hands=hands, dealer=dealer)
-        game["init_hands"] = hands
-        game["board"] = _new_board_snapshot()
-        game["log"] = []
-        game["kifu_moves"] = []
-        game["ai_board_explanations"] = []
-        game["last_public_action"] = None
-        game["reveal_hands"] = False
-        game["revealed_hand_seats"] = []
-        game["auto_reveal_blocked_seats"] = []
-        game["deal_mode"] = mode
+        _apply_deal_mode_to_unstarted_game(game, mode)
 
     await manager.broadcast_update(game_id)
     return {
@@ -5468,6 +5496,54 @@ async def update_deal_mode(game_id: str, req: DealModeUpdateRequest):
         "deal_mode": _normalize_deal_mode(game.get("deal_mode", "normal")),
         "next_deal_mode": mode,
         "applies_next_round": applies_next_round,
+    }
+
+
+@app.post("/guided-practice")
+async def start_guided_practice(req: GuidedPracticeRequest):
+    practice_type = str(req.practice_type or "").strip().lower()
+    practice_modes = {
+        "frequent": "frequent",
+        "balanced": "balanced",
+        "preset": "normal",
+    }
+    mode = practice_modes.get(practice_type)
+    if mode is None:
+        raise HTTPException(status_code=400, detail="Unsupported guided practice type.")
+
+    setup_supporter_rooms()
+    selected_id = next(
+        (
+            room_id
+            for room_id in (PRIVATE_A_GID, "room-silver-02")
+            if not _human_seat_set(GAMES[room_id])
+        ),
+        None,
+    )
+    if selected_id is None:
+        return {"ok": False, "status": "occupied"}
+
+    game = GAMES[selected_id]
+    game["human_seats"] = {"A": req.client_id}
+    game["ai_seats"] = ["B", "C", "D"]
+    game["player_names"] = {seat: "" for seat in ALL_SEATS}
+    game["player_tags"] = {seat: "" for seat in ALL_SEATS}
+    game["ai_profile"] = "intermediate_middle2"
+    game["next_deal_mode"] = mode
+    manager.cancel_disconnect_release(selected_id, req.client_id)
+    await reset_game(
+        selected_id,
+        dealer=random.choice(list(ALL_SEATS)),
+        requester="A",
+        client_id=req.client_id,
+    )
+    return {
+        "ok": True,
+        "status": "ready",
+        "game_id": selected_id,
+        "room_name": str(GAMES[selected_id].get("owner_name", "")),
+        "deal_mode": mode,
+        "open_preset": practice_type == "preset",
     }
 
 
@@ -6205,6 +6281,7 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     manager.cancel_disconnect_release(game_id, client_id)
     for released_seat in released_seats:
         await voice_manager.disconnect_seat(game_id, released_seat, client_id)
+    _reset_public_deal_mode_after_host_leaves(game_id, game, set(released_seats))
 
     ai_seats = _ai_seat_set(game)
     if seat in ai_seats:
@@ -6243,6 +6320,7 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
             del hs[seat]
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
+            _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
     
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
@@ -6276,6 +6354,7 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
             owner_client_id = hs.get(seat, "")
             del hs[seat]
             await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
+            _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
         _clear_player_name(game, seat)
     else:
         ai_seats.discard(seat)

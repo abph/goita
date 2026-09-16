@@ -3843,6 +3843,20 @@
     }
     .game-header h1 { min-width: 0; margin: 0; font-size: 24px; }
     #currentRoomName { overflow-wrap: anywhere; }
+    .active-deal-mode-badge {
+      display: inline-block;
+      margin-left: 7px;
+      padding: 2px 7px;
+      border: 1px solid rgba(139, 90, 43, 0.38);
+      border-radius: 999px;
+      background: #fff9e8;
+      color: #76512e;
+      font-size: 11px;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .active-deal-mode-badge[hidden] { display: none; }
     .lobby-return-btn {
       display: grid;
       place-items: center;
@@ -3866,6 +3880,7 @@
       .game-header { gap: 6px; }
       .game-header-title { gap: 3px; }
       .game-header h1 { font-size: 18px; }
+      .active-deal-mode-badge { margin-left: 4px; font-size: 9px; }
       .game-header-actions { gap: 4px; }
       .gear-btn { gap: 2px; padding: 6px; font-size: 14px; }
       .gear-icon { font-size: 18px; }
@@ -4776,6 +4791,10 @@
           <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
           <h2 class="lobby-purpose-subtitle" tabindex="-1">どのように研究しますか？</h2>
         </div>
+        <div id="lobbyPurposeDealHeader" class="lobby-purpose-header is-inactive" aria-hidden="true" inert>
+          <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('study')" aria-label="研究方法の選択に戻る" title="研究方法の選択に戻る">←</button>
+          <h2 class="lobby-purpose-subtitle" tabindex="-1">どのような手駒で練習しますか？</h2>
+        </div>
       </div>
       <div class="lobby-purpose-stage">
        <div id="lobbyPurposeHome" class="lobby-purpose-panel" aria-hidden="false">
@@ -4799,17 +4818,27 @@
          </button>
        </div>
        <div id="lobbyPurposeStudy" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
-         <button class="lobby-purpose-option" type="button" onclick="guideToPrivateRooms('deal')">
-           <strong>よくある手駒で練習する</strong>
-           <span>高頻度配牌を利用できるルームへ案内します。</span>
-         </button>
-         <button class="lobby-purpose-option" type="button" onclick="guideToPrivateRooms('hand')">
-           <strong>手札を指定して練習する</strong>
-           <span>好きな手札を設定できるルームへ案内します。</span>
+         <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('deal')">
+           <strong>手駒の配り方を決めて、練習する</strong>
+           <span>配牌方式や手札を選んで練習します。</span>
          </button>
          <button class="lobby-purpose-option" type="button" onclick="openFeatureGuideLibrary()">
            <strong>対局を振り返る</strong>
            <span>自分専用の棋譜ライブラリを開きます。</span>
+         </button>
+       </div>
+       <div id="lobbyPurposeDeal" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
+         <button class="lobby-purpose-option" type="button" onclick="startGuidedPractice('frequent')">
+           <strong>よくある手駒で練習する</strong>
+           <span>出現頻度の高い手駒に限定して練習します。</span>
+         </button>
+         <button class="lobby-purpose-option" type="button" onclick="startGuidedPractice('balanced')">
+           <strong>極端な強弱を除いて練習する</strong>
+           <span>S・A・Xランクを除いた配牌で練習します。</span>
+         </button>
+         <button class="lobby-purpose-option" type="button" onclick="startGuidedPractice('preset')">
+           <strong>手札を指定して練習する</strong>
+           <span>好きな手札を設定して練習します。</span>
          </button>
        </div>
       </div>
@@ -4928,6 +4957,7 @@
       <button class="lobby-return-btn" type="button" onclick="returnToLobby()" aria-label="ロビーへ" title="ロビーへ"><span aria-hidden="true">←</span></button>
       <h1>
         <span id="currentRoomName"></span>
+        <span id="activeDealModeBadge" class="active-deal-mode-badge" hidden></span>
       </h1>
     </div>
     <div class="game-header-actions">
@@ -5911,8 +5941,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260916b"></script>
-<script src="/static/i18n.js?v=20260916b"></script>
+<script src="/static/i18n-en.js?v=20260916c"></script>
+<script src="/static/i18n.js?v=20260916c"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -8326,11 +8356,13 @@ function showLobbyPurposeStep(step) {
         home: document.getElementById("lobbyPurposeHome"),
         play: document.getElementById("lobbyPurposePlay"),
         study: document.getElementById("lobbyPurposeStudy"),
+        deal: document.getElementById("lobbyPurposeDeal"),
     };
     const headers = {
         home: document.getElementById("lobbyPurposeHomeHeader"),
         play: document.getElementById("lobbyPurposePlayHeader"),
         study: document.getElementById("lobbyPurposeStudyHeader"),
+        deal: document.getElementById("lobbyPurposeDealHeader"),
     };
     const target = panels[step] || panels.home;
     const targetHeader = headers[step] || headers.home;
@@ -8362,18 +8394,48 @@ async function startGuidedMatch(kind) {
     ));
 }
 
-function guideToPrivateRooms(kind) {
+let guidedPracticeStarting = false;
+
+async function startGuidedPractice(practiceType) {
+    if (guidedPracticeStarting) return;
     const status = document.getElementById("lobbyFeatureGuideStatus");
-    const target = document.getElementById("lobbyPrivateRoomsSection");
-    showLobbyRoomCategory("private");
+    guidedPracticeStarting = true;
     if (status) {
-        status.textContent = uiText(kind === "hand"
-            ? "プライベートルームに入り、A席に着いて「メニュー → 設定 → 対局設定」から手札を指定できます。"
-            : "プライベートルームに入り、A席に着いて「メニュー → 設定 → 対局設定」から配牌方式を選べます。"
-        );
+        status.textContent = uiText("練習用の部屋を準備しています...");
         status.hidden = false;
     }
-    requestAnimationFrame(() => target?.scrollIntoView({behavior: "smooth", block: "start"}));
+    try {
+        const response = await fetch(`${API}/guided-practice`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({client_id: clientId, practice_type: practiceType}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || "練習用の部屋を準備できませんでした。");
+        if (!data.ok && data.status === "occupied") {
+            if (status) status.textContent = uiText("プライベートAとプライベートBは現在使用中です。空いてからもう一度お試しください。");
+            return;
+        }
+        if (!data.ok || !data.game_id) throw new Error("練習用の部屋を準備できませんでした。");
+        await enterRoom(data.game_id, data.room_name || data.game_id);
+        if (mySeat === "A") await setName("A", personalSettings.playerName || "");
+        if (data.open_preset) {
+            openSettingsModal(gid, null, "match");
+            const details = document.getElementById("presetHandsDetails");
+            if (details) {
+                details.style.display = "block";
+                details.open = true;
+                requestAnimationFrame(() => details.scrollIntoView({behavior: "smooth", block: "start"}));
+            }
+            setHint(uiText("A席とAIの設定が完了しました。手札を指定してください。"));
+        } else {
+            setHint(uiText("A席とAI・配牌方式の設定が完了しました。「▶ 開始」を押してください。"));
+        }
+    } catch (error) {
+        if (status) status.textContent = uiText(error?.message || "練習用の部屋を準備できませんでした。");
+    } finally {
+        guidedPracticeStarting = false;
+    }
 }
 
 function showLobbyRoomCategory(category, focusTab = false) {
@@ -8773,8 +8835,9 @@ function syncDealModeControls() {
     const details = document.getElementById("dealModeDetails");
     const select = document.getElementById("dealModeSelect");
     if (!details || !select || dealModeSaving) return;
-    const isPrivateRoom = PRIVATE_ROOM_IDS.has(settingTargetGid || gid);
-    details.style.display = isPrivateRoom ? "block" : "none";
+    const targetGid = settingTargetGid || gid;
+    const supportsDealMode = PRIVATE_ROOM_IDS.has(targetGid) || MAIN_ROOM_IDS.has(targetGid);
+    details.style.display = supportsDealMode ? "block" : "none";
     const configured = String(
         latestState?.next_deal_mode
         ?? latestState?.deal_mode
@@ -8783,7 +8846,21 @@ function syncDealModeControls() {
     select.value = ["balanced", "frequent", "frequent_200"].includes(configured)
         ? configured
         : "normal";
-    select.disabled = !isCurrentClientHost() || !isPrivateRoom;
+    select.disabled = !isCurrentClientHost() || !supportsDealMode;
+}
+
+function syncActiveDealModeBadge() {
+    const badge = document.getElementById("activeDealModeBadge");
+    if (!badge) return;
+    const mode = String(latestState?.deal_mode || "normal");
+    const labels = {
+        balanced: "均衡配牌（S・A・Xなし）",
+        frequent: "高頻度配牌（上位100）",
+        frequent_200: "実戦練習配牌（上位200）",
+    };
+    const label = labels[mode];
+    badge.hidden = !label;
+    badge.textContent = label ? uiText(label) : "";
 }
 
 function syncDebugAutoNextRoundControls() {
@@ -8862,7 +8939,8 @@ async function saveDebugAutoNextRoundSetting() {
 
 async function saveDealModeSetting() {
     const targetGid = settingTargetGid || gid;
-    if (!isCurrentClientHost() || !PRIVATE_ROOM_IDS.has(targetGid) || dealModeSaving) return;
+    const supportsDealMode = PRIVATE_ROOM_IDS.has(targetGid) || MAIN_ROOM_IDS.has(targetGid);
+    if (!isCurrentClientHost() || !supportsDealMode || dealModeSaving) return;
     const select = document.getElementById("dealModeSelect");
     const status = document.getElementById("dealModeStatus");
     if (!select || !status) return;
@@ -8889,6 +8967,7 @@ async function saveDealModeSetting() {
             latestState.deal_mode = saved.deal_mode || "normal";
             latestState.next_deal_mode = saved.next_deal_mode || "normal";
         }
+        syncActiveDealModeBadge();
         status.textContent = uiText(saved.applies_next_round
             ? "保存しました。次の一局から反映されます。"
             : "保存しました。配牌を更新しました。"
@@ -14169,6 +14248,7 @@ async function refreshFromState(confirmedState = null){
   latestState = state;
   rememberImmediateFeedback(state);
   syncDebugAutoNextRoundControls();
+  syncActiveDealModeBadge();
   syncMemberKifuControls();
   trackAnalyticsGameState(state);
   window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null, state.public_room_ad || null);
