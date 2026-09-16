@@ -73,6 +73,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
+from backend.balanced_deal import is_balanced_rank_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
@@ -241,7 +242,7 @@ AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
-DEAL_MODE_OPTIONS = frozenset({"normal", "frequent", "frequent_200"})
+DEAL_MODE_OPTIONS = frozenset({"normal", "balanced", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "intermediate_middle2"
@@ -694,18 +695,22 @@ def create_hands_for_deal_mode(
     deal_mode: str = "normal",
     max_retry: int = 1000,
 ) -> Dict[str, List[str]]:
-    """Deal normally, optionally keeping only top-100 hand structures."""
+    """Deal normally, optionally filtering by rank or common hand structure."""
     mode = _normalize_deal_mode(deal_mode)
     if mode == "normal":
         return create_random_hands_no_five_shi()
 
     for _ in range(max_retry):
         hands = create_random_hands_no_five_shi()
+        if mode == "balanced":
+            if is_balanced_rank_deal(hands):
+                return hands
+            continue
         top_n = 200 if mode == "frequent_200" else 100
         if is_frequent_deal(hands, top_n=top_n):
             return hands
     raise RuntimeError(
-        f"Failed to generate a high-frequency deal after {max_retry} retries."
+        f"Failed to generate a {mode} deal after {max_retry} retries."
     )
 
 def build_hands_from_preset_counts(

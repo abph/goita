@@ -376,6 +376,7 @@
     "配牌設定を閉じる": "Close Deal Settings",
     "配牌方式": "Deal Type",
     "通常配牌": "Normal Deal",
+    "均衡配牌（S・A・Xなし）": "Balanced Deal (No S, A, or X)",
     "高頻度配牌（練習用）": "Common Hands (Practice)",
     "高頻度配牌（上位100）": "High-Frequency Deal (Top 100)",
     "実戦練習配牌（上位200）": "Match Practice Deal (Top 200)",

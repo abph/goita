@@ -162,10 +162,13 @@ def test_frontend_contains_private_room_deal_setting() -> None:
     html = app_module.FRONTEND_DIR.joinpath("index.html").read_text(encoding="utf-8")
     assert 'id="dealModeSelect"' in html
     assert '<option value="normal" selected>通常配牌</option>' in html
+    assert '<option value="balanced">均衡配牌（S・A・Xなし）</option>' in html
     assert '<option value="frequent">高頻度配牌（上位100）</option>' in html
     assert '<option value="frequent_200">実戦練習配牌（上位200）</option>' in html
     assert "PRIVATE_ROOM_IDS.has(settingTargetGid || gid)" in html
     assert "/deal_mode" in html
+    assert '["balanced", "frequent", "frequent_200"].includes(configured)' in html
+    assert '["balanced", "frequent", "frequent_200"].includes(select.value)' in html
 
 
 if __name__ == "__main__":

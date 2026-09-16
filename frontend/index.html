@@ -5470,6 +5470,7 @@
             <label for="dealModeSelect">配牌方式</label>
             <select id="dealModeSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;" onchange="saveDealModeSetting()">
               <option value="normal" selected>通常配牌</option>
+              <option value="balanced">均衡配牌（S・A・Xなし）</option>
               <option value="frequent">高頻度配牌（上位100）</option>
               <option value="frequent_200">実戦練習配牌（上位200）</option>
             </select>
@@ -5910,8 +5911,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260916a"></script>
-<script src="/static/i18n.js?v=20260916a"></script>
+<script src="/static/i18n-en.js?v=20260916b"></script>
+<script src="/static/i18n.js?v=20260916b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -8779,7 +8780,7 @@ function syncDealModeControls() {
         ?? latestState?.deal_mode
         ?? "normal"
     );
-    select.value = ["frequent", "frequent_200"].includes(configured)
+    select.value = ["balanced", "frequent", "frequent_200"].includes(configured)
         ? configured
         : "normal";
     select.disabled = !isCurrentClientHost() || !isPrivateRoom;
@@ -8866,7 +8867,7 @@ async function saveDealModeSetting() {
     const status = document.getElementById("dealModeStatus");
     if (!select || !status) return;
 
-    const mode = ["frequent", "frequent_200"].includes(select.value)
+    const mode = ["balanced", "frequent", "frequent_200"].includes(select.value)
         ? select.value
         : "normal";
     dealModeSaving = true;
