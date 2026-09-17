@@ -2266,6 +2266,12 @@ class GuidedPracticeRequest(BaseModel):
     practice_type: str = Field(min_length=1, max_length=32)
 
 
+class PracticeReplayRequest(BaseModel):
+    requester: str = Field(default="W", min_length=1, max_length=1)
+    client_id: str = Field(min_length=1, max_length=128)
+    action: str = Field(min_length=1, max_length=16)
+
+
 class DebugAutoNextRoundRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
@@ -3051,6 +3057,15 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "practice_replay_active": bool(
+            game_obj.get("practice_replay_active", False)
+        ),
+        "practice_replay_available": bool(
+            finished
+            and not is_score_room(game_id)
+            and _practice_replay_is_supported(game_obj)
+            and game_obj.get("practice_replay_source")
+        ),
         "trace_mode": bool(game_obj.get("trace_mode", False)),
         "is_score_attack_room": is_score_room(game_id),
         "trace_diverged": bool(game_obj.get("trace_diverged", False)),
@@ -3163,6 +3178,9 @@ def _create_game_obj(
         "last_round_score": 0,
         "trace_source": {},
         "last_completed_kifu": None,
+        "practice_replay_active": False,
+        "practice_replay_source": None,
+        "practice_return_snapshot": None,
         "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
@@ -3633,6 +3651,73 @@ def _check_effects(state: GoitaState, player: str, action: Tuple[str, Optional[s
     return effects
 
 
+def _practice_replay_is_supported(game: Dict[str, Any]) -> bool:
+    return not bool(
+        game.get("trace_mode", False)
+        or game.get("is_debug_room", False)
+    )
+
+
+def _practice_replay_source(game: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "hands": copy.deepcopy(game.get("init_hands", {})),
+        "dealer": str(game.get("dealer", "A")),
+        "round_count": int(game.get("round_count", 1)),
+    }
+
+
+def _practice_game_snapshot(game: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: copy.deepcopy(value)
+        for key, value in game.items()
+        if key not in {
+            "agents",
+            "beginner_support_agents",
+            "practice_return_snapshot",
+        }
+    }
+
+
+def _create_practice_replay_game(
+    game: Dict[str, Any],
+    return_snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    source = copy.deepcopy(game.get("practice_replay_source") or {})
+    hands = source.get("hands")
+    dealer = _validate_seat(source.get("dealer", "A"), name="dealer")
+    if not isinstance(hands, dict) or set(hands) != set(ALL_SEATS):
+        raise HTTPException(status_code=409, detail="The completed round cannot be replayed.")
+
+    replay = _practice_game_snapshot(game)
+    replay["state"] = GoitaState(hands=copy.deepcopy(hands), dealer=dealer)
+    replay["agents"] = _create_agents(replay.get("ai_profile"))
+    replay["beginner_support_agents"] = _create_agents("current")
+    replay["init_hands"] = copy.deepcopy(hands)
+    replay["dealer"] = dealer
+    replay["board"] = _new_board_snapshot()
+    replay["log"] = [f"Practice replay start. dealer={dealer}"]
+    replay["kifu_moves"] = []
+    replay["ai_board_explanations"] = []
+    replay["last_public_action"] = None
+    replay["reveal_hands"] = False
+    replay["revealed_hand_seats"] = []
+    replay["auto_reveal_blocked_seats"] = []
+    replay["is_started"] = True
+    replay["current_round_finished"] = False
+    replay["match_finished"] = False
+    replay["match_winner"] = None
+    replay["last_round_score"] = 0
+    replay["round_count"] = int(source.get("round_count", replay.get("round_count", 1)))
+    replay["practice_replay_active"] = True
+    replay["practice_replay_source"] = source
+    replay["practice_return_snapshot"] = copy.deepcopy(return_snapshot)
+    replay["member_kifu_round_id"] = secrets.token_hex(24)
+    replay["turn_started_at"] = None
+    replay["turn_deadline_at"] = None
+    replay["turn_timer_token"] = int(replay.get("turn_timer_token", 0)) + 1
+    return replay
+
+
 def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[str, Optional[str], Optional[str]], effects: List[str]):
     if state.finished and not game.get("current_round_finished"):
         game["current_round_finished"] = True
@@ -3646,7 +3731,14 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             
             multiplier = 2 if ("baizuke" in effects or "damadama_agari" in effects) else 1
             round_score = base_score * multiplier
-            
+
+            if game.get("practice_replay_active"):
+                game["last_round_score"] = round_score
+                game["log"].append(
+                    f"Practice round finished. winner={winner}, score_not_added={round_score}"
+                )
+                return
+
             game["total_team_score"][team] += round_score
             game["last_round_score"] = round_score
             
@@ -3659,6 +3751,8 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
             game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
+            if _practice_replay_is_supported(game):
+                game["practice_replay_source"] = _practice_replay_source(game)
             try:
                 _save_trace_result(game)
             except (OSError, ValueError, sqlite3.Error):
@@ -5544,6 +5638,73 @@ async def start_guided_practice(req: GuidedPracticeRequest):
         "room_name": str(GAMES[selected_id].get("owner_name", "")),
         "deal_mode": mode,
         "open_preset": practice_type == "preset",
+    }
+
+
+@app.post("/games/{game_id}/practice_replay")
+async def practice_replay(game_id: str, req: PracticeReplayRequest):
+    action = str(req.action or "").strip().lower()
+    if action not in {"start", "retry", "return"}:
+        raise HTTPException(status_code=400, detail="Unsupported practice replay action.")
+
+    async with _game_turn_lock(game_id):
+        if _is_main_game_id(game_id):
+            _ensure_main_game(game_id)
+        game = GAMES.get(game_id)
+        if not game:
+            raise HTTPException(status_code=404, detail="game not found")
+        if req.requester != "A":
+            raise HTTPException(status_code=403, detail="Only player in seat A can control practice replay.")
+        _require_human_seat_owner(game, "A", req.client_id)
+        if is_score_room(game_id) or not _practice_replay_is_supported(game):
+            raise HTTPException(status_code=403, detail="Practice replay is not available in this room.")
+
+        state: GoitaState = game["state"]
+        active = bool(game.get("practice_replay_active", False))
+        if not state.finished:
+            raise HTTPException(status_code=409, detail="The round has not finished.")
+
+        if action == "start":
+            if active:
+                raise HTTPException(status_code=409, detail="Practice replay is already active.")
+            if not game.get("practice_replay_source"):
+                raise HTTPException(status_code=409, detail="There is no completed round to replay.")
+            return_snapshot = _practice_game_snapshot(game)
+            GAMES[game_id] = _create_practice_replay_game(game, return_snapshot)
+            _arm_turn_timeout(game_id)
+        elif action == "retry":
+            if not active or not game.get("practice_return_snapshot"):
+                raise HTTPException(status_code=409, detail="Practice replay is not active.")
+            return_snapshot = copy.deepcopy(game["practice_return_snapshot"])
+            GAMES[game_id] = _create_practice_replay_game(game, return_snapshot)
+            _arm_turn_timeout(game_id)
+        else:
+            if not active or not game.get("practice_return_snapshot"):
+                raise HTTPException(status_code=409, detail="Practice replay is not active.")
+            restored = copy.deepcopy(game["practice_return_snapshot"])
+            for key in (
+                "human_seats",
+                "ai_seats",
+                "player_names",
+                "player_tags",
+                "chat_messages",
+            ):
+                restored[key] = copy.deepcopy(game.get(key, restored.get(key)))
+            restored["agents"] = _create_agents(restored.get("ai_profile"))
+            restored["beginner_support_agents"] = _create_agents("current")
+            restored["practice_replay_active"] = False
+            restored["practice_return_snapshot"] = None
+            GAMES[game_id] = restored
+            _arm_turn_timeout(game_id)
+
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "action": action,
+        "practice_replay_active": bool(
+            GAMES[game_id].get("practice_replay_active", False)
+        ),
     }
 
 

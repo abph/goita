@@ -3,7 +3,7 @@ let traceResultId = '';
 function updateRoundResetButton(state, isHost, autoNextRoundPending) {
   const button = document.getElementById('btnNewGame');
   if (!button) return;
-  button.style.display = isHost && state.finished && !autoNextRoundPending ? '' : 'none';
+  button.style.display = isHost && state.finished && !state.practice_replay_active && !autoNextRoundPending ? '' : 'none';
   button.disabled = nextRoundRequestInFlight || traceActionBusy;
   if (nextRoundRequestInFlight) {
     button.textContent = uiText('配牌中...');
@@ -17,6 +17,28 @@ function updateRoundResetButton(state, isHost, autoNextRoundPending) {
     button.textContent = '次の一局へ';
     button.onclick = () => startNewGame(true);
   }
+}
+
+function updatePracticeReplayButtons(state, isHost, autoNextRoundPending) {
+  const replayButton = document.getElementById('btnPracticeReplay');
+  const returnButton = document.getElementById('btnPracticeReturn');
+  if (!replayButton || !returnButton) return;
+  const active = state.practice_replay_active === true;
+  const canReplay = (
+    isHost
+    && state.finished
+    && state.practice_replay_available === true
+    && !autoNextRoundPending
+    && !isScoreAttackRoom()
+  );
+  replayButton.style.display = canReplay ? '' : 'none';
+  replayButton.textContent = uiText('もう一度練習する');
+  replayButton.onclick = () => practiceReplayAction(active ? 'retry' : 'start');
+  returnButton.style.display = canReplay && active ? '' : 'none';
+  returnButton.textContent = uiText('元のゲームに戻る');
+  returnButton.onclick = () => practiceReplayAction('return');
+  replayButton.disabled = practiceReplayRequestInFlight || traceActionBusy;
+  returnButton.disabled = practiceReplayRequestInFlight || traceActionBusy;
 }
 
 async function resetScoreAttack() {

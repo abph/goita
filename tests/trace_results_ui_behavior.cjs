@@ -55,6 +55,38 @@ const path = require('node:path');
       return {scoreLabel,ordinaryLabel,starts};
     });
     assert.deepEqual(resetBehavior,{scoreLabel:'リセット',ordinaryLabel:'次の一局へ',starts:[false,true]});
+    const practiceBehavior = await page.evaluate(async () => {
+      gid='main'; mySeat='A'; practiceReplayRequestInFlight=false;
+      const actions=[]; practiceReplayAction=async action=>actions.push(action);
+      const state={finished:true,match_finished:false,practice_replay_active:false,practice_replay_available:true};
+      updateRoundResetButton(state,true,false);
+      updatePracticeReplayButtons(state,true,false);
+      const normal={
+        nextVisible:document.getElementById('btnNewGame').style.display !== 'none',
+        replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
+        returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
+        replayLabel:document.getElementById('btnPracticeReplay').textContent,
+      };
+      await document.getElementById('btnPracticeReplay').onclick();
+      state.practice_replay_active=true;
+      updateRoundResetButton(state,true,false);
+      updatePracticeReplayButtons(state,true,false);
+      const practice={
+        nextVisible:document.getElementById('btnNewGame').style.display !== 'none',
+        replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
+        returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
+        returnLabel:document.getElementById('btnPracticeReturn').textContent,
+      };
+      await document.getElementById('btnPracticeReturn').onclick();
+      await document.getElementById('btnPracticeReplay').onclick();
+      return {normal,practice,actions};
+    });
+    assert.deepEqual(practiceBehavior,{
+      normal:{nextVisible:true,replayVisible:true,returnVisible:false,replayLabel:'もう一度練習する'},
+      practice:{nextVisible:false,replayVisible:true,returnVisible:true,returnLabel:'元のゲームに戻る'},
+      actions:['start','return','retry'],
+    });
+    await page.evaluate(()=>{gid='debug';mySeat='A';});
     await page.evaluate(()=>openDebugTrace());
     assert.equal(await page.locator('#debugTraceModal input[type=file]').count(),0);
     await page.locator('#debugTraceRandomButton').click();

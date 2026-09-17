@@ -5062,6 +5062,8 @@
 
         <div class="btns" style="margin-top:0;">
           <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
+          <button onclick="practiceReplayAction('return')" id="btnPracticeReturn" style="display:none; font-weight:900;">元のゲームに戻る</button>
+          <button onclick="practiceReplayAction('start')" id="btnPracticeReplay" style="display:none; font-weight:900;">もう一度練習する</button>
 
           <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
         </div>
@@ -5940,9 +5942,9 @@
 <script src="/static/score-rankings.js?v=20260915a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
-<script src="/static/trace-results.js?v=20260913a"></script>
-<script src="/static/i18n-en.js?v=20260916c"></script>
-<script src="/static/i18n.js?v=20260916c"></script>
+<script src="/static/trace-results.js?v=20260917a"></script>
+<script src="/static/i18n-en.js?v=20260917a"></script>
+<script src="/static/i18n.js?v=20260917a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -7658,6 +7660,7 @@ let setupApplyTimer = null;
 let kifuPresetLoading = false;
 let startRequestInFlight = false;
 let nextRoundRequestInFlight = false;
+let practiceReplayRequestInFlight = false;
 let autoRevealHandsInFlight = false;
 let autoRevealHandsRoundKey = "";
 let autoPlayEnabled = false;
@@ -13730,7 +13733,7 @@ function renderBoard(state){
       const rc = state.round_count || 1;
       
       scoreDiv.innerHTML = `
-          <div class="score-round">第 ${rc} 局</div>
+          <div class="score-round">${state.practice_replay_active ? `練習（第 ${rc} 局）` : `第 ${rc} 局`}</div>
           <div class="score-line"><span class="score-ac">AC:</span> <span>${ac}点</span></div>
           <div class="score-line"><span class="score-bd">BD:</span> <span>${bd}点</span></div>
       `;
@@ -14047,6 +14050,38 @@ async function startNewGame(keepScore = false){
   }
 }
 
+async function practiceReplayAction(action){
+  if(mySeat !== "A" || practiceReplayRequestInFlight) return;
+  const normalizedAction = ["start", "retry", "return"].includes(action) ? action : "start";
+  practiceReplayRequestInFlight = true;
+  const buttons = [
+    document.getElementById("btnNewGame"),
+    document.getElementById("btnPracticeReturn"),
+    document.getElementById("btnPracticeReplay"),
+  ];
+  buttons.forEach(button => { if(button) button.disabled = true; });
+  try{
+    const response = await fetch(`${API}/games/${gid}/practice_replay`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({requester:mySeat, client_id:clientId, action:normalizedAction}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok) throw new Error(data?.detail || "練習局を開始できませんでした。");
+    pending = null;
+    resetLogAudioSync(0);
+    fixedHandMemory = {};
+    await refresh();
+  }catch(error){
+    console.error("Practice replay error:", error);
+    setHint(uiText(error?.message || "練習局を開始できませんでした。"));
+    await refresh();
+  }finally{
+    practiceReplayRequestInFlight = false;
+    buttons.forEach(button => { if(button) button.disabled = false; });
+  }
+}
+
 async function confirmForceReset(){
   if(!isCurrentClientHost()) return;
   const confirmed = window.confirm(uiText("現在の対局と得点をリセットします。よろしいですか？"));
@@ -14343,8 +14378,11 @@ async function refreshFromState(confirmedState = null){
       )
   );
   updateRoundResetButton(state, isHost, autoNextRoundPending);
+  updatePracticeReplayButtons(state, isHost, autoNextRoundPending);
   if (forceResetSettingsRow) {
-      forceResetSettingsRow.style.display = (isHost && !state.finished) ? "block" : "none";
+      forceResetSettingsRow.style.display = (
+          isHost && !state.finished && !state.practice_replay_active
+      ) ? "block" : "none";
   }
   
   const startGameBtn = document.getElementById("startGameBtn");
@@ -14371,7 +14409,13 @@ async function refreshFromState(confirmedState = null){
       }
       pending = null;
   } else if (state.finished) {
-      if (state.match_finished) {
+      if (state.practice_replay_active) {
+          if (mySeat === "A") {
+              setHint(`練習局終了。勝者:${state.winner}（${state.last_round_score}点・得点には加算されません）。「元のゲームに戻る」か「もう一度練習する」を選んでください。`);
+          } else {
+              setHint(`練習局終了。勝者:${state.winner}（得点には加算されません）。ホストの操作をお待ちください。`);
+          }
+      } else if (state.match_finished) {
           if (autoNextRoundPending) {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！3秒後に新規ゲームを開始します。`);
           } else if (mySeat === "A") {
