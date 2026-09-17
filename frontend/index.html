@@ -4020,6 +4020,17 @@
     }
     .preset-note{ font-size: 12px; color:#555; margin-top: 6px; }
     .preset-err{ font-size: 12px; color:#b00000; margin-top: 6px; white-space: pre-line; }
+    .preset-method-tabs{ display:flex; gap:6px; margin-top:10px; }
+    .preset-method-tab{ padding:7px 12px; border:1px solid #bca98d; border-radius:999px; background:#fff; color:#4b3523; font-size:13px; font-weight:800; }
+    .preset-method-tab.active{ border-color:#6d461f; box-shadow:inset 0 0 0 1px #6d461f; background:#fffaf0; }
+    .preset-range-panel{ margin-top:10px; }
+    .preset-range-seat{ margin-top:7px; border:1px solid rgba(139,90,43,.25); border-radius:6px; background:rgba(255,255,255,.65); }
+    .preset-range-seat summary{ padding:8px 10px; cursor:pointer; font-size:13px; font-weight:900; }
+    .preset-range-grid{ display:grid; grid-template-columns:32px minmax(74px,1fr) 16px minmax(74px,1fr) 18px; gap:5px; align-items:center; padding:0 10px 10px; font-size:12px; }
+    .preset-range-grid select{ width:100%; min-width:0; padding:5px 3px; font-size:13px; }
+    .preset-range-actions{ display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    .preset-range-status{ min-height:1.4em; margin-top:7px; color:#176b35; font-size:12px; font-weight:700; white-space:pre-line; }
+    .preset-range-status.error{ color:#b00000; }
     .kifu-preset-import {
       margin-bottom: 12px;
       padding: 10px;
@@ -4078,7 +4089,10 @@
 
     .preset-disabled #presetGrid,
     .preset-disabled .preset-note,
-    .preset-disabled #presetErr{ display: none !important; }
+    .preset-disabled #presetErr,
+    .preset-disabled .preset-method-tabs,
+    .preset-disabled #presetExactPanel,
+    .preset-disabled #presetRangePanel{ display: none !important; }
     .preset-toggle{
       display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-weight: 600; font-size: 13px;
     }
@@ -5638,6 +5652,11 @@
             <div id="kifuPresetStatus" class="kifu-preset-status" aria-live="polite"></div>
           </div>
           <label class="preset-toggle"><input type="checkbox" id="presetEnabled" />有効</label>
+          <div class="preset-method-tabs" role="tablist" aria-label="手札の指定方法">
+            <button class="preset-method-tab active" id="presetExactTab" type="button" onclick="showPresetMethod('exact')">きっちり指定</button>
+            <button class="preset-method-tab" id="presetRangeTab" type="button" onclick="showPresetMethod('range')">大雑把に指定</button>
+          </div>
+          <div id="presetExactPanel">
           <div class="preset-note">
             各マスは半角数字1桁（0〜9）。A/B/C/D合計で上限を超えないように自動制限します（し10/香4/馬4/銀4/金4/角2/飛2/玉1/王1）。
             さらに「し」は各プレイヤー4枚まで（5以上は不可）。
@@ -5653,6 +5672,16 @@
           </div>
           <div class="preset-copy-area" id="presetCopyArea"></div>
           <div class="preset-err" id="presetErr" style="display:none;"></div>
+          </div>
+          <div class="preset-range-panel" id="presetRangePanel" style="display:none;">
+            <div class="preset-note">駒ごとに最低・最高枚数を選び、「条件に合う手札を作る」を押してください。完成した手札を「きっちり指定」へ自動入力します。</div>
+            <div id="presetRangeSeats"></div>
+            <div class="preset-range-actions">
+              <button type="button" onclick="generateExactPresetFromRanges()">条件に合う手札を作る</button>
+              <button type="button" class="ghost" onclick="clearPresetRanges()">条件をリセット</button>
+            </div>
+            <div class="preset-range-status" id="presetRangeStatus" aria-live="polite"></div>
+          </div>
         </div>
       </details>
 
@@ -10861,6 +10890,234 @@ function presetSetEnabled(on){
   if(latestState) renderHands(latestState);
 }
 
+function showPresetMethod(method, save = true){
+  const selected = method === "range" ? "range" : "exact";
+  const exactPanel = document.getElementById("presetExactPanel");
+  const rangePanel = document.getElementById("presetRangePanel");
+  const exactTab = document.getElementById("presetExactTab");
+  const rangeTab = document.getElementById("presetRangeTab");
+  if(exactPanel) exactPanel.style.display = selected === "exact" ? "" : "none";
+  if(rangePanel) rangePanel.style.display = selected === "range" ? "" : "none";
+  if(exactTab) exactTab.classList.toggle("active", selected === "exact");
+  if(rangeTab) rangeTab.classList.toggle("active", selected === "range");
+  if(save){
+    try{ localStorage.setItem("goita_preset_method", selected); }catch(e){}
+  }
+}
+
+function presetRangeSetStatus(message, isError = false){
+  const status = document.getElementById("presetRangeStatus");
+  if(!status) return;
+  status.textContent = message || "";
+  status.classList.toggle("error", !!isError);
+}
+
+function setupPresetRangeControls(){
+  const root = document.getElementById("presetRangeSeats");
+  if(!root || root.dataset.ready === "1") return;
+  root.dataset.ready = "1";
+  for(const seat of ["A","B","C","D"]){
+    const details = document.createElement("details");
+    details.className = "preset-range-seat";
+    if(seat === "A") details.open = true;
+    const summary = document.createElement("summary");
+    summary.textContent = `${seat}席の条件`;
+    details.appendChild(summary);
+    const grid = document.createElement("div");
+    grid.className = "preset-range-grid";
+    for(const piece of PRESET_PIECES){
+      const cap = piece === "1" ? 4 : Math.min(8, PRESET_TOTALS[piece]);
+      const label = document.createElement("b");
+      label.textContent = PIECE_LABEL[piece];
+      grid.appendChild(label);
+      for(const bound of ["min","max"]){
+        const select = document.createElement("select");
+        select.className = "preset-range-value";
+        select.dataset.seat = seat;
+        select.dataset.piece = piece;
+        select.dataset.bound = bound;
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "指定なし";
+        select.appendChild(blank);
+        for(let n = 0; n <= cap; n++){
+          const option = document.createElement("option");
+          option.value = String(n);
+          option.textContent = `${n}枚`;
+          select.appendChild(option);
+        }
+        select.addEventListener("change", ()=>{
+          presetRangeSave();
+          presetRangeSetStatus("");
+        });
+        grid.appendChild(select);
+        if(bound === "min"){
+          const separator = document.createElement("span");
+          separator.textContent = "～";
+          grid.appendChild(separator);
+        }
+      }
+      const unit = document.createElement("span");
+      unit.textContent = "";
+      grid.appendChild(unit);
+    }
+    details.appendChild(grid);
+    root.appendChild(details);
+  }
+}
+
+function presetRangeGetRaw(){
+  const out = {};
+  document.querySelectorAll(".preset-range-value").forEach(select => {
+    const {seat, piece, bound} = select.dataset;
+    if(!out[seat]) out[seat] = {};
+    if(!out[seat][piece]) out[seat][piece] = {};
+    out[seat][piece][bound] = select.value;
+  });
+  return out;
+}
+
+function presetRangeSave(){
+  try{ localStorage.setItem("goita_preset_ranges", JSON.stringify(presetRangeGetRaw())); }catch(e){}
+}
+
+function presetRangeLoad(){
+  try{
+    const raw = localStorage.getItem("goita_preset_ranges");
+    if(!raw) return;
+    const saved = JSON.parse(raw);
+    document.querySelectorAll(".preset-range-value").forEach(select => {
+      const value = saved?.[select.dataset.seat]?.[select.dataset.piece]?.[select.dataset.bound];
+      if(value !== undefined && Array.from(select.options).some(option => option.value === String(value))){
+        select.value = String(value);
+      }
+    });
+  }catch(e){}
+}
+
+function clearPresetRanges(){
+  document.querySelectorAll(".preset-range-value").forEach(select => select.value = "");
+  try{ localStorage.removeItem("goita_preset_ranges"); }catch(e){}
+  presetRangeSetStatus("");
+}
+
+function shuffledCopy(values){
+  const out = values.slice();
+  for(let i = out.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function enumeratePresetAllocations(total, lower, upper, seatRemaining){
+  const allocations = [];
+  const current = [0,0,0,0];
+  function visit(index, left){
+    if(index === 4){
+      if(left === 0) allocations.push(current.slice());
+      return;
+    }
+    const remainingMin = lower.slice(index + 1).reduce((a,b)=>a+b, 0);
+    const remainingMax = upper.slice(index + 1).reduce((a,b,i)=>a + Math.min(b, seatRemaining[index + 1 + i]), 0);
+    const low = Math.max(lower[index], left - remainingMax);
+    const high = Math.min(upper[index], seatRemaining[index], left - remainingMin);
+    for(let value = low; value <= high; value++){
+      current[index] = value;
+      visit(index + 1, left - value);
+    }
+  }
+  visit(0, total);
+  return shuffledCopy(allocations);
+}
+
+function buildExactPresetFromRanges(){
+  const seats = ["A","B","C","D"];
+  const lower = {};
+  const upper = {};
+  const errors = [];
+  for(const seat of seats){
+    lower[seat] = {};
+    upper[seat] = {};
+    for(const piece of PRESET_PIECES){
+      const cap = piece === "1" ? 4 : Math.min(8, PRESET_TOTALS[piece]);
+      const minSelect = document.querySelector(`.preset-range-value[data-seat="${seat}"][data-piece="${piece}"][data-bound="min"]`);
+      const maxSelect = document.querySelector(`.preset-range-value[data-seat="${seat}"][data-piece="${piece}"][data-bound="max"]`);
+      const min = minSelect?.value === "" ? 0 : Number(minSelect.value);
+      const max = maxSelect?.value === "" ? cap : Number(maxSelect.value);
+      lower[seat][piece] = min;
+      upper[seat][piece] = max;
+      if(min > max) errors.push(`${seat}席の${PIECE_LABEL[piece]}は、最低枚数が最高枚数を超えています。`);
+    }
+    const minTotal = PRESET_PIECES.reduce((sum,piece)=>sum + lower[seat][piece], 0);
+    const maxTotal = PRESET_PIECES.reduce((sum,piece)=>sum + upper[seat][piece], 0);
+    if(minTotal > 8) errors.push(`${seat}席の最低枚数の合計が8枚を超えています（${minTotal}枚）。`);
+    if(maxTotal < 8) errors.push(`${seat}席は最高枚数まで使っても8枚になりません（${maxTotal}枚）。`);
+  }
+  for(const piece of PRESET_PIECES){
+    const minTotal = seats.reduce((sum,seat)=>sum + lower[seat][piece], 0);
+    const maxTotal = seats.reduce((sum,seat)=>sum + upper[seat][piece], 0);
+    if(minTotal > PRESET_TOTALS[piece]) errors.push(`${PIECE_LABEL[piece]}の最低枚数が、全${PRESET_TOTALS[piece]}枚を超えています。`);
+    if(maxTotal < PRESET_TOTALS[piece]) errors.push(`${PIECE_LABEL[piece]}の条件では、全${PRESET_TOTALS[piece]}枚を配り切れません。`);
+  }
+  if(errors.length) return {error: errors.join("\n")};
+
+  const counts = Object.fromEntries(seats.map(seat => [seat, {}]));
+  const seatUsed = Object.fromEntries(seats.map(seat => [seat, 0]));
+  const failedStates = new Set();
+  function solve(pieceIndex){
+    if(pieceIndex === PRESET_PIECES.length) return seats.every(seat => seatUsed[seat] === 8);
+    const stateKey = `${pieceIndex}:${seats.map(seat => seatUsed[seat]).join(",")}`;
+    if(failedStates.has(stateKey)) return false;
+    const piece = PRESET_PIECES[pieceIndex];
+    const allocations = enumeratePresetAllocations(
+      PRESET_TOTALS[piece],
+      seats.map(seat => lower[seat][piece]),
+      seats.map(seat => upper[seat][piece]),
+      seats.map(seat => 8 - seatUsed[seat])
+    );
+    for(const allocation of allocations){
+      let possible = true;
+      for(let index = 0; index < seats.length; index++){
+        const seat = seats[index];
+        seatUsed[seat] += allocation[index];
+        counts[seat][piece] = allocation[index];
+        const needed = 8 - seatUsed[seat];
+        const future = PRESET_PIECES.slice(pieceIndex + 1);
+        const futureMin = future.reduce((sum,p)=>sum + lower[seat][p], 0);
+        const futureMax = future.reduce((sum,p)=>sum + upper[seat][p], 0);
+        if(needed < futureMin || needed > futureMax) possible = false;
+      }
+      if(possible && solve(pieceIndex + 1)) return true;
+      for(let index = 0; index < seats.length; index++) seatUsed[seats[index]] -= allocation[index];
+    }
+    failedStates.add(stateKey);
+    return false;
+  }
+  if(!solve(0)) return {error:"この条件をすべて満たす手札は作れません。条件を少し広げてください。"};
+  return {counts};
+}
+
+function generateExactPresetFromRanges(){
+  const result = buildExactPresetFromRanges();
+  if(result.error){
+    presetRangeSetStatus(result.error, true);
+    return;
+  }
+  for(const seat of ["A","B","C","D"]){
+    for(const piece of PRESET_PIECES){
+      const input = document.querySelector(`#presetGrid input.ph[data-seat="${seat}"][data-piece="${piece}"]`);
+      const count = result.counts[seat][piece] || 0;
+      if(input) input.value = count > 0 ? String(count) : "";
+    }
+  }
+  presetSetEnabled(true);
+  presetValidateAndClamp();
+  presetRangeSetStatus("条件に合う手札を作成しました。きっちり指定の内容を確認してください。");
+  showPresetMethod("exact");
+  scheduleApplyCurrentSetup();
+}
+
 function presetHasAny(){
   const inputs = document.querySelectorAll("#presetGrid input.ph");
   for(const inp of inputs){
@@ -10931,6 +11188,7 @@ function setPresetHandFromVisibleSeat(seat, hand){
   if(details) details.open = true;
 
   presetSetEnabled(true);
+  showPresetMethod("exact");
 
   const counts = countPieces(hand.map(String));
   PRESET_PIECES.forEach(piece => {
@@ -10984,6 +11242,7 @@ function applyKifuHandsToPreset(round, options = {}){
   }
 
   presetSetEnabled(true);
+  showPresetMethod("exact");
   presetValidateAndClamp();
   if(options.scheduleApply !== false) scheduleApplyCurrentSetup();
   return true;
@@ -14829,8 +15088,13 @@ window.addEventListener("load", async ()=>{
     syncDesktopRoomLogHeight();
   });
   setupPresetSeatResetButtons();
+  setupPresetRangeControls();
+  presetRangeLoad();
   presetLoad();
   presetSetEnabled(presetIsEnabled());
+  let savedPresetMethod = "exact";
+  try{ savedPresetMethod = localStorage.getItem("goita_preset_method") || "exact"; }catch(e){}
+  showPresetMethod(savedPresetMethod, false);
   const presetEnabledBox = document.getElementById("presetEnabled");
   if(presetEnabledBox){
     presetEnabledBox.addEventListener("change", ()=> {
