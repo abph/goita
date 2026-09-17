@@ -1049,6 +1049,7 @@
     }
     .lobby-purpose-option strong,
     .lobby-purpose-option span { display: block; }
+    .lobby-purpose-mobile-label { display: none !important; }
     .lobby-purpose-option strong {
         margin-bottom: 3px;
         color: #6d461f;
@@ -1095,6 +1096,10 @@
         .lobby-purpose-option::after { right: 7px; font-size: 18px; }
         .lobby-purpose-option strong { margin-bottom: 2px; font-size: 11px; line-height: 1.3; }
         .lobby-purpose-option span { font-size: 9px; line-height: 1.4; }
+        #lobbyPurposeHome .lobby-purpose-desktop-label,
+        #lobbyPurposeHome .lobby-purpose-option > span { display: none !important; }
+        #lobbyPurposeHome .lobby-purpose-mobile-label { display: block !important; margin: 0; }
+        #lobbyPurposeHome .lobby-purpose-option { display: grid; align-items: center; }
     }
     .lobby-toolbar {
         position: absolute;
@@ -4831,11 +4836,13 @@
       <div class="lobby-purpose-stage">
        <div id="lobbyPurposeHome" class="lobby-purpose-panel" aria-hidden="false">
          <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('play')">
-           <strong>とりあえず対局したい</strong>
+           <strong class="lobby-purpose-desktop-label">とりあえず対局したい</strong>
+           <strong class="lobby-purpose-mobile-label">対局したい</strong>
            <span>AIとの練習や、人との対局へ進みます。</span>
          </button>
          <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('study')">
-           <strong>ごいたを研究したい</strong>
+           <strong class="lobby-purpose-desktop-label">ごいたを研究したい</strong>
+           <strong class="lobby-purpose-mobile-label">研究したい</strong>
            <span>配牌・手札指定・棋譜ライブラリを利用します。</span>
          </button>
        </div>
@@ -4881,7 +4888,7 @@
       <div class="score-attack-entry-body">
         <p class="score-attack-description"><span class="score-attack-description-desktop">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</span><span class="score-attack-description-mobile">同じ手駒・親でAIと対戦し、元の棋譜を超えてランキング上位を目指します。</span></p>
         <div class="score-attack-entry-actions">
-          <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button>
+          <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">挑戦する</button>
           <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
         </div>
       </div>
@@ -6001,8 +6008,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260917f"></script>
-<script src="/static/i18n.js?v=20260917f"></script>
+<script src="/static/i18n-en.js?v=20260917g"></script>
+<script src="/static/i18n.js?v=20260917g"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
