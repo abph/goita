@@ -4879,7 +4879,7 @@
     <section class="card score-attack-entry lobby-section-card" aria-labelledby="scoreAttackSectionTitle">
       <h2 id="scoreAttackSectionTitle" class="lobby-section-heading">スコアアタック</h2>
       <div class="score-attack-entry-body">
-        <p class="score-attack-description">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</p>
+        <p class="score-attack-description"><span class="score-attack-description-desktop">棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。</span><span class="score-attack-description-mobile">同じ手駒・親でAIと対戦し、元の棋譜を超えてランキング上位を目指します。</span></p>
         <div class="score-attack-entry-actions">
           <button id="scoreAttackEntry" type="button" onclick="enterScoreAttackRoom()">スコアアタックに挑戦する</button>
           <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
@@ -5956,6 +5956,7 @@
   .trace-score-line button { padding:6px 8px; font-size:13px; justify-self:start; max-width:100%; }
   @media(max-width:480px) { .trace-score-line button { grid-column:2 / -1; } }
   .score-attack-description { max-width:620px; margin:12px auto 0; padding:0 16px; font-size:14px; line-height:1.8; text-align:left; }
+  .score-attack-description-mobile { display:none; }
   .trace-original-back { padding:0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
   .trace-original-back:focus-visible { outline:2px solid currentColor; outline-offset:4px; }
   .trace-report-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:16px 0 4px; }
@@ -5981,6 +5982,8 @@
     .score-attack-entry .lobby-section-heading { min-height:46px; padding:13px 5px 9px; font-size:14px; }
     .score-attack-entry-body { padding:10px 7px; }
     .score-attack-description { margin:0; padding:0; font-size:10px; line-height:1.5; }
+    .score-attack-description-desktop { display:none; }
+    .score-attack-description-mobile { display:inline; }
     .score-attack-entry-actions { flex-direction:column; flex-wrap:nowrap; gap:6px; margin-top:10px; }
     .score-attack-entry-actions button { width:100%; padding:9px 5px; font-size:11px; line-height:1.3; }
   }
@@ -5998,8 +6001,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260917e"></script>
-<script src="/static/i18n.js?v=20260917e"></script>
+<script src="/static/i18n-en.js?v=20260917f"></script>
+<script src="/static/i18n.js?v=20260917f"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">

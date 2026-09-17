@@ -60,6 +60,7 @@
     "スコアアタックに挑戦する": "Challenge Score Attack",
     "ランキングを見る": "View Rankings",
     "棋譜と同じ手駒・親で挑戦する、1人用の対戦モードです。ほかの3席はAIが担当します。元の対局より良い結果を目指し、ランキングでほかのプレイヤーと競いましょう。": "A single-player mode using the same hands and dealer as the original record. The other three seats are played by AI. Aim to beat the original result and compete with other players on the rankings.",
+    "同じ手駒・親でAIと対戦し、元の棋譜を超えてランキング上位を目指します。": "Face the AI with the same hands and dealer, beat the original record, and climb the rankings.",
     "スコアアタックを閉じる": "Close Score Attack",
     "ランキングを閉じる": "Close Rankings",
     "スコアアタック開始": "Start Score Attack",
