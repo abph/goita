@@ -245,6 +245,8 @@ def test_practice_replay_ui_has_all_controls_and_state_flags() -> None:
     assert 'returnFromPracticeReplay()' in html
     assert 'この局の得点は加算されません' in html
     assert "scoreDiv.innerHTML = state.practice_replay_active" in html
+    assert 'classList.toggle(\n    "practice-round-board"' in html
+    assert ".board-wrap.practice-round-board" in html
     assert "updatePracticeReplayButtons(state, isHost, autoNextRoundPending)" in html
     assert "state.practice_replay_available === true" in script
     assert "PRIVATE_ROOM_IDS.has(gid)" in script

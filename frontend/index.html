@@ -51,6 +51,9 @@
       box-shadow: 0 8px 16px rgba(0,0,0,0.3); 
       position: relative;
     }
+    .board-wrap.practice-round-board {
+      border-style: dotted;
+    }
     .board {
       display: grid;
       grid-template-columns: repeat(8, var(--cell));
@@ -13650,6 +13653,10 @@ function cWinsInLogEntry(state, entry){
 function renderBoard(state){
   state = immediateActionView(state);
   const board=document.getElementById("board");
+  board.closest(".board-wrap")?.classList.toggle(
+    "practice-round-board",
+    state.practice_replay_active === true,
+  );
   board.innerHTML="";
 
   const nameZoneBackground = document.createElement("div");
