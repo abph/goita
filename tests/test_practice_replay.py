@@ -237,6 +237,7 @@ def test_practice_replay_ui_has_all_controls_and_state_flags() -> None:
     assert 'id="btnPracticeReplay"' in html
     assert 'id="btnPracticeReturn"' in html
     assert 'id="practiceExitButton"' in html
+    assert html.index('class="board-wrap"') < html.index('id="practiceExitButton"') < html.index('id="board"')
     assert 'id="btnPracticeScene"' in html
     assert 'id="practiceSceneModal"' in html
     assert 'fetch(`${API}/games/${gid}/practice_replay`' in html

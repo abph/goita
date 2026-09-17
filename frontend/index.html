@@ -3793,9 +3793,12 @@
       flex: 0 0 auto;
     }
     .practice-exit-button {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      z-index: 30;
       display: none;
       place-items: center;
-      flex: 0 0 36px;
       width: 36px;
       height: 36px;
       padding: 0;
@@ -3806,6 +3809,7 @@
       font-size: 26px;
       line-height: 1;
       cursor: pointer;
+      box-shadow: 0 2px 7px rgba(0, 0, 0, 0.22);
     }
     .practice-exit-button:hover { color: #a83a27; border-color: #a83a27; }
     .header-menu { position: relative; flex: 0 0 auto; }
@@ -4981,7 +4985,6 @@
       </h1>
     </div>
     <div class="game-header-actions">
-      <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
       <div class="header-menu" data-header-menu>
         <button class="lobby-settings-button header-menu-trigger" type="button" aria-expanded="false" aria-controls="roomHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span>メニュー</span></button>
         <div id="roomHeaderMenu" class="header-menu-popup" hidden>
@@ -5019,6 +5022,7 @@
       <div class="play-layout">
         <div class="play-main-column">
           <div class="board-wrap">
+            <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
             <div id="board" class="board"></div>
             <div id="board3d" class="board-3d" aria-hidden="true">
               <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
