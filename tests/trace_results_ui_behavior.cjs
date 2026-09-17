@@ -71,6 +71,7 @@ const path = require('node:path');
       };
       await document.getElementById('btnPracticeReplay').onclick();
       state.practice_replay_active=true;
+      latestState=state;
       updateRoundResetButton(state,true,false);
       updatePracticeReplayButtons(state,true,false);
       const practice={
@@ -78,15 +79,33 @@ const path = require('node:path');
         replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
         returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
         sceneVisible:document.getElementById('btnPracticeScene').style.display !== 'none',
+        exitVisible:document.getElementById('practiceExitButton').style.display !== 'none',
         returnLabel:document.getElementById('btnPracticeReturn').textContent,
       };
       await document.getElementById('btnPracticeReturn').onclick();
-      return {normal,practice,actions};
+      state.finished=false;
+      state.practice_replay_available=false;
+      latestState=state;
+      updateRoundResetButton(state,true,false);
+      updatePracticeReplayButtons(state,true,false);
+      const duringPractice={
+        replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
+        returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
+        sceneVisible:document.getElementById('btnPracticeScene').style.display !== 'none',
+        exitVisible:document.getElementById('practiceExitButton').style.display !== 'none',
+      };
+      let confirmResult=false;
+      window.confirm=()=>confirmResult;
+      await document.getElementById('practiceExitButton').onclick();
+      confirmResult=true;
+      await document.getElementById('practiceExitButton').onclick();
+      return {normal,practice,duringPractice,actions};
     });
     assert.deepEqual(practiceBehavior,{
       normal:{nextVisible:true,replayVisible:true,returnVisible:false,sceneVisible:true,replayLabel:'もう一度練習する',sceneLabel:'場面を指定して練習する'},
-      practice:{nextVisible:false,replayVisible:false,returnVisible:true,sceneVisible:false,returnLabel:'元のゲームに戻る'},
-      actions:[['start',undefined],['return',undefined]],
+      practice:{nextVisible:false,replayVisible:false,returnVisible:true,sceneVisible:false,exitVisible:true,returnLabel:'元のゲームに戻る'},
+      duringPractice:{replayVisible:false,returnVisible:true,sceneVisible:false,exitVisible:true},
+      actions:[['start',undefined],['return',undefined],['return',undefined]],
     });
     const publicPracticeBehavior = await page.evaluate(() => {
       gid='main';

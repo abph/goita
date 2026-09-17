@@ -185,15 +185,64 @@ def test_practice_replay_requires_finished_round_and_host_owner() -> None:
     asyncio.run(scenario())
 
 
+def test_practice_replay_can_return_before_practice_round_finishes() -> None:
+    async def scenario() -> None:
+        game_id = app_module.PRIVATE_A_GID
+        client_id = "practice-early-return-host"
+        previous_game = app_module.GAMES.get(game_id)
+        game = app_module._create_game_obj(dealer="B")
+        game["human_seats"] = {"A": client_id}
+        game["ai_seats"] = ["B", "C", "D"]
+        game["is_started"] = True
+        game["total_team_score"] = {"AC": 30, "BD": 20}
+        game["state"].finished = True
+        game["state"].winner = "C"
+        game["practice_replay_source"] = app_module._practice_replay_source(game)
+        original_state = copy.deepcopy(game["state"])
+        app_module.GAMES[game_id] = game
+        try:
+            await app_module.practice_replay(
+                game_id,
+                app_module.PracticeReplayRequest(
+                    requester="A", client_id=client_id, action="start"
+                ),
+            )
+            assert app_module.GAMES[game_id]["state"].finished is False
+
+            returned = await app_module.practice_replay(
+                game_id,
+                app_module.PracticeReplayRequest(
+                    requester="A", client_id=client_id, action="return"
+                ),
+            )
+            restored = app_module.GAMES[game_id]
+            assert returned["practice_replay_active"] is False
+            assert restored["state"].finished is True
+            assert restored["state"].winner == original_state.winner
+            assert restored["total_team_score"] == {"AC": 30, "BD": 20}
+        finally:
+            app_module._cancel_turn_timeout_task(game_id)
+            if previous_game is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous_game
+            app_module.GAME_TURN_LOCKS.pop(game_id, None)
+
+    asyncio.run(scenario())
+
+
 def test_practice_replay_ui_has_all_controls_and_state_flags() -> None:
     html = app_module.FRONTEND_DIR.joinpath("index.html").read_text(encoding="utf-8")
     script = app_module.FRONTEND_DIR.joinpath("trace-results.js").read_text(encoding="utf-8")
     assert 'id="btnPracticeReplay"' in html
     assert 'id="btnPracticeReturn"' in html
+    assert 'id="practiceExitButton"' in html
     assert 'id="btnPracticeScene"' in html
     assert 'id="practiceSceneModal"' in html
     assert 'fetch(`${API}/games/${gid}/practice_replay`' in html
     assert 'practiceReplayAction("scene", sceneIndex)' in html
+    assert 'returnFromPracticeReplay()' in html
+    assert 'この局の得点は加算されません' in html
     assert "updatePracticeReplayButtons(state, isHost, autoNextRoundPending)" in html
     assert "state.practice_replay_available === true" in script
     assert "PRIVATE_ROOM_IDS.has(gid)" in script

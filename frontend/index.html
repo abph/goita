@@ -557,6 +557,10 @@
       width: 100%;
       text-align: center;
     }
+    .score-round.practice-score-note {
+      font-size: clamp(7px, 1.8vw, 11px);
+      line-height: 1.15;
+    }
     .score-line {
       font-size: clamp(13px, 3.5vw, 18px);
       white-space: nowrap;
@@ -3788,6 +3792,22 @@
       gap: 12px;
       flex: 0 0 auto;
     }
+    .practice-exit-button {
+      display: none;
+      place-items: center;
+      flex: 0 0 36px;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid rgba(109, 70, 31, 0.35);
+      border-radius: 50%;
+      background: rgba(255, 253, 245, 0.94);
+      color: #6d461f;
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .practice-exit-button:hover { color: #a83a27; border-color: #a83a27; }
     .header-menu { position: relative; flex: 0 0 auto; }
     .header-menu-trigger {
       display: inline-flex;
@@ -4961,6 +4981,7 @@
       </h1>
     </div>
     <div class="game-header-actions">
+      <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
       <div class="header-menu" data-header-menu>
         <button class="lobby-settings-button header-menu-trigger" type="button" aria-expanded="false" aria-controls="roomHeaderMenu" data-header-menu-toggle><span aria-hidden="true">☰</span><span>メニュー</span></button>
         <div id="roomHeaderMenu" class="header-menu-popup" hidden>
@@ -5062,7 +5083,7 @@
 
         <div class="btns" style="margin-top:0;">
           <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
-          <button onclick="practiceReplayAction('return')" id="btnPracticeReturn" style="display:none; font-weight:900;">元のゲームに戻る</button>
+          <button onclick="returnFromPracticeReplay()" id="btnPracticeReturn" style="display:none; font-weight:900;">元のゲームに戻る</button>
           <button onclick="practiceReplayAction('start')" id="btnPracticeReplay" style="display:none; font-weight:900;">もう一度練習する</button>
           <button onclick="openPracticeScenePicker()" id="btnPracticeScene" style="display:none; font-weight:900;">場面を指定して練習する</button>
 
@@ -5957,9 +5978,9 @@
 <script src="/static/score-rankings.js?v=20260915a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
-<script src="/static/trace-results.js?v=20260917d"></script>
-<script src="/static/i18n-en.js?v=20260917d"></script>
-<script src="/static/i18n.js?v=20260917d"></script>
+<script src="/static/trace-results.js?v=20260917e"></script>
+<script src="/static/i18n-en.js?v=20260917e"></script>
+<script src="/static/i18n.js?v=20260917e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -13795,7 +13816,7 @@ function renderBoard(state){
       const rc = state.round_count || 1;
       
       scoreDiv.innerHTML = `
-          <div class="score-round">${state.practice_replay_active ? `練習（第 ${rc} 局）` : `第 ${rc} 局`}</div>
+          <div class="score-round${state.practice_replay_active ? " practice-score-note" : ""}">${state.practice_replay_active ? "この局の得点は加算されません" : `第 ${rc} 局`}</div>
           <div class="score-line"><span class="score-ac">AC:</span> <span>${ac}点</span></div>
           <div class="score-line"><span class="score-bd">BD:</span> <span>${bd}点</span></div>
       `;
@@ -14121,6 +14142,7 @@ async function practiceReplayAction(action, sceneIndex=null){
     document.getElementById("btnPracticeReturn"),
     document.getElementById("btnPracticeReplay"),
     document.getElementById("btnPracticeScene"),
+    document.getElementById("practiceExitButton"),
   ];
   buttons.forEach(button => { if(button) button.disabled = true; });
   try{
@@ -14149,6 +14171,15 @@ async function practiceReplayAction(action, sceneIndex=null){
     practiceReplayRequestInFlight = false;
     buttons.forEach(button => { if(button) button.disabled = false; });
   }
+}
+
+async function returnFromPracticeReplay(){
+  if(mySeat !== "A" || !latestState?.practice_replay_active) return;
+  if(!latestState.finished){
+    const confirmed = window.confirm(uiText("練習を終了して元のゲームに戻りますか？"));
+    if(!confirmed) return;
+  }
+  await practiceReplayAction("return");
 }
 
 async function confirmForceReset(){

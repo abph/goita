@@ -758,6 +758,8 @@
     "ここから練習を始める": "Start Practice Here",
     "選んだ手番を打つ前の状態から練習を始めます。": "Practice starts from the state before the selected turn.",
     "練習する手番を選べませんでした。": "No turn is available for practice.",
+    "この局の得点は加算されません": "Points from this round are not added",
+    "練習を終了して元のゲームに戻りますか？": "End practice and return to the original game?",
     "練習局を開始できませんでした。": "The practice round could not be started.",
     "強制リセット": "Force Reset",
     "現在の対局と得点をリセットします。よろしいですか？": "This will reset the current game and scores. Continue?",

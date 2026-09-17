@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260917d"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260917d"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260917e"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260917e"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -175,6 +175,8 @@ def test_practice_replay_controls_are_translated() -> None:
         "ここから練習を始める",
         "選んだ手番を打つ前の状態から練習を始めます。",
         "練習する手番を選べませんでした。",
+        "この局の得点は加算されません",
+        "練習を終了して元のゲームに戻りますか？",
         "練習局を開始できませんでした。",
     ]:
         assert source in chinese

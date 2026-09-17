@@ -5724,7 +5724,7 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
 
         state: GoitaState = game["state"]
         active = bool(game.get("practice_replay_active", False))
-        if not state.finished:
+        if not state.finished and action != "return":
             raise HTTPException(status_code=409, detail="The round has not finished.")
 
         if action in {"start", "scene"}:
