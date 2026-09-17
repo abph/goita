@@ -3023,16 +3023,6 @@ def _state_public_view(
         finished = state.finished
         winner = state.winner
 
-    practice_source = game_obj.get("practice_replay_source")
-    practice_source_log: List[str] = []
-    if (
-        game_id in PRIVATE_ROOM_NAMES
-        and "A" in owned_human_seats
-        and isinstance(practice_source, dict)
-        and isinstance(practice_source.get("log"), list)
-    ):
-        practice_source_log = [str(entry) for entry in practice_source["log"]]
-
     payload = {
         "action_token": _action_state_token(game_obj, state),
         "update_version": game_obj.get("update_version", 0),
@@ -3076,10 +3066,6 @@ def _state_public_view(
             and game_id in PRIVATE_ROOM_NAMES
             and _practice_replay_is_supported(game_obj)
             and game_obj.get("practice_replay_source")
-        ),
-        "practice_replay_source_log": practice_source_log,
-        "practice_replay_source_log_turn_numbers": log_turn_numbers(
-            practice_source_log
         ),
         "trace_mode": bool(game_obj.get("trace_mode", False)),
         "is_score_attack_room": is_score_room(game_id),
@@ -3680,7 +3666,6 @@ def _practice_replay_source(game: Dict[str, Any]) -> Dict[str, Any]:
         "dealer": str(game.get("dealer", "A")),
         "round_count": int(game.get("round_count", 1)),
         "moves": copy.deepcopy(game.get("kifu_moves", [])),
-        "log": copy.deepcopy(game.get("log", [])),
     }
 
 
@@ -5743,19 +5728,14 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
             raise HTTPException(status_code=409, detail="The round has not finished.")
 
         if action in {"start", "scene"}:
-            if action == "start" and active:
+            if active:
                 raise HTTPException(status_code=409, detail="Practice replay is already active.")
             if not game.get("practice_replay_source"):
                 raise HTTPException(status_code=409, detail="There is no completed round to replay.")
             scene_index = 0 if action == "start" else req.scene_index
             if scene_index is None:
                 raise HTTPException(status_code=400, detail="A practice scene is required.")
-            if active:
-                if not game.get("practice_return_snapshot"):
-                    raise HTTPException(status_code=409, detail="Practice replay is not active.")
-                return_snapshot = copy.deepcopy(game["practice_return_snapshot"])
-            else:
-                return_snapshot = _practice_game_snapshot(game)
+            return_snapshot = _practice_game_snapshot(game)
             GAMES[game_id] = _create_practice_replay_game(
                 game, return_snapshot, int(scene_index)
             )

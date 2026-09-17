@@ -79,7 +79,6 @@ def test_practice_replay_reuses_hands_and_dealer_without_adding_score(
             )
             assert practice_view["practice_replay_active"] is True
             assert practice_view["practice_replay_available"] is False
-            assert practice_view["practice_replay_source_log"] == original_log
 
             practice["state"].finished = True
             practice["state"].winner = "B"
@@ -280,30 +279,6 @@ def test_practice_replay_scene_reconstructs_state_before_selected_turn() -> None
             assert retried_game["kifu_moves"] == prefix_rows
             assert retried_game["state"].turn == expected_state.turn
             assert retried_game["state"].hands == expected_state.hands
-
-            retried_game["state"].finished = True
-            retried_game["state"].winner = "C"
-            changed_scene = await app_module.practice_replay(
-                game_id,
-                app_module.PracticeReplayRequest(
-                    requester="A",
-                    client_id=client_id,
-                    action="scene",
-                    scene_index=1,
-                ),
-            )
-            changed_game = app_module.GAMES[game_id]
-            assert changed_scene["practice_replay_active"] is True
-            assert changed_game["practice_scene_index"] == 1
-            assert changed_game["kifu_moves"] == [
-                row
-                for group in app_module._practice_replay_turn_groups(moves)[:1]
-                for row in group
-            ]
-            assert changed_game["practice_return_snapshot"]["total_team_score"] == {
-                "AC": 20,
-                "BD": 40,
-            }
         finally:
             app_module._cancel_turn_timeout_task(game_id)
             if previous_game is None:

@@ -33,13 +33,13 @@ function updatePracticeReplayButtons(state, isHost, autoNextRoundPending) {
     && !isScoreAttackRoom()
     && PRIVATE_ROOM_IDS.has(gid)
   );
-  replayButton.style.display = canReplay ? '' : 'none';
+  replayButton.style.display = canReplay && !active ? '' : 'none';
   replayButton.textContent = uiText('もう一度練習する');
   replayButton.onclick = () => practiceReplayAction(active ? 'retry' : 'start');
   returnButton.style.display = canReplay && active ? '' : 'none';
   returnButton.textContent = uiText('元のゲームに戻る');
   returnButton.onclick = () => practiceReplayAction('return');
-  sceneButton.style.display = canReplay ? '' : 'none';
+  sceneButton.style.display = canReplay && !active ? '' : 'none';
   sceneButton.textContent = uiText('場面を指定して練習する');
   sceneButton.onclick = openPracticeScenePicker;
   replayButton.disabled = practiceReplayRequestInFlight || traceActionBusy;

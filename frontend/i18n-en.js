@@ -819,7 +819,7 @@
     [/^勝者:(.+)、(\d+)点獲得。「次の一局へ」を押してください。$/, (_m, winner, score) => `Winner: ${winner}, ${score} points. Select Next Round.`],
     [/^勝者:(.+)、(\d+)点獲得。ホストの操作をお待ちください。$/, (_m, winner, score) => `Winner: ${winner}, ${score} points. Wait for the host.`],
     [/^勝者:(.+)、(\d+)点獲得。3秒後に次の局を開始します。$/, (_m, winner, score) => `Winner: ${winner}, ${score} points. The next round starts in three seconds.`],
-    [/^練習局終了。勝者:(.+)（(\d+)点・得点には加算されません）。「元のゲームに戻る」「もう一度練習する」「場面を指定して練習する」から選んでください。$/, (_m, winner, score) => `Practice round finished. Winner: ${winner} (${score} points, not added to the score). Choose Return to Original Game, Practice Again, or Practice from a Position.`],
+    [/^練習局終了。勝者:(.+)（(\d+)点・得点には加算されません）。「元のゲームに戻る」を押してください。$/, (_m, winner, score) => `Practice round finished. Winner: ${winner} (${score} points, not added to the score). Select Return to Original Game.`],
     [/^練習局終了。勝者:(.+)（得点には加算されません）。ホストの操作をお待ちください。$/, (_m, winner) => `Practice round finished. Winner: ${winner} (not added to the score). Wait for the host.`],
     [/^🎊 (.+)ペアの勝利です！3秒後に新規ゲームを開始します。$/, (_m, team) => `🎊 Team ${team} wins! A new game starts in three seconds.`],
     [/^([ABCD])（(.+)）の席を空けますか？\n対局中の場合、進行が止まることがあります。$/, (_m, seat, name) => `Vacate ${seat} (${name})?\nIf a game is in progress, play may stop.`],
