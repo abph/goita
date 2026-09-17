@@ -4029,6 +4029,8 @@
     .preset-range-grid{ display:grid; grid-template-columns:32px minmax(74px,1fr) 16px minmax(74px,1fr) 18px; gap:5px; align-items:center; padding:0 10px 10px; font-size:12px; }
     .preset-range-grid select{ width:100%; min-width:0; padding:5px 3px; font-size:13px; }
     .preset-range-actions{ display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    .preset-range-auto{ display:flex; align-items:flex-start; gap:7px; margin-top:10px; font-size:13px; font-weight:800; line-height:1.5; }
+    .preset-range-auto input{ flex:0 0 auto; margin-top:3px; }
     .preset-range-status{ min-height:1.4em; margin-top:7px; color:#176b35; font-size:12px; font-weight:700; white-space:pre-line; }
     .preset-range-status.error{ color:#b00000; }
     .kifu-preset-import {
@@ -5676,6 +5678,7 @@
           <div class="preset-range-panel" id="presetRangePanel" style="display:none;">
             <div class="preset-note">駒ごとに最低・最高枚数を選び、「条件に合う手札を作る」を押してください。完成した手札を「きっちり指定」へ自動入力します。</div>
             <div id="presetRangeSeats"></div>
+            <label class="preset-range-auto"><input type="checkbox" id="presetRangeAuto" onchange="presetRangeAutoChanged(this.checked)">毎局、条件に合う手札を自動で作る</label>
             <div class="preset-range-actions">
               <button type="button" onclick="generateExactPresetFromRanges()">条件に合う手札を作る</button>
               <button type="button" class="ghost" onclick="clearPresetRanges()">条件をリセット</button>
@@ -10948,7 +10951,11 @@ function setupPresetRangeControls(){
         }
         select.addEventListener("change", ()=>{
           presetRangeSave();
-          presetRangeSetStatus("");
+          if(presetRangeAutoIsEnabled()){
+            applyExactPresetFromRanges({showExact:false, scheduleApply:true, successMessage:"条件を保存しました。次の局もこの条件で手札を作ります。"});
+          }else{
+            presetRangeSetStatus("");
+          }
         });
         grid.appendChild(select);
         if(bound === "min"){
@@ -10995,10 +11002,40 @@ function presetRangeLoad(){
   }catch(e){}
 }
 
+function presetRangeAutoIsEnabled(){
+  const checkbox = document.getElementById("presetRangeAuto");
+  if(checkbox) return checkbox.checked;
+  try{ return localStorage.getItem("goita_preset_range_auto") === "1"; }catch(e){ return false; }
+}
+
+function presetRangeAutoLoad(){
+  const checkbox = document.getElementById("presetRangeAuto");
+  if(!checkbox) return;
+  try{ checkbox.checked = localStorage.getItem("goita_preset_range_auto") === "1"; }catch(e){ checkbox.checked = false; }
+}
+
+function presetRangeAutoChanged(enabled){
+  try{ localStorage.setItem("goita_preset_range_auto", enabled ? "1" : "0"); }catch(e){}
+  if(!enabled){
+    presetRangeSetStatus("毎局の自動生成を解除しました。");
+    return;
+  }
+  presetSetEnabled(true);
+  applyExactPresetFromRanges({
+    showExact:false,
+    scheduleApply:true,
+    successMessage:"毎局、条件に合う手札を自動で作ります。",
+  });
+}
+
 function clearPresetRanges(){
   document.querySelectorAll(".preset-range-value").forEach(select => select.value = "");
   try{ localStorage.removeItem("goita_preset_ranges"); }catch(e){}
-  presetRangeSetStatus("");
+  if(presetRangeAutoIsEnabled()){
+    applyExactPresetFromRanges({showExact:false, scheduleApply:true, successMessage:"条件をリセットしました。次の局は条件なしで手札を作ります。"});
+  }else{
+    presetRangeSetStatus("");
+  }
 }
 
 function shuffledCopy(values){
@@ -11098,11 +11135,13 @@ function buildExactPresetFromRanges(){
   return {counts};
 }
 
-function generateExactPresetFromRanges(){
+function applyExactPresetFromRanges(options = {}){
+  const showExact = options.showExact !== false;
+  const shouldScheduleApply = options.scheduleApply !== false;
   const result = buildExactPresetFromRanges();
   if(result.error){
     presetRangeSetStatus(result.error, true);
-    return;
+    return {ok:false, error:result.error};
   }
   for(const seat of ["A","B","C","D"]){
     for(const piece of PRESET_PIECES){
@@ -11113,9 +11152,14 @@ function generateExactPresetFromRanges(){
   }
   presetSetEnabled(true);
   presetValidateAndClamp();
-  presetRangeSetStatus("条件に合う手札を作成しました。きっちり指定の内容を確認してください。");
-  showPresetMethod("exact");
-  scheduleApplyCurrentSetup();
+  presetRangeSetStatus(options.successMessage || "条件に合う手札を作成しました。きっちり指定の内容を確認してください。");
+  if(showExact) showPresetMethod("exact");
+  if(shouldScheduleApply) scheduleApplyCurrentSetup();
+  return {ok:true, counts:result.counts};
+}
+
+function generateExactPresetFromRanges(){
+  return applyExactPresetFromRanges({showExact:true, scheduleApply:true});
 }
 
 function presetHasAny(){
@@ -14397,8 +14441,23 @@ async function startNewGame(keepScore = false){
   }
 
   try{
+    const useAutomaticRangePreset = presetIsEnabled() && presetRangeAutoIsEnabled();
+    if(useAutomaticRangePreset){
+      const generated = applyExactPresetFromRanges({
+        showExact:false,
+        scheduleApply:false,
+        successMessage:"次の局の手札を条件に合わせて作成しました。",
+      });
+      if(!generated.ok){
+        const details = document.getElementById("presetHandsDetails");
+        if(details) details.open = true;
+        showPresetMethod("range");
+        setHint(`手札を作れません。${String(generated.error || "条件を確認してください。").split("\n")[0]}`);
+        throw new Error(generated.error || "Failed to generate preset hands from ranges.");
+      }
+    }
     await resetWithPreset(dealer, keepScore, autoStartNextRound);
-    forceDisablePreset();
+    if(!useAutomaticRangePreset) forceDisablePreset();
 
     for(const s of ["A","B","C","D"]){
       const nm = (savedNames && savedNames[s]) ? String(savedNames[s]) : "";
@@ -15090,6 +15149,7 @@ window.addEventListener("load", async ()=>{
   setupPresetSeatResetButtons();
   setupPresetRangeControls();
   presetRangeLoad();
+  presetRangeAutoLoad();
   presetLoad();
   presetSetEnabled(presetIsEnabled());
   let savedPresetMethod = "exact";
@@ -15099,7 +15159,11 @@ window.addEventListener("load", async ()=>{
   if(presetEnabledBox){
     presetEnabledBox.addEventListener("change", ()=> {
       presetSetEnabled(presetEnabledBox.checked);
-      scheduleApplyCurrentSetup();
+      if(presetEnabledBox.checked && presetRangeAutoIsEnabled()){
+        applyExactPresetFromRanges({showExact:false, scheduleApply:true, successMessage:"毎局、条件に合う手札を自動で作ります。"});
+      }else{
+        scheduleApplyCurrentSetup();
+      }
     });
   }
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
