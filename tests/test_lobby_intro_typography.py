@@ -29,7 +29,7 @@ def test_lobby_intro_has_smaller_mobile_typography():
     assert ".lobby-intro h1 { font-size: 28px; }" in HTML
     assert ".lobby-brand-certification { font-size: 9px; }" in HTML
     assert ".lobby-brand-subtitle { font-size: 11px; }" in HTML
-    assert ".lobby-purpose-option { min-height: 58px;" in HTML
+    assert ".lobby-purpose-option { min-height: 60px;" in HTML
 
 
 def test_lobby_feature_guide_has_play_and_study_steps():
@@ -53,6 +53,7 @@ def test_lobby_guide_and_score_attack_are_separate_stable_columns():
     assert '<div class="lobby-feature-row">' in HTML
     assert "grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);" in HTML
     assert "gap: 18px;" in HTML
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in HTML
     assert ".lobby-purpose-stage { display: grid; }" in HTML
     assert "grid-area: 1 / 1;" in HTML
     assert 'class="lobby-purpose-panel is-inactive"' in HTML
