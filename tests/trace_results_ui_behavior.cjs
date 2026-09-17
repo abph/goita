@@ -86,7 +86,7 @@ const path = require('node:path');
     });
     assert.deepEqual(practiceBehavior,{
       normal:{nextVisible:true,replayVisible:true,returnVisible:false,sceneVisible:true,replayLabel:'もう一度練習する',sceneLabel:'場面を指定して練習する'},
-      practice:{nextVisible:false,replayVisible:true,returnVisible:true,sceneVisible:false,returnLabel:'元のゲームに戻る'},
+      practice:{nextVisible:false,replayVisible:true,returnVisible:true,sceneVisible:true,returnLabel:'元のゲームに戻る'},
       actions:[['start',undefined],['return',undefined],['retry',undefined]],
     });
     const publicPracticeBehavior = await page.evaluate(() => {
@@ -102,9 +102,11 @@ const path = require('node:path');
     await page.evaluate(() => {
       gid='room-gold-01'; mySeat='A';
       latestState={
-        finished:true,practice_replay_active:false,practice_replay_available:true,
-        log:['Game start. dealer=A','A: block 2 -> attack 3','B: pass','C: receive 3','C: attack 4','Round finished. winner=C gained=10'],
-        log_turn_numbers:[null,1,2,3,3,null],
+        finished:true,practice_replay_active:true,practice_replay_available:true,
+        log:['Practice replay start. dealer=A','A: block 2 -> attack 3','Practice round finished. winner=A, score_not_added=10'],
+        log_turn_numbers:[null,1,null],
+        practice_replay_source_log:['Game start. dealer=A','A: block 2 -> attack 3','B: pass','C: receive 3','C: attack 4','Round finished. winner=C gained=10'],
+        practice_replay_source_log_turn_numbers:[null,1,2,3,3,null],
       };
       window.practiceSceneCalls=[];
       practiceReplayAction=async (action,sceneIndex)=>window.practiceSceneCalls.push([action,sceneIndex]);

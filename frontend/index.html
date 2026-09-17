@@ -5957,9 +5957,9 @@
 <script src="/static/score-rankings.js?v=20260915a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
-<script src="/static/trace-results.js?v=20260917b"></script>
-<script src="/static/i18n-en.js?v=20260917b"></script>
-<script src="/static/i18n.js?v=20260917b"></script>
+<script src="/static/trace-results.js?v=20260917c"></script>
+<script src="/static/i18n-en.js?v=20260917c"></script>
+<script src="/static/i18n.js?v=20260917c"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -6849,7 +6849,6 @@ function openPracticeScenePicker() {
         !PRIVATE_ROOM_IDS.has(gid)
         || mySeat !== "A"
         || !latestState?.finished
-        || latestState?.practice_replay_active
         || latestState?.practice_replay_available !== true
     ) return;
 
@@ -6859,9 +6858,17 @@ function openPracticeScenePicker() {
     if(!modal || !list || !status) return;
     list.replaceChildren();
     status.textContent = "";
+    const sourceLog = Array.isArray(latestState.practice_replay_source_log)
+        && latestState.practice_replay_source_log.length > 0
+        ? latestState.practice_replay_source_log
+        : latestState.log;
+    const sourceTurnNumbers = Array.isArray(latestState.practice_replay_source_log_turn_numbers)
+        && latestState.practice_replay_source_log_turn_numbers.length > 0
+        ? latestState.practice_replay_source_log_turn_numbers
+        : latestState.log_turn_numbers;
     const groups = groupGameLogEntries(
-        Array.isArray(latestState.log) ? latestState.log : [],
-        Array.isArray(latestState.log_turn_numbers) ? latestState.log_turn_numbers : [],
+        Array.isArray(sourceLog) ? sourceLog : [],
+        Array.isArray(sourceTurnNumbers) ? sourceTurnNumbers : [],
     ).filter(group => Boolean(group.seat));
     if(groups.length === 0) {
         status.textContent = uiText("練習する手番を選べませんでした。");
@@ -14480,7 +14487,7 @@ async function refreshFromState(confirmedState = null){
   } else if (state.finished) {
       if (state.practice_replay_active) {
           if (mySeat === "A") {
-              setHint(`練習局終了。勝者:${state.winner}（${state.last_round_score}点・得点には加算されません）。「元のゲームに戻る」か「もう一度練習する」を選んでください。`);
+              setHint(`練習局終了。勝者:${state.winner}（${state.last_round_score}点・得点には加算されません）。「元のゲームに戻る」「もう一度練習する」「場面を指定して練習する」から選んでください。`);
           } else {
               setHint(`練習局終了。勝者:${state.winner}（得点には加算されません）。ホストの操作をお待ちください。`);
           }
