@@ -2270,6 +2270,7 @@ class PracticeReplayRequest(BaseModel):
     requester: str = Field(default="W", min_length=1, max_length=1)
     client_id: str = Field(min_length=1, max_length=128)
     action: str = Field(min_length=1, max_length=16)
+    scene_index: Optional[int] = Field(default=None, ge=0, le=500)
 
 
 class DebugAutoNextRoundRequest(BaseModel):
@@ -3062,7 +3063,7 @@ def _state_public_view(
         ),
         "practice_replay_available": bool(
             finished
-            and not is_score_room(game_id)
+            and game_id in PRIVATE_ROOM_NAMES
             and _practice_replay_is_supported(game_obj)
             and game_obj.get("practice_replay_source")
         ),
@@ -3181,6 +3182,7 @@ def _create_game_obj(
         "practice_replay_active": False,
         "practice_replay_source": None,
         "practice_return_snapshot": None,
+        "practice_scene_index": 0,
         "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
@@ -3663,7 +3665,28 @@ def _practice_replay_source(game: Dict[str, Any]) -> Dict[str, Any]:
         "hands": copy.deepcopy(game.get("init_hands", {})),
         "dealer": str(game.get("dealer", "A")),
         "round_count": int(game.get("round_count", 1)),
+        "moves": copy.deepcopy(game.get("kifu_moves", [])),
     }
+
+
+def _practice_replay_turn_groups(moves: Any) -> List[List[List[str]]]:
+    groups: List[List[List[str]]] = []
+    for raw_row in moves if isinstance(moves, list) else []:
+        if not isinstance(raw_row, list) or len(raw_row) < 3:
+            raise HTTPException(status_code=409, detail="The completed round cannot be replayed.")
+        row = [str(value or "") for value in raw_row[:3]]
+        if (
+            groups
+            and groups[-1][-1][0] == row[0]
+            and groups[-1][-1][1] not in {"", "パス"}
+            and groups[-1][-1][2] == ""
+            and row[1] == ""
+            and row[2] != ""
+        ):
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
 
 
 def _practice_game_snapshot(game: Dict[str, Any]) -> Dict[str, Any]:
@@ -3681,6 +3704,7 @@ def _practice_game_snapshot(game: Dict[str, Any]) -> Dict[str, Any]:
 def _create_practice_replay_game(
     game: Dict[str, Any],
     return_snapshot: Dict[str, Any],
+    scene_index: int = 0,
 ) -> Dict[str, Any]:
     source = copy.deepcopy(game.get("practice_replay_source") or {})
     hands = source.get("hands")
@@ -3711,10 +3735,49 @@ def _create_practice_replay_game(
     replay["practice_replay_active"] = True
     replay["practice_replay_source"] = source
     replay["practice_return_snapshot"] = copy.deepcopy(return_snapshot)
+    replay["practice_scene_index"] = int(scene_index)
     replay["member_kifu_round_id"] = secrets.token_hex(24)
     replay["turn_started_at"] = None
     replay["turn_deadline_at"] = None
     replay["turn_timer_token"] = int(replay.get("turn_timer_token", 0)) + 1
+
+    turn_groups = _practice_replay_turn_groups(source.get("moves", []))
+    if scene_index < 0 or scene_index > max(len(turn_groups) - 1, 0):
+        raise HTTPException(status_code=409, detail="The selected practice scene is unavailable.")
+    for group in turn_groups[:scene_index]:
+        for row in group:
+            try:
+                actor = ALL_SEATS[int(row[0])]
+            except (TypeError, ValueError, IndexError) as error:
+                raise HTTPException(status_code=409, detail="The selected practice scene is unavailable.") from error
+            action = _trace_row_to_action(replay["state"], actor, row)
+            if action is None or action not in replay["state"].legal_actions(actor):
+                raise HTTPException(status_code=409, detail="The selected practice scene is unavailable.")
+            effects = _check_effects(replay["state"], actor, action, replay["board"], dealer)
+            before_fd = len(replay["state"].face_down_hidden[actor])
+            _apply_action(replay["state"], actor, action)
+            hidden_receive = _is_hidden_receive_by_state_delta(
+                replay["state"], actor, action[0], before_fd
+            )
+            if _visible_receive_for_score_effect(action, effects):
+                hidden_receive = False
+            _update_board_snapshot(
+                replay["board"], actor, action, hidden_receive=hidden_receive
+            )
+            _record_public_action(replay, actor, action)
+            replay["log"].append(
+                _format_action(actor, action) + (" (hidden)" if hidden_receive else "")
+            )
+            replay["kifu_moves"].append(copy.deepcopy(row))
+            _notify_public(replay["agents"], replay["state"], actor, action)
+            _notify_public(
+                replay.get("beginner_support_agents", {}),
+                replay["state"],
+                actor,
+                action,
+            )
+    if replay["state"].finished:
+        raise HTTPException(status_code=409, detail="The selected practice scene is unavailable.")
     return replay
 
 
@@ -5644,7 +5707,7 @@ async def start_guided_practice(req: GuidedPracticeRequest):
 @app.post("/games/{game_id}/practice_replay")
 async def practice_replay(game_id: str, req: PracticeReplayRequest):
     action = str(req.action or "").strip().lower()
-    if action not in {"start", "retry", "return"}:
+    if action not in {"start", "scene", "retry", "return"}:
         raise HTTPException(status_code=400, detail="Unsupported practice replay action.")
 
     async with _game_turn_lock(game_id):
@@ -5656,7 +5719,7 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
         if req.requester != "A":
             raise HTTPException(status_code=403, detail="Only player in seat A can control practice replay.")
         _require_human_seat_owner(game, "A", req.client_id)
-        if is_score_room(game_id) or not _practice_replay_is_supported(game):
+        if game_id not in PRIVATE_ROOM_NAMES or not _practice_replay_is_supported(game):
             raise HTTPException(status_code=403, detail="Practice replay is not available in this room.")
 
         state: GoitaState = game["state"]
@@ -5664,19 +5727,28 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
         if not state.finished:
             raise HTTPException(status_code=409, detail="The round has not finished.")
 
-        if action == "start":
+        if action in {"start", "scene"}:
             if active:
                 raise HTTPException(status_code=409, detail="Practice replay is already active.")
             if not game.get("practice_replay_source"):
                 raise HTTPException(status_code=409, detail="There is no completed round to replay.")
+            scene_index = 0 if action == "start" else req.scene_index
+            if scene_index is None:
+                raise HTTPException(status_code=400, detail="A practice scene is required.")
             return_snapshot = _practice_game_snapshot(game)
-            GAMES[game_id] = _create_practice_replay_game(game, return_snapshot)
+            GAMES[game_id] = _create_practice_replay_game(
+                game, return_snapshot, int(scene_index)
+            )
             _arm_turn_timeout(game_id)
         elif action == "retry":
             if not active or not game.get("practice_return_snapshot"):
                 raise HTTPException(status_code=409, detail="Practice replay is not active.")
             return_snapshot = copy.deepcopy(game["practice_return_snapshot"])
-            GAMES[game_id] = _create_practice_replay_game(game, return_snapshot)
+            GAMES[game_id] = _create_practice_replay_game(
+                game,
+                return_snapshot,
+                int(game.get("practice_scene_index", 0)),
+            )
             _arm_turn_timeout(game_id)
         else:
             if not active or not game.get("practice_return_snapshot"):

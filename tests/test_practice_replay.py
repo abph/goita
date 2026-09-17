@@ -26,8 +26,9 @@ def test_practice_replay_reuses_hands_and_dealer_without_adding_score(
     _disable_finish_side_effects(monkeypatch)
 
     async def scenario() -> None:
-        game_id = "practice-replay-test"
+        game_id = app_module.PRIVATE_A_GID
         client_id = "practice-host"
+        previous_game = app_module.GAMES.get(game_id)
         game = app_module._create_game_obj(dealer="C")
         game["human_seats"] = {"A": client_id}
         game["ai_seats"] = ["B", "C", "D"]
@@ -136,7 +137,10 @@ def test_practice_replay_reuses_hands_and_dealer_without_adding_score(
             assert restored["practice_replay_source"]["hands"] == initial_hands
         finally:
             app_module._cancel_turn_timeout_task(game_id)
-            app_module.GAMES.pop(game_id, None)
+            if previous_game is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous_game
             app_module.GAME_TURN_LOCKS.pop(game_id, None)
 
     asyncio.run(scenario())
@@ -144,7 +148,8 @@ def test_practice_replay_reuses_hands_and_dealer_without_adding_score(
 
 def test_practice_replay_requires_finished_round_and_host_owner() -> None:
     async def scenario() -> None:
-        game_id = "practice-replay-guard-test"
+        game_id = app_module.PRIVATE_A_GID
+        previous_game = app_module.GAMES.get(game_id)
         game = app_module._create_game_obj(dealer="A")
         game["human_seats"] = {"A": "owner"}
         game["is_started"] = True
@@ -171,7 +176,10 @@ def test_practice_replay_requires_finished_round_and_host_owner() -> None:
             assert not_owner.value.status_code == 403
         finally:
             app_module._cancel_turn_timeout_task(game_id)
-            app_module.GAMES.pop(game_id, None)
+            if previous_game is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous_game
             app_module.GAME_TURN_LOCKS.pop(game_id, None)
 
     asyncio.run(scenario())
@@ -182,7 +190,135 @@ def test_practice_replay_ui_has_all_controls_and_state_flags() -> None:
     script = app_module.FRONTEND_DIR.joinpath("trace-results.js").read_text(encoding="utf-8")
     assert 'id="btnPracticeReplay"' in html
     assert 'id="btnPracticeReturn"' in html
+    assert 'id="btnPracticeScene"' in html
+    assert 'id="practiceSceneModal"' in html
     assert 'fetch(`${API}/games/${gid}/practice_replay`' in html
+    assert 'practiceReplayAction("scene", sceneIndex)' in html
     assert "updatePracticeReplayButtons(state, isHost, autoNextRoundPending)" in html
     assert "state.practice_replay_available === true" in script
+    assert "PRIVATE_ROOM_IDS.has(gid)" in script
     assert "active ? 'retry' : 'start'" in script
+
+
+def test_practice_replay_scene_reconstructs_state_before_selected_turn() -> None:
+    async def scenario() -> None:
+        game_id = app_module.PRIVATE_A_GID
+        client_id = "practice-scene-host"
+        previous_game = app_module.GAMES.get(game_id)
+        source_game = app_module._create_game_obj(dealer="A")
+        source_game["human_seats"] = {"A": client_id}
+        source_game["ai_seats"] = ["B", "C", "D"]
+        source_game["is_started"] = True
+        source_game["round_count"] = 3
+        source_game["total_team_score"] = {"AC": 20, "BD": 40}
+
+        simulation_state = app_module.GoitaState(
+            hands=copy.deepcopy(source_game["init_hands"]), dealer="A"
+        )
+        moves = []
+        while len(app_module._practice_replay_turn_groups(moves)) < 3:
+            state = simulation_state
+            actor = state.turn
+            action = state.legal_actions(actor)[0]
+            moves.append(app_module._action_to_kifu_row(actor, action))
+            app_module._apply_action(state, actor, action)
+            assert not state.finished
+
+        source_game["kifu_moves"] = copy.deepcopy(moves)
+        source_game["practice_replay_source"] = app_module._practice_replay_source(
+            source_game
+        )
+        source_game["state"].finished = True
+        source_game["state"].winner = "A"
+        app_module.GAMES[game_id] = source_game
+
+        expected_state = app_module.GoitaState(
+            hands=copy.deepcopy(source_game["init_hands"]), dealer="A"
+        )
+        prefix_rows = []
+        for group in app_module._practice_replay_turn_groups(moves)[:2]:
+            for row in group:
+                actor = app_module.ALL_SEATS[int(row[0])]
+                action = app_module._trace_row_to_action(expected_state, actor, row)
+                assert action is not None
+                prefix_rows.append(row)
+                app_module._apply_action(expected_state, actor, action)
+
+        try:
+            result = await app_module.practice_replay(
+                game_id,
+                app_module.PracticeReplayRequest(
+                    requester="A",
+                    client_id=client_id,
+                    action="scene",
+                    scene_index=2,
+                ),
+            )
+            replay = app_module.GAMES[game_id]
+            assert result["practice_replay_active"] is True
+            assert replay["practice_scene_index"] == 2
+            assert replay["kifu_moves"] == prefix_rows
+            assert replay["state"].turn == expected_state.turn
+            assert replay["state"].phase == expected_state.phase
+            assert replay["state"].current_attack == expected_state.current_attack
+            assert replay["state"].hands == expected_state.hands
+            assert replay["state"].face_down_hidden == expected_state.face_down_hidden
+            assert replay["total_team_score"] == {"AC": 20, "BD": 40}
+
+            replay["state"].finished = True
+            replay["state"].winner = "B"
+            retried = await app_module.practice_replay(
+                game_id,
+                app_module.PracticeReplayRequest(
+                    requester="A", client_id=client_id, action="retry"
+                ),
+            )
+            retried_game = app_module.GAMES[game_id]
+            assert retried["practice_replay_active"] is True
+            assert retried_game["practice_scene_index"] == 2
+            assert retried_game["kifu_moves"] == prefix_rows
+            assert retried_game["state"].turn == expected_state.turn
+            assert retried_game["state"].hands == expected_state.hands
+        finally:
+            app_module._cancel_turn_timeout_task(game_id)
+            if previous_game is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous_game
+            app_module.GAME_TURN_LOCKS.pop(game_id, None)
+
+    asyncio.run(scenario())
+
+
+def test_practice_replay_is_not_available_in_public_rooms() -> None:
+    async def scenario() -> None:
+        game_id = app_module.MAIN_GID
+        client_id = "public-host"
+        previous_game = app_module.GAMES.get(game_id)
+        game = app_module._create_game_obj(dealer="A")
+        game["human_seats"] = {"A": client_id}
+        game["is_started"] = True
+        game["state"].finished = True
+        game["state"].winner = "A"
+        game["practice_replay_source"] = app_module._practice_replay_source(game)
+        app_module.GAMES[game_id] = game
+        try:
+            view = app_module.get_state(game_id, viewer="A", client_id=client_id)
+            assert view["practice_replay_available"] is False
+            with pytest.raises(HTTPException) as unavailable:
+                await app_module.practice_replay(
+                    game_id,
+                    app_module.PracticeReplayRequest(
+                        requester="A", client_id=client_id, action="start"
+                    ),
+                )
+            assert unavailable.value.status_code == 403
+        finally:
+            app_module._cancel_turn_timeout_task(game_id)
+            if previous_game is None:
+                app_module.GAMES.pop(game_id, None)
+            else:
+                app_module.GAMES[game_id] = previous_game
+            app_module.GAME_TURN_LOCKS.pop(game_id, None)
+
+    asyncio.run(scenario())

@@ -5064,6 +5064,7 @@
           <button onclick="startNewGame(false)" id="btnNewGame" style="display:none; font-weight:900;"></button>
           <button onclick="practiceReplayAction('return')" id="btnPracticeReturn" style="display:none; font-weight:900;">元のゲームに戻る</button>
           <button onclick="practiceReplayAction('start')" id="btnPracticeReplay" style="display:none; font-weight:900;">もう一度練習する</button>
+          <button onclick="openPracticeScenePicker()" id="btnPracticeScene" style="display:none; font-weight:900;">場面を指定して練習する</button>
 
           <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
         </div>
@@ -5864,6 +5865,15 @@
     </div>
   </div>
 </div>
+<div id="practiceSceneModal" class="modal-overlay" onclick="if(event.target===this) closePracticeScenePicker()">
+  <div class="modal-content settings-modal-content practice-scene-modal-content" role="dialog" aria-modal="true" aria-labelledby="practiceSceneTitle">
+    <button class="settings-modal-close" type="button" onclick="closePracticeScenePicker()" aria-label="閉じる">×</button>
+    <h3 id="practiceSceneTitle">場面を指定して練習する</h3>
+    <p class="settings-help-text">選んだ手番を打つ前の状態から練習を始めます。</p>
+    <p id="practiceSceneStatus" role="status" aria-live="polite"></p>
+    <div id="practiceSceneList" class="practice-scene-list"></div>
+  </div>
+</div>
 <div id="traceHistoryModal" class="modal-overlay" onclick="if(event.target===this) closeTraceHistory()">
   <div class="modal-content settings-modal-content trace-result-content" role="dialog" aria-modal="true" aria-labelledby="traceHistoryTitle">
     <button class="settings-modal-close" type="button" onclick="closeTraceHistory()" aria-label="閉じる">×</button>
@@ -5893,6 +5903,11 @@
   </div>
 </div>
 <style>
+  .practice-scene-modal-content { max-width:620px; }
+  .practice-scene-list { display:grid; gap:10px; min-height:0; overflow-y:auto; }
+  .practice-scene-turn { padding:10px; border:1px solid rgba(109,70,31,.24); border-radius:9px; background:rgba(255,255,255,.58); }
+  .practice-scene-turn-log { margin-bottom:8px; line-height:1.6; }
+  .practice-scene-start-button { width:100%; font-weight:900; }
   .trace-result-content { overflow-y:auto; }
   .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
   .score-attack-member-prompt { margin:14px 0 4px; padding:12px; border:1px solid #d4d9dd; border-radius:8px; line-height:1.65; }
@@ -5942,9 +5957,9 @@
 <script src="/static/score-rankings.js?v=20260915a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
-<script src="/static/trace-results.js?v=20260917a"></script>
-<script src="/static/i18n-en.js?v=20260917a"></script>
-<script src="/static/i18n.js?v=20260917a"></script>
+<script src="/static/trace-results.js?v=20260917b"></script>
+<script src="/static/i18n-en.js?v=20260917b"></script>
+<script src="/static/i18n.js?v=20260917b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script type="module">
@@ -6822,6 +6837,52 @@ function renderGameLogGroup(group, language, includeThinking) {
         }
     }
     return row;
+}
+
+function closePracticeScenePicker() {
+    const modal = document.getElementById("practiceSceneModal");
+    if(modal) modal.style.display = "none";
+}
+
+function openPracticeScenePicker() {
+    if(
+        !PRIVATE_ROOM_IDS.has(gid)
+        || mySeat !== "A"
+        || !latestState?.finished
+        || latestState?.practice_replay_active
+        || latestState?.practice_replay_available !== true
+    ) return;
+
+    const modal = document.getElementById("practiceSceneModal");
+    const list = document.getElementById("practiceSceneList");
+    const status = document.getElementById("practiceSceneStatus");
+    if(!modal || !list || !status) return;
+    list.replaceChildren();
+    status.textContent = "";
+    const groups = groupGameLogEntries(
+        Array.isArray(latestState.log) ? latestState.log : [],
+        Array.isArray(latestState.log_turn_numbers) ? latestState.log_turn_numbers : [],
+    ).filter(group => Boolean(group.seat));
+    if(groups.length === 0) {
+        status.textContent = uiText("練習する手番を選べませんでした。");
+    } else {
+        groups.forEach((group, sceneIndex) => {
+            const item = document.createElement("div");
+            item.className = "practice-scene-turn";
+            const log = document.createElement("div");
+            log.className = "practice-scene-turn-log";
+            log.appendChild(renderGameLogGroup(group, currentUiLanguage(), false));
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "practice-scene-start-button";
+            button.textContent = uiText("ここから練習を始める");
+            button.onclick = () => practiceReplayAction("scene", sceneIndex);
+            item.append(log, button);
+            list.appendChild(item);
+        });
+    }
+    modal.style.display = "flex";
+    modal.querySelector(".settings-modal-close")?.focus();
 }
 
 function syncGameLogModeButtons(language) {
@@ -8279,6 +8340,7 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 async function returnToLobby() {
     sessionStorage.removeItem("goitaScoreRoomOpen");
     closeDebugTrace(); closeTraceResult(); closeTraceHistory();
+    closePracticeScenePicker();
     document.body.classList.remove("personal-score-room");
     cancelImmediateAction();
     if (analyticsRoomEnteredAt) {
@@ -14050,24 +14112,31 @@ async function startNewGame(keepScore = false){
   }
 }
 
-async function practiceReplayAction(action){
+async function practiceReplayAction(action, sceneIndex=null){
   if(mySeat !== "A" || practiceReplayRequestInFlight) return;
-  const normalizedAction = ["start", "retry", "return"].includes(action) ? action : "start";
+  const normalizedAction = ["start", "scene", "retry", "return"].includes(action) ? action : "start";
   practiceReplayRequestInFlight = true;
   const buttons = [
     document.getElementById("btnNewGame"),
     document.getElementById("btnPracticeReturn"),
     document.getElementById("btnPracticeReplay"),
+    document.getElementById("btnPracticeScene"),
   ];
   buttons.forEach(button => { if(button) button.disabled = true; });
   try{
     const response = await fetch(`${API}/games/${gid}/practice_replay`, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({requester:mySeat, client_id:clientId, action:normalizedAction}),
+      body:JSON.stringify({
+        requester:mySeat,
+        client_id:clientId,
+        action:normalizedAction,
+        ...(normalizedAction === "scene" && Number.isInteger(sceneIndex) ? {scene_index:sceneIndex} : {}),
+      }),
     });
     const data = await response.json().catch(() => ({}));
     if(!response.ok) throw new Error(data?.detail || "練習局を開始できませんでした。");
+    closePracticeScenePicker();
     pending = null;
     resetLogAudioSync(0);
     fixedHandMemory = {};

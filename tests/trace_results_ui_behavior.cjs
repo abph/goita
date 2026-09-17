@@ -56,8 +56,8 @@ const path = require('node:path');
     });
     assert.deepEqual(resetBehavior,{scoreLabel:'リセット',ordinaryLabel:'次の一局へ',starts:[false,true]});
     const practiceBehavior = await page.evaluate(async () => {
-      gid='main'; mySeat='A'; practiceReplayRequestInFlight=false;
-      const actions=[]; practiceReplayAction=async action=>actions.push(action);
+      gid='room-gold-01'; mySeat='A'; practiceReplayRequestInFlight=false;
+      const actions=[]; practiceReplayAction=async (action,sceneIndex)=>actions.push([action,sceneIndex]);
       const state={finished:true,match_finished:false,practice_replay_active:false,practice_replay_available:true};
       updateRoundResetButton(state,true,false);
       updatePracticeReplayButtons(state,true,false);
@@ -65,7 +65,9 @@ const path = require('node:path');
         nextVisible:document.getElementById('btnNewGame').style.display !== 'none',
         replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
         returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
+        sceneVisible:document.getElementById('btnPracticeScene').style.display !== 'none',
         replayLabel:document.getElementById('btnPracticeReplay').textContent,
+        sceneLabel:document.getElementById('btnPracticeScene').textContent,
       };
       await document.getElementById('btnPracticeReplay').onclick();
       state.practice_replay_active=true;
@@ -75,6 +77,7 @@ const path = require('node:path');
         nextVisible:document.getElementById('btnNewGame').style.display !== 'none',
         replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
         returnVisible:document.getElementById('btnPracticeReturn').style.display !== 'none',
+        sceneVisible:document.getElementById('btnPracticeScene').style.display !== 'none',
         returnLabel:document.getElementById('btnPracticeReturn').textContent,
       };
       await document.getElementById('btnPracticeReturn').onclick();
@@ -82,10 +85,37 @@ const path = require('node:path');
       return {normal,practice,actions};
     });
     assert.deepEqual(practiceBehavior,{
-      normal:{nextVisible:true,replayVisible:true,returnVisible:false,replayLabel:'もう一度練習する'},
-      practice:{nextVisible:false,replayVisible:true,returnVisible:true,returnLabel:'元のゲームに戻る'},
-      actions:['start','return','retry'],
+      normal:{nextVisible:true,replayVisible:true,returnVisible:false,sceneVisible:true,replayLabel:'もう一度練習する',sceneLabel:'場面を指定して練習する'},
+      practice:{nextVisible:false,replayVisible:true,returnVisible:true,sceneVisible:false,returnLabel:'元のゲームに戻る'},
+      actions:[['start',undefined],['return',undefined],['retry',undefined]],
     });
+    const publicPracticeBehavior = await page.evaluate(() => {
+      gid='main';
+      const state={finished:true,practice_replay_active:false,practice_replay_available:true};
+      updatePracticeReplayButtons(state,true,false);
+      return {
+        replayVisible:document.getElementById('btnPracticeReplay').style.display !== 'none',
+        sceneVisible:document.getElementById('btnPracticeScene').style.display !== 'none',
+      };
+    });
+    assert.deepEqual(publicPracticeBehavior,{replayVisible:false,sceneVisible:false});
+    await page.evaluate(() => {
+      gid='room-gold-01'; mySeat='A';
+      latestState={
+        finished:true,practice_replay_active:false,practice_replay_available:true,
+        log:['Game start. dealer=A','A: block 2 -> attack 3','B: pass','C: receive 3','C: attack 4','Round finished. winner=C gained=10'],
+        log_turn_numbers:[null,1,2,3,3,null],
+      };
+      window.practiceSceneCalls=[];
+      practiceReplayAction=async (action,sceneIndex)=>window.practiceSceneCalls.push([action,sceneIndex]);
+      openPracticeScenePicker();
+    });
+    assert.equal(await page.locator('#practiceSceneModal').isVisible(),true);
+    assert.equal(await page.locator('#practiceSceneList .practice-scene-turn').count(),3);
+    assert.match(await page.locator('#practiceSceneList .practice-scene-turn').nth(2).textContent(),/C手番3/);
+    await page.locator('#practiceSceneList .practice-scene-turn').nth(2).getByRole('button').click();
+    assert.deepEqual(await page.evaluate(()=>window.practiceSceneCalls),[['scene',2]]);
+    await page.locator('#practiceSceneModal .settings-modal-close').click();
     await page.evaluate(()=>{gid='debug';mySeat='A';});
     await page.evaluate(()=>openDebugTrace());
     assert.equal(await page.locator('#debugTraceModal input[type=file]').count(),0);
