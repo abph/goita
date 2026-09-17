@@ -560,6 +560,9 @@
     .score-round.practice-score-note {
       font-size: clamp(7px, 1.8vw, 11px);
       line-height: 1.15;
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
     }
     .score-line {
       font-size: clamp(13px, 3.5vw, 18px);
@@ -13819,11 +13822,13 @@ function renderBoard(state){
       const bd = state.total_team_score?.BD || 0;
       const rc = state.round_count || 1;
       
-      scoreDiv.innerHTML = `
-          <div class="score-round${state.practice_replay_active ? " practice-score-note" : ""}">${state.practice_replay_active ? "この局の得点は加算されません" : `第 ${rc} 局`}</div>
-          <div class="score-line"><span class="score-ac">AC:</span> <span>${ac}点</span></div>
-          <div class="score-line"><span class="score-bd">BD:</span> <span>${bd}点</span></div>
-      `;
+      scoreDiv.innerHTML = state.practice_replay_active
+        ? '<div class="score-round practice-score-note">この局の得点は加算されません</div>'
+        : `
+            <div class="score-round">第 ${rc} 局</div>
+            <div class="score-line"><span class="score-ac">AC:</span> <span>${ac}点</span></div>
+            <div class="score-line"><span class="score-bd">BD:</span> <span>${bd}点</span></div>
+        `;
       board.appendChild(scoreDiv);
   }
   renderBoard3D(state);
