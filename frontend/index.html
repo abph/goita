@@ -6014,102 +6014,18 @@
   .trace-history-scroll th,.trace-history-scroll td { padding:6px 5px; white-space:nowrap; }
   .trace-history-scroll button { font-size:13px; }
   .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
-  .score-attack-entry {
-    position:relative;
-    isolation:isolate;
-    display:flex;
-    flex-direction:column;
-    margin:0;
-    padding:0;
-    overflow:hidden;
-    border:2px solid #9b7a52;
-    border-radius:9px;
-    background:
-      linear-gradient(135deg, rgba(126,93,54,.07) 0 1px, transparent 1px 13px),
-      radial-gradient(circle at 50% 0, rgba(191,157,100,.2), transparent 50%),
-      linear-gradient(180deg, #fffaf0 0%, #f3ead8 55%, #eadcc3 100%);
-    box-shadow:
-      0 6px 16px rgba(79,52,29,.16),
-      inset 0 0 0 1px #ead9bc,
-      inset 0 0 0 4px #fffaf0,
-      inset 0 0 22px rgba(139,90,43,.08);
-    color:#4f3b28;
-    text-align:center;
-  }
-  .score-attack-entry::before {
-    content:"";
-    position:absolute;
-    z-index:0;
-    inset:5px;
-    border:1px solid rgba(139,90,43,.42);
-    border-radius:4px;
-    box-shadow:inset 0 0 8px rgba(139,90,43,.08);
-    pointer-events:none;
-  }
-  .score-attack-entry > * { position:relative; z-index:1; }
-  .score-attack-entry .lobby-section-heading {
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:12px;
-    border-bottom:1px solid rgba(139,90,43,.32);
-    background:linear-gradient(180deg, rgba(238,221,188,.97), rgba(218,194,154,.96));
-    color:#4b3521;
-    letter-spacing:.08em;
-    text-shadow:0 1px 0 rgba(255,255,255,.62);
-  }
-  .score-attack-entry .lobby-section-heading::before,
-  .score-attack-entry .lobby-section-heading::after {
-    content:"";
-    width:clamp(24px, 8vw, 74px);
-    height:1px;
-    background:linear-gradient(90deg, transparent, #987044);
-    box-shadow:0 1px 0 rgba(255,255,255,.48);
-  }
-  .score-attack-entry .lobby-section-heading::after { transform:scaleX(-1); }
+  .score-attack-entry { display:flex; flex-direction:column; text-align:center; margin:0; padding:0; background:rgba(255,249,232,0.94); }
   .score-attack-entry-body { display:flex; flex:1; flex-direction:column; justify-content:center; padding:24px; }
-  .score-attack-entry .score-attack-description {
-    box-sizing:border-box;
-    border:1px solid rgba(139,90,43,.3);
-    border-radius:4px;
-    background:rgba(255,253,247,.7);
-    box-shadow:inset 0 1px 5px rgba(91,61,31,.09);
-    color:#554431;
-  }
   .score-attack-entry-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:18px; }
-  .score-attack-entry-actions button {
-    min-width:138px;
-    padding:12px 14px;
-    border:1px solid #76502e;
-    border-radius:5px;
-    background:linear-gradient(180deg, #9a7047, #704923);
-    box-shadow:inset 0 1px 0 rgba(255,245,220,.3), 0 2px 5px rgba(79,52,29,.16);
-    color:#fffaf0;
-    font-weight:800;
-    text-shadow:0 1px 1px rgba(58,35,17,.75);
-  }
-  .score-attack-entry-actions button:hover {
-    border-color:#563619;
-    background:linear-gradient(180deg, #aa7d50, #80552c);
-    box-shadow:inset 0 1px 0 rgba(255,248,229,.38), 0 3px 7px rgba(79,52,29,.2);
-  }
-  .score-attack-entry-actions button:focus-visible {
-    outline:2px solid #5f4023;
-    outline-offset:2px;
-  }
+  .score-attack-entry-actions button { padding:12px 14px; }
   @media(max-width:700px) {
     .score-attack-entry .lobby-section-heading { min-height:46px; padding:13px 5px 9px; font-size:14px; }
-    .score-attack-entry { border-width:1px; box-shadow:0 4px 10px rgba(79,52,29,.14), inset 0 0 0 1px #ead9bc; }
-    .score-attack-entry::before { inset:3px; }
-    .score-attack-entry .lobby-section-heading { gap:6px; letter-spacing:.03em; }
-    .score-attack-entry .lobby-section-heading::before,
-    .score-attack-entry .lobby-section-heading::after { width:18px; }
     .score-attack-entry-body { padding:10px 7px; }
-    .score-attack-description { margin:0; padding:7px; font-size:10px; line-height:1.5; }
+    .score-attack-description { margin:0; padding:0; font-size:10px; line-height:1.5; }
     .score-attack-description-desktop { display:none; }
     .score-attack-description-mobile { display:inline; }
     .score-attack-entry-actions { flex-direction:column; flex-wrap:nowrap; gap:6px; margin-top:10px; }
-    .score-attack-entry-actions button { width:100%; min-width:0; padding:9px 5px; font-size:11px; line-height:1.3; }
+    .score-attack-entry-actions button { width:100%; padding:9px 5px; font-size:11px; line-height:1.3; }
   }
   .score-period-table td:not(:nth-child(2)),.score-period-table th { white-space:nowrap; }
   .personal-score-room :is(#btnSpectator, #voiceChatBar, #handRevealPanel, #matchSettingsTab, #roomManagementTab, #matchSettingsPanel, #roomManagementPanel, #forceResetSettingsRow, #dealerDetails, #presetHandsDetails, #beginnerSupportSettingRow, .auto-play) { display:none !important; }
