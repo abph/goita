@@ -1,5 +1,56 @@
 let scoreRankingsRequest = 0;
 let scoreRankingsReturnFocus = null;
+let scoreAttackLobbyRankingRequest = 0;
+
+async function loadScoreAttackLobbyRanking() {
+  const status = document.getElementById('scoreAttackDailyRankingStatus');
+  const list = document.getElementById('scoreAttackDailyRankingList');
+  if (!status || !list) return;
+  const generation = ++scoreAttackLobbyRankingRequest;
+  status.textContent = 'デイリーランキングを読み込んでいます。';
+  list.replaceChildren();
+  try {
+    const response = await fetch(`${API}/api/score-attack/rankings?period=daily`, {
+      credentials:'same-origin', cache:'no-store', headers:{'X-Goita-Member':'1'},
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'ランキングを読み込めませんでした。');
+    if (generation !== scoreAttackLobbyRankingRequest) return;
+    const entries = Array.isArray(data.ranking) ? data.ranking.slice(0, 3) : [];
+    for (const item of entries) {
+      const row = document.createElement('li');
+      const rank = document.createElement('span');
+      const name = document.createElement('span');
+      const playerName = document.createElement('span');
+      const score = document.createElement('span');
+      rank.className = 'score-attack-daily-rank';
+      name.className = 'score-attack-daily-name';
+      score.className = 'score-attack-daily-score';
+      rank.textContent = `${item.rank}位`;
+      playerName.className = 'score-attack-daily-player-name';
+      playerName.dataset.i18nIgnore = '';
+      playerName.textContent = item.name;
+      playerName.title = item.name;
+      name.append(playerName);
+      if (item.guest) {
+        const guest = document.createElement('span');
+        guest.className = 'score-attack-daily-guest';
+        guest.textContent = '（ゲスト）';
+        name.append(guest);
+      }
+      score.textContent = traceSigned(item.score);
+      row.append(rank, name, score);
+      list.append(row);
+    }
+    status.textContent = entries.length ? '' : '今日の記録はまだありません。';
+  } catch (error) {
+    if (generation === scoreAttackLobbyRankingRequest) {
+      status.textContent = error.message || 'ランキングを読み込めませんでした。';
+    }
+  }
+}
+
+window.loadScoreAttackLobbyRanking = loadScoreAttackLobbyRanking;
 
 async function openScoreRankings(period = 'daily') {
   const element = id => document.getElementById(id);
@@ -76,3 +127,5 @@ document.addEventListener('keydown', event => {
     }
   }
 });
+
+window.addEventListener('load', loadScoreAttackLobbyRanking, {once:true});

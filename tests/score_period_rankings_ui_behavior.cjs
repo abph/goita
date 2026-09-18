@@ -10,8 +10,16 @@ const path = require('node:path');
     const errors = [], calls = [];
     let fail = false, empty = false, holdDaily = false, heldRoute, notifyHeld;
     const held = new Promise(resolve => {notifyHeld = resolve;});
-    const data = period => ({period,start_date:'2026-09-07',end_date:'2026-09-13',total:empty ? 0 : 1,
-      ranking:empty ? [] : [{rank:1,name:'<img src=x onerror=alert(1)>',guest:true,self:true,score:period === 'weekly' ? 80 : period === 'weekly_previous' ? 42 : -70,games:3}]});
+    const data = period => {
+      const score = period === 'weekly' ? 80 : period === 'weekly_previous' ? 42 : -70;
+      const ranking = empty ? [] : [{rank:1,name:'<img src=x onerror=alert(1)>',guest:true,self:true,score,games:3}];
+      if (period === 'daily' && !empty) ranking.push(
+        {rank:2,name:'二位',guest:false,self:false,score:20,games:2},
+        {rank:3,name:'三位',guest:false,self:false,score:10,games:1},
+        {rank:4,name:'表示しない',guest:false,self:false,score:5,games:1},
+      );
+      return {period,start_date:'2026-09-07',end_date:'2026-09-13',total:ranking.length,ranking};
+    };
     page.on('pageerror', error => errors.push(error.message));
     await page.routeWebSocket('**/*', socket => socket.close());
     await page.route('**/*', route => {
@@ -31,6 +39,11 @@ const path = require('node:path');
       return route.fulfill({json:url.pathname === '/api/member/session' ? {member:null} : {rooms:[],site_people:[],public_chat_messages:[]}});
     });
     await page.goto('http://goita.test/');
+    await page.locator('#scoreAttackDailyRankingList li').waitFor();
+    assert.equal(await page.locator('#scoreAttackDailyRankingList li').count(),3);
+    assert.match(await page.locator('#scoreAttackDailyRankingList').textContent(),/1位.*-70点/);
+    assert.doesNotMatch(await page.locator('#scoreAttackDailyRankingList').textContent(),/表示しない/);
+    assert.equal(await page.locator('#scoreAttackDailyRankingList img').count(),0);
     const desktopBrand = await page.locator('.lobby-brand-lockup').boundingBox();
     const desktopMenu = await page.locator('.lobby-toolbar .header-menu-trigger').boundingBox();
     assert.ok(Math.abs((desktopBrand.y + desktopBrand.height / 2) - (desktopMenu.y + desktopMenu.height / 2)) < 2);
@@ -76,8 +89,10 @@ const path = require('node:path');
     const section = page.locator('section.score-attack-entry');
     assert.equal(await section.locator('h2').textContent(),'スコアアタック');
     const play = await section.locator('#scoreAttackEntry').boundingBox();
+    const dailyRanking = await section.locator('.score-attack-daily-ranking').boundingBox();
     const rank = await section.locator('#scoreRankingsEntry').boundingBox();
-    assert.ok(rank.x > play.x && rank.y === play.y);
+    assert.ok(dailyRanking.x > play.x);
+    assert.ok(rank.x >= dailyRanking.x && rank.y > play.y);
     await page.locator('#scoreRankingsEntry').click();
     await page.locator('#scoreRankingsRows tr').waitFor();
     assert.match(await page.locator('#scoreRankingsRows').textContent(),/-70点/);
@@ -134,9 +149,13 @@ const path = require('node:path');
     assert.ok(box.width <= 390 && box.height <= 700);
     await page.screenshot({path:path.join(__dirname,'../.codex_deps/score-weekly-mobile.png')});
     empty = true;
+    await page.evaluate(()=>loadScoreAttackLobbyRanking());
+    assert.match(await page.locator('#scoreAttackDailyRankingStatus').textContent(),/まだありません/);
     await page.evaluate(()=>openScoreRankings());
     assert.match(await page.locator('#scoreRankingsStatus').textContent(),/まだありません/);
     fail = true;
+    await page.evaluate(()=>loadScoreAttackLobbyRanking());
+    assert.match(await page.locator('#scoreAttackDailyRankingStatus').textContent(),/一時的に/);
     await page.evaluate(()=>openScoreRankings());
     assert.match(await page.locator('#scoreRankingsStatus').textContent(),/一時的に/);
     assert.ok(calls.filter(call=>call.path.endsWith('/rankings')).every(call=>call.headers['x-goita-member']==='1'));

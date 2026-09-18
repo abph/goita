@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260917g"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260917g"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260919a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260919a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -258,6 +258,9 @@ def test_score_attack_ui_is_translated() -> None:
         "前週の結果",
         "週の選択",
         "デイリーランキング1位になると、棋譜保存枠が1局分追加されます（最大50局）。",
+        "今日のランキング",
+        "今日の上位3人",
+        "デイリーランキングを読み込んでいます。",
     ]:
         assert source in html
         assert source in chinese
@@ -271,6 +274,7 @@ def test_score_attack_ui_is_translated() -> None:
         "スコアアタックの棋譜を選んでいます。",
         "スコアアタックのルームで開いてください。",
         "前週分の対戦結果をもとに集計しています。日ごとのマイナスは0点として合計します。",
+        "今日の記録はまだありません。",
     ]:
         assert source in score_scripts
         assert source in chinese
