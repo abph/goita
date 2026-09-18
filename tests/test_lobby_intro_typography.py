@@ -127,7 +127,8 @@ def test_three_lobby_features_use_consistent_section_cards():
     assert 'class="score-attack-entry-body"' in HTML
     assert 'class="score-attack-entry-main"' in HTML
     assert 'class="score-attack-daily-ranking"' in HTML
+    assert 'class="score-attack-daily-ranking-box"' in HTML
     assert 'id="scoreAttackDailyRankingList"' in HTML
     assert 'id="scoreRankingsEntry"' in HTML
-    assert "grid-template-columns:minmax(0,1.25fr) minmax(190px,.9fr)" in HTML
+    assert "grid-template-columns:minmax(0,1.4fr) minmax(168px,.72fr)" in HTML
     assert 'class="lobby-room-section-body"' in HTML

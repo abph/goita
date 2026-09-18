@@ -4909,9 +4909,11 @@
           </div>
         </div>
         <aside class="score-attack-daily-ranking" aria-labelledby="scoreAttackDailyRankingTitle">
-          <h3 id="scoreAttackDailyRankingTitle">今日のランキング</h3>
-          <p id="scoreAttackDailyRankingStatus" role="status" aria-live="polite">デイリーランキングを読み込んでいます。</p>
-          <ol id="scoreAttackDailyRankingList" aria-label="今日の上位3人"></ol>
+          <div class="score-attack-daily-ranking-box">
+            <h3 id="scoreAttackDailyRankingTitle">今日のランキング</h3>
+            <p id="scoreAttackDailyRankingStatus" role="status" aria-live="polite">デイリーランキングを読み込んでいます。</p>
+            <ol id="scoreAttackDailyRankingList" aria-label="今日の上位3人"></ol>
+          </div>
           <button id="scoreRankingsEntry" type="button" onclick="openScoreRankings()">ランキングを見る</button>
         </aside>
       </div>
@@ -6022,23 +6024,25 @@
   .trace-history-scroll button { font-size:13px; }
   .trace-back { font:inherit; color:inherit; background:none; border:0; padding:0; text-align:left; cursor:pointer; }
   .score-attack-entry { display:flex; flex-direction:column; text-align:center; margin:0; padding:0; background:rgba(255,249,232,0.94); }
-  .score-attack-entry-body { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(190px,.9fr); flex:1; gap:20px; padding:18px 22px; }
+  .score-attack-entry-body { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(168px,.72fr); flex:1; gap:14px; padding:16px 20px; }
   .score-attack-entry-main { display:flex; min-width:0; flex-direction:column; justify-content:center; }
   .score-attack-entry-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:18px; }
   .score-attack-entry-actions button { padding:12px 14px; }
-  .score-attack-daily-ranking { display:flex; min-width:0; flex-direction:column; padding-left:18px; border-left:1px solid rgba(139,90,43,.25); text-align:left; }
-  .score-attack-daily-ranking h3 { margin:0 0 8px; color:#5f3b1d; font-size:14px; text-align:center; }
-  .score-attack-daily-ranking ol { display:grid; grid-template-rows:repeat(3,minmax(27px,auto)); min-height:81px; margin:0; padding:0; list-style:none; }
-  .score-attack-daily-ranking li { display:grid; grid-template-columns:2.4em minmax(0,1fr) auto; gap:6px; align-items:center; border-bottom:1px solid rgba(139,90,43,.16); font-size:12px; }
+  .score-attack-daily-ranking { display:flex; min-width:0; flex-direction:column; padding-left:10px; text-align:left; }
+  .score-attack-daily-ranking-box { min-width:0; padding:6px 7px; border:1px solid rgba(139,90,43,.38); border-radius:4px; background:rgba(255,253,245,.62); }
+  .score-attack-daily-ranking h3 { margin:0 0 4px; color:#5f3b1d; font-size:12px; text-align:center; }
+  .score-attack-daily-ranking ol { display:grid; grid-template-rows:repeat(3,minmax(23px,auto)); min-height:69px; margin:0; padding:0; list-style:none; }
+  .score-attack-daily-ranking li { display:grid; grid-template-columns:2.2em minmax(0,1fr) auto; gap:4px; align-items:center; border-bottom:1px solid rgba(139,90,43,.16); font-size:10px; }
   .score-attack-daily-ranking li:last-child { border-bottom:0; }
   .score-attack-daily-rank { color:#76502e; font-weight:800; white-space:nowrap; }
   .score-attack-daily-name { display:flex; min-width:0; overflow:hidden; color:#3d2d20; font-weight:700; white-space:nowrap; }
   .score-attack-daily-player-name { min-width:0; overflow:hidden; text-overflow:ellipsis; }
   .score-attack-daily-guest { flex:none; }
   .score-attack-daily-score { color:#5f3b1d; font-variant-numeric:tabular-nums; font-weight:800; white-space:nowrap; }
-  #scoreAttackDailyRankingStatus { margin:auto 0; color:#6a5b4e; font-size:11px; line-height:1.5; text-align:center; }
+  #scoreAttackDailyRankingStatus { margin:22px 0; color:#6a5b4e; font-size:10px; line-height:1.45; text-align:center; }
   #scoreAttackDailyRankingStatus:empty { display:none; }
-  .score-attack-daily-ranking #scoreRankingsEntry { width:100%; margin-top:9px; padding:9px 8px; }
+  #scoreAttackDailyRankingStatus:not(:empty) + #scoreAttackDailyRankingList { display:none; }
+  .score-attack-daily-ranking #scoreRankingsEntry { width:100%; margin-top:7px; padding:8px 6px; }
   @media(max-width:700px) {
     .score-attack-entry .lobby-section-heading { min-height:46px; padding:13px 5px 9px; font-size:14px; }
     .score-attack-entry-body { display:flex; flex-direction:column; gap:8px; padding:8px 7px; }
@@ -6047,11 +6051,12 @@
     .score-attack-description-mobile { display:inline; }
     .score-attack-entry-actions { flex-direction:column; flex-wrap:nowrap; gap:6px; margin-top:8px; }
     .score-attack-entry-actions button { width:100%; padding:9px 5px; font-size:11px; line-height:1.3; }
-    .score-attack-daily-ranking { padding:7px 0 0; border-top:1px solid rgba(139,90,43,.25); border-left:0; }
-    .score-attack-daily-ranking h3 { margin-bottom:3px; font-size:11px; }
-    .score-attack-daily-ranking ol { grid-template-rows:repeat(3,22px); min-height:66px; }
-    .score-attack-daily-ranking li { grid-template-columns:2.2em minmax(0,1fr) auto; gap:3px; font-size:9px; }
-    #scoreAttackDailyRankingStatus { min-height:44px; font-size:9px; }
+    .score-attack-daily-ranking { padding:7px 0 0; border-top:1px solid rgba(139,90,43,.25); }
+    .score-attack-daily-ranking-box { padding:4px 5px; }
+    .score-attack-daily-ranking h3 { margin-bottom:2px; font-size:10px; }
+    .score-attack-daily-ranking ol { grid-template-rows:repeat(3,20px); min-height:60px; }
+    .score-attack-daily-ranking li { grid-template-columns:2.1em minmax(0,1fr) auto; gap:2px; font-size:8.5px; }
+    #scoreAttackDailyRankingStatus { min-height:40px; margin:10px 0; font-size:8.5px; }
     .score-attack-daily-ranking #scoreRankingsEntry { margin-top:5px; padding:7px 4px; font-size:10px; }
   }
   .score-period-table td:not(:nth-child(2)),.score-period-table th { white-space:nowrap; }
