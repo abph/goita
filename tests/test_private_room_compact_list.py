@@ -14,6 +14,6 @@ def test_all_private_rooms_use_the_regular_card_layout():
 
 
 def test_private_a_and_b_open_notice_remains_visible():
-    assert "支援していただいた方のための専用ルームです。" in HTML
+    assert "研究や練習に使えるプライベートルームです。" in HTML
     assert "＊<b>プライベートA・Bは、どなたでも自由に使えます。</b>" in HTML
     assert "プライベートA・Bは、どなたでも自由に使えます。" in HTML

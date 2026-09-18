@@ -33,7 +33,7 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert '"そろうごいた": "Solo Goita"' in i18n
     assert '"支援について": "关于支持"' in i18n
     assert '"请选择公开房间或私人房间进入。' in i18n
-    assert '"支援していただいた方のための専用ルームです。": "这是为支持本项目的朋友准备的专用房间。"' in i18n
+    assert '"研究や練習に使えるプライベートルームです。": "这是可用于研究和练习的私人房间。"' in i18n
     assert '"プライベートA・Bは、どなたでも自由に使えます。": "任何人都可以自由使用私人房间A和B。"' in i18n
     assert '"研究用棋譜ライブラリ": "研究棋谱库"' in i18n
     assert "凑齐Goita" not in i18n
@@ -83,7 +83,7 @@ def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
     assert '"支援について": "Support"' in english
     assert '"Choose a public or private room to enter.' in english
     assert '"支援ページを開く": "Open Support Page"' in english
-    assert '"支援していただいた方のための専用ルームです。": "These rooms are reserved for supporters."' in english
+    assert '"研究や練習に使えるプライベートルームです。": "Private rooms for study and practice."' in english
     assert '"プライベートA・Bは、どなたでも自由に使えます。": "Private A and B are open for everyone to use."' in english
     assert '"研究用棋譜ライブラリ": "Research Game Record Library"' in english
     assert '"空席": "Open"' in english
