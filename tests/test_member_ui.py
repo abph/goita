@@ -13,7 +13,7 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260916a"' in html
+    assert 'src="/static/member.js?v=20260918a"' in html
     assert 'href="/static/member.css?v=20260911c"' in html
 
 
@@ -94,6 +94,8 @@ def test_member_ui_offers_free_registration_and_quota():
     assert "会員IDは5文字以上で入力してください。" in script
     assert "length < 5" in script
     assert '<dt>${label("棋譜保存")}' not in script
+    assert '<dt>${label("デイリー1位")}' in script
+    assert '<dt>${label("デイリー報酬枠")}' in script
 
 
 def test_member_page_hides_limit_and_reissue_notices():

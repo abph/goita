@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import asynccontextmanager, contextmanager, suppress
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -285,6 +285,34 @@ class TraceStore:
         return {"week_start": start.date().isoformat(), "candidates": [
             {"member_id": row["owner"][7:], "rank": int(row["position"])}
             for row in rows if row["owner"].startswith("member:") and int(row["position"]) <= 3
+        ]}
+
+    def daily_award_candidates(self, award_date=None):
+        """Return yesterday's first-place members without exposing owner IDs publicly."""
+        now = self.clock()
+        today = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
+        if award_date is None:
+            end = today.replace(hour=0, minute=0, second=0, microsecond=0)
+            start = end - timedelta(days=1)
+        else:
+            parsed = date.fromisoformat(str(award_date))
+            start = datetime(parsed.year, parsed.month, parsed.day, tzinfo=today.tzinfo)
+            end = start + timedelta(days=1)
+        with self.db() as db:
+            rows = db.execute("""WITH totals AS (
+                SELECT owner, SUM(improvement) AS points
+                FROM trace_attempts
+                WHERE finished >= ? AND finished < ? AND finished <= ?
+                GROUP BY owner
+            )
+            SELECT owner, RANK() OVER (ORDER BY points DESC) AS position
+            FROM totals JOIN trace_people USING(owner)
+            ORDER BY points DESC, name, owner""",
+                (start.timestamp(), end.timestamp(), now)).fetchall()
+        return {"award_date": start.date().isoformat(), "candidates": [
+            {"member_id": row["owner"][7:], "rank": 1}
+            for row in rows
+            if row["owner"].startswith("member:") and int(row["position"]) == 1
         ]}
 
     def latest(self, owner):

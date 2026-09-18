@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 from collections import Counter, deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple, Set, Literal
 
@@ -1501,26 +1501,44 @@ def _require_member_admin(request: Request) -> None:
 
 _SCORE_REWARD_SETTLEMENT_LOCK = threading.Lock()
 _SCORE_REWARD_SETTLED_WEEK = ""
+_SCORE_REWARD_SETTLED_DAY = ""
 
 
-def _settle_weekly_score_rewards() -> None:
-    global _SCORE_REWARD_SETTLED_WEEK
+def _settle_score_rewards() -> None:
+    global _SCORE_REWARD_SETTLED_DAY, _SCORE_REWARD_SETTLED_WEEK
     with _SCORE_REWARD_SETTLEMENT_LOCK:
         try:
-            previous = get_trace_store().weekly_award_candidates()
-            if previous["week_start"] == _SCORE_REWARD_SETTLED_WEEK:
-                return
-            MEMBER_STORE.grant_weekly_score_awards(previous["week_start"], previous["candidates"])
-            _SCORE_REWARD_SETTLED_WEEK = previous["week_start"]
-        except (OSError, sqlite3.Error):
-            LOGGER.warning("Weekly score reward settlement is temporarily unavailable.")
+            trace_store = get_trace_store()
+            previous_day = trace_store.daily_award_candidates()
+            if previous_day["award_date"] != _SCORE_REWARD_SETTLED_DAY:
+                target_day = date.fromisoformat(previous_day["award_date"])
+                settled_value = MEMBER_STORE.daily_score_settlement_date()
+                settlement_day = (
+                    date.fromisoformat(settled_value) + timedelta(days=1)
+                    if settled_value else target_day
+                )
+                while settlement_day <= target_day:
+                    daily = trace_store.daily_award_candidates(settlement_day.isoformat())
+                    MEMBER_STORE.grant_daily_score_awards(
+                        daily["award_date"], daily["candidates"]
+                    )
+                    settlement_day += timedelta(days=1)
+                _SCORE_REWARD_SETTLED_DAY = previous_day["award_date"]
+            previous_week = trace_store.weekly_award_candidates()
+            if previous_week["week_start"] != _SCORE_REWARD_SETTLED_WEEK:
+                MEMBER_STORE.grant_weekly_score_awards(
+                    previous_week["week_start"], previous_week["candidates"]
+                )
+                _SCORE_REWARD_SETTLED_WEEK = previous_week["week_start"]
+        except (OSError, ValueError, sqlite3.Error):
+            LOGGER.warning("Score reward settlement is temporarily unavailable.")
 
 
 app.include_router(create_member_router(
     MEMBER_STORE, _require_member_admin, persistent=MEMBER_PERSISTENT,
     force_secure=bool(os.environ.get("RENDER")),
     room_options=lambda: _member_room_options(),
-    settle_rewards=_settle_weekly_score_rewards,
+    settle_rewards=_settle_score_rewards,
 ))
 
 
@@ -6233,7 +6251,7 @@ class ScoreRoomEntry(BaseModel):
 @trace_router.get("/api/score-attack/rankings")
 def score_period_rankings(request: Request, response: Response, period: str = "daily"):
     store = get_trace_store()
-    _settle_weekly_score_rewards()
+    _settle_score_rewards()
     owner = None
     try:
         owner, _ = store.identity(request, response, MEMBER_STORE)

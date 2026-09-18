@@ -257,6 +257,7 @@ def test_score_attack_ui_is_translated() -> None:
         "今週",
         "前週の結果",
         "週の選択",
+        "デイリーランキング1位になると、棋譜保存枠が1局分追加されます（最大50局）。",
     ]:
         assert source in html
         assert source in chinese

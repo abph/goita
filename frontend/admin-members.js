@@ -77,7 +77,7 @@
         <label class="member-admin-check"><input type="checkbox" name="is_operator" ${member.is_operator ? "checked" : ""}>管理者用（一覧・利用状況から除外）</label>
         <label>有効期限（JST）<input type="date" name="paid_until" value="${esc(member.paid_until)}" min="2000-01-01" max="9998-12-31"></label>
         <label>管理者追加枠<input type="number" name="admin_kifu_bonus" min="0" max="10000" value="${Number(member.admin_kifu_bonus || 0)}" required>
-          <span class="muted">基本 ${Number(member.kifu_base_limit || 0)} ＋ 報酬 ${Number(member.reward_kifu_bonus || 0)} ＋ 管理者 ${Number(member.admin_kifu_bonus || 0)}</span></label>
+          <span class="muted">基本 ${Number(member.kifu_base_limit || 0)} ＋ 週間報酬 ${Number(member.reward_kifu_bonus || 0)} ＋ デイリー報酬 ${Number(member.daily_kifu_bonus || 0)} ＋ 管理者 ${Number(member.admin_kifu_bonus || 0)}</span></label>
         <label>変更メモ（任意）<input name="kifu_bonus_note" maxlength="500" placeholder="追加・変更理由"></label>
         ${member.kifu_quota_history?.length ? `<details><summary>保存枠の変更履歴</summary>${member.kifu_quota_history.map(item =>
           `<div class="muted">${esc(dateLabel(item.changed_at))}：${Number(item.old_bonus)} → ${Number(item.new_bonus)}局${item.note ? `（${esc(item.note)}）` : ""}</div>`

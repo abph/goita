@@ -54,6 +54,29 @@ def test_weekly_awards_are_idempotent_and_titles_expire(tmp_path):
     assert expired["score_champion_stamp"] is True
 
 
+def test_daily_first_place_adds_one_slot_up_to_fifty_and_keeps_counting(tmp_path):
+    store = MemberStore(tmp_path / "members.sqlite3", clock=lambda: stamp("2026-09-18T12:00:00+09:00"))
+    seed_member(store, "daily-one")
+    with store._db(write=True) as db:
+        db.execute("UPDATE members SET daily_kifu_bonus = 49 WHERE member_id = 'daily-one'")
+
+    candidates = [{"member_id": "daily-one", "rank": 1}]
+    assert store.grant_daily_score_awards("2026-09-16", candidates) == [
+        {"member_id": "daily-one", "rank": 1, "kifu_bonus": 1}
+    ]
+    assert store.grant_daily_score_awards("2026-09-16", candidates) == []
+    assert store.grant_daily_score_awards("2026-09-17", candidates) == [
+        {"member_id": "daily-one", "rank": 1, "kifu_bonus": 0}
+    ]
+
+    member = store.list_members()[0]
+    assert member["daily_score_first_place_count"] == 2
+    assert member["daily_kifu_bonus"] == 50
+    assert member["daily_kifu_bonus_cap"] == 50
+    assert member["kifu_limit"] == 70
+    assert store.daily_score_settlement_date() == "2026-09-17"
+
+
 def test_configurable_base_and_admin_bonus_do_not_delete_existing_usage(tmp_path):
     store = MemberStore(tmp_path / "members.sqlite3", clock=lambda: stamp("2026-09-14T12:00:00+09:00"))
     seed_member(store, "free-one")
@@ -107,3 +130,20 @@ def test_ranking_candidates_keep_guest_positions_and_ties(tmp_path):
         {"member_id": "silver-one", "rank": 2},
         {"member_id": "silver-two", "rank": 2},
     ]
+
+
+def test_daily_candidates_keep_guest_positions_and_first_place_ties(tmp_path):
+    now = [stamp("2026-09-17T12:00:00+09:00")]
+    trace = TraceStore(tmp_path / "daily-awards.sqlite", clock=lambda: now[0])
+    payload = {"hands": {}, "dealer": "A", "moves": [],
+               "score_before": {"AC": 0, "BD": 0}, "score_after": {"AC": 0, "BD": 0}}
+    for owner, points in (("guest:one", 100), ("member:one", 100), ("member:two", 90)):
+        attempt = trace.start(owner, owner.startswith("guest:"), owner, payload)
+        trace.finish(attempt, {"AC": points, "BD": 0})
+
+    now[0] = stamp("2026-09-18T00:00:00+09:00")
+    assert trace.daily_award_candidates() == {
+        "award_date": "2026-09-17",
+        "candidates": [{"member_id": "one", "rank": 1}],
+    }
+    assert trace.daily_award_candidates("2026-09-16")["candidates"] == []

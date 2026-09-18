@@ -7,6 +7,8 @@
   const exact = Object.freeze({
     "スコアアタック称号": "Score Attack Title",
     "受賞履歴": "Award History",
+    "デイリー1位": "Daily First Places",
+    "デイリー報酬枠": "Daily Reward Slots",
     "限定スタンプ": "Exclusive Stamp",
     "週間王者スタンプ獲得済み": "Weekly Champion stamp unlocked",
     "金の称号": "Gold Title",
@@ -67,6 +69,7 @@
     "挑戦履歴・ランキング": "Attempt History & Rankings",
     "無料会員なら、スコアアタックの挑戦履歴を継続して保存できます。": "Free members can keep their Score Attack history.",
     "会員で週間ランキングに入賞すると、1位は金の称号・限定スタンプ・棋譜保存枠＋10局、2位は銀の称号・＋5局、3位は銅の称号・＋3局を獲得できます。": "Members who place in the weekly ranking earn a title and extra record slots: 1st gets Gold, the exclusive stamp, and 10 slots; 2nd gets Silver and 5 slots; 3rd gets Bronze and 3 slots.",
+    "デイリーランキング1位になると、棋譜保存枠が1局分追加されます（最大50局）。": "Daily first place adds one game-record slot, up to 50 slots.",
     "棋譜も最大20局まで自分専用のライブラリに保存でき、自動保存も利用できます。": "You can also save up to 20 game records in your personal library and use automatic saving.",
     "無料会員に登録する": "Create a Free Account",
     "スコアアタックのランキング": "Score Attack Rankings",
@@ -782,6 +785,8 @@
   const simpleTranslate = (value) => exact[String(value ?? "")] ?? String(value ?? "");
 
   const rules = [
+    [/^(\d+)回$/, (_m, n) => `${n} wins`],
+    [/^(\d+)\s*\/\s*(\d+)局$/, (_m, current, cap) => `${current} / ${cap} records`],
     [/^保存上限の(\d+)件に達したため、自動保存を停止しました。$/, (_m, n) => `Automatic saving stopped because the ${n}-record limit was reached.`],
     [/^(\d+)位$/, (_m, n) => `Rank ${n}`],
     [/^(\d+)局$/, (_m, n) => `${n} games`],

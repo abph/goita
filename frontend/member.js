@@ -93,6 +93,8 @@
           <dt>${label("有効期限")}</dt><dd>${escape(member.paid_until || t("期限なし"))}${member.paid_until ? " (JST)" : ""}</dd>
           ${member.score_title ? `<dt>${label("スコアアタック称号")}</dt><dd>${escape(member.score_title.medal)} ${label(member.score_title.label)}</dd>` : ""}
           <dt>${label("受賞履歴")}</dt><dd>🥇 ${Number(member.score_award_history?.gold || 0)} / 🥈 ${Number(member.score_award_history?.silver || 0)} / 🥉 ${Number(member.score_award_history?.bronze || 0)}</dd>
+          <dt>${label("デイリー1位")}</dt><dd>${Number(member.daily_score_first_place_count || 0)}${label("回")}</dd>
+          <dt>${label("デイリー報酬枠")}</dt><dd>${Number(member.daily_kifu_bonus || 0)} / ${Number(member.daily_kifu_bonus_cap || 50)}${label("局")}</dd>
           ${member.score_champion_stamp ? `<dt>${label("限定スタンプ")}</dt><dd>${label("週間王者スタンプ獲得済み")}</dd>` : ""}
         </dl>
         <p class="member-help">${label("支援・解約は以下のリンクからできます")}<br>
