@@ -52,6 +52,7 @@ class MemberKifuStore:
         payload = json.loads(row["payload_json"])
         result = {key: row[key] for key in ("id", "created_at", "title", "memo")}
         result["tags"] = json.loads(row["tags_json"])
+        result["favorite"] = bool(row["favorite"])
         result["my_seat"] = payload.get("my_seat", "")
         for key, default in (("round_index", 1), ("dealer", "A"), ("winner", ""), ("gained_score", 0)):
             result[key] = payload.get(key, default)
@@ -119,7 +120,9 @@ class MemberKifuStore:
             for index, record in enumerate(records):
                 record_id = "K-" + secrets.token_hex(16)
                 created = (now - timedelta(microseconds=index)).isoformat(timespec="microseconds")
-                db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                db.execute("""INSERT INTO member_kifu
+                    (id, member_id, created_at, title, memo, tags_json, payload_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""", (
                     record_id, member_id, created, record["title"], record["memo"],
                     json.dumps(record["tags"], ensure_ascii=False), json.dumps(record["payload"], ensure_ascii=False),
                 ))
@@ -148,7 +151,9 @@ class MemberKifuStore:
             saved = dict(payload, my_seat=seat, anonymous=False)
             now = datetime.now(timezone.utc)
             tags = automatic_hand_tags(saved, seat)
-            db.execute("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", (
+            db.execute("""INSERT INTO member_kifu
+                (id, member_id, created_at, title, memo, tags_json, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""", (
                 "K-" + secrets.token_hex(16), owner, now.isoformat(timespec="seconds"),
                 "", "", json.dumps(tags, ensure_ascii=False), json.dumps(saved, ensure_ascii=False),
             ))
@@ -162,6 +167,8 @@ class MemberKifuStore:
             if row is None:
                 raise MemberError(404, "棋譜が見つかりません")
             if action == "delete":
+                if row["favorite"]:
+                    raise MemberError(409, "お気に入りの棋譜は削除できません。先にお気に入りを解除してください。")
                 db.execute("DELETE FROM member_kifu WHERE member_id = ? AND id = ?", (owner, record_id))
                 return None
             if action == "edit":
@@ -175,3 +182,40 @@ class MemberKifuStore:
                 ))
                 row = db.execute("SELECT * FROM member_kifu WHERE member_id = ? AND id = ?", (owner, record_id)).fetchone()
             return self._record(row)
+
+    def set_favorite(self, token, record_id, favorite):
+        with self.members._db(write=True) as db:
+            owner = self._owner(db, token)
+            cursor = db.execute(
+                "UPDATE member_kifu SET favorite = ? WHERE member_id = ? AND id = ?",
+                (1 if favorite else 0, owner, record_id),
+            )
+            if cursor.rowcount <= 0:
+                raise MemberError(404, "棋譜が見つかりません")
+            row = db.execute(
+                "SELECT * FROM member_kifu WHERE member_id = ? AND id = ?",
+                (owner, record_id),
+            ).fetchone()
+            return self._record(row)
+
+    def delete_many(self, token, record_ids):
+        """Delete an owner-scoped selection atomically, while preserving favorites."""
+        unique_ids = list(dict.fromkeys(str(record_id) for record_id in record_ids))
+        if not unique_ids:
+            raise MemberError(400, "削除する棋譜を選択してください。")
+        with self.members._db(write=True) as db:
+            owner = self._owner(db, token)
+            placeholders = ",".join("?" for _ in unique_ids)
+            rows = db.execute(
+                f"SELECT id, favorite FROM member_kifu WHERE member_id = ? AND id IN ({placeholders})",
+                (owner, *unique_ids),
+            ).fetchall()
+            if len(rows) != len(unique_ids):
+                raise MemberError(404, "棋譜が見つかりません")
+            if any(row["favorite"] for row in rows):
+                raise MemberError(409, "お気に入りの棋譜は削除できません。先にお気に入りを解除してください。")
+            db.execute(
+                f"DELETE FROM member_kifu WHERE member_id = ? AND id IN ({placeholders})",
+                (owner, *unique_ids),
+            )
+            return len(unique_ids)

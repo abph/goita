@@ -135,7 +135,8 @@ class MemberStore:
                         title TEXT NOT NULL,
                         memo TEXT NOT NULL,
                         tags_json TEXT NOT NULL,
-                        payload_json TEXT NOT NULL
+                        payload_json TEXT NOT NULL,
+                        favorite INTEGER NOT NULL DEFAULT 0
                     );
                     CREATE INDEX IF NOT EXISTS member_kifu_owner ON member_kifu(member_id, created_at DESC);
                     CREATE TABLE IF NOT EXISTS member_kifu_settings (
@@ -199,6 +200,9 @@ class MemberStore:
                     db.execute("ALTER TABLE members ADD COLUMN admin_kifu_bonus INTEGER NOT NULL DEFAULT 0")
                 if "daily_kifu_bonus" not in columns:
                     db.execute("ALTER TABLE members ADD COLUMN daily_kifu_bonus INTEGER NOT NULL DEFAULT 0")
+                kifu_columns = {row[1] for row in db.execute("PRAGMA table_info(member_kifu)")}
+                if "favorite" not in kifu_columns:
+                    db.execute("ALTER TABLE member_kifu ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
                 db.execute("""INSERT OR IGNORE INTO member_reward_settings VALUES
                               (1, ?, ?, ?, ?, ?, ?, ?)""",
                            (self.FREE_KIFU_LIMIT, self.PAID_KIFU_LIMIT,

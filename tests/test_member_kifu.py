@@ -118,6 +118,40 @@ def test_round_trip_owner_and_other_device(library):
     assert client.post(url).status_code == 404
 
 
+def test_favorite_is_persistent_and_protects_single_delete(library):
+    store, members, token, other, client, game = library
+    record = save(client).json()["record"]
+    url = "/api/member/kifu/" + record["id"]
+    favorite = client.post(url + "/favorite", json={"favorite": True})
+    assert favorite.status_code == 200
+    assert favorite.json()["record"]["favorite"] is True
+    assert client.post("/api/member/kifu/list").json()["records"][0]["favorite"] is True
+    blocked = client.post(url + "/delete")
+    assert blocked.status_code == 409
+    assert "お気に入り" in blocked.json()["detail"]
+    assert client.post(url + "/favorite", json={"favorite": False}).json()["record"]["favorite"] is False
+    assert client.post(url + "/delete").status_code == 200
+
+
+def test_bulk_delete_is_atomic_owner_scoped_and_protects_favorites(library):
+    store, members, token, other, client, game = library
+    first = save(client, title="first").json()["record"]
+    second = save(client, title="second").json()["record"]
+    client.post(f"/api/member/kifu/{second['id']}/favorite", json={"favorite": True})
+    blocked = client.post("/api/member/kifu/delete-many", json={"record_ids": [first["id"], second["id"]]})
+    assert blocked.status_code == 409
+    assert {record["id"] for record in store.list(token)} == {first["id"], second["id"]}
+    client.post(f"/api/member/kifu/{second['id']}/favorite", json={"favorite": False})
+    deleted = client.post("/api/member/kifu/delete-many", json={"record_ids": [first["id"], second["id"]]})
+    assert deleted.json() == {"ok": True, "deleted": 2}
+    assert store.list(token) == []
+
+    other_record = store.save(other, title="other", memo="", tags=[], payload={})
+    missing = client.post("/api/member/kifu/delete-many", json={"record_ids": [other_record["id"]]})
+    assert missing.status_code == 404
+    assert store.access(other, other_record["id"])["title"] == "other"
+
+
 def test_free_member_can_save_twenty_records(library):
     store, members, token, other, client, game = library
     _, free_token, _ = members.register("free-player", "free-password-2026", "testclient")
@@ -211,7 +245,9 @@ def test_default_limit_accepts_1000_records_and_rejects_1001(library):
     store, members, token, other, client, game = library
     assert store.LIMIT == 1000
     with members._db(write=True) as db:
-        db.executemany("INSERT INTO member_kifu VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        db.executemany("""INSERT INTO member_kifu
+            (id, member_id, created_at, title, memo, tags_json, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""", [
             (f"seed-{i}", "alice", "2026-09-05", "seed", "", "[]", "{}") for i in range(999)
         ])
     record = save(client)

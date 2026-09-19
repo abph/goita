@@ -221,6 +221,12 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'id="researchKifuSaveTags"' in HTML
     assert 'id="researchKifuEditTags"' in HTML
     assert 'id="researchKifuTagFilter"' in HTML
+    assert 'id="researchKifuSelectButton"' in HTML
+    assert 'id="researchKifuBulkDeleteButton"' in HTML
+    assert 'toggleResearchKifuFavorite(record.id)' in HTML
+    assert 'researchKifuApi("/delete-many"' in HTML
+    assert 'leading.disabled = record.favorite === true' in HTML
+    assert 'RESEARCH_KIFU_FAVORITE_FILTER' in HTML
     assert 'id="researchKifuImportButton"' in HTML
     assert 'id="researchKifuImportInput"' in HTML
     assert ">棋譜読込</button>" in HTML
@@ -254,7 +260,7 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "downloadSelectedResearchKifu()" in HTML
     assert "researchKifuDownloadText(record)" in HTML
     assert "researchKifuDownloadFilename(record)" in HTML
-    assert '<button class="danger" type="button" onclick="deleteSelectedResearchKifu()">削除</button>' in HTML
+    assert 'id="researchKifuDeleteButton" class="danger" type="button" onclick="deleteSelectedResearchKifu()"' in HTML
     assert "research-kifu-detail-heading" not in HTML
     assert "この配牌で対局</button>" in HTML
     assert "この配牌で対局する" not in HTML

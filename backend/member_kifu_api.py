@@ -52,6 +52,14 @@ class ImportInput(Metadata):
     kifu_text: str = Field(min_length=1, max_length=200_000)
 
 
+class FavoriteInput(MemberInput):
+    favorite: bool
+
+
+class DeleteManyInput(MemberInput):
+    record_ids: list[str] = Field(min_length=1, max_length=500)
+
+
 def _tags(tags):
     if any(tag not in RESEARCH_KIFU_TAGS for tag in tags):
         raise HTTPException(400, "使用できないタグです")
@@ -113,6 +121,10 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def statistics(request: Request):
         return {"statistics": store.statistics(token(request))}
 
+    @router.post("/delete-many")
+    def delete_many(request: Request, data: DeleteManyInput):
+        return {"ok": True, "deleted": store.delete_many(token(request), data.record_ids)}
+
     @router.post("/{record_id}")
     def get(request: Request, record_id: str):
         return {"record": store.access(token(request), record_id)}
@@ -121,6 +133,10 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def edit(request: Request, record_id: str, data: Metadata):
         return {"record": store.access(token(request), record_id, action="edit", title=data.title,
                                       memo=data.memo, tags=_tags(data.tags), my_seat=data.my_seat)}
+
+    @router.post("/{record_id}/favorite")
+    def favorite(request: Request, record_id: str, data: FavoriteInput):
+        return {"record": store.set_favorite(token(request), record_id, data.favorite)}
 
     @router.post("/{record_id}/delete")
     def delete(request: Request, record_id: str):
