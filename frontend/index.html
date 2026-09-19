@@ -5940,6 +5940,7 @@
     <button class="settings-modal-close" type="button" onclick="closeDebugTrace()" aria-label="スコアアタックを閉じる">×</button>
     <h3 id="debugTraceTitle">スコアアタック</h3>
     <button id="debugTraceRandomButton" class="score-attack-start" type="button" onclick="startRandomDebugTrace()">スコアアタック開始</button>
+    <button id="scoreAttackHowToButton" class="score-attack-how-to-button" type="button" onclick="openScoreAttackHowTo()">スコアアタックの遊び方</button>
     <button type="button" onclick="closeDebugTrace(); openTraceHistory()">挑戦履歴・ランキング</button>
     <p class="settings-help-text">デイリーランキング1位になると、棋譜保存枠が1局分追加されます（最大50局）。</p>
     <div id="debugTraceMemberPrompt" class="score-attack-member-prompt" hidden>
@@ -5951,6 +5952,23 @@
     <p id="debugTraceStatus" class="settings-status" aria-live="polite"></p>
     <div class="settings-footer">
       <button type="button" onclick="closeDebugTrace()">閉じる</button>
+    </div>
+  </div>
+</div>
+<div id="scoreAttackHowToModal" class="modal-overlay" onclick="if(event.target===this) closeScoreAttackHowTo()">
+  <div class="modal-content settings-modal-content score-attack-how-to-content" role="dialog" aria-modal="true" aria-labelledby="scoreAttackHowToTitle">
+    <button class="settings-modal-close" type="button" onclick="closeScoreAttackHowTo()" aria-label="遊び方を閉じる">×</button>
+    <h3 id="scoreAttackHowToTitle">スコアアタックの遊び方</h3>
+    <ol class="score-attack-how-to-list">
+      <li>元の棋譜と同じ手駒・同じ親で対局します。</li>
+      <li>あなたがA席を担当し、B・C・D席はAIが担当します。</li>
+      <li>対局中は元の棋譜に縛られず、自由に手を選べます。</li>
+      <li>対局結果と元の棋譜の得点を比べ、その差がスコアになります。</li>
+      <li>スコアはデイリー・ウィークリーランキングに反映されます。</li>
+      <li>会員は、デイリー1位やウィークリー上位に入ると報酬を獲得できます。</li>
+    </ol>
+    <div class="settings-footer">
+      <button type="button" onclick="closeScoreAttackHowTo()">スコアアタックに戻る</button>
     </div>
   </div>
 </div>
@@ -6033,6 +6051,9 @@
   .practice-scene-start-button { width:100%; font-weight:900; }
   .trace-result-content { overflow-y:auto; }
   .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
+  .score-attack-how-to-button { width:100%; margin:-4px 0 12px; padding:10px; background:rgba(255,255,255,.72); color:#5f3b1d; font-weight:700; }
+  .score-attack-how-to-content { max-width:560px; }
+  .score-attack-how-to-list { display:grid; gap:10px; margin:8px 0 18px; padding-left:1.5em; line-height:1.65; }
   .score-attack-member-prompt { margin:14px 0 4px; padding:12px; border:1px solid #d4d9dd; border-radius:8px; line-height:1.65; }
   .score-attack-member-prompt p { margin:0 0 8px; }
   .score-attack-member-prompt button { width:100%; margin-top:4px; font-weight:700; }

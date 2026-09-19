@@ -151,6 +151,18 @@ function closeDebugTrace() {
   document.getElementById('debugTraceModal').style.display = 'none';
 }
 
+function openScoreAttackHowTo() {
+  closeDebugTrace();
+  const modal = document.getElementById('scoreAttackHowToModal');
+  modal.style.display = 'flex';
+  modal.querySelector('.settings-modal-close')?.focus();
+}
+
+function closeScoreAttackHowTo() {
+  document.getElementById('scoreAttackHowToModal').style.display = 'none';
+  openDebugTrace();
+}
+
 async function startRandomDebugTrace() {
   if (!isScoreAttackRoom() || mySeat !== 'A' || debugTraceStarting) return;
   debugTraceStarting = true;
