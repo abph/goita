@@ -70,9 +70,9 @@ def test_private_room_ad_admin_controls_and_payload_are_connected():
 
 
 def test_private_room_ad_only_acts_like_a_link_when_url_exists():
-    assert 'whisper.classList.toggle("has-link", Boolean(activeUrl));' in WHISPER_JS
+    assert 'whisper.classList.toggle("has-link", Boolean(activeUrl) || survey);' in WHISPER_JS
     assert 'window.open(activeUrl, "_blank", "noopener,noreferrer");' in WHISPER_JS
-    assert 'activeMessages = isPublicRoom ? PUBLIC_MESSAGES : [privateMessage];' in WHISPER_JS
+    assert 'activeMessages = specialPublic ? PUBLIC_MESSAGES : [survey ? "アンケートにご協力ください" : customMessage];' in WHISPER_JS
 
 
 def test_private_room_ads_are_written_per_room_to_persistent_settings():

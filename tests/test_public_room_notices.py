@@ -54,6 +54,16 @@ def test_public_notices_save_per_room_restore_and_keep_special_mode(isolated):
     assert app_module.PUBLIC_ROOM_AD_SETTINGS[first]["message"] == "来週開催"
 
 
+def test_survey_notice_mode_does_not_require_custom_text(isolated):
+    first, _ = isolated
+    response = update({first: {"enabled": True, "mode": "survey"}})
+    assert response["public_room_ads"][first]["mode"] == "survey"
+    public = app_module._public_room_ad_public_payload(first)
+    assert public["enabled"] is True
+    assert public["mode"] == "survey"
+    assert public["message"] == ""
+
+
 def test_disable_notice_and_failed_save_rollback(isolated, monkeypatch):
     first, _ = isolated
     update({first: {"enabled": False, "mode": "custom", "message": "非表示の文章"}})

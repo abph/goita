@@ -16,6 +16,7 @@
   let activeUrl = "";
   let activeContextKey = "";
   let activePublicMessage = false;
+  let activeSurvey = false;
   const dismissedContexts = new Set();
 
   function messageElement() {
@@ -101,11 +102,15 @@
 
     const ad = isPublicRoom ? publicAd : privateAd;
     const specialPublic = isPublicRoom && (publicAd === null || (publicAd.enabled === true && publicAd.mode === "whisper"));
+    const survey = isPublicRoom && publicAd?.enabled === true && publicAd.mode === "survey"
+      && window.goitaSurvey?.completed?.() !== "detailed";
     const customMessage = String(ad?.message || "").trim();
     const customLabel = String(ad?.label || "お知らせ").trim() || "お知らせ";
     const customEnabled = !specialPublic && ad?.enabled === true && customMessage;
     const contextPrefix = isPublicRoom ? `public:${publicAd?.room_id || ""}` : "private";
-    const nextContextKey = specialPublic
+    const nextContextKey = survey
+      ? `${contextPrefix}:survey`
+      : specialPublic
       ? `${contextPrefix}:whisper`
       : (customEnabled ? `${contextPrefix}:${customLabel}:${customMessage}:${String(ad?.url || "")}` : "");
     if (!nextContextKey) {
@@ -118,13 +123,14 @@
     if (nextContextKey === activeContextKey && !whisper.hidden) return;
     activeContextKey = nextContextKey;
     activePublicMessage = specialPublic;
-    activeMessages = specialPublic ? PUBLIC_MESSAGES : [customMessage];
+    activeSurvey = survey;
+    activeMessages = specialPublic ? PUBLIC_MESSAGES : [survey ? "アンケートにご協力ください" : customMessage];
     activeUrl = specialPublic ? "" : String(ad?.url || "").trim();
-    label.textContent = specialPublic ? "1222のつぶやき" : customLabel;
+    label.textContent = specialPublic ? "1222のつぶやき" : (survey ? "そろうごいた改善アンケート" : customLabel);
     whisper.setAttribute("aria-label", label.textContent);
-    whisper.classList.toggle("has-link", Boolean(activeUrl));
+    whisper.classList.toggle("has-link", Boolean(activeUrl) || survey);
     whisper.classList.toggle("is-interactive-message", activePublicMessage);
-    if (specialPublic) {
+    if (specialPublic || survey) {
       label.removeAttribute("data-i18n-ignore");
       message.removeAttribute("data-i18n-ignore");
     } else {
@@ -148,6 +154,10 @@
   }
 
   function activate() {
+    if (activeSurvey) {
+      window.goitaSurvey?.open?.();
+      return;
+    }
     if (activeUrl) {
       window.open(activeUrl, "_blank", "noopener,noreferrer");
       return;

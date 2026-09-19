@@ -75,6 +75,8 @@ from backend.research_kifu_store import (
 from backend.frequent_deal import is_frequent_deal
 from backend.balanced_deal import is_balanced_rank_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
+from backend.survey_store import SurveyStore, resolve_survey_path
+from backend.survey_api import create_survey_router
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
@@ -177,6 +179,17 @@ ANALYTICS_PATH = resolve_analytics_path(
 ANALYTICS_STORE = AnalyticsStore(ANALYTICS_PATH)
 ANALYTICS_PERSISTENT = bool(
     str(os.environ.get("GOITA_ANALYTICS_DB_PATH", "") or "").strip()
+    or str(os.environ.get("GOITA_PERSISTENT_DATA_DIR", "") or "").strip()
+)
+SURVEY_PATH = resolve_survey_path(
+    os.environ,
+    local_fallback=Path(__file__).resolve().parents[1] / "results" / "goita-survey.sqlite3",
+)
+if SURVEY_PATH.resolve().is_relative_to((Path(__file__).resolve().parents[1] / "frontend").resolve()):
+    raise RuntimeError("GOITA_SURVEY_DB_PATH must be outside the public frontend directory")
+SURVEY_STORE = SurveyStore(SURVEY_PATH)
+SURVEY_PERSISTENT = bool(
+    str(os.environ.get("GOITA_SURVEY_DB_PATH", "") or "").strip()
     or str(os.environ.get("GOITA_PERSISTENT_DATA_DIR", "") or "").strip()
 )
 ADMIN_SESSION_COOKIE = "goita_site_admin"
@@ -1540,6 +1553,7 @@ app.include_router(create_member_router(
     room_options=lambda: _member_room_options(),
     settle_rewards=_settle_score_rewards,
 ))
+app.include_router(create_survey_router(SURVEY_STORE, MEMBER_STORE))
 
 
 @app.websocket("/ws/{game_id}")
@@ -2323,7 +2337,7 @@ class PrivateRoomAdSettingsRequest(BaseModel):
 
 
 class PublicRoomAdSettingsRequest(PrivateRoomAdSettingsRequest):
-    mode: Literal["custom", "whisper"] = "custom"
+    mode: Literal["custom", "whisper", "survey"] = "custom"
 
 
 class LobbySettingsUpdateRequest(BaseModel):
@@ -3371,7 +3385,7 @@ def _normalize_public_room_ads(settings: Dict[str, Any]) -> Dict[str, Dict[str, 
     result = copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS)
     for game_id, item in settings.items():
         mode = item.get("mode", "custom")
-        if mode not in {"custom", "whisper"}:
+        if mode not in {"custom", "whisper", "survey"}:
             raise HTTPException(status_code=400, detail="お知らせの種類が正しくありません")
         enabled = bool(item.get("enabled", False))
         normalized = _normalize_private_room_ad_settings(dict(item, enabled=enabled and mode == "custom"))
@@ -5419,6 +5433,14 @@ def admin_analytics(
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     payload["persistent"] = ANALYTICS_PERSISTENT
+    return payload
+
+
+@app.get("/admin/api/survey")
+def admin_survey(request: Request, limit: int = 100, offset: int = 0):
+    _require_site_admin(request)
+    payload = SURVEY_STORE.snapshot(limit=limit, offset=offset)
+    payload["persistent"] = SURVEY_PERSISTENT
     return payload
 
 

@@ -216,6 +216,16 @@
     .score-audit-piece.is-hidden { background: #f6f2e8; }
     .score-audit-piece.is-final-attack { background: linear-gradient(135deg, #f7e1a0, #f1c40f); outline: 3px solid #b74a18; outline-offset: -2px; opacity: 1; z-index: 3; }
     .score-audit-piece.is-final-attack span { color: #a40000; }
+    .survey-response-list { display:grid; gap:9px; margin-top:14px; }
+    .survey-response { border:1px solid var(--line); border-radius:5px; background:#fff; }
+    .survey-response summary { padding:10px 12px; cursor:pointer; font-weight:750; }
+    .survey-response-body { display:grid; grid-template-columns:180px minmax(0,1fr); gap:5px 12px; padding:0 12px 12px; }
+    .survey-response-body dt { color:var(--muted); }
+    .survey-response-body dd { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .survey-aggregate { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .survey-aggregate-item { padding:10px; border:1px solid var(--line); background:#fff; }
+    .survey-aggregate-item strong { display:block; margin-bottom:6px; }
+    .survey-aggregate-item span { display:block; color:var(--muted); font-size:12px; }
     .score-audit-seat-label { z-index: 2; display: flex; align-items: center; justify-content: center; border: 2px solid #8b5a2b; background: #f4efdf; color: #b00000; font-size: clamp(14px, 2.8vw, 21px); font-weight: 900; }
     .score-audit-seat-label.is-winner { border-color: #c24f16; box-shadow: 0 0 8px rgb(194 79 22 / 42%); }
     .score-audit-seat-label.seat-A .score-audit-seat-content { transform: rotate(0deg); }
@@ -242,6 +252,8 @@
       .room-options { grid-template-columns: 1fr; }
       .member-admin-create, .member-admin-row, .member-reward-grid { grid-template-columns: 1fr; }
       .score-audit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .survey-aggregate { grid-template-columns:1fr; }
+      .survey-response-body { grid-template-columns:1fr; }
       .topbar { flex-wrap: wrap; gap: 8px; }
       .topbar h1 { font-size: 16px; }
       .topbar-actions { margin-left: auto; white-space: nowrap; }
@@ -277,6 +289,7 @@
         <button class="tab active" type="button" data-tab="settings">サイト設定</button>
         <button class="tab" type="button" data-tab="scoreAudit">スコアアタック監査</button>
         <button class="tab" type="button" data-tab="analytics">利用状況</button>
+        <button class="tab" type="button" data-tab="survey">アンケート</button>
         <button class="tab" type="button" data-tab="aiMetrics">AI計測</button>
         <button class="tab" type="button" data-tab="members">会員管理</button>
       </nav>
@@ -363,7 +376,7 @@
           </div>
           <div class="field">
             <label for="publicAdMode">お知らせの種類</label>
-            <select id="publicAdMode"><option value="custom">通常のお知らせ</option><option value="whisper">1222のつぶやき</option></select>
+            <select id="publicAdMode"><option value="custom">通常のお知らせ</option><option value="whisper">1222のつぶやき</option><option value="survey">アンケート</option></select>
           </div>
           <div id="publicAdCustomFields">
             <div class="form-grid">
@@ -373,6 +386,7 @@
             <div class="field"><label for="publicAdMessage">表示する文章</label><textarea id="publicAdMessage" maxlength="200"></textarea></div>
           </div>
           <p id="publicAdWhisperHelp" class="muted" hidden>従来の文章と、クリック回数によって文章が変わる仕組みを表示します。</p>
+          <p id="publicAdSurveyHelp" class="muted" hidden>「アンケートにご協力ください」と表示し、クリックすると回答画面を開きます。</p>
           <div id="publicAdSummary" class="notice-summary"></div>
 
           <h3 class="subheading">プライベートルームのお知らせ</h3>
@@ -441,6 +455,19 @@
             <span id="scoreAuditPageStatus" class="score-audit-page-status status" role="status" aria-live="polite">0件</span>
             <button id="scoreAuditNext" class="button" type="button" disabled>次の100件</button>
           </div>
+        </section>
+      </section>
+
+      <section id="surveyView" class="view">
+        <section class="panel">
+          <div class="analytics-toolbar"><h2 class="section-heading" style="margin:0;margin-right:auto">アンケート回答</h2><button id="surveyRefresh" class="button" type="button">更新</button></div>
+          <p class="muted">名前や会員IDは保存していません。回答種別、回答内容、端末、言語、会員区分を表示します。</p>
+          <div id="surveyStatus" class="status" aria-live="polite"></div>
+          <div id="surveyMetricGrid" class="metric-grid"></div>
+          <h3 class="subheading">回答の集計</h3>
+          <div id="surveyAggregate" class="survey-aggregate"></div>
+          <h3 class="subheading">回答一覧</h3>
+          <div id="surveyResponses" class="survey-response-list"></div>
         </section>
       </section>
 
@@ -586,6 +613,31 @@
     let publicRoomAds = {};
     let activePublicAdRoomId = "";
     let activePrivateAdRoomId = "";
+    const SURVEY_LABELS = {
+      quick:"かんたん", detailed:"詳しい", guest:"ゲスト", free:"無料会員", supporter:"支援者",
+      satisfaction:"満足度", primary_use:"主な遊び方", improvement:"最も改善してほしいところ", improvement_other:"その他の改善要望",
+      frequency:"利用頻度", experience:"ごいた経験", play_styles:"普段の遊び方", feature_awareness:"機能の認知・利用",
+      membership_awareness:"無料会員の認知", ui_clarity:"画面の分かりやすさ", confusing_areas:"分かりにくい場所",
+      ai_used:"AI対局経験", ai_strength:"AIの強さ", ai_naturalness:"AIの自然さ", ai_concerns:"AIで気になること", ai_other:"AIの補足",
+      score_usage:"スコアアタック利用", score_enjoyment:"スコアアタック満足度", score_good:"スコアアタックの良い点", score_improvements:"スコアアタックの改善点",
+      future_features:"今後ほしいもの", problems:"困ったこと", free_text:"自由記述",
+      library:"棋譜ライブラリ", auto_save:"棋譜の自動保存", statistics:"保存棋譜の統計", deal_style:"手駒の配り方",
+      balanced_deal:"極端な手駒を除く", hand_spec:"手札指定", replay_practice:"局・場面から練習",
+      very_satisfied:"とても満足", satisfied:"満足", neutral:"どちらともいえない", dissatisfied:"少し不満", very_dissatisfied:"不満",
+      public:"公開部屋で対局", ai:"AI", private:"プライベートルーム", research:"研究・練習", score_attack:"スコアアタック", spectate:"観戦", kifu:"棋譜", new:"まだほとんど遊んでいない",
+      matching:"対局相手", usability:"画面・操作", stability:"通信・速度", beginner:"初心者向け説明", none:"特にない", other:"その他",
+      daily:"ほぼ毎日", weekly:"週に数回", monthly:"月に数回", few:"数回", first:"初めて", sometimes:"ときどき", regular:"日常的", tournament:"大会経験あり",
+      unknown:"知らなかった", known:"知っている・未使用", used:"使用経験あり", understand:"内容まで知っている", name_only:"存在だけ知っている", registered:"登録済み",
+      very_clear:"とても分かりやすい", clear:"分かりやすい", unclear:"少し分かりにくい", very_unclear:"とても分かりにくい",
+      yes:"ある", no:"ない", too_strong:"強すぎる", strong:"少し強い", right:"ちょうどよい", weak:"少し弱い", too_weak:"弱すぎる",
+      very_natural:"とても自然", natural:"自然", unnatural:"少し不自然", very_unnatural:"とても不自然",
+      once:"1回", known_unused:"知っている・未使用", very_fun:"とても楽しめた", fun:"楽しめた", not_fun:"あまり楽しめなかった", very_not_fun:"楽しめなかった",
+      top:"トップページ", room_entry:"ルームへの入り方", game:"対局中の操作", settings:"対局設定", account:"会員登録・ログイン", mobile:"スマートフォン",
+      pass:"不自然なパス", receive:"不自然な受け", attack:"不自然な攻め", repeats:"同じ手を繰り返す", slow:"思考時間が長い", shallow:"思考が短い",
+      comparison:"元棋譜と比較", same_hand:"同じ手駒", ranking:"ランキング", rewards:"報酬", solo:"1人で遊べる", history:"履歴",
+      rules:"遊び方", difference:"元棋譜との差", tempo:"テンポ", choose_record:"棋譜を選びたい",
+      kifu_analysis:"棋譜分析", ai_advice:"AIの助言", stronger_ai:"AI強化", events:"大会・イベント", score_content:"スコアアタック追加", profile:"成績・称号", find_features:"機能の場所", connection:"通信・速度",
+    };
 
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -1118,9 +1170,11 @@
     }
 
     function syncPublicAdMode() {
-      const custom = document.getElementById("publicAdMode").value === "custom";
+      const mode = document.getElementById("publicAdMode").value;
+      const custom = mode === "custom";
       document.getElementById("publicAdCustomFields").hidden = !custom;
-      document.getElementById("publicAdWhisperHelp").hidden = custom;
+      document.getElementById("publicAdWhisperHelp").hidden = mode !== "whisper";
+      document.getElementById("publicAdSurveyHelp").hidden = mode !== "survey";
       document.querySelectorAll("#publicAdCustomFields input, #publicAdCustomFields textarea").forEach(input => { input.disabled = !custom; });
     }
 
@@ -1140,7 +1194,7 @@
         const ad = normalizedPublicAd(publicRoomAds[room.game_id]);
         return `<div class="notice-summary-row"><strong>${escapeHtml(room.owner_name)}</strong>
           <span class="notice-state${ad.enabled ? " enabled" : ""}">${ad.enabled ? "表示中" : "非表示"}</span>
-          <span>${escapeHtml(ad.enabled ? (ad.mode === "whisper" ? "1222のつぶやき" : ad.title) : "")}</span></div>`;
+          <span>${escapeHtml(ad.enabled ? (ad.mode === "whisper" ? "1222のつぶやき" : ad.mode === "survey" ? "アンケート" : ad.title) : "")}</span></div>`;
       }).join("");
     }
 
@@ -1842,6 +1896,53 @@
       }
     }
 
+    function surveyLabel(value) {
+      return SURVEY_LABELS[String(value)] || String(value || "-");
+    }
+
+    function surveyAnswerText(value) {
+      if (Array.isArray(value)) return value.length ? value.map(surveyLabel).join("、") : "-";
+      if (value && typeof value === "object") {
+        return Object.entries(value).map(([key, item]) => `${surveyLabel(key)}：${surveyLabel(item)}`).join("\n");
+      }
+      return surveyLabel(value);
+    }
+
+    function renderSurvey(data) {
+      const summary = data.summary || {};
+      const memberTypes = summary.member_types || {};
+      const metrics = [
+        ["総回答数", `${summary.total || 0}件`], ["かんたん", `${summary.quick || 0}件`],
+        ["詳しい", `${summary.detailed || 0}件`], ["ゲスト", `${memberTypes.guest || 0}件`],
+        ["無料会員", `${memberTypes.free || 0}件`], ["支援者", `${memberTypes.supporter || 0}件`],
+      ];
+      document.getElementById("surveyMetricGrid").innerHTML = metrics.map(([label,value]) => `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>`).join("");
+      const counts = summary.answer_counts || {};
+      document.getElementById("surveyAggregate").innerHTML = Object.entries(counts).map(([key,values]) => {
+        const parts = key.split(".");
+        const heading = parts.length === 2 ? `${surveyLabel(parts[0])}・${surveyLabel(parts[1])}` : surveyLabel(key);
+        const rows = Object.entries(values).sort((a,b) => Number(b[1])-Number(a[1])).map(([value,count]) => `<span>${escapeHtml(surveyLabel(value))}：${Number(count)}件</span>`).join("");
+        return `<div class="survey-aggregate-item"><strong>${escapeHtml(heading)}</strong>${rows}</div>`;
+      }).join("") || '<p class="muted">まだ回答がありません。</p>';
+      document.getElementById("surveyResponses").innerHTML = (data.responses || []).map(item => {
+        const rows = Object.entries(item.answers || {}).filter(([,value]) => value !== "" && (!Array.isArray(value) || value.length)).map(([key,value]) => `<dt>${escapeHtml(surveyLabel(key))}</dt><dd>${escapeHtml(surveyAnswerText(value))}</dd>`).join("");
+        return `<details class="survey-response"><summary>${escapeHtml(formatDate(item.updated_at))} / ${escapeHtml(surveyLabel(item.kind))} / ${escapeHtml(surveyLabel(item.member_type))} / ${escapeHtml(item.device)} / ${escapeHtml(item.language)}</summary><dl class="survey-response-body">${rows}</dl></details>`;
+      }).join("") || '<p class="muted">まだ回答がありません。</p>';
+      const persistence = data.persistent ? "永続保存されています。" : "永続保存が設定されていません。";
+      document.getElementById("surveyStatus").textContent = `${summary.total || 0}件の回答があります。${persistence}`;
+    }
+
+    async function loadSurvey() {
+      const status = document.getElementById("surveyStatus");
+      status.textContent = "読み込んでいます...";
+      try {
+        renderSurvey(await api("/admin/api/survey?limit=100&offset=0"));
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      }
+    }
+
     document.getElementById("loginForm").addEventListener("submit", async event => {
       event.preventDefault();
       const status = document.getElementById("loginStatus");
@@ -1926,6 +2027,7 @@
       document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${name}View`));
       if (name === "analytics") loadAnalytics();
+      if (name === "survey") loadSurvey();
       if (name === "scoreAudit") loadScoreAudit();
       if (name === "aiMetrics") loadResponseMetrics();
       if (name === "members") window.goitaMemberAdmin?.load();
@@ -1933,6 +2035,7 @@
     }));
 
     document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
+    document.getElementById("surveyRefresh").addEventListener("click", loadSurvey);
     document.getElementById("analyticsDays").addEventListener("change", () => {
       updateAnalyticsRangeVisibility();
       if (document.getElementById("analyticsDays").value !== "custom") loadAnalytics();

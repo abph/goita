@@ -314,6 +314,8 @@
     "空欄の場合は、文章だけを表示します。": "Leave blank to display text only.",
     "表示するルーム": "Rooms showing the notice",
     "お知らせ": "Notice",
+    "アンケートにご協力ください": "Please take our survey",
+    "そろうごいた改善アンケート": "Solo Goita Improvement Survey",
     "お知らせに表示する文章を入力してください。": "Enter the notice text.",
     "お知らせを表示するルームを選択してください。": "Select at least one room for the notice.",
     "URLはhttp://またはhttps://から入力してください": "The URL must start with http:// or https://.",
