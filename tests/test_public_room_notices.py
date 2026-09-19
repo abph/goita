@@ -1,5 +1,6 @@
 import asyncio
 import copy
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -56,7 +57,12 @@ def test_public_notices_save_per_room_restore_and_keep_special_mode(isolated):
 
 def test_survey_notice_mode_does_not_require_custom_text(isolated):
     first, _ = isolated
-    response = update({first: {"enabled": True, "mode": "survey"}})
+    start = datetime.now(timezone.utc) - timedelta(minutes=1)
+    response = update({first: {
+        "enabled": True, "mode": "survey",
+        "survey_starts_at": start.isoformat(),
+        "survey_ends_at": (start + timedelta(days=7)).isoformat(),
+    }})
     assert response["public_room_ads"][first]["mode"] == "survey"
     public = app_module._public_room_ad_public_payload(first)
     assert public["enabled"] is True

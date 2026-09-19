@@ -17,6 +17,7 @@
   let activeContextKey = "";
   let activePublicMessage = false;
   let activeSurvey = false;
+  let activeSurveyCampaign = null;
   const dismissedContexts = new Set();
 
   function messageElement() {
@@ -102,14 +103,16 @@
 
     const ad = isPublicRoom ? publicAd : privateAd;
     const specialPublic = isPublicRoom && (publicAd === null || (publicAd.enabled === true && publicAd.mode === "whisper"));
+    const surveyId = String(publicAd?.survey_id || "survey-1");
+    const surveyTitle = String(publicAd?.survey_title || "第1回 そろうごいた改善アンケート");
     const survey = isPublicRoom && publicAd?.enabled === true && publicAd.mode === "survey"
-      && window.goitaSurvey?.completed?.() !== "detailed";
+      && window.goitaSurvey?.completed?.(surveyId) !== "detailed";
     const customMessage = String(ad?.message || "").trim();
     const customLabel = String(ad?.label || "お知らせ").trim() || "お知らせ";
     const customEnabled = !specialPublic && ad?.enabled === true && customMessage;
     const contextPrefix = isPublicRoom ? `public:${publicAd?.room_id || ""}` : "private";
     const nextContextKey = survey
-      ? `${contextPrefix}:survey`
+      ? `${contextPrefix}:survey:${surveyId}`
       : specialPublic
       ? `${contextPrefix}:whisper`
       : (customEnabled ? `${contextPrefix}:${customLabel}:${customMessage}:${String(ad?.url || "")}` : "");
@@ -124,9 +127,14 @@
     activeContextKey = nextContextKey;
     activePublicMessage = specialPublic;
     activeSurvey = survey;
-    activeMessages = specialPublic ? PUBLIC_MESSAGES : [survey ? "アンケートにご協力ください" : customMessage];
+    activeSurveyCampaign = survey ? {id:surveyId, title:surveyTitle} : null;
+    const surveyStart = publicAd?.survey_starts_at ? new Date(publicAd.survey_starts_at) : null;
+    const surveyEnd = publicAd?.survey_ends_at ? new Date(publicAd.survey_ends_at) : null;
+    const surveyPeriod = surveyStart && surveyEnd && !Number.isNaN(surveyStart.valueOf()) && !Number.isNaN(surveyEnd.valueOf())
+      ? `　回答期間：${surveyStart.toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})}〜${surveyEnd.toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})}` : "";
+    activeMessages = specialPublic ? PUBLIC_MESSAGES : [survey ? `アンケートにご協力ください${surveyPeriod}` : customMessage];
     activeUrl = specialPublic ? "" : String(ad?.url || "").trim();
-    label.textContent = specialPublic ? "1222のつぶやき" : (survey ? "そろうごいた改善アンケート" : customLabel);
+    label.textContent = specialPublic ? "1222のつぶやき" : (survey ? surveyTitle : customLabel);
     whisper.setAttribute("aria-label", label.textContent);
     whisper.classList.toggle("has-link", Boolean(activeUrl) || survey);
     whisper.classList.toggle("is-interactive-message", activePublicMessage);
@@ -155,7 +163,7 @@
 
   function activate() {
     if (activeSurvey) {
-      window.goitaSurvey?.open?.();
+      window.goitaSurvey?.open?.(activeSurveyCampaign || {});
       return;
     }
     if (activeUrl) {

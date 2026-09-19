@@ -385,8 +385,17 @@
             </div>
             <div class="field"><label for="publicAdMessage">表示する文章</label><textarea id="publicAdMessage" maxlength="200"></textarea></div>
           </div>
+          <div id="publicAdSurveyFields" hidden>
+            <div class="form-grid">
+              <div class="field"><label for="publicAdSurveyId">実施回ID</label><input id="publicAdSurveyId" type="text" maxlength="40" pattern="[A-Za-z0-9_-]+" value="survey-1"><small class="muted">例：survey-1。次回は別のIDにすると、回答と回答済み状態が分かれます。</small></div>
+              <div class="field"><label for="publicAdSurveyTitle">アンケート名</label><input id="publicAdSurveyTitle" type="text" maxlength="80" value="第1回 そろうごいた改善アンケート"></div>
+              <div class="field"><label for="publicAdSurveyStartsAt">開始日時</label><input id="publicAdSurveyStartsAt" type="datetime-local"></div>
+              <div class="field"><label for="publicAdSurveyEndsAt">終了日時</label><input id="publicAdSurveyEndsAt" type="datetime-local"></div>
+            </div>
+            <p class="muted">期間中だけ自動表示します。回答期間は7日以内にしてください。</p>
+          </div>
           <p id="publicAdWhisperHelp" class="muted" hidden>従来の文章と、クリック回数によって文章が変わる仕組みを表示します。</p>
-          <p id="publicAdSurveyHelp" class="muted" hidden>「アンケートにご協力ください」と表示し、クリックすると回答画面を開きます。</p>
+          <p id="publicAdSurveyHelp" class="muted" hidden>アンケート名と回答期間を表示し、クリックすると回答画面を開きます。</p>
           <div id="publicAdSummary" class="notice-summary"></div>
 
           <h3 class="subheading">プライベートルームのお知らせ</h3>
@@ -460,7 +469,7 @@
 
       <section id="surveyView" class="view">
         <section class="panel">
-          <div class="analytics-toolbar"><h2 class="section-heading" style="margin:0;margin-right:auto">アンケート回答</h2><button id="surveyRefresh" class="button" type="button">更新</button></div>
+          <div class="analytics-toolbar"><h2 class="section-heading" style="margin:0;margin-right:auto">アンケート回答</h2><select id="surveyCampaignSelect" aria-label="実施回を選択"></select><button id="surveyRefresh" class="button" type="button">更新</button></div>
           <p class="muted">名前や会員IDは保存していません。回答種別、回答内容、端末、言語、会員区分を表示します。</p>
           <div id="surveyStatus" class="status" aria-live="polite"></div>
           <div id="surveyMetricGrid" class="metric-grid"></div>
@@ -1166,13 +1175,32 @@
     }
 
     function normalizedPublicAd(value = {}) {
-      return {...normalizedPrivateAd(value), enabled: value.enabled !== false, mode: value.mode || "whisper"};
+      return {
+        ...normalizedPrivateAd(value), enabled: value.enabled !== false, mode: value.mode || "whisper",
+        survey_id: value.survey_id || "survey-1",
+        survey_title: value.survey_title || "第1回 そろうごいた改善アンケート",
+        survey_starts_at: value.survey_starts_at || "2026-09-19T00:00:00+09:00",
+        survey_ends_at: value.survey_ends_at || "2026-09-26T00:00:00+09:00",
+      };
+    }
+
+    function datetimeLocalValue(value) {
+      const date = new Date(value || "");
+      if (Number.isNaN(date.valueOf())) return "";
+      const local = new Date(date.valueOf() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0,16);
+    }
+
+    function datetimeIso(value) {
+      const date = new Date(value || "");
+      return Number.isNaN(date.valueOf()) ? "" : date.toISOString();
     }
 
     function syncPublicAdMode() {
       const mode = document.getElementById("publicAdMode").value;
       const custom = mode === "custom";
       document.getElementById("publicAdCustomFields").hidden = !custom;
+      document.getElementById("publicAdSurveyFields").hidden = mode !== "survey";
       document.getElementById("publicAdWhisperHelp").hidden = mode !== "whisper";
       document.getElementById("publicAdSurveyHelp").hidden = mode !== "survey";
       document.querySelectorAll("#publicAdCustomFields input, #publicAdCustomFields textarea").forEach(input => { input.disabled = !custom; });
@@ -1186,15 +1214,21 @@
         title: document.getElementById("publicAdTitle").value.trim() || "お知らせ",
         message: document.getElementById("publicAdMessage").value.trim(),
         url: document.getElementById("publicAdUrl").value.trim(),
+        survey_id: document.getElementById("publicAdSurveyId").value.trim() || "survey-1",
+        survey_title: document.getElementById("publicAdSurveyTitle").value.trim() || "第1回 そろうごいた改善アンケート",
+        survey_starts_at: datetimeIso(document.getElementById("publicAdSurveyStartsAt").value),
+        survey_ends_at: datetimeIso(document.getElementById("publicAdSurveyEndsAt").value),
       };
     }
 
     function renderPublicAdSummary() {
       document.getElementById("publicAdSummary").innerHTML = publicRooms.map(room => {
         const ad = normalizedPublicAd(publicRoomAds[room.game_id]);
+        const surveyActive = ad.mode === "survey" && Date.now() >= new Date(ad.survey_starts_at).valueOf() && Date.now() < new Date(ad.survey_ends_at).valueOf();
+        const state = !ad.enabled ? "非表示" : (ad.mode === "survey" && !surveyActive ? "期間外" : "表示中");
         return `<div class="notice-summary-row"><strong>${escapeHtml(room.owner_name)}</strong>
-          <span class="notice-state${ad.enabled ? " enabled" : ""}">${ad.enabled ? "表示中" : "非表示"}</span>
-          <span>${escapeHtml(ad.enabled ? (ad.mode === "whisper" ? "1222のつぶやき" : ad.mode === "survey" ? "アンケート" : ad.title) : "")}</span></div>`;
+          <span class="notice-state${state === "表示中" ? " enabled" : ""}">${state}</span>
+          <span>${escapeHtml(ad.enabled ? (ad.mode === "whisper" ? "1222のつぶやき" : ad.mode === "survey" ? ad.survey_title : ad.title) : "")}</span></div>`;
       }).join("");
     }
 
@@ -1206,6 +1240,10 @@
       document.getElementById("publicAdTitle").value = ad.title;
       document.getElementById("publicAdMessage").value = ad.message;
       document.getElementById("publicAdUrl").value = ad.url;
+      document.getElementById("publicAdSurveyId").value = ad.survey_id;
+      document.getElementById("publicAdSurveyTitle").value = ad.survey_title;
+      document.getElementById("publicAdSurveyStartsAt").value = datetimeLocalValue(ad.survey_starts_at);
+      document.getElementById("publicAdSurveyEndsAt").value = datetimeLocalValue(ad.survey_ends_at);
       syncPublicAdMode();
       renderPublicAdSummary();
     }
@@ -1909,6 +1947,9 @@
     }
 
     function renderSurvey(data) {
+      const campaignSelect = document.getElementById("surveyCampaignSelect");
+      campaignSelect.innerHTML = (data.campaigns || []).map(item => `<option value="${escapeHtml(item.campaign_id)}">${escapeHtml(item.campaign_title)}（${Number(item.response_count) || 0}件）</option>`).join("") || '<option value="">まだ回答がありません</option>';
+      campaignSelect.value = data.campaign_id || "";
       const summary = data.summary || {};
       const memberTypes = summary.member_types || {};
       const metrics = [
@@ -1936,7 +1977,10 @@
       const status = document.getElementById("surveyStatus");
       status.textContent = "読み込んでいます...";
       try {
-        renderSurvey(await api("/admin/api/survey?limit=100&offset=0"));
+        const campaignId = document.getElementById("surveyCampaignSelect").value;
+        const params = new URLSearchParams({limit:"100", offset:"0"});
+        if (campaignId) params.set("campaign_id", campaignId);
+        renderSurvey(await api(`/admin/api/survey?${params.toString()}`));
       } catch (error) {
         if (error.status === 401) showLogin();
         status.textContent = error.message;
@@ -2004,7 +2048,7 @@
       capturePublicAdSettings();
       loadPublicAdSettings(event.target.value);
     });
-    ["publicAdEnabled", "publicAdMode", "publicAdTitle", "publicAdMessage", "publicAdUrl"].forEach(id => {
+    ["publicAdEnabled", "publicAdMode", "publicAdTitle", "publicAdMessage", "publicAdUrl", "publicAdSurveyId", "publicAdSurveyTitle", "publicAdSurveyStartsAt", "publicAdSurveyEndsAt"].forEach(id => {
       document.getElementById(id).addEventListener("input", () => {
         capturePublicAdSettings();
         syncPublicAdMode();
@@ -2036,6 +2080,7 @@
 
     document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
     document.getElementById("surveyRefresh").addEventListener("click", loadSurvey);
+    document.getElementById("surveyCampaignSelect").addEventListener("change", loadSurvey);
     document.getElementById("analyticsDays").addEventListener("change", () => {
       updateAnalyticsRangeVisibility();
       if (document.getElementById("analyticsDays").value !== "custom") loadAnalytics();

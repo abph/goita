@@ -232,7 +232,13 @@ PRIVATE_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
 }
 NAME_MAX_LEN = 9
 PUBLIC_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
-    game_id: {"enabled": True, "mode": "whisper", "title": "お知らせ", "message": "", "url": ""}
+    game_id: {
+        "enabled": True, "mode": "whisper", "title": "お知らせ", "message": "", "url": "",
+        "survey_id": "survey-1",
+        "survey_title": "第1回 そろうごいた改善アンケート",
+        "survey_starts_at": "2026-09-19T00:00:00+09:00",
+        "survey_ends_at": "2026-09-26T00:00:00+09:00",
+    }
     for game_id in MAIN_ROOM_NAMES
 }
 ROOM_NAME_MAX_LEN = 12
@@ -1553,7 +1559,11 @@ app.include_router(create_member_router(
     room_options=lambda: _member_room_options(),
     settle_rewards=_settle_score_rewards,
 ))
-app.include_router(create_survey_router(SURVEY_STORE, MEMBER_STORE))
+app.include_router(create_survey_router(
+    SURVEY_STORE,
+    MEMBER_STORE,
+    campaign_resolver=lambda campaign_id: _active_survey_campaign(campaign_id),
+))
 
 
 @app.websocket("/ws/{game_id}")
@@ -2338,6 +2348,10 @@ class PrivateRoomAdSettingsRequest(BaseModel):
 
 class PublicRoomAdSettingsRequest(PrivateRoomAdSettingsRequest):
     mode: Literal["custom", "whisper", "survey"] = "custom"
+    survey_id: str = Field(default="survey-1", min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
+    survey_title: str = Field(default="第1回 そろうごいた改善アンケート", min_length=1, max_length=80)
+    survey_starts_at: str = Field(default="2026-09-19T00:00:00+09:00", max_length=40)
+    survey_ends_at: str = Field(default="2026-09-26T00:00:00+09:00", max_length=40)
 
 
 class LobbySettingsUpdateRequest(BaseModel):
@@ -3389,19 +3403,63 @@ def _normalize_public_room_ads(settings: Dict[str, Any]) -> Dict[str, Dict[str, 
             raise HTTPException(status_code=400, detail="お知らせの種類が正しくありません")
         enabled = bool(item.get("enabled", False))
         normalized = _normalize_private_room_ad_settings(dict(item, enabled=enabled and mode == "custom"))
-        result[game_id] = dict(normalized, enabled=enabled, mode=mode)
+        survey_id = str(item.get("survey_id") or "survey-1").strip()
+        survey_title = str(item.get("survey_title") or "第1回 そろうごいた改善アンケート").strip()
+        starts_at = str(item.get("survey_starts_at") or "2026-09-19T00:00:00+09:00").strip()
+        ends_at = str(item.get("survey_ends_at") or "2026-09-26T00:00:00+09:00").strip()
+        if mode == "survey":
+            try:
+                start = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                end = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail="アンケートの期間が正しくありません") from error
+            if start.tzinfo is None or end.tzinfo is None:
+                raise HTTPException(status_code=400, detail="アンケートの期間には時差情報が必要です")
+            if end <= start:
+                raise HTTPException(status_code=400, detail="アンケートの終了日時は開始日時より後にしてください")
+            if end - start > timedelta(days=7):
+                raise HTTPException(status_code=400, detail="アンケート期間は7日以内にしてください")
+        result[game_id] = dict(
+            normalized, enabled=enabled, mode=mode,
+            survey_id=survey_id, survey_title=survey_title,
+            survey_starts_at=starts_at, survey_ends_at=ends_at,
+        )
     return result
+
+
+def _active_survey_campaign(campaign_id: str) -> Optional[Dict[str, str]]:
+    now = datetime.now(timezone.utc)
+    for game_id, settings in PUBLIC_ROOM_AD_SETTINGS.items():
+        if game_id not in MAIN_ROOM_NAMES or not settings.get("enabled") or settings.get("mode") != "survey":
+            continue
+        if str(settings.get("survey_id") or "") != campaign_id:
+            continue
+        try:
+            start = datetime.fromisoformat(str(settings["survey_starts_at"]).replace("Z", "+00:00"))
+            end = datetime.fromisoformat(str(settings["survey_ends_at"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        if start <= now < end:
+            return {"id": campaign_id, "title": str(settings.get("survey_title") or "そろうごいた改善アンケート")}
+    return None
 
 
 def _public_room_ad_public_payload(game_id: str) -> Dict[str, Any]:
     settings = PUBLIC_ROOM_AD_SETTINGS.get(game_id, {})
     enabled = bool(settings.get("enabled", False) and game_id in MAIN_ROOM_NAMES)
+    campaign = _active_survey_campaign(str(settings.get("survey_id") or "")) if settings.get("mode") == "survey" else None
+    if settings.get("mode") == "survey":
+        enabled = enabled and campaign is not None
     custom = enabled and settings.get("mode") == "custom"
     return {
         "enabled": enabled, "mode": settings.get("mode", "custom"), "room_id": game_id,
         "label": settings.get("title", "お知らせ") if custom else "",
         "message": settings.get("message", "") if custom else "",
         "url": settings.get("url", "") if custom else "",
+        "survey_id": settings.get("survey_id", "survey-1"),
+        "survey_title": settings.get("survey_title", "第1回 そろうごいた改善アンケート"),
+        "survey_starts_at": settings.get("survey_starts_at", ""),
+        "survey_ends_at": settings.get("survey_ends_at", ""),
     }
 
 
@@ -5437,9 +5495,9 @@ def admin_analytics(
 
 
 @app.get("/admin/api/survey")
-def admin_survey(request: Request, limit: int = 100, offset: int = 0):
+def admin_survey(request: Request, campaign_id: str = "", limit: int = 100, offset: int = 0):
     _require_site_admin(request)
-    payload = SURVEY_STORE.snapshot(limit=limit, offset=offset)
+    payload = SURVEY_STORE.snapshot(campaign_id=campaign_id, limit=limit, offset=offset)
     payload["persistent"] = SURVEY_PERSISTENT
     return payload
 

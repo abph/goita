@@ -12,6 +12,7 @@ from backend.member_store import MemberError
 class SurveySubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
     response_key: str = Field(min_length=16, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    campaign_id: str = Field(default="survey-1", min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
     kind: Literal["quick", "detailed"]
     device: Literal["mobile", "desktop", "tablet", "unknown"] = "unknown"
     language: Literal["ja", "zh", "en", "other"] = "other"
@@ -96,7 +97,7 @@ def _validate_answers(kind: str, raw: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def create_survey_router(store, members):
+def create_survey_router(store, members, campaign_resolver=None):
     router = APIRouter()
 
     @router.post("/api/survey/responses")
@@ -109,8 +110,16 @@ def create_survey_router(store, members):
         except MemberError:
             pass
         answers = _validate_answers(data.kind, data.answers)
+        campaign = campaign_resolver(data.campaign_id) if campaign_resolver else {
+            "id": data.campaign_id,
+            "title": "第1回 そろうごいた改善アンケート",
+        }
+        if not campaign:
+            raise HTTPException(410, "このアンケートの回答期間は終了しています。")
         try:
             record = store.save(
+                campaign_id=data.campaign_id,
+                campaign_title=str(campaign.get("title") or "そろうごいた改善アンケート"),
                 response_key=data.response_key,
                 kind=data.kind,
                 member_type=member_type,

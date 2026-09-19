@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "goita_survey_response_key_v1";
   const DONE_KEY = "goita_survey_completed_v1";
+  let activeCampaign = {id:"survey-1", title:"第1回 そろうごいた改善アンケート"};
   const quickQuestions = [
     ["satisfaction", "そろうごいたを遊んでみて、どう感じましたか？", [["very_satisfied","とても満足"],["satisfied","満足"],["neutral","どちらともいえない"],["dissatisfied","少し不満"],["very_dissatisfied","不満"]]],
     ["primary_use", "主にどのように遊んでいますか？", [["public","公開部屋で人と対局"],["ai","AIと対局"],["private","友人とプライベートルームで対局"],["research","手駒や場面を指定して研究・練習"],["score_attack","スコアアタック"],["spectate","観戦"],["new","まだほとんど遊んでいない"]]],
@@ -36,13 +37,17 @@
   const optionHtml = (name, values, type="radio", required=false) => `<div class="survey-options">${values.map(([value,label], index) => `<label><input type="${type}" name="${esc(name)}" value="${esc(value)}" ${required && index === 0 ? "required" : ""}><span>${esc(t(label))}</span></label>`).join("")}</div>`;
   const fieldset = (name, legend, values, type="radio", required=false) => `<fieldset class="survey-question"><legend>${esc(t(legend))}</legend>${optionHtml(name, values, type, required)}</fieldset>`;
 
+  function campaignStorageKey(base, campaignId=activeCampaign.id) {
+    return `${base}_${String(campaignId || "survey-1").replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  }
   function responseKey() {
-    let value = localStorage.getItem(STORAGE_KEY) || "";
+    const storageKey = campaignStorageKey(STORAGE_KEY);
+    let value = localStorage.getItem(storageKey) || "";
     if (!/^[A-Za-z0-9_-]{16,80}$/.test(value)) {
       value = typeof crypto.randomUUID === "function"
         ? crypto.randomUUID().replaceAll("-", "")
         : Array.from(crypto.getRandomValues(new Uint8Array(20)), byte => byte.toString(16).padStart(2,"0")).join("");
-      localStorage.setItem(STORAGE_KEY, value);
+      localStorage.setItem(storageKey, value);
     }
     return value;
   }
@@ -58,11 +63,14 @@
   function body() { return document.getElementById("surveyBody"); }
 
   function ensureDialog() {
-    if (dialog()) return;
+    if (dialog()) {
+      dialog().querySelector(".survey-header h2").textContent = t(activeCampaign.title);
+      return;
+    }
     const element = document.createElement("dialog");
     element.id = "surveyDialog";
     element.className = "survey-dialog";
-    element.innerHTML = `<div class="survey-shell"><header class="survey-header"><h2>${esc(t("そろうごいた改善アンケート"))}</h2><button class="survey-close" type="button" aria-label="${esc(t("閉じる"))}">×</button></header><div id="surveyBody"></div></div>`;
+    element.innerHTML = `<div class="survey-shell"><header class="survey-header"><h2>${esc(t(activeCampaign.title))}</h2><button class="survey-close" type="button" aria-label="${esc(t("閉じる"))}">×</button></header><div id="surveyBody"></div></div>`;
     document.body.appendChild(element);
     element.querySelector(".survey-close").addEventListener("click", () => element.close());
     element.addEventListener("click", event => { if (event.target === element) element.close(); });
@@ -140,13 +148,18 @@
     if (form.dataset.kind === "detailed" && !data.play_styles.length) { status.textContent=t("普段の遊び方を1つ以上選んでください。"); return; }
     button.disabled=true; status.textContent=t("送信しています...");
     try {
-      const response=await fetch("/api/survey/responses",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-Goita-Member":"1"},body:JSON.stringify({response_key:responseKey(),kind:form.dataset.kind,device:device(),language:language(),answers:data})});
+      const response=await fetch("/api/survey/responses",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-Goita-Member":"1"},body:JSON.stringify({campaign_id:activeCampaign.id,response_key:responseKey(),kind:form.dataset.kind,device:device(),language:language(),answers:data})});
       const result=await response.json().catch(()=>({})); if(!response.ok) throw new Error(result.detail||t("回答を送信できませんでした。"));
-      localStorage.setItem(DONE_KEY,result.kind||form.dataset.kind);
+      localStorage.setItem(campaignStorageKey(DONE_KEY),result.kind||form.dataset.kind);
       body().innerHTML=`<div class="survey-thanks"><h3>${esc(t("回答ありがとうございました。"))}</h3><p>${esc(t("いただいた回答は、今後の改善に利用します。"))}</p>${form.dataset.kind==="quick"?`<button class="survey-submit" type="button" data-detailed>${esc(t("詳しいアンケートにも回答する"))}</button>`:""}</div>`;
       body().querySelector("[data-detailed]")?.addEventListener("click",()=>renderForm("detailed"));
     } catch(error) { status.textContent=error.message; button.disabled=false; }
   }
-  function open() { ensureDialog(); showChooser(); if (!dialog().open) dialog().showModal(); }
-  window.goitaSurvey=Object.freeze({open,completed:()=>localStorage.getItem(DONE_KEY)||""});
+  function configure(config={}) {
+    const id = /^[A-Za-z0-9_-]{1,40}$/.test(String(config.id || "")) ? String(config.id) : "survey-1";
+    activeCampaign = {id, title:String(config.title || "第1回 そろうごいた改善アンケート").slice(0,80)};
+  }
+  function open(config={}) { configure(config); ensureDialog(); showChooser(); if (!dialog().open) dialog().showModal(); }
+  function completed(campaignId="survey-1") { return localStorage.getItem(campaignStorageKey(DONE_KEY,campaignId)) || ""; }
+  window.goitaSurvey=Object.freeze({open,completed});
 })();
