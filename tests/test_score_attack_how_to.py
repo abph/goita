@@ -17,12 +17,17 @@ def test_how_to_button_is_directly_below_score_attack_start():
 def test_how_to_modal_explains_score_attack_and_returns_to_menu():
     assert 'id="scoreAttackHowToModal"' in HTML
     for text in [
+        "過去の対局と同じ条件でAIに挑み、元の対局より良い結果を目指す1人用モードです。",
         "元の棋譜と同じ手駒・同じ親で対局します。",
         "あなたがA席を担当し、B・C・D席はAIが担当します。",
         "対局中は元の棋譜に縛られず、自由に手を選べます。",
+        "AIは元の棋譜と同じ局面ではその手順を参考にし、展開が変わった後はその局面を判断して打ちます。",
         "対局結果と元の棋譜の得点を比べ、その差がスコアになります。",
+        "スコア ＝ 今回の点差（AC−BD）− 元の棋譜の点差（AC−BD）",
+        "元の対局より良ければプラス、悪ければマイナスになります。",
         "スコアはデイリー・ウィークリーランキングに反映されます。",
         "会員は、デイリー1位やウィークリー上位に入ると報酬を獲得できます。",
+        "無料会員になると挑戦履歴が継続して保存され、ランキング報酬の対象になります。",
     ]:
         assert text in HTML
     assert "function openScoreAttackHowTo()" in SCRIPT
