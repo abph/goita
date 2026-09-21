@@ -129,6 +129,10 @@ def test_three_lobby_features_use_consistent_section_cards():
     assert 'class="score-attack-daily-ranking"' in HTML
     assert 'class="score-attack-daily-ranking-box"' in HTML
     assert 'id="scoreAttackDailyRankingList"' in HTML
+    assert '.score-attack-daily-ranking ol { grid-template-rows:20px; min-height:20px; }' in HTML
+    assert '.score-attack-daily-ranking li:nth-child(n+2) { display:none; }' in HTML
+    score_modal = HTML.split('id="debugTraceModal"', 1)[1].split('id="scoreAttackHowToModal"', 1)[0]
+    assert 'デイリーランキング1位になると、棋譜保存枠が1局分追加されます' not in score_modal
     assert 'id="scoreRankingsEntry"' in HTML
     assert "grid-template-columns:minmax(0,1.4fr) minmax(168px,.72fr)" in HTML
     assert 'class="lobby-room-section-body"' in HTML
