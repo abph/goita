@@ -5959,6 +5959,7 @@
   <div class="modal-content settings-modal-content score-attack-how-to-content" role="dialog" aria-modal="true" aria-labelledby="scoreAttackHowToTitle">
     <button class="settings-modal-close" type="button" onclick="closeScoreAttackHowTo()" aria-label="遊び方を閉じる">×</button>
     <h3 id="scoreAttackHowToTitle">スコアアタックの遊び方</h3>
+    <div class="score-attack-how-to-scroll" tabindex="0" aria-labelledby="scoreAttackHowToTitle">
     <p class="score-attack-how-to-lead">過去の対局と同じ条件でAIに挑み、元の対局より良い結果を目指す1人用モードです。</p>
     <h4>対局の流れ</h4>
     <ol class="score-attack-how-to-list">
@@ -5977,6 +5978,7 @@
       <li>会員は、デイリー1位やウィークリー上位に入ると報酬を獲得できます。</li>
       <li>ゲストでも挑戦できます。無料会員になると挑戦履歴が継続して保存され、ランキング報酬の対象になります。</li>
     </ul>
+    </div>
     <div class="settings-footer">
       <button type="button" onclick="closeScoreAttackHowTo()">スコアアタックに戻る</button>
     </div>
@@ -6063,6 +6065,10 @@
   .score-attack-start { width:100%; padding:14px; margin:12px 0; font-size:16px; font-weight:700; }
   .score-attack-how-to-button { width:100%; margin:-4px 0 12px; padding:10px; background:rgba(255,255,255,.72); color:#5f3b1d; font-weight:700; }
   .score-attack-how-to-content { max-width:560px; }
+  .score-attack-how-to-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:#8b5a2b rgba(139,90,43,.14); padding-right:8px; }
+  .score-attack-how-to-scroll::-webkit-scrollbar { width:8px; }
+  .score-attack-how-to-scroll::-webkit-scrollbar-track { background:rgba(139,90,43,.14); border-radius:8px; }
+  .score-attack-how-to-scroll::-webkit-scrollbar-thumb { background:#8b5a2b; border-radius:8px; }
   .score-attack-how-to-content h4 { margin:18px 0 7px; color:#6f4725; }
   .score-attack-how-to-lead { margin:0 0 14px; line-height:1.7; }
   .score-attack-how-to-list { display:grid; gap:8px; margin:7px 0 14px; padding-left:1.5em; line-height:1.65; }

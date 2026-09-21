@@ -16,6 +16,8 @@ def test_how_to_button_is_directly_below_score_attack_start():
 
 def test_how_to_modal_explains_score_attack_and_returns_to_menu():
     assert 'id="scoreAttackHowToModal"' in HTML
+    assert 'class="score-attack-how-to-scroll" tabindex="0"' in HTML
+    assert '.score-attack-how-to-scroll { flex:1 1 auto; min-height:0; overflow-y:auto;' in HTML
     for text in [
         "過去の対局と同じ条件でAIに挑み、元の対局より良い結果を目指す1人用モードです。",
         "元の棋譜と同じ手駒・同じ親で対局します。",
