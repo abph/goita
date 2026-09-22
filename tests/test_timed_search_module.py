@@ -1372,7 +1372,7 @@ def test_depth_seven_kyosha_comparison_receives_and_attacks_fourth_horse() -> No
     assert baseline == ("pass", None, None)
     assert receive == ("receive", "2", None)
     assert c_agent.last_decision_reason == "time_search"
-    assert c_agent.last_score_fallback_detail.startswith("kyosha_pass_compare_")
+    assert c_agent.last_score_fallback_detail.startswith("kyosha_round_route_")
     assert search["depth"] == 7
     assert search["decisive"] is True
     assert search["budget"]["effective_seconds"] == 10.0
@@ -1461,7 +1461,50 @@ def test_kyosha_receive_plan_keeps_public_fourth_silver_for_followup() -> None:
     )
 
     assert attack == ("attack", None, "4")
-    assert a_agent.last_score_fallback_detail == "kyosha_receive_followup_4"
+    assert a_agent.last_score_fallback_detail == "kyosha_round_route_followup_4"
+
+
+def test_kyosha_receive_compares_pass_with_followup_attacks() -> None:
+    """A strong-looking shi continuation must not replace the searched route."""
+    state = GoitaState(
+        hands={
+            "A": list("43141516"),
+            "B": list("65748151"),
+            "C": list("13241151"),
+            "D": list("37922231"),
+        },
+        dealer="D",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("C")
+    agent._ensure_trackers(state)
+    assert len(agent._track[id(state)]["round_strategy"]["opening_attacks"]) == 3
+
+    state.apply_attack_after_block("D", "3", "2")
+    agent.on_public_action(state, "D", ("attack_after_block", "3", "2"))
+    for player in ("A", "B"):
+        state.apply_pass(player)
+        agent.on_public_action(state, player, ("pass", None, None))
+
+    receive = agent.select_action(state, "C", state.legal_actions("C"))
+    comparison = agent._track[id(state)]["last_round_route_comparison"]
+    assert receive == ("receive", "2", None)
+    assert comparison["chosen"] == (receive, ("attack", None, "3"))
+    assert comparison["attack_values"]["3"] > comparison["attack_values"]["1"]
+    assert agent.last_score_fallback_detail.endswith("receive_attack_3")
+    assert agent._track[id(state)]["last_time_limited_search"][
+        "final_response_action"
+    ] == receive
+
+    state.apply_receive("C", "2")
+    agent.on_public_action(state, "C", receive)
+    attack = agent.select_action(state, "C", state.legal_actions("C"))
+    assert attack == ("attack", None, "3")
+    assert agent.last_score_fallback_detail == "kyosha_round_route_followup_3"
+    active = agent._active_branched_attack_plan(state)
+    assert active is not None
+    assert active.plan.node(active.plan.root_node_id).action == attack
+    assert max(node.attack_number for node in active.plan.nodes) >= 3
 
 
 def test_zero_shi_stop_signal_context_matches_enemy_reply_to_ally_shi() -> None:

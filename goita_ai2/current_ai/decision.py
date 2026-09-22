@@ -649,7 +649,9 @@ class DecisionMixin:
             )
 
         response_plan = None
-        if not hard_locked:
+        if not hard_locked and self._kyosha_pass_compare_receiver_position(
+            state, player, actions
+        ) is None:
             response_plan = self._lookup_conditional_response_plan(
                 state,
                 player,
@@ -853,6 +855,78 @@ class DecisionMixin:
                 search_result,
                 source=search_profile,
             )
+
+        # The ordinary search compares pass with receive, but a receive is
+        # inseparable from the attack chosen immediately afterwards.  Compare
+        # those complete routes before committing the response.
+        round_route = None
+        if (
+            kyosha_pass_compare_search
+            and search_result is not None
+            and search_result.information_set
+            and search_result.depth >= self.KYOSHA_PASS_COMPARE_TARGET_DEPTH
+            and search_result.information_confidence
+            >= self.KYOSHA_PASS_COMPARE_MIN_CONFIDENCE
+        ):
+            round_route = self._compare_kyosha_round_routes(state, player)
+        if round_route is not None:
+            chosen_route = round_route["chosen"]
+            chosen_response = chosen_route[0]
+            if chosen_response == baseline_action:
+                self._adopt_rule_preview(preview)
+            else:
+                self._commit_timed_search_action(state, player, chosen_response)
+            tracker = self._track.get(id(state))
+            if tracker is not None:
+                final_search_snapshot = dict(search_snapshot)
+                final_search_snapshot["root_search_action"] = search_result.action
+                final_search_snapshot["final_response_action"] = chosen_response
+                final_search_snapshot["override_accepted"] = (
+                    chosen_response != baseline_action
+                )
+                final_search_snapshot["selection_stage"] = "kyosha_round_route"
+                tracker["last_time_limited_search"] = final_search_snapshot
+                tracker["last_round_route_comparison"] = dict(round_route)
+                round_strategy = tracker.get("round_strategy")
+                if isinstance(round_strategy, dict):
+                    round_strategy["status"] = (
+                        "receive_route_selected"
+                        if len(chosen_route) == 2 else "pass_route_selected"
+                    )
+                    round_strategy["last_route"] = [list(action) for action in chosen_route]
+                tracker["pending_kyosha_receive_attack_piece"] = None
+                tracker["pending_kyosha_receive_source"] = None
+                if len(chosen_route) == 2:
+                    piece = str(chosen_route[1][2])
+                    tracker["pending_kyosha_receive_attack_piece"] = piece
+                    tracker["pending_kyosha_receive_source"] = "round_route"
+                    self._set_attack_intent_plan(
+                        state, player, kind="preserve_followup",
+                        attack_piece=piece, source="kyosha_round_route",
+                        target_team="any",
+                        evidence={
+                            "pass_value": round_route["pass_value"],
+                            "receive_value": round_route["receive_value"],
+                            "depth": round_route["depth"],
+                            "samples": round_route["samples"],
+                        },
+                    )
+                last_search = tracker.get("last_time_limited_search")
+                if isinstance(last_search, dict):
+                    last_search["round_route"] = dict(round_route)
+            self._set_decision_reason("time_search")
+            self._set_score_fallback_detail(
+                f"kyosha_round_route_depth_{round_route['depth']}_"
+                f"samples_{round_route['samples']}_"
+                f"pass_{round_route['pass_value']}_"
+                f"receive_{round_route['receive_value']}_"
+                f"{'receive_attack_' + str(chosen_route[1][2]) if len(chosen_route) == 2 else 'pass'}"
+            )
+            self._remember_conditional_response_plan(
+                state, player, actions, baseline_action, chosen_response,
+                search_result, source="kyosha_round_route",
+            )
+            return chosen_response
 
         if (
             search_result is not None
@@ -1409,7 +1483,9 @@ class DecisionMixin:
 
         if tr is not None and tr.get("pending_kyosha_receive_attack_piece") is not None:
             planned_piece = str(tr.get("pending_kyosha_receive_attack_piece"))
+            planned_source = str(tr.get("pending_kyosha_receive_source") or "")
             tr["pending_kyosha_receive_attack_piece"] = None
+            tr["pending_kyosha_receive_source"] = None
             planned_attack = next(
                 (
                     action
@@ -1421,9 +1497,30 @@ class DecisionMixin:
             )
             if planned_attack is not None:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                if planned_source == "round_route":
+                    future = self._future_attack_plan_for_action(
+                        state, player, planned_attack
+                    ) or {}
+                    preferred = (planned_piece, *future.get("attacks", ())[:2])
+                    try:
+                        plan = self._build_branched_attack_plan(
+                            state, player, planned_attack,
+                            attack_number=int(tr["my_attack_count"]),
+                            revision=int(tr.get("piece_inference_revision", 0)),
+                            candidate_label="round_route",
+                            preferred_attacks=preferred,
+                            source="kyosha_round_route",
+                        )
+                        self._install_branched_attack_plan(state, player, plan)
+                        round_strategy = tr.get("round_strategy")
+                        if isinstance(round_strategy, dict):
+                            round_strategy["status"] = "attack_plan_active"
+                            round_strategy["next_attacks"] = list(preferred[:3])
+                    except (TypeError, ValueError):
+                        pass
                 self._set_decision_reason("time_search")
                 self._set_score_fallback_detail(
-                    f"kyosha_receive_followup_{planned_piece}"
+                    f"{'kyosha_round_route_followup' if planned_source == 'round_route' else 'kyosha_receive_followup'}_{planned_piece}"
                 )
                 return planned_attack
 

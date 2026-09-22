@@ -605,6 +605,11 @@ class BranchedAttackGeneratorMixin:
         attack_number = 1
         if tr is not None:
             attack_number = int(tr.get("my_attack_count", 0)) + 1
+        round_strategy = (tr or {}).get("round_strategy") or {}
+        opening_attacks = tuple(
+            str(piece)
+            for piece in round_strategy.get("opening_attacks", ())
+        )
 
         preserved_first_attack = self._unconfirmed_first_attack_piece_for_next_action(
             state,
@@ -623,6 +628,15 @@ class BranchedAttackGeneratorMixin:
             ),
             start=1,
         ):
+            # The initial hand plan shapes continuations of its own opening
+            # candidate; every other legal opening remains a full candidate.
+            preferred = (
+                opening_attacks
+                if attack_number == 1
+                and opening_attacks
+                and root_action[2] == opening_attacks[0]
+                else tuple()
+            )
             plans.append(self._build_branched_attack_plan(
                 state,
                 player,
@@ -630,6 +644,7 @@ class BranchedAttackGeneratorMixin:
                 attack_number=attack_number,
                 revision=revision,
                 candidate_label=f"c{index}",
+                preferred_attacks=preferred,
             ))
         return tuple(plans)
 

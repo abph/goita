@@ -38,6 +38,7 @@ from goita_ai2.current_ai.probabilistic_hand_inference import (
     ProbabilisticHandInferenceMixin,
 )
 from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
+from goita_ai2.current_ai.round_strategy import RoundStrategyMixin
 from goita_ai2.current_ai.search_cache import SearchCacheMixin
 from goita_ai2.current_ai.search_budget import SearchBudgetMixin
 from goita_ai2.current_ai.shi_insertion import ShiInsertionStrategyMixin
@@ -74,6 +75,7 @@ class RuleBasedAgent(
     UpsideFinishMixin,
     EndgameMixin,
     AttackPlanningMixin,
+    RoundStrategyMixin,
     AttackStrategyMixin,
     ShiInsertionStrategyMixin,
     ReceiveStrategyMixin,

@@ -101,6 +101,8 @@ class TrackingMixin:
             pending_inferred_endgame_attack=None,
             pending_low_reentry_attack_piece=None,
             pending_kyosha_receive_attack_piece=None,
+            pending_kyosha_receive_source=None,
+            last_round_route_comparison=None,
             pending_conditional_response_attack_piece=None,
             pending_shi_insertion_attack_piece=None,
             pending_shi_insertion_wait=None,
@@ -147,6 +149,9 @@ class TrackingMixin:
             state,
             self._track[sid],
             reason="initial_hand",
+        )
+        self._track[sid]["round_strategy"] = self._initial_round_strategy(
+            state, self.me
         )
 
     def on_public_action(self, state, player: str, action: Action) -> None:

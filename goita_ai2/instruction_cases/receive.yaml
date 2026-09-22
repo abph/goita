@@ -218,3 +218,22 @@ cases:
       state: covered
       tests:
         - tests/test_ally_reach_handoff.py::test_review_turn13_passes_before_selecting_an_attack
+
+  - id: REC-012
+    status: confirmed
+    title: 香を受ける判断と受けた後の攻めを一緒に比べる
+    classification: receive_attack_route
+    priority: high
+    conditions:
+      - 敵方の1枚目の香に対して、パスと香で受ける手の両方が合法
+      - 情報集合探索が必要な深さと信頼度まで完了している
+    required: 同じ推定手駒群でパスと受け後の合法な攻めを比較し、選んだ攻めから2回目・3回目の分岐計画を作る
+    forbidden:
+      - 香を受けると決めた後で、比較していないし攻めを枚数だけで採用する
+      - 相手の実際の非公開手駒を使って攻め順を決める
+    reason: 受けの価値は直後の攻めとその後の展開で変わる。パスと受けを同じ前提で比べる必要がある
+    regression:
+      state: covered
+      tests:
+        - tests/test_timed_search_module.py::test_kyosha_receive_compares_pass_with_followup_attacks
+        - tests/test_timed_search_module.py::test_round5_b_turn14_later_receiver_keeps_pass_for_first_kyosha
