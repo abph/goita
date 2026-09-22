@@ -78,6 +78,7 @@ from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.survey_store import SurveyStore, resolve_survey_path
 from backend.survey_api import create_survey_router
 from backend.analytics_geo import infer_country_code, infer_prefecture
+from backend.regional_ads import REGIONS as REGIONAL_AD_REGIONS, infer_region, normalize_ads as normalize_regional_ads, select_ad as select_regional_ad
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
@@ -241,6 +242,7 @@ PUBLIC_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
     }
     for game_id in MAIN_ROOM_NAMES
 }
+REGIONAL_AD_SETTINGS: List[Dict[str, Any]] = []
 ROOM_NAME_MAX_LEN = 12
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
@@ -3501,10 +3503,16 @@ def _lobby_management_settings() -> Dict[str, Any]:
         "main_room_names": copy.deepcopy(MAIN_ROOM_NAMES),
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "public_room_ads": copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS),
+        "regional_ads": copy.deepcopy(REGIONAL_AD_SETTINGS),
     }
 
 
 def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
+    if isinstance(settings.get("regional_ads"), list):
+        try:
+            REGIONAL_AD_SETTINGS[:] = normalize_regional_ads(settings["regional_ads"])
+        except HTTPException:
+            LOGGER.warning("Ignoring invalid persisted regional advertisements")
     public_ads = settings.get("public_room_ads")
     if isinstance(public_ads, dict):
         try:
@@ -5431,6 +5439,42 @@ def admin_logout(response: Response):
 def admin_settings(request: Request):
     _require_site_admin(request)
     return _lobby_admin_payload()
+
+
+@app.get("/api/regional-ad")
+def public_regional_ad(request: Request):
+    region = infer_region(request.headers)
+    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
+    ad = ({key: selected[key] for key in ("id", "title", "message", "url")}
+          if selected else None)
+    return JSONResponse({"ad": ad}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/admin/api/regional-ads")
+def admin_regional_ads(request: Request):
+    _require_site_admin(request)
+    return {"ads": copy.deepcopy(REGIONAL_AD_SETTINGS), "regions": REGIONAL_AD_REGIONS}
+
+
+@app.put("/admin/api/regional-ads")
+def admin_update_regional_ads(request: Request, payload: Dict[str, Any] = Body(...)):
+    _require_site_admin(request)
+    normalized = normalize_regional_ads(payload.get("ads"))
+    previous = copy.deepcopy(REGIONAL_AD_SETTINGS)
+    REGIONAL_AD_SETTINGS[:] = normalized
+    if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
+        REGIONAL_AD_SETTINGS[:] = previous
+        raise HTTPException(500, "地域別広告を永続保存できませんでした")
+    return {"ads": copy.deepcopy(REGIONAL_AD_SETTINGS), "regions": REGIONAL_AD_REGIONS}
+
+
+@app.get("/admin/api/regional-ads/preview")
+def admin_regional_ads_preview(request: Request, region: str = ""):
+    _require_site_admin(request)
+    if region and region not in REGIONAL_AD_REGIONS:
+        raise HTTPException(400, "対象地方が正しくありません")
+    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
+    return {"region": region, "ad": copy.deepcopy(selected)}
 
 
 @app.get("/admin/api/ai-metrics/export")
