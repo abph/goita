@@ -26,7 +26,6 @@
       element("regionalAdTitle").textContent = ad.title;
       element("regionalAdMessage").textContent = ad.message;
       const link = element("regionalAdLink");
-      link.hidden = !ad.url;
       if (ad.url) link.href = ad.url;
       else link.removeAttribute("href");
       element("regionalAd").dataset.adId = ad.id;
