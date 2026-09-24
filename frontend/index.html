@@ -4935,6 +4935,7 @@
              <button class="header-menu-item" type="button" data-member-entry onclick="openMemberPage()">ログイン</button>
              <button class="header-menu-item" type="button" onclick="openLobbySettings()">設定</button>
              <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
+             <button class="header-menu-item" type="button" onclick="openSiteInfo('discord')">Discord</button>
            </div>
          </div>
        </div>
@@ -5099,6 +5100,7 @@
     <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
       <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
+      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('discord')">Discord</button>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('support')">支援について</button>
     </nav>
     <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
@@ -5166,6 +5168,7 @@
           <button id="roomSettingsBtn" class="header-menu-item" type="button" onclick="openSettingsModal(gid)" style="display:none;">設定</button>
           <button class="header-menu-item" type="button" onclick="openKifuFiles()">棋譜ファイル</button>
           <button id="debugTraceMenuItem" class="header-menu-item" type="button" onclick="openDebugTrace()" style="display:none;">スコアアタック</button>
+          <button class="header-menu-item" type="button" onclick="openSiteInfo('discord')">Discord</button>
         </div>
       </div>
     </div>
@@ -6297,8 +6300,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260924d"></script>
-<script src="/static/i18n.js?v=20260924d"></script>
+<script src="/static/i18n-en.js?v=20260925a"></script>
+<script src="/static/i18n.js?v=20260925a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260922b"></script>
@@ -7426,6 +7429,20 @@ const SITE_INFO = {
         paragraphs: [
             "対局室のチャットは他の利用者にも表示されます。個人情報や公開したくない内容は書き込まないでください。",
         ],
+    },
+    discord: {
+        title: "Discord",
+        paragraphs: [
+            "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
+            "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
+        ],
+        link: {
+            prefix: "",
+            label: "Discordサーバーに参加する",
+            suffix: "",
+            href: "https://discord.gg/JvNE7VfDXQ",
+            afterParagraphs: true,
+        },
     },
     support: {
         title: "支援について",

@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260924d"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260924d"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260925a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260925a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -54,6 +54,26 @@ def test_footer_information_modal_has_close_button_and_current_notice() -> None:
         assert source in html
         assert source in chinese
         assert source in english
+
+
+def test_discord_community_is_available_from_lobby_and_menus() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    assert 'class="lobby-discord-card"' not in html
+    assert html.count('onclick="openSiteInfo(\'discord\')"') == 3
+    footer_links = html.split('class="lobby-footer-links lobby-footer-links-primary"', 1)[1].split("</nav>", 1)[0]
+    assert footer_links.index(">Discord</button>") < footer_links.index(">支援について</button>")
+    assert 'href: "https://discord.gg/JvNE7VfDXQ"' in html
+    for source in [
+        "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
+        "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
+        "Discordサーバーに参加する",
+    ]:
+        assert source in html
+        assert f'"{source}"' in chinese
+        assert f'"{source}"' in english
 
 
 def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:
