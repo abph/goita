@@ -5399,7 +5399,7 @@
             </div>
             <div class="settings-row">
               <label><input type="checkbox" id="lobbyCheckEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
-              <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+              <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。</p>
             </div>
             <div class="settings-row">
               <label><input type="checkbox" id="lobbyCheckAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
@@ -5562,7 +5562,7 @@
           </div>
           <div id="beginnerSupportSettingRow" class="settings-row">
             <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
-            <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。</p>
+            <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。</p>
           </div>
           <div class="settings-row">
             <label><input type="checkbox" id="checkAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
@@ -6171,8 +6171,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260922b"></script>
-<script src="/static/i18n.js?v=20260922b"></script>
+<script src="/static/i18n-en.js?v=20260924a"></script>
+<script src="/static/i18n.js?v=20260924a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260922b"></script>
@@ -9364,7 +9364,7 @@ function openSettingsModal(targetGid, event, initialTab = "personal") {
     document.getElementById("matchSettingsTab").style.display =
         (targetGid === gid && isCurrentClientHost()) ? "block" : "none";
     document.getElementById("roomManagementTab").style.display = isMainRoomId(targetGid) ? "none" : "block";
-    document.getElementById("beginnerSupportSettingRow").style.display = isMainRoomId(targetGid) ? "none" : "block";
+    document.getElementById("beginnerSupportSettingRow").style.display = "block";
     document.getElementById("boardViewSettingRow").style.display =
         supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none";
     if (!sameTarget) {
@@ -13274,7 +13274,6 @@ function rerenderPendingPreview(){
 function beginnerSupportActive(state = latestState){
   return (
     !isPersonalScoreRoom() && personalSettings.enableBeginnerSupport === true &&
-    !isMainRoomId(gid) &&
     !isSpectator() &&
     state?.is_started === true &&
     state?.finished !== true &&

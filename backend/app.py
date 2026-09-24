@@ -322,7 +322,7 @@ AI_HELP_SYSTEM_PROMPT = """
 - ゲーム開始前にも手駒欄は表示される。開始や配牌・親設定はホスト側の操作に従う。
 - ホストは、ゲームの開始や配牌、親の設定などの進行管理を行う権限を持つ。「ルームを作成したプレイヤー」とは説明しない。
 - 個人設定では名前、演出、Cの声、効果音、モバイル版チャットの位置・透明度・幅を変更できる。
-- プライベートルームでは、個人設定の「初心者サポートを有効にする」をオンにすると、おすすめの駒と簡単な理由が表示される。
+- 個人設定の「初心者サポートを有効にする」をオンにすると、公開部屋とプライベートルームでおすすめの駒と簡単な理由が表示される。
 - ルーム管理は管理用パスワードが必要で、ルーム名、入室用合言葉、AI種類、合法手、ログ表示を設定できる。
 - 「みんな手札公開」では盤面上に各プレイヤーの手駒が表示される。
 - 「棋譜を保存する」は名前入り、「匿名で棋譜を保存する」はプレイヤー名を伏せて保存する。
@@ -7229,9 +7229,6 @@ def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
 
 @app.get("/games/{game_id}/beginner_recommendation")
 def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str = ""):
-    if _is_main_game_id(game_id):
-        raise HTTPException(status_code=403, detail="Beginner support is available only in private rooms.")
-
     player = _validate_seat(player, name="player")
     game = GAMES.get(game_id)
     if not game:

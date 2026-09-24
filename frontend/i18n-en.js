@@ -566,7 +566,7 @@
     "AIの思考時間の内訳を表示する": "Show AI thinking-time breakdown",
     "終局後に自分の手札を自動で公開する": "Automatically reveal your hand after each round",
     "終局後にAIの手札を自動で公開する": "Automatically reveal AI hands after each round",
-    "おすすめの駒と、簡単な理由を表示します。プライベートルームだけで利用できます。": "Shows a recommended piece and a short explanation. Available only in private rooms.",
+    "おすすめの駒と、簡単な理由を表示します。": "Shows a recommended piece and a short explanation.",
     "▶ 音の設定を開く": "▶ Open Sound Settings",
     "▼ 音の設定を閉じる": "▼ Close Sound Settings",
     "効果音（駒を出す音など）を有効にする": "Enable sound effects (such as piece sounds)",

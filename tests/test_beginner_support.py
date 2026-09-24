@@ -4,8 +4,6 @@ import copy
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi import HTTPException
-
 import backend.app as app_module
 from goita_ai2.rule_based import RuleBasedAgent as CurrentRuleBasedAgent
 from goita_ai2.state import GoitaState
@@ -48,17 +46,29 @@ def test_private_room_recommendation_is_legal_and_non_mutating() -> None:
         app_module.GAMES.pop(game_id, None)
 
 
-def test_beginner_support_is_not_available_in_main_room() -> None:
+def test_beginner_support_is_available_in_main_room() -> None:
+    game_id = app_module.MAIN_GID
+    old_game = app_module.GAMES.get(game_id)
+    game = app_module._create_game_obj(dealer="A", ai_profile="beginner_upper")
+    game["is_started"] = True
+    game["human_seats"] = {"A": "client-a"}
+    app_module.GAMES[game_id] = game
+
     try:
-        app_module.get_beginner_recommendation(
-            app_module.MAIN_GID,
+        result = app_module.get_beginner_recommendation(
+            game_id,
             player="A",
             client_id="client-a",
         )
-    except HTTPException as exc:
-        assert exc.status_code == 403
-    else:
-        raise AssertionError("The main room must reject beginner recommendations.")
+        action = result["action"]
+        action_tuple = (action["action_type"], action["block"], action["attack"])
+        assert action_tuple in game["state"].legal_actions("A")
+        assert result["explanation"]
+    finally:
+        if old_game is None:
+            app_module.GAMES.pop(game_id, None)
+        else:
+            app_module.GAMES[game_id] = old_game
 
 
 def test_forced_pass_is_reported_as_forced() -> None:
@@ -186,11 +196,15 @@ def test_frontend_contains_beginner_support_controls() -> None:
     assert 'heading.textContent = forcedPass ? "操作" : "おすすめ";' in html
     assert "受けられる駒がないため、パスしてください。" in html
     assert "受けられる駒があります。本当にパスしますか？" in html
+    assert "プライベートルームだけで利用できます。" not in html
+    active_start = html.index("function beginnerSupportActive")
+    active_end = html.index("function beginnerRecommendedPiece", active_start)
+    assert "!isMainRoomId(gid)" not in html[active_start:active_end]
 
 
 if __name__ == "__main__":
     test_private_room_recommendation_is_legal_and_non_mutating()
-    test_beginner_support_is_not_available_in_main_room()
+    test_beginner_support_is_available_in_main_room()
     test_forced_pass_is_reported_as_forced()
     test_ally_attack_pass_uses_ally_guidance()
     test_enemy_attack_pass_names_the_saved_royal()

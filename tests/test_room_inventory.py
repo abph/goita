@@ -185,18 +185,12 @@ def test_private_c_through_f_exist_but_are_hidden_when_only_two_are_shown() -> N
         app_module.setup_supporter_rooms()
 
 
-def test_every_main_room_disables_beginner_support() -> None:
+def test_every_main_room_has_beginner_support_agents() -> None:
     for game_id in app_module.MAIN_GIDS:
-        try:
-            app_module.get_beginner_recommendation(
-                game_id,
-                player="A",
-                client_id="test-client",
-            )
-        except HTTPException as exc:
-            assert exc.status_code == 403
-        else:
-            raise AssertionError(f"{game_id} must reject beginner support")
+        app_module._ensure_main_game(game_id)
+        support_agents = app_module.GAMES[game_id].get("beginner_support_agents")
+        assert isinstance(support_agents, dict)
+        assert set(support_agents) == set(app_module.ALL_SEATS)
 
 
 def test_public_room_reveal_requires_round_end_and_player_consent() -> None:
@@ -997,7 +991,7 @@ if __name__ == "__main__":
     test_private_c_defaults_to_kanazawa_team_saitama_room()
     test_lobby_shows_configured_main_rooms_and_two_private_rooms()
     test_private_c_through_f_exist_but_are_hidden_when_only_two_are_shown()
-    test_every_main_room_disables_beginner_support()
+    test_every_main_room_has_beginner_support_agents()
     test_public_room_reveal_requires_round_end_and_player_consent()
     test_private_room_allows_ai_reveal_by_any_seated_player_after_round_end()
     test_next_round_reset_can_start_immediately_with_score_preserved()
