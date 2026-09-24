@@ -161,6 +161,9 @@ class RuleBasedAgent(
         self.INFER_REPEAT_RECEIVE_PENALTY = 10.0
         self.INFER_ATTACK_EXHAUSTED_BONUS = 35.0
         self.INFER_ATTACK_OVERLAP_PENALTY = 8.0
+        # 敵が攻めに使い、まだ同じ駒を持つ可能性がある場合は、
+        # その駒をこちらから返して受けさせる攻めを避ける。
+        self.ENEMY_USED_ATTACK_REUSE_PENALTY = 120.0
         self.INFER_KAKARI_BLOCKED_PENALTY = 22.0
         self.INFER_KAKARI_CLEAR_BONUS = 25.0
         self.INFER_BLOCK_KEEP_BONUS = 14.0

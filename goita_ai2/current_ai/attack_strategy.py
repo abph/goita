@@ -223,7 +223,7 @@ class AttackStrategyMixin:
             or state.phase != "attack"
             or state.turn != player
             or int(tr.get("my_attack_count", 0)) != 0
-            or tr.get("my_last_receive_piece") != "1"
+            or tr.get("my_last_receive_piece") not in ("1", "8", "9")
             or int(tr.get("my_init_count", Counter()).get("1", 0)) < 4
             or hand.count("1") < 3
             or (
@@ -654,6 +654,57 @@ class AttackStrategyMixin:
 
         return value
 
+    def _enemy_used_attack_reuse_penalty(
+        self,
+        state,
+        player: str,
+        attack: Optional[str],
+    ) -> float:
+        """Penalize returning a piece that an enemy has already shown as an attack.
+
+        An enemy attack is evidence that the attacker may have prepared another
+        copy. The rule stays soft so a proven finish, a continuing attack plan,
+        or an ally's kakarigotae can still take priority.
+        """
+        if attack not in ("2", "3", "4", "5", "6", "7"):
+            return 0.0
+
+        tr = self._track.get(id(state))
+        if tr is None or attack not in tr.get("enemy_past_attacks", set()):
+            return 0.0
+        if self._opponents_piece_exhausted(tr, player, attack):
+            return 0.0
+        if (
+            self._is_kakarigotae_piece(attack)
+            and attack in tr.get("ally_past_attacks", set())
+        ):
+            return 0.0
+
+        evidence = 0.0
+        for enemy in ("A", "B", "C", "D"):
+            if enemy == player or self._same_team(enemy, player):
+                continue
+            model = tr.get("public_hand_models", {}).get(enemy, {})
+            if int(model.get("attacks", Counter()).get(attack, 0)) <= 0:
+                continue
+            remaining_min, remaining_max = self._estimate_remaining_range(
+                tr,
+                enemy,
+                attack,
+            )
+            if remaining_max <= 0:
+                continue
+            expected = self._estimate_remaining_expected(tr, enemy, attack)
+            evidence = max(
+                evidence,
+                (1.0 if remaining_min > 0 else 0.55)
+                + min(1.0, expected),
+            )
+
+        if evidence <= 0.0:
+            return 0.0
+        return self.ENEMY_USED_ATTACK_REUSE_PENALTY * evidence
+
     def _piece_count_hidden_block_adjustment(self, state, player: str, block: Optional[str]) -> float:
         if block is None:
             return 0.0
@@ -1000,6 +1051,7 @@ class AttackStrategyMixin:
         score += self._multi_attack_shape_plan_adjustment(state, player, action_type, block, attack)
         score += self._weak_shi_fallback_high_point_attack_bonus(state, player, action_type, attack)
         score += self._piece_count_attack_adjustment(state, player, attack)
+        score -= self._enemy_used_attack_reuse_penalty(state, player, attack)
         score += self._kakari_saturation_attack_bonus(state, player, attack)
         score += self._fourth_middle_third_attack_bonus(state, player, action_type, attack)
         score += self._ally_force_king_attack_bonus(state, player, action_type, attack)

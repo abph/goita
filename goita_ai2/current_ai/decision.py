@@ -154,6 +154,7 @@ class DecisionMixin:
             or detail.startswith("pass_ally_kyosha_continuation")
             or detail.startswith("pass_ally_reach_royal_")
             or detail.startswith("pass_royal_reserve_")
+            or detail.startswith("pass_enemy_first_ally_passed_weak_followup")
             or detail.startswith("receive_no_shi_royal_")
         ):
             return "strong"
@@ -1687,12 +1688,22 @@ class DecisionMixin:
             actions,
         )
         if four_shi_return is not None:
+            receive_piece = tr.get("my_last_receive_piece") if tr is not None else None
+            after_royal_receive = receive_piece in ("8", "9")
             if tr is not None:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 tr["shi_attack_mode"] = True
-                tr["shi_attack_mode_source"] = "four_shi_receive_return"
+                tr["shi_attack_mode_source"] = (
+                    "four_shi_after_royal_receive"
+                    if after_royal_receive
+                    else "four_shi_receive_return"
+                )
             self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail("attack_four_shi_receive_return")
+            self._set_score_fallback_detail(
+                "attack_four_shi_after_royal_receive"
+                if after_royal_receive
+                else "attack_four_shi_receive_return"
+            )
             return four_shi_return
 
         give_way_action = self._give_way_to_ally_guaranteed_win_action(state, player, actions)
@@ -2271,6 +2282,34 @@ class DecisionMixin:
             best_action,
             has_non_king_attack_option=has_non_king_attack_option,
         )
+        if best_action[0] in ("attack", "attack_after_block"):
+            # Report this reason only when the new penalty actually changes the
+            # top candidate. This keeps the explanation tied to the decision,
+            # instead of relabeling an unchanged tatewari or continuation.
+            raw_best = max(
+                scored_actions,
+                key=lambda item: float(item["score"])
+                + self._enemy_used_attack_reuse_penalty(
+                    state,
+                    player,
+                    item["action"][2],
+                ),
+            )
+            raw_best_action = raw_best["action"]
+            if (
+                raw_best_action != best_action
+                and self._enemy_used_attack_reuse_penalty(
+                    state,
+                    player,
+                    raw_best_action[2],
+                ) > 0
+                and self._enemy_used_attack_reuse_penalty(
+                    state,
+                    player,
+                    best_action[2],
+                ) <= 0
+            ):
+                score_fallback_detail = "attack_avoid_enemy_used_piece"
 
         if tr is not None:
             if best_action[0] == "receive":

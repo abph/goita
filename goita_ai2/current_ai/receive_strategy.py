@@ -17,6 +17,31 @@ Action = Tuple[str, Optional[str], Optional[str]]
 class ReceiveStrategyMixin:
     """Chooses when to receive, pass, or spend a king piece."""
 
+    def _has_meaningful_attack_after_same_piece_receive(
+        self,
+        state,
+        player: str,
+        receive_piece: str,
+    ) -> bool:
+        """Return whether receiving leaves an attack worth taking the lead for."""
+        remaining = Counter(state.hands[player])
+        if remaining.get(receive_piece, 0) <= 0:
+            return False
+        remaining[receive_piece] -= 1
+
+        # Receiving to finish, a repeated attack, a big piece, or a real shi
+        # continuation gives the receive a concrete purpose. A lone middle
+        # piece or one/two shi does not by itself justify taking over the turn.
+        if sum(remaining.values()) <= 1:
+            return True
+        if any(remaining.get(piece, 0) >= 2 for piece in ("2", "3", "4", "5", "6", "7")):
+            return True
+        if any(remaining.get(piece, 0) >= 1 for piece in ("6", "7")):
+            return True
+        if remaining.get("1", 0) >= 3:
+            return True
+        return False
+
     def _enemy_shi_response_adjustment(
         self,
         state,
@@ -230,6 +255,20 @@ class ReceiveStrategyMixin:
         )
         if ally_passed_to_me:
             dealer = getattr(state, "dealer", None)
+            pass_action = next((act for act in actions if act[0] == "pass"), None)
+            if (
+                pass_action is not None
+                and not self._has_meaningful_attack_after_same_piece_receive(
+                    state,
+                    player,
+                    current_attack,
+                )
+            ):
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(
+                    "pass_enemy_first_ally_passed_weak_followup"
+                )
+                return pass_action
             self._set_decision_reason("score_fallback")
             if dealer is not None and attacker == dealer:
                 self._set_score_fallback_detail("enemy_dealer_first_ally_passed_same_piece_receive")

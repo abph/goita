@@ -13,6 +13,7 @@ def test_rule_based_agent_uses_receive_strategy_mixin() -> None:
 
 def test_receive_strategy_methods_are_owned_by_mixin() -> None:
     for method_name in (
+        "_has_meaningful_attack_after_same_piece_receive",
         "_enemy_first_same_piece_rank_policy_action",
         "_enemy_second_attack_royal_reserve_pass_action",
         "_ally_receive_keeps_strong_third_attack",
@@ -997,3 +998,59 @@ if __name__ == "__main__":
     test_no_shi_endgame_passes_enemy_first_horse_and_preserves_king()
     test_passes_ally_first_kyosha_to_preserve_likely_three_kyosha_route()
     print("RECEIVE_STRATEGY_MODULE_TEST_OK")
+
+
+def test_ally_passed_enemy_first_attack_is_passed_without_meaningful_followup() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11123567"),
+            "B": list("11124459"),
+            "C": list("11123478"),
+            "D": list("12334556"),
+        },
+        dealer="D",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+        agent._ensure_trackers(state)
+
+    history = (
+        ("D", ("attack_after_block", "1", "5")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("attack_after_block", "6", "3")),
+        ("A", ("receive", "3", None)),
+        ("A", ("attack", None, "7")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("attack_after_block", "1", "6")),
+        ("B", ("receive", "9", None)),
+        ("B", ("attack", None, "5")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    a_agent = agents["A"]
+    chosen = a_agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert chosen == ("pass", None, None)
+    assert (
+        a_agent.last_score_fallback_detail
+        == "pass_enemy_first_ally_passed_weak_followup"
+    )
