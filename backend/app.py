@@ -684,6 +684,14 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
         if removed:
             _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
             await manager.broadcast_update(game_id)
+            if (
+                game.get("tutorial_mode", False)
+                and game.get("tutorial_owner_client_id") == client_id
+                and not _human_seat_set(game)
+            ):
+                _cancel_turn_timeout_task(game_id)
+                GAMES.pop(game_id, None)
+                GAME_TURN_LOCKS.pop(game_id, None)
             await manager.broadcast_update("lobby")
     except asyncio.CancelledError:
         return
@@ -2310,6 +2318,12 @@ class GuidedPracticeRequest(BaseModel):
     practice_type: str = Field(min_length=1, max_length=32)
 
 
+class TutorialStartRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    start_step: int = Field(default=1, ge=1, le=5)
+    chapter: str = Field(default="basic", min_length=1, max_length=16)
+
+
 class PracticeReplayRequest(BaseModel):
     requester: str = Field(default="W", min_length=1, max_length=1)
     client_id: str = Field(min_length=1, max_length=128)
@@ -3005,6 +3019,149 @@ def _action_state_token(game, state):
     return hashlib.sha256(context.encode()).hexdigest()
 
 
+TUTORIAL_TOTAL_STEPS = 5
+TUTORIAL_HANDS: Dict[str, List[str]] = {
+    "A": ["3", "4", "3", "2", "1", "7", "6", "5"],
+    "B": ["4", "4", "1", "3", "7", "6", "1", "1"],
+    "C": ["1", "1", "1", "2", "2", "4", "5", "8"],
+    "D": ["1", "1", "1", "2", "3", "5", "5", "9"],
+}
+TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[str]]]] = [
+    (1, "A", ("attack_after_block", "3", "4")),
+    (1, "B", ("receive", "4", None)),
+    (1, "B", ("attack", None, "4")),
+    (1, "C", ("pass", None, None)),
+    (1, "D", ("pass", None, None)),
+    (2, "A", ("pass", None, None)),
+    (2, "B", ("attack_after_block", "1", "3")),
+    (2, "C", ("pass", None, None)),
+    (2, "D", ("pass", None, None)),
+    (3, "A", ("receive", "3", None)),
+    (3, "A", ("attack", None, "2")),
+    (3, "B", ("pass", None, None)),
+    (3, "C", ("pass", None, None)),
+    (3, "D", ("pass", None, None)),
+    (4, "A", ("attack_after_block", "1", "7")),
+    (4, "B", ("receive", "7", None)),
+    (4, "B", ("attack", None, "6")),
+    (4, "C", ("pass", None, None)),
+    (4, "D", ("pass", None, None)),
+    (5, "A", ("receive", "6", None)),
+    (5, "A", ("attack", None, "5")),
+]
+
+ROYAL_TUTORIAL_TOTAL_STEPS = 3
+ROYAL_TUTORIAL_HANDS: Dict[str, List[str]] = {
+    "A": ["9", "8", "5", "4", "3", "3", "1", "1"],
+    "B": ["7", "5", "2", "4", "1", "1", "6", "3"],
+    "C": ["7", "6", "5", "4", "3", "2", "1", "1"],
+    "D": ["5", "4", "2", "2", "1", "1", "1", "1"],
+}
+ROYAL_TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[str]]]] = [
+    (1, "B", ("attack_after_block", "1", "7")),
+    (1, "C", ("pass", None, None)),
+    (1, "D", ("pass", None, None)),
+    (1, "A", ("receive", "9", None)),
+    (1, "A", ("attack", None, "5")),
+    (1, "B", ("receive", "5", None)),
+    (1, "B", ("attack", None, "2")),
+    (1, "C", ("pass", None, None)),
+    (1, "D", ("pass", None, None)),
+    (2, "A", ("pass", None, None)),
+    (2, "B", ("attack_after_block", "1", "4")),
+    (2, "C", ("pass", None, None)),
+    (2, "D", ("pass", None, None)),
+    (3, "A", ("receive", "4", None)),
+    (3, "A", ("attack", None, "8")),
+]
+
+
+def _normalize_tutorial_chapter(value: Any) -> str:
+    chapter = str(value or "basic").strip().lower()
+    if chapter not in {"basic", "royal"}:
+        raise HTTPException(status_code=400, detail="Unknown tutorial chapter")
+    return chapter
+
+
+def _tutorial_script_for(game: Dict[str, Any]):
+    return (
+        ROYAL_TUTORIAL_SCRIPT
+        if game.get("tutorial_chapter") == "royal"
+        else TUTORIAL_SCRIPT
+    )
+
+
+def _tutorial_total_steps_for(game: Dict[str, Any]) -> int:
+    return (
+        ROYAL_TUTORIAL_TOTAL_STEPS
+        if game.get("tutorial_chapter") == "royal"
+        else TUTORIAL_TOTAL_STEPS
+    )
+
+
+def _tutorial_room_id(client_id: str) -> str:
+    digest = hashlib.sha256(str(client_id).encode("utf-8")).hexdigest()[:20]
+    return f"tutorial-{digest}"
+
+
+def _tutorial_script_entry(
+    game: Dict[str, Any],
+) -> Optional[Tuple[int, str, Tuple[str, Optional[str], Optional[str]]]]:
+    try:
+        cursor = int(game.get("tutorial_cursor", 0))
+    except (TypeError, ValueError):
+        cursor = 0
+    script = _tutorial_script_for(game)
+    if cursor < 0 or cursor >= len(script):
+        return None
+    return script[cursor]
+
+
+def _tutorial_expected_action(
+    game: Dict[str, Any],
+    player: str,
+) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
+    if not game.get("tutorial_mode", False):
+        return None
+    entry = _tutorial_script_entry(game)
+    if entry is None or entry[1] != player:
+        return None
+    return entry[2]
+
+
+def _tutorial_current_step(game: Dict[str, Any]) -> int:
+    total_steps = _tutorial_total_steps_for(game)
+    if game.get("tutorial_completed", False):
+        return total_steps
+    try:
+        cursor = max(0, int(game.get("tutorial_cursor", 0)))
+    except (TypeError, ValueError):
+        cursor = 0
+    for step, player, _action in _tutorial_script_for(game)[cursor:]:
+        if player == "A":
+            return step
+    return total_steps
+
+
+def _tutorial_completed_step(game: Dict[str, Any]) -> int:
+    if game.get("tutorial_completed", False):
+        return _tutorial_total_steps_for(game)
+    return max(0, _tutorial_current_step(game) - 1)
+
+
+def _complete_tutorial_if_script_finished(game: Dict[str, Any]) -> None:
+    if not game.get("tutorial_mode", False):
+        return
+    if int(game.get("tutorial_cursor", 0)) < len(_tutorial_script_for(game)):
+        return
+    game["tutorial_completed"] = True
+    state = game.get("state")
+    if state is not None and not state.finished:
+        state.finished = True
+        state.winner = None
+    game["last_round_score"] = 0
+
+
 def _state_public_view(
     state: GoitaState,
     *,
@@ -3115,6 +3272,18 @@ def _state_public_view(
             and _practice_replay_is_supported(game_obj)
             and game_obj.get("practice_replay_source")
         ),
+        "tutorial_mode": bool(game_obj.get("tutorial_mode", False)),
+        "tutorial_chapter": str(game_obj.get("tutorial_chapter", "basic"))
+            if game_obj.get("tutorial_mode", False) else "",
+        "tutorial_step": _tutorial_current_step(game_obj)
+            if game_obj.get("tutorial_mode", False) else 0,
+        "tutorial_total_steps": _tutorial_total_steps_for(game_obj)
+            if game_obj.get("tutorial_mode", False) else 0,
+        "tutorial_action_index": int(game_obj.get("tutorial_cursor", 0))
+            if game_obj.get("tutorial_mode", False) else 0,
+        "tutorial_completed_step": _tutorial_completed_step(game_obj)
+            if game_obj.get("tutorial_mode", False) else 0,
+        "tutorial_completed": bool(game_obj.get("tutorial_completed", False)),
         "trace_mode": bool(game_obj.get("trace_mode", False)),
         "is_score_attack_room": is_score_room(game_id),
         "trace_diverged": bool(game_obj.get("trace_diverged", False)),
@@ -3240,6 +3409,68 @@ def _create_game_obj(
         "turn_deadline_at": None,
         "turn_timer_token": 0,
     }
+
+
+def _create_tutorial_game(
+    client_id: str,
+    start_step: int = 1,
+    chapter: str = "basic",
+) -> Dict[str, Any]:
+    chapter = _normalize_tutorial_chapter(chapter)
+    total_steps = (
+        ROYAL_TUTORIAL_TOTAL_STEPS if chapter == "royal" else TUTORIAL_TOTAL_STEPS
+    )
+    step = max(1, min(total_steps, int(start_step)))
+    hands = copy.deepcopy(
+        ROYAL_TUTORIAL_HANDS if chapter == "royal" else TUTORIAL_HANDS
+    )
+    dealer = "B" if chapter == "royal" else "A"
+    script = ROYAL_TUTORIAL_SCRIPT if chapter == "royal" else TUTORIAL_SCRIPT
+    game = _create_game_obj(dealer=dealer, ai_profile="intermediate_middle2")
+    game["state"] = GoitaState(hands=copy.deepcopy(hands), dealer=dealer)
+    game["init_hands"] = copy.deepcopy(hands)
+    game["dealer"] = dealer
+    game["human_seats"] = {"A": client_id}
+    game["ai_seats"] = ["B", "C", "D"]
+    game["player_names"] = {
+        "A": "",
+        "B": "案内役",
+        "C": "案内役",
+        "D": "案内役",
+    }
+    game["player_tags"] = {"A": "beginner", "B": "", "C": "", "D": ""}
+    game["owner_name"] = "ごいたチュートリアル"
+    game["hidden_from_lobby"] = True
+    game["is_started"] = True
+    game["tutorial_mode"] = True
+    game["tutorial_chapter"] = chapter
+    game["tutorial_owner_client_id"] = client_id
+    game["tutorial_cursor"] = 0
+    game["tutorial_completed"] = False
+    game["show_log"] = False
+    game["log"] = [f"Tutorial start. dealer={dealer}"]
+
+    target_index = next(
+        (
+            index
+            for index, (script_step, player, _action) in enumerate(script)
+            if script_step == step and player == "A"
+        ),
+        0,
+    )
+    while int(game["tutorial_cursor"]) < target_index:
+        _script_step, player, action = script[int(game["tutorial_cursor"])]
+        result = _apply_agent_turn(
+            game,
+            player,
+            forced_action=action,
+            log_suffix=" [TUTORIAL]",
+        )
+        if result.get("status") != "ok":
+            raise RuntimeError("Unable to prepare tutorial step")
+        game["tutorial_cursor"] = int(game["tutorial_cursor"]) + 1
+    game["action_state_nonce"] = secrets.token_hex(24)
+    return game
 
 
 def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
@@ -3892,6 +4123,15 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
             
             multiplier = 2 if ("baizuke" in effects or "damadama_agari" in effects) else 1
             round_score = base_score * multiplier
+
+            if game.get("tutorial_mode"):
+                game["last_round_score"] = 0
+                game["tutorial_completed"] = True
+                game["tutorial_cursor"] = len(_tutorial_script_for(game))
+                game["log"].append(
+                    f"Tutorial finished. winner={winner}, score_not_added={round_score}"
+                )
+                return
 
             if game.get("practice_replay_active"):
                 game["last_round_score"] = round_score
@@ -4924,7 +5164,8 @@ def _apply_agent_turn(
     game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, agent_action))
     _notify_public(agents, state, player, agent_action)
     _notify_public(game.get("beginner_support_agents", {}), state, player, agent_action)
-    _schedule_ai_background_search(game, agent_action)
+    if not game.get("tutorial_mode", False):
+        _schedule_ai_background_search(game, agent_action)
 
     _handle_round_finish(game, state, agent_action, effects)
     return {"status": "ok", "player": player}
@@ -5005,6 +5246,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                     location = MAIN_ROOM_NAMES.get(connected_game_id, "公開部屋")
                 elif is_score_room(connected_game_id):
                     location = "スコアアタック"
+                elif game.get("tutorial_mode", False):
+                    location = "ごいたチュートリアル"
                 elif connected_game_id == DEBUG_GID or game.get("is_debug_room", False):
                     location = "デバッグルーム"
                 elif is_private_room:
@@ -5843,6 +6086,51 @@ async def start_guided_practice(req: GuidedPracticeRequest):
         "room_name": str(GAMES[selected_id].get("owner_name", "")),
         "deal_mode": mode,
         "open_preset": practice_type == "preset",
+    }
+
+
+@app.post("/tutorial/start")
+async def start_tutorial(req: TutorialStartRequest):
+    room_id = _tutorial_room_id(req.client_id)
+    chapter = _normalize_tutorial_chapter(req.chapter)
+    async with _game_turn_lock(room_id):
+        GAMES[room_id] = _create_tutorial_game(
+            req.client_id,
+            req.start_step,
+            chapter,
+        )
+        manager.cancel_disconnect_release(room_id, req.client_id)
+    await manager.broadcast_update(room_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "game_id": room_id,
+        "room_name": "ごいたチュートリアル",
+        "start_step": _tutorial_current_step(GAMES[room_id]),
+        "chapter": chapter,
+    }
+
+
+@app.post("/games/{game_id}/tutorial/restart")
+async def restart_tutorial(game_id: str, req: TutorialStartRequest):
+    expected_room_id = _tutorial_room_id(req.client_id)
+    if game_id != expected_room_id:
+        raise HTTPException(status_code=403, detail="This tutorial belongs to another client.")
+    async with _game_turn_lock(game_id):
+        current = GAMES.get(game_id)
+        if not current or not current.get("tutorial_mode", False):
+            raise HTTPException(status_code=404, detail="Tutorial not found")
+        if current.get("tutorial_owner_client_id") != req.client_id:
+            raise HTTPException(status_code=403, detail="This tutorial belongs to another client.")
+        chapter = _normalize_tutorial_chapter(req.chapter)
+        GAMES[game_id] = _create_tutorial_game(req.client_id, 1, chapter)
+        manager.cancel_disconnect_release(game_id, req.client_id)
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "start_step": 1,
+        "chapter": chapter,
     }
 
 
@@ -6696,15 +6984,25 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
             _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
-    
-    await manager.broadcast_update(game_id)
-    await manager.broadcast_update("lobby")
-    return {
+
+    remove_tutorial = bool(
+        game.get("tutorial_mode", False)
+        and game.get("tutorial_owner_client_id") == client_id
+        and not _human_seat_set(game)
+    )
+    response_payload = {
         "ok": True,
         "game_id": game_id,
         "human_seats": sorted(_seat_set(hs)),
         "ai_seats": sorted(_ai_seat_set(game)),
     }
+    await manager.broadcast_update(game_id)
+    if remove_tutorial:
+        _cancel_turn_timeout_task(game_id)
+        GAMES.pop(game_id, None)
+        GAME_TURN_LOCKS.pop(game_id, None)
+    await manager.broadcast_update("lobby")
+    return response_payload
 
 
 @app.post("/games/{game_id}/set_ai")
@@ -7074,6 +7372,13 @@ async def _step_unlocked(game_id: str, req: StepRequest):
         raise HTTPException(status_code=400, detail=f"not your turn (turn={state.turn}, you={player})")
     
     action = req.action.to_tuple()
+    if game.get("tutorial_mode", False):
+        expected_action = _tutorial_expected_action(game, player)
+        if player != "A" or expected_action is None or action != expected_action:
+            raise HTTPException(
+                status_code=409,
+                detail="チュートリアルの案内で示された操作を選んでください。",
+            )
     trace_expected = _debug_trace_action(
         game,
         state,
@@ -7109,9 +7414,13 @@ async def _step_unlocked(game_id: str, req: StepRequest):
             game["trace_diverged"] = True
     _notify_public(agents, state, player, action)
     _notify_public(game.get("beginner_support_agents", {}), state, player, action)
-    _schedule_ai_background_search(game, action)
+    if game.get("tutorial_mode", False):
+        game["tutorial_cursor"] = int(game.get("tutorial_cursor", 0)) + 1
+    else:
+        _schedule_ai_background_search(game, action)
 
     _handle_round_finish(game, state, action, effects)
+    _complete_tutorial_if_script_finished(game)
     _arm_turn_timeout(game_id)
     _schedule_debug_auto_next_round(game_id)
 
@@ -7147,6 +7456,31 @@ async def _cpu_step_unlocked(game_id: str):
     ai_seats = _ai_seat_set(game)
     if state.finished or (state.turn not in ai_seats):
         return {"status": "ignored"}
+
+    if game.get("tutorial_mode", False):
+        applied = 0
+        while not state.finished and state.turn in ai_seats:
+            entry = _tutorial_script_entry(game)
+            if entry is None:
+                break
+            _step, scripted_player, scripted_action = entry
+            if scripted_player != state.turn:
+                break
+            result = _apply_agent_turn(
+                game,
+                scripted_player,
+                forced_action=scripted_action,
+                log_suffix=" [TUTORIAL]",
+            )
+            if result.get("status") != "ok":
+                return result
+            game["tutorial_cursor"] = int(game.get("tutorial_cursor", 0)) + 1
+            _complete_tutorial_if_script_finished(game)
+            applied += 1
+        if applied:
+            await manager.broadcast_update(game_id)
+            return {"status": "ok", "tutorial_actions": applied}
+        return {"status": "ignored", "turn": state.turn}
 
     result = await asyncio.to_thread(_apply_agent_turn, game, state.turn)
     if result.get("status") != "ok":
@@ -7224,6 +7558,11 @@ def get_legal_actions(game_id: str, player: str = "A", client_id: str = ""):
     state: GoitaState = game["state"]
     if state.finished or state.turn != player:
         return []
+    if game.get("tutorial_mode", False):
+        expected_action = _tutorial_expected_action(game, player)
+        if expected_action is None or expected_action not in state.legal_actions(player):
+            return []
+        return _actions_to_json([expected_action])
     return _actions_to_json(state.legal_actions(player))
 
 
@@ -7245,6 +7584,16 @@ def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str 
     legal_actions = state.legal_actions(player)
     if not legal_actions:
         return {}
+
+    if game.get("tutorial_mode", False):
+        expected_action = _tutorial_expected_action(game, player)
+        if expected_action is None or expected_action not in legal_actions:
+            return {}
+        return {
+            "action": _actions_to_json([expected_action])[0],
+            "forced": len(legal_actions) == 1,
+            "explanation": "チュートリアルの案内に沿って、この駒を選んでみましょう。",
+        }
 
     support_agents = game.get("beginner_support_agents")
     if not isinstance(support_agents, dict):

@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260924b"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260924b"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260924d"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260924d"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -144,6 +144,26 @@ def test_lobby_feature_guide_is_translated() -> None:
         "ごいた初心者です。",
         "初心者です",
         "どのように遊んでみますか？",
+        "ルールから覚えたい",
+        "実際の盤面を操作するチュートリアルを始めます。",
+        "ごいたチュートリアル",
+        "チュートリアル",
+        "最初からやり直す",
+        "AIと練習する",
+        "チュートリアルを終了する",
+        "王か玉の使い方",
+        "王か玉で受ける",
+        "馬・銀・金・飛・角を受けられます。",
+        "同じ種類の駒を持っていなくても受けられます。",
+        "王か玉でも、しと香は受けられません。",
+        "王か玉で攻めるための条件",
+        "誰かが王か玉を受けに使った後",
+        "最初から王と玉の両方を持っていた場合",
+        "王か玉を出すことで上がれる場合",
+        "得点",
+        "王か玉で上がると50点です。",
+        "最後の2枚が王と玉で、片方を伏せ、もう片方で上がると100点です。",
+        "王か玉を盤面で練習する",
         "とりあえず対局したい",
         "対局したい",
         "ごいたを研究したい",

@@ -17,7 +17,7 @@ def test_lobby_intro_uses_scoped_typography_classes():
     assert "transform: translateY(-50%);" in HTML
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
-    assert HTML.count('class="lobby-purpose-option"') == 12
+    assert HTML.count('class="lobby-purpose-option"') == 13
     assert "border-style: dashed;" in HTML
     assert "border-color: rgba(139, 90, 43, 0.55);" in HTML
     assert "box-shadow: 0 2px 7px rgba(79, 52, 29, 0.055);" in HTML
@@ -43,6 +43,7 @@ def test_lobby_feature_guide_has_play_and_study_steps():
     assert 'onclick="showLobbyPurposeStep(\'study\')"' in HTML
     assert 'onclick="startBeginnerGuidedMatch(\'ai\')"' in HTML
     assert 'onclick="startBeginnerGuidedMatch(\'human\')"' in HTML
+    assert 'onclick="startTutorial()"' in HTML
     assert 'onclick="startGuidedMatch(\'ai\')"' in HTML
     assert 'onclick="startGuidedMatch(\'human\')"' in HTML
     assert 'onclick="openFeatureGuideLibrary()"' in HTML

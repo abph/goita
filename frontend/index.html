@@ -55,6 +55,11 @@
     .board-wrap.practice-round-board {
       border-style: dotted;
     }
+    .board-wrap.tutorial-round-board {
+      border-style: dotted;
+      border-color: #3f7a62;
+      box-shadow: 0 0 0 3px rgba(63, 122, 98, 0.12), 0 8px 16px rgba(0,0,0,0.22);
+    }
     .board {
       display: grid;
       grid-template-columns: repeat(8, var(--cell));
@@ -3870,6 +3875,67 @@
       box-shadow: 0 2px 7px rgba(0, 0, 0, 0.22);
     }
     .practice-exit-button:hover { color: #a83a27; border-color: #a83a27; }
+    .tutorial-guide {
+      max-width: 1040px;
+      margin: 0 auto 14px;
+      padding: 14px 16px;
+      border: 2px solid #4f806b;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f4fbf7, #fffdf4);
+      box-shadow: 0 4px 12px rgba(48, 92, 73, 0.12);
+      box-sizing: border-box;
+    }
+    .tutorial-guide[hidden] { display: none; }
+    .tutorial-guide-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .tutorial-guide-heading h2 { margin: 0; color: #285b47; font-size: 19px; }
+    .tutorial-step-count { color: #4d6d60; font-size: 12px; font-weight: 900; white-space: nowrap; }
+    .tutorial-progress {
+      height: 7px;
+      margin: 9px 0 11px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dce9e2;
+    }
+    .tutorial-progress-bar { height: 100%; width: 0; background: #3f8064; transition: width 240ms ease; }
+    .tutorial-guide p { margin: 0; line-height: 1.6; }
+    .tutorial-guide-detail { margin-top: 5px !important; color: #665f55; font-size: 12px; }
+    .tutorial-royal-explanation {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border: 1px solid #b79950;
+      border-radius: 8px;
+      background: rgba(255, 250, 229, 0.88);
+      color: #4f4021;
+    }
+    .tutorial-royal-explanation[hidden] { display: none; }
+    .tutorial-royal-explanation h3 { margin: 0 0 7px; font-size: 16px; }
+    .tutorial-royal-explanation h4 { margin: 10px 0 3px; font-size: 13px; }
+    .tutorial-royal-explanation ul { margin: 0; padding-left: 1.35em; line-height: 1.55; font-size: 12px; }
+    .tutorial-guide-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 11px; }
+    .tutorial-guide-actions button { min-height: 34px; padding: 6px 12px; }
+    .tutorial-guide-actions .tutorial-primary { background: #3f8064; color: #fff; border-color: #2e624c; }
+    body.tutorial-room .top-controls,
+    body.tutorial-room .game-header-actions,
+    body.tutorial-room #chatPanel,
+    body.tutorial-room #chatToggle,
+    body.tutorial-room #hostControlsPanel,
+    body.tutorial-room #handRevealPanel,
+    body.tutorial-room #logCard,
+    body.tutorial-room #memberAutoKifuNotice { display: none !important; }
+    body.tutorial-room #tutorialExitButton { display: grid; }
+    body.tutorial-room .game-content-layout { display: block; }
+    body.tutorial-room .game-content-main { max-width: 1040px; margin: 0 auto; }
+    @media (max-width: 700px) {
+      .tutorial-guide { margin: 0 8px 10px; padding: 11px 12px; }
+      .tutorial-guide-heading h2 { font-size: 16px; }
+      .tutorial-guide-actions { justify-content: stretch; }
+      .tutorial-guide-actions button { flex: 1 1 calc(50% - 4px); padding: 6px 5px; font-size: 11px; }
+    }
     .header-menu { position: relative; flex: 0 0 auto; }
     .header-menu-trigger {
       display: inline-flex;
@@ -4917,6 +4983,10 @@
          </button>
        </div>
        <div id="lobbyPurposeBeginner" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
+         <button class="lobby-purpose-option" type="button" onclick="startTutorial()">
+           <strong>ルールから覚えたい</strong>
+           <span>実際の盤面を操作するチュートリアルを始めます。</span>
+         </button>
          <button class="lobby-purpose-option" type="button" onclick="startBeginnerGuidedMatch('ai')">
            <strong>AIと練習してみたい</strong>
            <span>初心者サポートをONにして、AIと練習します。</span>
@@ -5101,6 +5171,42 @@
     </div>
   </div>
 
+  <section id="tutorialGuide" class="tutorial-guide" aria-labelledby="tutorialGuideTitle" hidden>
+    <div class="tutorial-guide-heading">
+      <h2 id="tutorialGuideTitle">ごいたチュートリアル</h2>
+      <span id="tutorialStepCount" class="tutorial-step-count"></span>
+    </div>
+    <div class="tutorial-progress" aria-hidden="true"><div id="tutorialProgressBar" class="tutorial-progress-bar"></div></div>
+    <p id="tutorialInstruction" aria-live="polite"></p>
+    <p id="tutorialDetail" class="tutorial-guide-detail"></p>
+    <div id="tutorialRoyalExplanation" class="tutorial-royal-explanation" hidden>
+      <h3>王か玉の使い方</h3>
+      <h4>王か玉で受ける</h4>
+      <ul>
+        <li>馬・銀・金・飛・角を受けられます。</li>
+        <li>同じ種類の駒を持っていなくても受けられます。</li>
+        <li>王か玉でも、しと香は受けられません。</li>
+      </ul>
+      <h4>王か玉で攻めるための条件</h4>
+      <ul>
+        <li>誰かが王か玉を受けに使った後</li>
+        <li>最初から王と玉の両方を持っていた場合</li>
+        <li>王か玉を出すことで上がれる場合</li>
+      </ul>
+      <h4>得点</h4>
+      <ul>
+        <li>王か玉で上がると50点です。</li>
+        <li>最後の2枚が王と玉で、片方を伏せ、もう片方で上がると100点です。</li>
+      </ul>
+    </div>
+    <div class="tutorial-guide-actions">
+      <button id="tutorialRestartButton" type="button" onclick="restartTutorial()">最初からやり直す</button>
+      <button id="tutorialRoyalButton" class="tutorial-primary" type="button" onclick="startRoyalTutorial()" hidden>王か玉を盤面で練習する</button>
+      <button id="tutorialAiPracticeButton" class="tutorial-primary" type="button" onclick="finishTutorialToAi()" hidden>AIと練習する</button>
+      <button type="button" onclick="returnToLobby()">チュートリアルを終了する</button>
+    </div>
+  </section>
+
   <div class="top-controls">
     <div class="meta">
       <span id="seatButtons" style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -5127,6 +5233,7 @@
         <div class="play-main-column">
           <div class="board-wrap">
             <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
+            <button id="tutorialExitButton" class="practice-exit-button" type="button" onclick="returnToLobby()" aria-label="チュートリアルを終了する" title="チュートリアルを終了する">×</button>
             <div id="board" class="board"></div>
             <div id="board3d" class="board-3d" aria-hidden="true">
               <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
@@ -6190,8 +6297,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260924b"></script>
-<script src="/static/i18n.js?v=20260924b"></script>
+<script src="/static/i18n-en.js?v=20260924d"></script>
+<script src="/static/i18n.js?v=20260924d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260922b"></script>
@@ -8489,6 +8596,9 @@ async function tryJoinRoom(targetGid, isPrivate) {
 
 async function enterRoom(targetGid, roomName) {
     cancelImmediateAction();
+    document.body.classList.remove("tutorial-room");
+    const tutorialGuide = document.getElementById("tutorialGuide");
+    if (tutorialGuide) tutorialGuide.hidden = true;
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
         analyticsRoomEnteredAt = 0;
@@ -8588,6 +8698,9 @@ async function returnToLobby() {
     closeDebugTrace(); closeTraceResult(); closeTraceHistory();
     closePracticeScenePicker();
     document.body.classList.remove("personal-score-room");
+    document.body.classList.remove("tutorial-room");
+    const tutorialGuide = document.getElementById("tutorialGuide");
+    if (tutorialGuide) tutorialGuide.hidden = true;
     cancelImmediateAction();
     if (analyticsRoomEnteredAt) {
         trackAnalytics("room_leave", {}, analyticsRoomType());
@@ -8706,6 +8819,229 @@ async function startGuidedMatch(kind) {
         ? "プレイヤータグを「AI練習中」にしました。A席を選ぶと対局できます。"
         : "プレイヤータグを「対人希望」にしました。空いている席を選ぶと対局できます。"
     ));
+}
+
+const TUTORIAL_PROGRESS_KEYS = {
+    basic: "goita_tutorial_progress_v1",
+    royal: "goita_tutorial_royal_progress_v1",
+};
+let tutorialStarting = false;
+
+function tutorialChapter(value) {
+    return value === "royal" ? "royal" : "basic";
+}
+
+function tutorialProgressKey(chapter) {
+    return TUTORIAL_PROGRESS_KEYS[tutorialChapter(chapter)];
+}
+
+function tutorialChapterTotal(chapter) {
+    return tutorialChapter(chapter) === "royal" ? 3 : 5;
+}
+
+function storedTutorialProgress(chapter = "basic") {
+    const total = tutorialChapterTotal(chapter);
+    try {
+        const value = Number(localStorage.getItem(tutorialProgressKey(chapter)) || 0);
+        return Number.isInteger(value) ? Math.max(0, Math.min(total, value)) : 0;
+    } catch (_error) {
+        return 0;
+    }
+}
+
+function saveTutorialProgress(chapter, step) {
+    const total = tutorialChapterTotal(chapter);
+    const normalized = Math.max(0, Math.min(total, Number(step) || 0));
+    if (normalized <= storedTutorialProgress(chapter)) return;
+    try {
+        localStorage.setItem(tutorialProgressKey(chapter), String(normalized));
+    } catch (_error) {
+        // Progress remains available in the current tutorial state.
+    }
+}
+
+function tutorialCopy(state) {
+    const language = currentUiLanguage();
+    const basicCopies = {
+        ja: {
+            waiting: ["案内役が手を進めています", "盤面の動きを見ながら、次の自分の手番を待ちましょう。"],
+            0: ["1. 伏せて攻める", "AとC、BとDがそれぞれ相方です。手駒を先にすべて出すと上がりです。まず馬を伏せ、銀で攻めましょう。"],
+            5: ["2. パスする", "銀を持っていないため受けられません。手駒の横にある「パス」を押しましょう。"],
+            9: ["3. 受けて攻め返す", "相手が馬で攻めてきました。手駒の馬を選んで受けましょう。"],
+            10: ["3. 受けて攻め返す", "受けた人は続けて攻めます。香を選んで攻めましょう。"],
+            14: ["4. 攻めを続ける", "全員がパスすると攻め手に戻ります。しを伏せ、飛で攻めましょう。"],
+            19: ["5. 上がる", "相手の角を、手駒の角で受けましょう。残り2枚です。"],
+            20: ["5. 上がる", "最後に金で攻めると手駒がなくなり、上がりです。"],
+            done: ["基本操作編クリア！", "上がることができました。続いて、王か玉の特別な使い方を確認しましょう。"],
+            detail: "正しい駒を緑色の枠で表示しています。この局の得点と棋譜は保存されません。",
+        },
+        zh: {
+            waiting: ["引导员正在行动", "请观察棋盘，等待自己的下一回合。"],
+            0: ["1. 伏牌并进攻", "A与C、B与D分别为队友。先出完所有手牌即可和牌。请先伏下马，再用银进攻。"],
+            5: ["2. 跳过", "你没有银，无法接牌。请点击手牌旁的“跳过”。"],
+            9: ["3. 接牌并反攻", "对手用马进攻。请选择手中的马接牌。"],
+            10: ["3. 接牌并反攻", "接牌后由你继续进攻。请选择香。"],
+            14: ["4. 继续进攻", "所有人跳过后，进攻权回到你。伏下一枚し，再用飞进攻。"],
+            19: ["5. 和牌", "请用手中的角接住对方的角。现在只剩两枚。"],
+            20: ["5. 和牌", "最后用金进攻，手牌出完即可和牌。"],
+            done: ["基础操作篇完成！", "你成功和牌了。接下来学习王或玉的特殊用法。"],
+            detail: "正确的棋子会显示绿色边框。本局不计分，也不会保存棋谱。",
+        },
+        en: {
+            waiting: ["The guides are playing", "Watch the board and wait for your next turn."],
+            0: ["1. Hide and attack", "A and C are partners, as are B and D. Empty your hand first to win. Hide the Horse, then attack with Silver."],
+            5: ["2. Pass", "You cannot receive the Silver because you do not hold one. Select Pass beside your hand."],
+            9: ["3. Receive and counterattack", "The opponent attacked with a Horse. Select the Horse in your hand to receive it."],
+            10: ["3. Receive and counterattack", "After receiving, you continue the attack. Select the Lance."],
+            14: ["4. Continue your attack", "When everyone passes, the turn returns to the attacker. Hide a Pawn and attack with the Rook."],
+            19: ["5. Go out", "Receive the opponent's Bishop with the Bishop in your hand. Two pieces remain."],
+            20: ["5. Go out", "Attack with your final Gold to empty your hand and win the round."],
+            done: ["Basic tutorial complete!", "You went out successfully. Next, learn the special uses of the King or Gyoku."],
+            detail: "The correct piece is outlined in green. This round does not add points or save a game record.",
+        },
+    };
+    const royalCopies = {
+        ja: {
+            waiting: ["案内役が手を進めています", "次の王か玉の練習場面を準備しています。"],
+            3: ["1. 王か玉で受ける", "飛は王で受けられます。手駒の王を選びましょう。"],
+            4: ["1. 受けた後に攻める", "王で受けた後は、自分が攻めます。金を選びましょう。"],
+            9: ["2. しと香は受けられない", "王か玉でも香は受けられません。パスを選びましょう。"],
+            13: ["3. 王か玉で攻める", "銀を銀で受けて、攻める番にしましょう。"],
+            14: ["3. 王か玉で攻める", "この局では最初から王と玉の両方を持っていました。条件を満たしているので、玉で攻められます。"],
+            done: ["王か玉の練習クリア！", "王か玉の受け方、受けられない駒、攻められる条件を確認できました。"],
+            detail: "正しい操作を緑色の枠で表示しています。この練習の得点と棋譜は保存されません。",
+        },
+        zh: {
+            waiting: ["引导员正在行动", "正在准备下一个王或玉的练习场景。"],
+            3: ["1. 用王或玉接牌", "飞可以用王接住。请选择手中的王。"],
+            4: ["1. 接牌后进攻", "用王接牌后轮到你进攻。请选择金。"],
+            9: ["2. 不能接し与香", "即使用王或玉也不能接香。请选择跳过。"],
+            13: ["3. 用王或玉进攻", "先用银接住银，让自己获得进攻权。"],
+            14: ["3. 用王或玉进攻", "本局起手同时持有王和玉，已经满足条件，因此可以用玉进攻。"],
+            done: ["王或玉练习完成！", "你已经确认了王或玉的接牌方法、不能接的棋子以及进攻条件。"],
+            detail: "正确操作会显示绿色边框。本练习不计分，也不会保存棋谱。",
+        },
+        en: {
+            waiting: ["The guides are playing", "Preparing the next King or Gyoku practice position."],
+            3: ["1. Receive with the King or Gyoku", "The King can receive a Rook. Select the King in your hand."],
+            4: ["1. Attack after receiving", "After receiving with the King, it is your turn to attack. Select Gold."],
+            9: ["2. Pawns and Lances cannot be received", "A King or Gyoku cannot receive a Lance. Select Pass."],
+            13: ["3. Attack with the King or Gyoku", "Receive the Silver with your Silver to take the attack turn."],
+            14: ["3. Attack with the King or Gyoku", "You were dealt both the King and Gyoku in this round, so the condition is met. Attack with Gyoku."],
+            done: ["King or Gyoku practice complete!", "You practiced receiving, the pieces they cannot receive, and the conditions for attacking."],
+            detail: "The correct action is outlined in green. This practice does not add points or save a game record.",
+        },
+    };
+    const copies = tutorialChapter(state?.tutorial_chapter) === "royal" ? royalCopies : basicCopies;
+    const copy = copies[language] || copies.ja;
+    if (state?.tutorial_completed) return [...copy.done, copy.detail];
+    if (state?.turn !== "A") return [...copy.waiting, copy.detail];
+    const actionIndex = Number(state?.tutorial_action_index || 0);
+    const item = copy[actionIndex] || copy[0];
+    return [...item, copy.detail];
+}
+
+function syncTutorialUI(state) {
+    const active = state?.tutorial_mode === true;
+    document.body.classList.toggle("tutorial-room", active);
+    const guide = document.getElementById("tutorialGuide");
+    if (!guide) return;
+    guide.hidden = !active;
+    if (!active) return;
+
+    const chapter = tutorialChapter(state.tutorial_chapter);
+    const total = Number(state.tutorial_total_steps || tutorialChapterTotal(chapter));
+    const step = Math.max(1, Math.min(total, Number(state.tutorial_step || 1)));
+    const completedStep = Math.max(0, Math.min(total, Number(state.tutorial_completed_step || 0)));
+    saveTutorialProgress(chapter, completedStep);
+    const [title, instruction, detail] = tutorialCopy(state);
+    document.getElementById("tutorialGuideTitle").textContent = title;
+    document.getElementById("tutorialInstruction").textContent = instruction;
+    document.getElementById("tutorialDetail").textContent = detail;
+    document.getElementById("tutorialStepCount").textContent = state.tutorial_completed
+        ? `${total} / ${total}`
+        : `${step} / ${total}`;
+    document.getElementById("tutorialProgressBar").style.width = `${(state.tutorial_completed ? total : completedStep) / total * 100}%`;
+    document.getElementById("tutorialRoyalExplanation").hidden = !(
+        chapter === "basic" && state.tutorial_completed
+    );
+    document.getElementById("tutorialRoyalButton").hidden = !(
+        chapter === "basic" && state.tutorial_completed
+    );
+    document.getElementById("tutorialAiPracticeButton").hidden = !state.tutorial_completed;
+}
+
+async function startTutorial(chapter = "basic", stayInRoom = false) {
+    if (tutorialStarting) return;
+    tutorialStarting = true;
+    chapter = tutorialChapter(chapter);
+    const status = document.getElementById("lobbyFeatureGuideStatus");
+    if (status) {
+        status.textContent = uiText("チュートリアルを準備しています...");
+        status.hidden = false;
+    }
+    try {
+        enableBeginnerSupportFromGuide();
+        const total = tutorialChapterTotal(chapter);
+        const saved = storedTutorialProgress(chapter);
+        const startStep = saved > 0 && saved < total ? saved + 1 : 1;
+        const response = await fetch(`${API}/tutorial/start`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({client_id: clientId, start_step: startStep, chapter}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.game_id) throw new Error(data?.detail || "チュートリアルを開始できませんでした。");
+        featureGuideRoomTag = {roomId: data.game_id, tag: "beginner"};
+        pending = null;
+        resetLogAudioSync(0);
+        fixedHandMemory = {};
+        if (stayInRoom && gid === data.game_id) {
+            await refresh();
+        } else {
+            await enterRoom(data.game_id, data.room_name || "ごいたチュートリアル");
+        }
+    } catch (error) {
+        if (status) {
+            status.textContent = uiText(error?.message || "チュートリアルを開始できませんでした。");
+            status.hidden = false;
+        }
+    } finally {
+        tutorialStarting = false;
+    }
+}
+
+async function startRoyalTutorial() {
+    await startTutorial("royal", true);
+}
+
+async function restartTutorial() {
+    if (!latestState?.tutorial_mode || tutorialStarting) return;
+    if (!window.confirm(uiText("チュートリアルを最初からやり直しますか？"))) return;
+    tutorialStarting = true;
+    try {
+        const chapter = tutorialChapter(latestState.tutorial_chapter);
+        const response = await fetch(`${API}/games/${gid}/tutorial/restart`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({client_id: clientId, start_step: 1, chapter}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || "チュートリアルをやり直せませんでした。");
+        try { localStorage.setItem(tutorialProgressKey(chapter), "0"); } catch (_error) {}
+        pending = null;
+        resetLogAudioSync(0);
+        fixedHandMemory = {};
+        await refresh();
+    } catch (error) {
+        setHint(uiText(error?.message || "チュートリアルをやり直せませんでした。"));
+    } finally {
+        tutorialStarting = false;
+    }
+}
+
+async function finishTutorialToAi() {
+    await startBeginnerGuidedMatch("ai");
 }
 
 function enableBeginnerSupportFromGuide() {
@@ -14295,6 +14631,10 @@ function renderBoard(state){
     "practice-round-board",
     state.practice_replay_active === true,
   );
+  board.closest(".board-wrap")?.classList.toggle(
+    "tutorial-round-board",
+    state.tutorial_mode === true,
+  );
   board.innerHTML="";
 
   const nameZoneBackground = document.createElement("div");
@@ -14467,7 +14807,9 @@ function renderBoard(state){
       const bd = state.total_team_score?.BD || 0;
       const rc = state.round_count || 1;
       
-      scoreDiv.innerHTML = state.practice_replay_active
+      scoreDiv.innerHTML = state.tutorial_mode
+        ? '<div class="score-round practice-score-note">チュートリアル<br>得点は加算されません</div>'
+        : state.practice_replay_active
         ? '<div class="score-round practice-score-note">この局の得点は加算されません</div>'
         : `
             <div class="score-round">第 ${rc} 局</div>
@@ -14888,6 +15230,14 @@ function legalActionsMatchState(state, actions){
   if(!state?.is_started || isSpectator() || state.finished || state.turn !== mySeat){
     return actions.length === 0;
   }
+  if(state.tutorial_mode){
+    return actions.length === 1 && [
+      "pass",
+      "receive",
+      "attack",
+      "attack_after_block",
+    ].includes(actions[0]?.action_type);
+  }
   if(state.phase === "receive"){
     return actions.some(action => action.action_type === "pass") &&
       actions.every(action => action.action_type === "pass" || action.action_type === "receive");
@@ -15065,6 +15415,7 @@ async function refreshFromState(confirmedState = null){
   applyRoomBackground(state);
   
   updateRoomUI(); 
+  syncTutorialUI(state);
   updateSeatButtons(state);
   updateVoiceChatUi();
   const linkedKifuAppliedNow = await maybeApplyLinkedKifuPreset(state);
@@ -15165,7 +15516,12 @@ async function refreshFromState(confirmedState = null){
       startRequestInFlight = false;
   }
 
-  if (!state.is_started) {
+  if (state.tutorial_mode) {
+      if (state.tutorial_completed || state.turn !== mySeat || !pending) {
+          setHint(tutorialCopy(state)[1]);
+      }
+      if (state.finished) pending = null;
+  } else if (!state.is_started) {
       if (linkedKifuPreset) {
           setHint(linkedKifuRoomHint(state));
       } else if (mySeat === "A") {
