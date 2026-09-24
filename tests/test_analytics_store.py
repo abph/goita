@@ -50,6 +50,9 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
 
     snapshot = store.snapshot(days=30)
     assert snapshot["visitors"] == 1
+    assert snapshot["new_visitors"] == 1
+    assert snapshot["returning_visitors"] == 0
+    assert snapshot["new_visitor_rate"] == 100.0
     assert snapshot["game_started"] == 1
     assert snapshot["host_game_starts"] == 1
     assert snapshot["pair_practice_games"] == 1
@@ -82,6 +85,9 @@ def test_analytics_opt_out_deletes_browser_history(tmp_path: Path) -> None:
 
     snapshot = store.snapshot(days=30)
     assert snapshot["visitors"] == 0
+    assert snapshot["new_visitors"] == 0
+    assert snapshot["returning_visitors"] == 0
+    assert snapshot["new_visitor_rate"] == 0.0
     assert snapshot["sessions"] == 0
     assert snapshot["recent_sessions"] == []
 
@@ -139,6 +145,53 @@ def test_calendar_range_uses_japanese_day_boundaries() -> None:
     assert since == "2026-09-01T15:00:00+00:00"
     assert until == "2026-09-02T15:00:00+00:00"
     assert period_start == period_end == date(2026, 9, 2)
+
+
+def test_snapshot_separates_new_and_returning_visitors(tmp_path: Path) -> None:
+    store = AnalyticsStore(tmp_path / "analytics.sqlite3")
+    new_visitor = _event(
+        analytics_id="visitor_new_123456789012",
+        session_id="session_new_123456789012",
+    )
+    returning_visitor = _event(
+        analytics_id="visitor_returning_1234567",
+        session_id="session_returning_1234567",
+    )
+    assert store.record_event(new_visitor) is True
+    assert store.record_event(returning_visitor) is True
+
+    with sqlite3.connect(store.path) as connection:
+        for payload in (new_visitor, returning_visitor):
+            connection.execute(
+                "UPDATE analytics_sessions SET started_at = ?, last_seen = ? "
+                "WHERE session_id = ?",
+                (
+                    "2026-08-02T03:00:00+00:00",
+                    "2026-08-02T03:05:00+00:00",
+                    payload["session_id"],
+                ),
+            )
+            connection.execute(
+                "UPDATE analytics_events SET occurred_at = ? WHERE session_id = ?",
+                ("2026-08-02T03:00:00+00:00", payload["session_id"]),
+            )
+        connection.execute(
+            "UPDATE analytics_visitors SET first_seen = ? WHERE analytics_id = ?",
+            ("2026-08-02T03:00:00+00:00", new_visitor["analytics_id"]),
+        )
+        connection.execute(
+            "UPDATE analytics_visitors SET first_seen = ? WHERE analytics_id = ?",
+            ("2026-07-20T03:00:00+00:00", returning_visitor["analytics_id"]),
+        )
+
+    snapshot = store.snapshot(
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 3),
+    )
+    assert snapshot["visitors"] == 2
+    assert snapshot["new_visitors"] == 1
+    assert snapshot["returning_visitors"] == 1
+    assert snapshot["new_visitor_rate"] == 50.0
 
 
 def test_custom_range_filters_aggregates_and_recent_sessions(tmp_path: Path) -> None:

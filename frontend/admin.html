@@ -1956,6 +1956,9 @@
     function renderAnalytics(data) {
       const metrics = [
         ["利用者", `${data.visitors}人`],
+        ["新規利用者", `${data.new_visitors || 0}人`],
+        ["再訪利用者", `${data.returning_visitors || 0}人`],
+        ["新規利用者率", `${Number(data.new_visitor_rate || 0).toFixed(1)}%`],
         ["訪問", `${data.sessions}回`],
         ["平均滞在", formatDuration(data.average_duration_seconds)],
         ["対局開始", `${data.game_started}回`],

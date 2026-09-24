@@ -402,6 +402,18 @@ class AnalyticsStore:
                 "WHERE occurred_at >= ? AND occurred_at < ?",
                 (since, until),
             ).fetchone()[0])
+            new_visitors = int(connection.execute(
+                """
+                SELECT COUNT(DISTINCT event.analytics_id)
+                FROM analytics_events AS event
+                JOIN analytics_visitors AS visitor
+                  ON visitor.analytics_id = event.analytics_id
+                WHERE event.occurred_at >= ? AND event.occurred_at < ?
+                  AND visitor.first_seen >= ? AND visitor.first_seen < ?
+                """,
+                (since, until, since, until),
+            ).fetchone()[0])
+            returning_visitors = max(0, visitors - new_visitors)
             sessions = int(connection.execute(
                 "SELECT COUNT(*) FROM analytics_sessions "
                 "WHERE started_at >= ? AND started_at < ?",
@@ -554,6 +566,12 @@ class AnalyticsStore:
             "period_start": period_start.isoformat(),
             "period_end": period_end.isoformat(),
             "visitors": visitors,
+            "new_visitors": new_visitors,
+            "returning_visitors": returning_visitors,
+            "new_visitor_rate": round(
+                (new_visitors / visitors * 100.0) if visitors else 0.0,
+                1,
+            ),
             "sessions": sessions,
             "average_duration_seconds": round(average_duration, 1),
             "game_started": started,

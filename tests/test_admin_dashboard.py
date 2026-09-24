@@ -47,6 +47,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="privateAdRoomSelect"' in admin
     assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
+    assert '["新規利用者", `${data.new_visitors || 0}人`]' in admin
+    assert '["再訪利用者", `${data.returning_visitors || 0}人`]' in admin
+    assert '["新規利用者率", `${Number(data.new_visitor_rate || 0).toFixed(1)}%`]' in admin
     assert 'score_attack: "スコアアタック"' in admin
     assert 'id="regionRows"' in admin
     assert 'id="countryRows"' in admin
