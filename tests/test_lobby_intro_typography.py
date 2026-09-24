@@ -17,7 +17,7 @@ def test_lobby_intro_uses_scoped_typography_classes():
     assert "transform: translateY(-50%);" in HTML
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
-    assert HTML.count('class="lobby-purpose-option"') == 9
+    assert HTML.count('class="lobby-purpose-option"') == 12
     assert "border-style: dashed;" in HTML
     assert "border-color: rgba(139, 90, 43, 0.55);" in HTML
     assert "box-shadow: 0 2px 7px rgba(79, 52, 29, 0.055);" in HTML
@@ -34,11 +34,15 @@ def test_lobby_intro_has_smaller_mobile_typography():
 
 def test_lobby_feature_guide_has_play_and_study_steps():
     assert 'id="lobbyPurposeHome"' in HTML
+    assert 'id="lobbyPurposeBeginner"' in HTML
     assert 'id="lobbyPurposePlay"' in HTML
     assert 'id="lobbyPurposeStudy"' in HTML
     assert 'id="lobbyPurposeDeal"' in HTML
+    assert 'onclick="showLobbyPurposeStep(\'beginner\')"' in HTML
     assert 'onclick="showLobbyPurposeStep(\'play\')"' in HTML
     assert 'onclick="showLobbyPurposeStep(\'study\')"' in HTML
+    assert 'onclick="startBeginnerGuidedMatch(\'ai\')"' in HTML
+    assert 'onclick="startBeginnerGuidedMatch(\'human\')"' in HTML
     assert 'onclick="startGuidedMatch(\'ai\')"' in HTML
     assert 'onclick="startGuidedMatch(\'human\')"' in HTML
     assert 'onclick="openFeatureGuideLibrary()"' in HTML
@@ -61,8 +65,8 @@ def test_lobby_guide_and_score_attack_are_separate_stable_columns():
 
 
 def test_lobby_submenus_use_compact_arrow_back_controls():
-    assert HTML.count('class="lobby-purpose-back-arrow"') == 3
-    assert HTML.count('aria-label="最初の選択に戻る"') == 2
+    assert HTML.count('class="lobby-purpose-back-arrow"') == 4
+    assert HTML.count('aria-label="最初の選択に戻る"') == 3
     assert HTML.count('aria-label="研究方法の選択に戻る"') == 1
     assert 'class="lobby-purpose-back"' not in HTML
     assert ".lobby-purpose-option strong" in HTML
@@ -72,9 +76,11 @@ def test_lobby_submenus_use_compact_arrow_back_controls():
 
 def test_lobby_questions_replace_the_main_guide_heading():
     assert 'id="lobbyPurposeHomeHeader"' in HTML
+    assert 'id="lobbyPurposeBeginnerHeader"' in HTML
     assert 'id="lobbyPurposePlayHeader"' in HTML
     assert 'id="lobbyPurposeStudyHeader"' in HTML
     assert 'id="lobbyPurposeDealHeader"' in HTML
+    assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのように遊んでみますか？</h2>' in HTML
     assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのように研究しますか？</h2>' in HTML
     assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">人間とAI、どちらと対局しますか？</h2>' in HTML
     assert '<h2 class="lobby-purpose-subtitle" tabindex="-1">どのような手駒で練習しますか？</h2>' in HTML
@@ -87,7 +93,17 @@ def test_guided_match_uses_temporary_player_tags():
     assert 'const tag = aiMatch ? "ai_practice" : "human_match";' in HTML
     assert 'const roomId = aiMatch ? "main-e" : MAIN_GID;' in HTML
     assert 'featureGuideRoomTag = null;' in HTML
-    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY' not in HTML.split("async function startGuidedMatch", 1)[1].split("let guidedPracticeStarting", 1)[0]
+    regular_guide = HTML.split("async function startGuidedMatch", 1)[1].split("function enableBeginnerSupportFromGuide", 1)[0]
+    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY' not in regular_guide
+
+
+def test_beginner_guide_enables_support_and_uses_beginner_tag():
+    guide = HTML.split("function enableBeginnerSupportFromGuide", 1)[1].split("let guidedPracticeStarting", 1)[0]
+    assert 'enableBeginnerSupport: true' in guide
+    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));' in guide
+    assert 'featureGuideRoomTag = {roomId, tag: "beginner"};' in guide
+    assert 'const roomId = aiMatch ? "main-e" : MAIN_GID;' in guide
+    assert 'プレイヤータグを「ごいた初心者」にしました。' in guide
 
 
 def test_preset_hand_indicator_is_rendered_below_seat_a():

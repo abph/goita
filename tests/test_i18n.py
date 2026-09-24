@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260924a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260924a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260924b"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260924b"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -141,6 +141,9 @@ def test_lobby_feature_guide_is_translated() -> None:
         "日本ごいた協会認定",
         "オンライン対局室",
         "何をしてみますか？",
+        "ごいた初心者です。",
+        "初心者です",
+        "どのように遊んでみますか？",
         "とりあえず対局したい",
         "対局したい",
         "ごいたを研究したい",
@@ -148,6 +151,12 @@ def test_lobby_feature_guide_is_translated() -> None:
         "人間とAI、どちらと対局しますか？",
         "最初の選択に戻る",
         "AIと対局してみたい",
+        "AIと練習してみたい",
+        "初心者サポートをONにして、AIと練習します。",
+        "初心者サポートをONにして、誰かと対局します。",
+        "初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。A席を選ぶと対局できます。",
+        "初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。空いている席を選ぶと対局できます。",
+        "ごいた初心者",
         "誰かと対局したい",
         "よくある手駒で練習する",
         "手駒の配り方を決めて、練習する",

@@ -58,7 +58,7 @@ def test_player_tag_labels_are_translated() -> None:
     for source in (
         "プレイヤータグ",
         "タグなし",
-        "初心者",
+        "ごいた初心者",
         "対人希望",
         "AI練習中",
         "観戦中心",

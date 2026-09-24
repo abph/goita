@@ -4881,6 +4881,10 @@
         <div id="lobbyPurposeHomeHeader" class="lobby-purpose-header" aria-hidden="false">
           <h2 id="lobbyPurposeTitle" class="lobby-purpose-title">何をしてみますか？</h2>
         </div>
+        <div id="lobbyPurposeBeginnerHeader" class="lobby-purpose-header is-inactive" aria-hidden="true" inert>
+          <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
+          <h2 class="lobby-purpose-subtitle" tabindex="-1">どのように遊んでみますか？</h2>
+        </div>
         <div id="lobbyPurposePlayHeader" class="lobby-purpose-header is-inactive" aria-hidden="true" inert>
           <button class="lobby-purpose-back-arrow" type="button" onclick="showLobbyPurposeStep('home')" aria-label="最初の選択に戻る" title="最初の選択に戻る">←</button>
           <h2 class="lobby-purpose-subtitle" tabindex="-1">人間とAI、どちらと対局しますか？</h2>
@@ -4896,6 +4900,11 @@
       </div>
       <div class="lobby-purpose-stage">
        <div id="lobbyPurposeHome" class="lobby-purpose-panel" aria-hidden="false">
+         <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('beginner')">
+           <strong class="lobby-purpose-desktop-label">ごいた初心者です。</strong>
+           <strong class="lobby-purpose-mobile-label">初心者です</strong>
+           <span>ルールを覚えながら、サポート付きで対局します。</span>
+         </button>
          <button class="lobby-purpose-option" type="button" onclick="showLobbyPurposeStep('play')">
            <strong class="lobby-purpose-desktop-label">とりあえず対局したい</strong>
            <strong class="lobby-purpose-mobile-label">対局したい</strong>
@@ -4905,6 +4914,16 @@
            <strong class="lobby-purpose-desktop-label">ごいたを研究したい</strong>
            <strong class="lobby-purpose-mobile-label">研究したい</strong>
            <span>配牌・手札指定・棋譜ライブラリを利用します。</span>
+         </button>
+       </div>
+       <div id="lobbyPurposeBeginner" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
+         <button class="lobby-purpose-option" type="button" onclick="startBeginnerGuidedMatch('ai')">
+           <strong>AIと練習してみたい</strong>
+           <span>初心者サポートをONにして、AIと練習します。</span>
+         </button>
+         <button class="lobby-purpose-option" type="button" onclick="startBeginnerGuidedMatch('human')">
+           <strong>誰かと対局したい</strong>
+           <span>初心者サポートをONにして、誰かと対局します。</span>
          </button>
        </div>
        <div id="lobbyPurposePlay" class="lobby-purpose-panel is-inactive" aria-hidden="true" inert>
@@ -5323,7 +5342,7 @@
           <label for="lobbyPersonalPlayerTag">プレイヤータグ</label>
           <select id="lobbyPersonalPlayerTag" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
             <option value="">タグなし</option>
-            <option value="beginner">初心者</option>
+            <option value="beginner">ごいた初心者</option>
             <option value="human_match">対人希望</option>
             <option value="ai_practice">AI練習中</option>
             <option value="spectator">観戦中心</option>
@@ -5486,7 +5505,7 @@
         <label for="personalPlayerTag">プレイヤータグ</label>
         <select id="personalPlayerTag" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
           <option value="">タグなし</option>
-          <option value="beginner">初心者</option>
+          <option value="beginner">ごいた初心者</option>
           <option value="human_match">対人希望</option>
           <option value="ai_practice">AI練習中</option>
           <option value="spectator">観戦中心</option>
@@ -6171,8 +6190,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260924a"></script>
-<script src="/static/i18n.js?v=20260924a"></script>
+<script src="/static/i18n-en.js?v=20260924b"></script>
+<script src="/static/i18n.js?v=20260924b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260922b"></script>
@@ -7424,7 +7443,7 @@ const PERSONAL_SETTINGS_KEY = "goita_personal_settings_v1";
 const PIXEL_BOARD_MODES = new Set(["pixel-color", "pixel-mono"]);
 const THREE_D_BOARD_MODES = new Set(["3d", "meeting-room"]);
 const PLAYER_TAG_LABELS = Object.freeze({
-    beginner: "初心者",
+    beginner: "ごいた初心者",
     human_match: "対人希望",
     ai_practice: "AI練習中",
     spectator: "観戦中心",
@@ -8647,12 +8666,14 @@ function openFeatureGuideLibrary() {
 function showLobbyPurposeStep(step) {
     const panels = {
         home: document.getElementById("lobbyPurposeHome"),
+        beginner: document.getElementById("lobbyPurposeBeginner"),
         play: document.getElementById("lobbyPurposePlay"),
         study: document.getElementById("lobbyPurposeStudy"),
         deal: document.getElementById("lobbyPurposeDeal"),
     };
     const headers = {
         home: document.getElementById("lobbyPurposeHomeHeader"),
+        beginner: document.getElementById("lobbyPurposeBeginnerHeader"),
         play: document.getElementById("lobbyPurposePlayHeader"),
         study: document.getElementById("lobbyPurposeStudyHeader"),
         deal: document.getElementById("lobbyPurposeDealHeader"),
@@ -8684,6 +8705,38 @@ async function startGuidedMatch(kind) {
     setHint(uiText(aiMatch
         ? "プレイヤータグを「AI練習中」にしました。A席を選ぶと対局できます。"
         : "プレイヤータグを「対人希望」にしました。空いている席を選ぶと対局できます。"
+    ));
+}
+
+function enableBeginnerSupportFromGuide() {
+    const wasEnabled = personalSettings.enableBeginnerSupport === true;
+    personalSettings = {...personalSettings, enableBeginnerSupport: true};
+    beginnerRecommendationKey = "";
+    applyPersonalSettingsAppearance();
+    const lobbyControl = document.getElementById("lobbyCheckEnableBeginnerSupport");
+    const roomControl = document.getElementById("checkEnableBeginnerSupport");
+    if (lobbyControl) lobbyControl.checked = true;
+    if (roomControl) roomControl.checked = true;
+    try {
+        localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
+    } catch (_error) {
+        // The in-memory setting still applies for this visit.
+    }
+    if (!wasEnabled && personalSettings.enableAnalytics !== false) {
+        trackAnalytics("beginner_support_enabled");
+    }
+}
+
+async function startBeginnerGuidedMatch(kind) {
+    const aiMatch = kind === "ai";
+    const roomId = aiMatch ? "main-e" : MAIN_GID;
+    const roomName = aiMatch ? "AIとごいたA" : "みんなでごいたA";
+    enableBeginnerSupportFromGuide();
+    featureGuideRoomTag = {roomId, tag: "beginner"};
+    await enterRoom(roomId, roomName);
+    setHint(uiText(aiMatch
+        ? "初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。A席を選ぶと対局できます。"
+        : "初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。空いている席を選ぶと対局できます。"
     ));
 }
 
