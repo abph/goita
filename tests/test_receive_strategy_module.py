@@ -13,6 +13,7 @@ def test_rule_based_agent_uses_receive_strategy_mixin() -> None:
 
 def test_receive_strategy_methods_are_owned_by_mixin() -> None:
     for method_name in (
+        "_has_unconfirmed_second_attack_signal_after_receive",
         "_has_meaningful_attack_after_same_piece_receive",
         "_enemy_first_same_piece_rank_policy_action",
         "_enemy_second_attack_royal_reserve_pass_action",
@@ -1112,3 +1113,59 @@ def test_2026_04_07_angle_is_passed_without_meaningful_followup() -> None:
         a_agent.last_score_fallback_detail
         == "pass_enemy_big_piece_weak_followup"
     )
+
+
+def test_2026_06_02_angle_is_received_to_send_ally_second_signal() -> None:
+    """Keep a second middle attack when the ally has not answered the first."""
+    state = GoitaState(
+        hands={
+            "A": list("12335569"),
+            "B": list("11124778"),
+            "C": list("11133445"),
+            "D": list("11122456"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+        agent._ensure_trackers(state)
+
+    history = (
+        ("A", ("attack_after_block", "3", "5")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "5", None)),
+        ("D", ("attack", None, "6")),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    a_agent = agents["A"]
+    assert a_agent._has_unconfirmed_second_attack_signal_after_receive(
+        state,
+        "A",
+        "6",
+    ) is True
+    receive = a_agent.select_action(state, "A", state.legal_actions("A"))
+    assert receive == ("receive", "6", None)
+    assert (
+        a_agent.last_score_fallback_detail
+        == "receive_enemy_big_piece_ally_signal"
+    )
+
+    state.apply_receive("A", "6")
+    a_agent.on_public_action(state, "A", receive)
+    attack = a_agent.select_action(state, "A", state.legal_actions("A"))
+    assert attack in (("attack", None, "3"), ("attack", None, "5"))

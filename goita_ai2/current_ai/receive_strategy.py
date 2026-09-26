@@ -17,6 +17,31 @@ Action = Tuple[str, Optional[str], Optional[str]]
 class ReceiveStrategyMixin:
     """Chooses when to receive, pass, or spend a king piece."""
 
+    def _has_unconfirmed_second_attack_signal_after_receive(
+        self,
+        state,
+        player: str,
+        receive_piece: str,
+    ) -> bool:
+        """Return whether receiving lets us send the ally a second middle-piece signal."""
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or int(tr.get("my_attack_count", 0)) != 1
+            or bool(tr.get("ally_attacked_since_my_last_attack"))
+            or self._unconfirmed_first_attack_piece_for_next_action(
+                state,
+                player,
+            ) is None
+        ):
+            return False
+
+        remaining = Counter(state.hands[player])
+        if remaining.get(receive_piece, 0) <= 0:
+            return False
+        remaining[receive_piece] -= 1
+        return any(remaining.get(piece, 0) >= 1 for piece in ("3", "4", "5"))
+
     def _has_meaningful_attack_after_same_piece_receive(
         self,
         state,
@@ -33,6 +58,12 @@ class ReceiveStrategyMixin:
         # continuation gives the receive a concrete purpose. A lone middle
         # piece or one/two shi does not by itself justify taking over the turn.
         if sum(remaining.values()) <= 1:
+            return True
+        if self._has_unconfirmed_second_attack_signal_after_receive(
+            state,
+            player,
+            receive_piece,
+        ):
             return True
         if any(remaining.get(piece, 0) >= 2 for piece in ("2", "3", "4", "5", "6", "7")):
             return True
@@ -552,6 +583,11 @@ class ReceiveStrategyMixin:
             return None
 
         pass_action = next((act for act in actions if act[0] == "pass"), None)
+        ally_signal = self._has_unconfirmed_second_attack_signal_after_receive(
+            state,
+            player,
+            str(state.current_attack),
+        )
         if (
             pass_action is not None
             and not self._has_meaningful_attack_after_same_piece_receive(
@@ -567,7 +603,11 @@ class ReceiveStrategyMixin:
             return pass_action
 
         self._set_decision_reason("score_fallback")
-        self._set_score_fallback_detail("early_big_piece_same_receive")
+        self._set_score_fallback_detail(
+            "receive_enemy_big_piece_ally_signal"
+            if ally_signal
+            else "early_big_piece_same_receive"
+        )
         return same_piece_receive
 
     def _early_enemy_first_king_receive_penalty(
