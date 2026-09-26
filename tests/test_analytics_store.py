@@ -273,3 +273,59 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
         }
     assert "prefecture" in columns
     assert "country_code" in columns
+
+
+def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path: Path) -> None:
+    store = AnalyticsStore(tmp_path / "analytics.sqlite3")
+    before_midnight_jst = datetime(2026, 9, 25, 14, 59, tzinfo=timezone.utc)
+    after_midnight_jst = datetime(2026, 9, 25, 15, 1, tzinfo=timezone.utc)
+
+    assert store.record_regional_ad_metric(
+        "kanto-ad", "関東", "impression", now=before_midnight_jst
+    ) is True
+    assert store.record_regional_ad_metric(
+        "kanto-ad", "関東", "impression", now=after_midnight_jst
+    ) is True
+    assert store.record_regional_ad_metric(
+        "kanto-ad", "関東", "click", now=after_midnight_jst
+    ) is True
+    assert store.record_regional_ad_metric(
+        "kanto-ad", "関西", "impression", now=after_midnight_jst
+    ) is True
+    assert store.record_regional_ad_metric("short", "関東", "click") is False
+    assert store.record_regional_ad_metric("kanto-ad", "北陸", "click") is False
+    assert store.record_regional_ad_metric("kanto-ad", "関東", "close") is False
+
+    metrics = store.regional_ad_metrics(
+        ["kanto-ad", "unused-ad"], recent_days=30, now=after_midnight_jst
+    )
+    assert metrics["kanto-ad"]["impressions"] == 3
+    assert metrics["kanto-ad"]["clicks"] == 1
+    assert metrics["kanto-ad"]["click_rate"] == 33.3
+    assert metrics["kanto-ad"]["regions"][0] == {
+        "region": "関東",
+        "impressions": 2,
+        "clicks": 1,
+        "click_rate": 50.0,
+    }
+    assert {row["date"] for row in metrics["kanto-ad"]["daily"]} == {
+        "2026-09-25",
+        "2026-09-26",
+    }
+    assert metrics["unused-ad"]["impressions"] == 0
+
+    with sqlite3.connect(store.path) as connection:
+        columns = {
+            str(row[1])
+            for row in connection.execute(
+                "PRAGMA table_info(regional_ad_daily_metrics)"
+            )
+        }
+    assert columns == {
+        "metric_date",
+        "ad_id",
+        "region",
+        "impressions",
+        "clicks",
+        "updated_at",
+    }

@@ -57,6 +57,7 @@ def test_privacy_policy_discloses_member_storage_and_analytics_separation():
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "会員機能では、会員ID、暗号学的に保護したパスワード、ログイン情報、有料権限と有効期限を保存します。" in html
     assert "これらは利用状況の分析用IDとは結び付けません。" in html
+    assert "個人やブラウザーを識別しない集計値として記録します。" in html
 
 
 def test_paid_stamps_and_member_library_are_separate_from_room_admin():

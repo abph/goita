@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -6,11 +7,13 @@ from starlette.requests import Request
 
 from backend import app as app_module
 from backend.analytics_geo import PREFECTURES_BY_CODE
+from backend.analytics_store import AnalyticsStore
 from backend.regional_ads import PREFECTURE_REGIONS, infer_region, normalize_ads, select_ad
 from backend.room_settings_persistence import load_room_settings
 
 
 NOW = datetime(2026, 9, 22, 3, 0, tzinfo=timezone.utc)
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def ad(ad_id: str, regions: list[str], **changes: object) -> dict:
@@ -62,6 +65,7 @@ def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypat
     monkeypatch.setattr(app_module, "REGIONAL_AD_SETTINGS", [])
     monkeypatch.setattr(app_module, "ROOM_SETTINGS_PATH", tmp_path / "settings.json")
     monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
+    monkeypatch.setattr(app_module, "ANALYTICS_STORE", AnalyticsStore(tmp_path / "analytics.sqlite3"))
     request = Request({"type": "http", "method": "GET", "path": "/api/regional-ad", "headers": [(b"cf-ipcountry", b"JP"), (b"cf-region-code", b"JP-13")], "query_string": b""})
     now = datetime.now(timezone.utc)
     period = {"starts_at": (now - timedelta(days=1)).isoformat(), "ends_at": (now + timedelta(days=1)).isoformat()}
@@ -75,6 +79,61 @@ def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypat
     app_module.REGIONAL_AD_SETTINGS[:] = []
     app_module._apply_lobby_management_settings({"regional_ads": persisted["regional_ads"]})
     assert len(app_module.REGIONAL_AD_SETTINGS) == 2
+
+
+def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_path, monkeypatch) -> None:
+    store = AnalyticsStore(tmp_path / "analytics.sqlite3")
+    now = datetime.now(timezone.utc)
+    period = {
+        "starts_at": (now - timedelta(days=1)).isoformat(),
+        "ends_at": (now + timedelta(days=1)).isoformat(),
+    }
+    monkeypatch.setattr(
+        app_module,
+        "REGIONAL_AD_SETTINGS",
+        normalize_ads([ad("kanto-ad", ["関東"], **period)]),
+    )
+    monkeypatch.setattr(app_module, "ANALYTICS_STORE", store)
+    monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/regional-ad/metric",
+        "headers": [(b"cf-ipcountry", b"JP"), (b"cf-region-code", b"JP-13")],
+        "query_string": b"",
+    })
+
+    assert app_module.record_regional_ad_metric(
+        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="impression"),
+        request,
+    ) == {"ok": True}
+    assert app_module.record_regional_ad_metric(
+        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="click"),
+        request,
+    ) == {"ok": True}
+    payload = app_module.admin_regional_ads(request)
+    assert payload["metrics_recent_days"] == 30
+    assert payload["metrics"]["kanto-ad"]["impressions"] == 1
+    assert payload["metrics"]["kanto-ad"]["clicks"] == 1
+    assert payload["metrics"]["kanto-ad"]["click_rate"] == 100.0
+
+    with pytest.raises(HTTPException) as error:
+        app_module.record_regional_ad_metric(
+            app_module.RegionalAdMetricRequest(ad_id="another-ad", event="click"),
+            request,
+        )
+    assert error.value.status_code == 400
+
+
+def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
+    script = (ROOT / "frontend" / "regionalAds.js").read_text(encoding="utf-8")
+    admin = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
+    assert 'recordMetric(ad.id, "impression")' in script
+    assert 'recordMetric(ad.dataset.adId, "click", true)' in script
+    assert '"/api/regional-ad/metric"' in script
+    assert "表示回数・クリック回数・クリック率" in admin
+    assert "CTR" in admin
+    assert "regionalAdMetrics" in admin
 
 
 def test_admin_save_failure_restores_previous_ads(tmp_path, monkeypatch) -> None:

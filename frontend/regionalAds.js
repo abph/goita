@@ -7,6 +7,25 @@
 
   function hide() { if (element("regionalAd")) element("regionalAd").hidden = true; }
 
+  function recordMetric(adId, event, useBeacon = false) {
+    if (!adId) return;
+    const body = JSON.stringify({ad_id:adId, event});
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon(
+        "/api/regional-ad/metric",
+        new Blob([body], {type:"application/json"}),
+      );
+      return;
+    }
+    fetch("/api/regional-ad/metric", {
+      method:"POST",
+      credentials:"same-origin",
+      headers:{"Content-Type":"application/json"},
+      body,
+      keepalive:useBeacon,
+    }).catch(() => {});
+  }
+
   async function sync(isPublicRoom, roomId) {
     if (!isPublicRoom) { requestNumber++; lastRoom = ""; hide(); return; }
     if (!element("regionalAd")) return;
@@ -30,6 +49,7 @@
       else link.removeAttribute("href");
       element("regionalAd").dataset.adId = ad.id;
       element("regionalAd").hidden = false;
+      recordMetric(ad.id, "impression");
       window.goitaI18n?.refresh?.();
     } catch (_error) { if (current === requestNumber) hide(); }
   }
@@ -39,6 +59,13 @@
       const id = element("regionalAd")?.dataset.adId;
       if (id) sessionStorage.setItem(`goitaRegionalAdDismissed:${id}`, "1");
       hide();
+    });
+    element("regionalAdLink")?.addEventListener("click", () => {
+      const ad = element("regionalAd");
+      const link = element("regionalAdLink");
+      if (ad?.dataset.adId && link?.hasAttribute("href")) {
+        recordMetric(ad.dataset.adId, "click", true);
+      }
     });
   });
   window.goitaRegionalAds = Object.freeze({sync});

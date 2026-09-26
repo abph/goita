@@ -231,6 +231,11 @@
     .regional-ad-targets input { width:auto; }
     .regional-ad-actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
     .regional-ad-preview { margin-top:10px; padding:12px; border:1px solid var(--line); background:#fff; white-space:pre-wrap; }
+    .regional-ad-metrics { min-width:170px; font-size:12px; line-height:1.65; }
+    .regional-ad-metrics strong { display:block; font-size:13px; }
+    .regional-ad-metrics details { margin-top:4px; color:var(--muted); }
+    .regional-ad-metrics summary { cursor:pointer; }
+    .regional-ad-metrics-list { margin-top:4px; white-space:nowrap; }
     .score-audit-seat-label { z-index: 2; display: flex; align-items: center; justify-content: center; border: 2px solid #8b5a2b; background: #f4efdf; color: #b00000; font-size: clamp(14px, 2.8vw, 21px); font-weight: 900; }
     .score-audit-seat-label.is-winner { border-color: #c24f16; box-shadow: 0 0 8px rgb(194 79 22 / 42%); }
     .score-audit-seat-label.seat-A .score-audit-seat-content { transform: rotate(0deg); }
@@ -477,9 +482,10 @@
         <section class="panel">
           <h2 class="section-heading">地域別広告</h2>
           <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方の広告は1件に限ります。</p>
+          <p class="muted">実績欄では、広告ごとの表示回数・クリック回数・クリック率と、地方別・直近30日の日別内訳を確認できます。</p>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
-          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象</th><th>掲載期間</th><th>状態</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
         </section>
         <section class="panel">
           <h3 class="subheading">広告の編集</h3>
@@ -705,6 +711,7 @@
     }
 
     let regionalAds = [];
+    let regionalAdMetrics = {};
     let editingRegionalAdId = "";
     const regionalAdRegions = ["北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄"];
     const regionalAdField = id => document.getElementById(`regionalAd${id}`);
@@ -729,8 +736,12 @@
       const now = Date.now();
       document.getElementById("regionalAdRows").innerHTML = regionalAds.map(ad => {
         const state = !ad.enabled ? "停止中" : now < Date.parse(ad.starts_at) ? "開始前" : now >= Date.parse(ad.ends_at) ? "終了" : "掲載中";
-        return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
-      }).join("") || '<tr><td colspan="5">広告はまだありません。</td></tr>';
+        const metrics = regionalAdMetrics[ad.id] || {impressions:0, clicks:0, click_rate:0, regions:[], daily:[]};
+        const regionLines = (metrics.regions || []).map(item => `${escapeHtml(item.region)}：表示 ${Number(item.impressions || 0).toLocaleString()}回／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "地方別の実績はありません。";
+        const dailyLines = (metrics.daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || "直近30日の実績はありません。";
+        const metricCell = `<div class="regional-ad-metrics"><strong>表示 ${Number(metrics.impressions || 0).toLocaleString()}回</strong><span>クリック ${Number(metrics.clicks || 0).toLocaleString()}回／CTR ${Number(metrics.click_rate || 0).toFixed(1)}%</span><details><summary>地方別・直近30日</summary><div class="regional-ad-metrics-list">${regionLines}<hr>${dailyLines}</div></details></div>`;
+        return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
+      }).join("") || '<tr><td colspan="6">広告はまだありません。</td></tr>';
     }
     async function loadRegionalAds() {
       const status = document.getElementById("regionalAdStatus");
@@ -738,6 +749,7 @@
       try {
         const data = await api("/admin/api/regional-ads");
         regionalAds = data.ads || [];
+        regionalAdMetrics = data.metrics || {};
         renderRegionalAds();
         status.textContent = `${regionalAds.length}件の広告があります。`;
         await previewRegionalAd();
@@ -2178,7 +2190,7 @@
       if (!confirm(`「${ad.title}」を削除しますか？`)) return;
       try {
         const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads:regionalAds.filter(item => item.id !== ad.id)})});
-        regionalAds = data.ads; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
+        regionalAds = data.ads; regionalAdMetrics = data.metrics || regionalAdMetrics; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
         document.getElementById("regionalAdStatus").textContent = "広告を削除しました。";
       } catch (error) { document.getElementById("regionalAdStatus").textContent = error.message; }
     });
@@ -2198,7 +2210,7 @@
       status.textContent = "保存しています...";
       try {
         const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads})});
-        regionalAds = data.ads; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
+        regionalAds = data.ads; regionalAdMetrics = data.metrics || regionalAdMetrics; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
         status.textContent = "広告を保存しました。";
       } catch (error) { status.textContent = error.message; }
     });

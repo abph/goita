@@ -22,6 +22,11 @@ from backend.analytics_geo import normalize_country_code, normalize_prefecture
 ANALYTICS_FILENAME = "goita-analytics.sqlite3"
 ANALYTICS_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
+REGIONAL_AD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+REGIONAL_AD_EVENTS = frozenset({"impression", "click"})
+REGIONAL_AD_REGIONS = frozenset({
+    "北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄", "不明",
+})
 ALLOWED_EVENTS = frozenset({
     "site_visit",
     "room_enter",
@@ -215,6 +220,17 @@ class AnalyticsStore:
                     ON analytics_events(analytics_id, occurred_at DESC);
                     CREATE INDEX IF NOT EXISTS idx_analytics_sessions_time
                     ON analytics_sessions(started_at DESC);
+                    CREATE TABLE IF NOT EXISTS regional_ad_daily_metrics (
+                        metric_date TEXT NOT NULL,
+                        ad_id TEXT NOT NULL,
+                        region TEXT NOT NULL,
+                        impressions INTEGER NOT NULL DEFAULT 0,
+                        clicks INTEGER NOT NULL DEFAULT 0,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (metric_date, ad_id, region)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_regional_ad_metrics_ad_date
+                    ON regional_ad_daily_metrics(ad_id, metric_date DESC);
                     """
                 )
                 session_columns = {
@@ -346,6 +362,157 @@ class AnalyticsStore:
                 )
             connection.commit()
         return True
+
+    def record_regional_ad_metric(
+        self,
+        ad_id: str,
+        region: str,
+        event_name: str,
+        *,
+        now: Optional[datetime] = None,
+    ) -> bool:
+        """Increment one privacy-limited regional advertisement aggregate."""
+
+        clean_ad_id = _clean_text(ad_id, 64)
+        clean_region = _clean_text(region, 16) or "不明"
+        clean_event = _clean_text(event_name, 16)
+        if (
+            not REGIONAL_AD_ID_RE.fullmatch(clean_ad_id)
+            or clean_region not in REGIONAL_AD_REGIONS
+            or clean_event not in REGIONAL_AD_EVENTS
+        ):
+            return False
+
+        occurred_at = now or datetime.now(timezone.utc)
+        if occurred_at.tzinfo is None:
+            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+        metric_date = occurred_at.astimezone(JAPAN_TIMEZONE).date().isoformat()
+        updated_at = occurred_at.astimezone(timezone.utc).isoformat(timespec="seconds")
+        impressions = 1 if clean_event == "impression" else 0
+        clicks = 1 if clean_event == "click" else 0
+
+        self._ensure_schema()
+        with closing(self._connect()) as connection:
+            connection.execute(
+                """
+                INSERT INTO regional_ad_daily_metrics (
+                    metric_date, ad_id, region, impressions, clicks, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(metric_date, ad_id, region) DO UPDATE SET
+                    impressions = impressions + excluded.impressions,
+                    clicks = clicks + excluded.clicks,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    metric_date,
+                    clean_ad_id,
+                    clean_region,
+                    impressions,
+                    clicks,
+                    updated_at,
+                ),
+            )
+            connection.commit()
+        return True
+
+    def regional_ad_metrics(
+        self,
+        ad_ids: Optional[list[str]] = None,
+        *,
+        recent_days: int = 30,
+        now: Optional[datetime] = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return all-time totals with regional and recent daily breakdowns."""
+
+        requested_ids = []
+        for value in ad_ids or []:
+            clean = _clean_text(value, 64)
+            if REGIONAL_AD_ID_RE.fullmatch(clean) and clean not in requested_ids:
+                requested_ids.append(clean)
+        if ad_ids is not None and not requested_ids:
+            return {}
+
+        bounded_days = max(1, min(365, int(recent_days)))
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        cutoff = (
+            current.astimezone(JAPAN_TIMEZONE).date()
+            - timedelta(days=bounded_days - 1)
+        ).isoformat()
+
+        self._ensure_schema()
+        query = (
+            "SELECT metric_date, ad_id, region, impressions, clicks "
+            "FROM regional_ad_daily_metrics"
+        )
+        parameters: list[Any] = []
+        if requested_ids:
+            query += " WHERE ad_id IN ({})".format(
+                ",".join("?" for _ in requested_ids)
+            )
+            parameters.extend(requested_ids)
+        query += " ORDER BY metric_date DESC, region"
+        with closing(self._connect()) as connection:
+            rows = connection.execute(query, parameters).fetchall()
+
+        result: dict[str, dict[str, Any]] = {
+            ad_id: {
+                "impressions": 0,
+                "clicks": 0,
+                "click_rate": 0.0,
+                "regions": {},
+                "daily": [],
+            }
+            for ad_id in requested_ids
+        }
+        for row in rows:
+            ad_id = str(row["ad_id"])
+            metrics = result.setdefault(ad_id, {
+                "impressions": 0,
+                "clicks": 0,
+                "click_rate": 0.0,
+                "regions": {},
+                "daily": [],
+            })
+            impressions = int(row["impressions"])
+            clicks = int(row["clicks"])
+            metrics["impressions"] += impressions
+            metrics["clicks"] += clicks
+            region = str(row["region"])
+            region_metrics = metrics["regions"].setdefault(
+                region,
+                {"region": region, "impressions": 0, "clicks": 0},
+            )
+            region_metrics["impressions"] += impressions
+            region_metrics["clicks"] += clicks
+            if str(row["metric_date"]) >= cutoff:
+                metrics["daily"].append({
+                    "date": str(row["metric_date"]),
+                    "region": region,
+                    "impressions": impressions,
+                    "clicks": clicks,
+                })
+
+        for metrics in result.values():
+            impressions = int(metrics["impressions"])
+            clicks = int(metrics["clicks"])
+            metrics["click_rate"] = round(
+                (clicks / impressions * 100.0) if impressions else 0.0,
+                1,
+            )
+            regions = list(metrics["regions"].values())
+            for item in regions:
+                item["click_rate"] = round(
+                    (item["clicks"] / item["impressions"] * 100.0)
+                    if item["impressions"] else 0.0,
+                    1,
+                )
+            regions.sort(
+                key=lambda item: (-item["impressions"], -item["clicks"], item["region"])
+            )
+            metrics["regions"] = regions
+        return result
 
     def delete_visitor(self, analytics_id: str) -> bool:
         """Delete one browser's analysis history when that browser opts out."""

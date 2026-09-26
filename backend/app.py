@@ -2434,6 +2434,11 @@ class AnalyticsDeleteRequest(BaseModel):
     analytics_id: str = Field(min_length=16, max_length=80)
 
 
+class RegionalAdMetricRequest(BaseModel):
+    ad_id: str = Field(min_length=8, max_length=64)
+    event: Literal["impression", "click"]
+
+
 @app.post("/analytics/event")
 def record_analytics_event(req: AnalyticsEventRequest, request: Request):
     if MEMBER_STORE.is_operator_session(request.cookies.get(MEMBER_COOKIE, "")):
@@ -5693,10 +5698,40 @@ def public_regional_ad(request: Request):
     return JSONResponse({"ad": ad}, headers={"Cache-Control": "no-store"})
 
 
+@app.post("/api/regional-ad/metric")
+def record_regional_ad_metric(req: RegionalAdMetricRequest, request: Request):
+    region = infer_region(request.headers)
+    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
+    if selected is None or selected["id"] != req.ad_id:
+        raise HTTPException(400, "現在表示中の地域別広告ではありません")
+    if req.event == "click" and not selected.get("url"):
+        raise HTTPException(400, "リンクのない広告です")
+    if not ANALYTICS_STORE.record_regional_ad_metric(
+        req.ad_id,
+        region or "不明",
+        req.event,
+    ):
+        raise HTTPException(400, "地域別広告の実績を記録できませんでした")
+    return {"ok": True}
+
+
+def _regional_ad_admin_payload() -> Dict[str, Any]:
+    ads = copy.deepcopy(REGIONAL_AD_SETTINGS)
+    return {
+        "ads": ads,
+        "regions": REGIONAL_AD_REGIONS,
+        "metrics": ANALYTICS_STORE.regional_ad_metrics(
+            [str(ad.get("id", "")) for ad in ads],
+            recent_days=30,
+        ),
+        "metrics_recent_days": 30,
+    }
+
+
 @app.get("/admin/api/regional-ads")
 def admin_regional_ads(request: Request):
     _require_site_admin(request)
-    return {"ads": copy.deepcopy(REGIONAL_AD_SETTINGS), "regions": REGIONAL_AD_REGIONS}
+    return _regional_ad_admin_payload()
 
 
 @app.put("/admin/api/regional-ads")
@@ -5708,7 +5743,7 @@ def admin_update_regional_ads(request: Request, payload: Dict[str, Any] = Body(.
     if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
         REGIONAL_AD_SETTINGS[:] = previous
         raise HTTPException(500, "地域別広告を永続保存できませんでした")
-    return {"ads": copy.deepcopy(REGIONAL_AD_SETTINGS), "regions": REGIONAL_AD_REGIONS}
+    return _regional_ad_admin_payload()
 
 
 @app.get("/admin/api/regional-ads/preview")
