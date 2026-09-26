@@ -1054,3 +1054,61 @@ def test_ally_passed_enemy_first_attack_is_passed_without_meaningful_followup() 
         a_agent.last_score_fallback_detail
         == "pass_enemy_first_ally_passed_weak_followup"
     )
+
+
+def test_2026_04_07_angle_is_passed_without_meaningful_followup() -> None:
+    """Keep the reviewed 1222 decision as a general big-piece regression."""
+    state = GoitaState(
+        hands={
+            "A": list("11123368"),
+            "B": list("12344457"),
+            "C": list("11134559"),
+            "D": list("11122567"),
+        },
+        dealer="A",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+        agent._ensure_trackers(state)
+
+    history = (
+        ("A", ("attack_after_block", "1", "3")),
+        ("B", ("receive", "3", None)),
+        ("B", ("attack", None, "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "3")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "5")),
+        ("D", ("receive", "5", None)),
+        ("D", ("attack", None, "6")),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    a_agent = agents["A"]
+    legal = state.legal_actions("A")
+
+    assert a_agent._has_meaningful_attack_after_same_piece_receive(
+        state,
+        "A",
+        "6",
+    ) is False
+    assert a_agent.select_action(state, "A", legal) == ("pass", None, None)
+    assert (
+        a_agent.last_score_fallback_detail
+        == "pass_enemy_big_piece_weak_followup"
+    )

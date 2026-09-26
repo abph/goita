@@ -86,6 +86,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'upside_finish: "確定上がりを基準に高得点を狙う"',
         'attack_tatewari: "王を切らせる攻め"',
         'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
+        'pass_enemy_big_piece_weak_followup: "飛・角を受けても有力な攻めが続かないためパス"',
         'startsWith("low_reentry_receive_")',
         'return "敵の3枚目を待っても上がれると判断してパス";',
         "function localizeGameLogAiDetail(",

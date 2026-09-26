@@ -551,6 +551,21 @@ class ReceiveStrategyMixin:
         if public_seen > 8 and attacker_count != 1:
             return None
 
+        pass_action = next((act for act in actions if act[0] == "pass"), None)
+        if (
+            pass_action is not None
+            and not self._has_meaningful_attack_after_same_piece_receive(
+                state,
+                player,
+                str(state.current_attack),
+            )
+        ):
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                "pass_enemy_big_piece_weak_followup"
+            )
+            return pass_action
+
         self._set_decision_reason("score_fallback")
         self._set_score_fallback_detail("early_big_piece_same_receive")
         return same_piece_receive
