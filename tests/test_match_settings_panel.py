@@ -23,6 +23,9 @@ def test_match_setup_is_grouped_in_the_settings_modal() -> None:
     assert 'id="forceResetSettingsRow"' in panel
     assert 'id="forceResetSettingsButton"' in panel
     assert 'onclick="confirmForceReset()"' in panel
+    assert 'id="resetAllSeatsSettingsRow"' in panel
+    assert 'id="resetAllSeatsSettingsButton"' in panel
+    assert 'onclick="confirmResetAllSeats()"' in panel
     assert html.count('id="dealerDetails"') == 1
     assert html.count('id="presetHandsDetails"') == 1
 
@@ -49,6 +52,20 @@ def test_force_reset_requires_confirmation_and_is_removed_from_the_play_controls
     assert 'btnNewGame.style.display = (isHost && state.finished) ? "" : "none";' in html
     assert 'forceResetSettingsRow.style.display = (isHost && !state.finished) ? "block" : "none";' in html
     assert 'btnNewGame.textContent = "強制リセット"' not in html
+
+
+def test_private_host_can_reset_and_clear_every_seat() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "async function confirmResetAllSeats()" in html
+    assert "/reset_all_seats?" in html
+    assert "全席を空けてリセット" in html
+    assert "isHost && PRIVATE_ROOM_IDS.has(gid)" in html
+    assert 'localStorage.getItem(CLIENT_ID_KEY)' in html
+    assert 'sessionStorage.getItem(CLIENT_ID_KEY)' in html
+    assert 'localStorage.setItem(CLIENT_ID_KEY, clientId)' in html
+    assert 'socket.send("heartbeat")' in html
+    assert "setInterval(sendHeartbeat, 20000)" in html
 
 
 def test_kifu_0001_round_1_has_the_expected_four_hands() -> None:

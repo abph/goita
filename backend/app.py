@@ -262,6 +262,7 @@ CHAT_STAMPS = {
 AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
+CLIENT_HEARTBEAT_TIMEOUT_SECONDS = 90
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 DEAL_MODE_OPTIONS = frozenset({"normal", "balanced", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
@@ -352,6 +353,8 @@ class ConnectionManager:
         self.client_names: Dict[Tuple[str, str], str] = {}
         self.client_tags: Dict[Tuple[str, str], str] = {}
         self.disconnect_tasks: Dict[Tuple[str, str], Any] = {}
+        self.client_last_seen: Dict[Tuple[str, str], float] = {}
+        self.heartbeat_tasks: Dict[Tuple[str, str], Any] = {}
 
     async def connect(
         self,
@@ -386,8 +389,30 @@ class ConnectionManager:
                 self.client_connections.pop(key, None)
                 self.client_names.pop(key, None)
                 self.client_tags.pop(key, None)
+                self.client_last_seen.pop(key, None)
+                self.cancel_heartbeat_watch(game_id, client_id)
                 return True
         return False
+
+    def touch_client(self, game_id: str, client_id: str) -> None:
+        if not client_id:
+            return
+        key = (game_id, client_id)
+        self.client_last_seen[key] = time.monotonic()
+        task = self.heartbeat_tasks.get(key)
+        if task is None or task.done():
+            self.heartbeat_tasks[key] = asyncio.create_task(
+                _watch_client_heartbeat(game_id, client_id)
+            )
+
+    def cancel_heartbeat_watch(self, game_id: str, client_id: str) -> None:
+        task = self.heartbeat_tasks.pop((game_id, client_id), None)
+        if (
+            task is not None
+            and task is not asyncio.current_task()
+            and not task.done()
+        ):
+            task.cancel()
 
     def has_client_connection(self, game_id: str, client_id: str) -> bool:
         return bool(self.client_connections.get((game_id, client_id)))
@@ -661,43 +686,76 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
     key = (game_id, client_id)
     try:
         await asyncio.sleep(DISCONNECT_SEAT_GRACE_SECONDS)
-        if (
-            manager.has_client_connection(game_id, client_id)
-            or voice_manager.has_client_connection(game_id, client_id)
-        ):
-            return
-        game = GAMES.get(game_id)
-        if not game:
-            return
-        human_seats = game.get("human_seats", {})
-        if not isinstance(human_seats, dict):
-            return
-        removed = False
-        removed_seats: Set[str] = set()
-        for seat, owner_client_id in list(human_seats.items()):
-            if owner_client_id == client_id:
-                del human_seats[seat]
-                _clear_player_name(game, seat)
-                await voice_manager.disconnect_seat(game_id, seat, client_id)
-                removed = True
-                removed_seats.add(seat)
-        if removed:
-            _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
-            await manager.broadcast_update(game_id)
-            if (
-                game.get("tutorial_mode", False)
-                and game.get("tutorial_owner_client_id") == client_id
-                and not _human_seat_set(game)
-            ):
-                _cancel_turn_timeout_task(game_id)
-                GAMES.pop(game_id, None)
-                GAME_TURN_LOCKS.pop(game_id, None)
-            await manager.broadcast_update("lobby")
+        await _release_disconnected_client_seats(game_id, client_id)
     except asyncio.CancelledError:
         return
     finally:
         if manager.disconnect_tasks.get(key) is asyncio.current_task():
             manager.disconnect_tasks.pop(key, None)
+
+
+async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bool:
+    if (
+        manager.has_client_connection(game_id, client_id)
+        or voice_manager.has_client_connection(game_id, client_id)
+    ):
+        return False
+    game = GAMES.get(game_id)
+    if not game:
+        return False
+    human_seats = game.get("human_seats", {})
+    if not isinstance(human_seats, dict):
+        return False
+    removed_seats: Set[str] = set()
+    for seat, owner_client_id in list(human_seats.items()):
+        if owner_client_id == client_id:
+            del human_seats[seat]
+            _clear_player_name(game, seat)
+            await voice_manager.disconnect_seat(game_id, seat, client_id)
+            removed_seats.add(seat)
+    if not removed_seats:
+        return False
+    _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
+    await manager.broadcast_update(game_id)
+    if (
+        game.get("tutorial_mode", False)
+        and game.get("tutorial_owner_client_id") == client_id
+        and not _human_seat_set(game)
+    ):
+        _cancel_turn_timeout_task(game_id)
+        GAMES.pop(game_id, None)
+        GAME_TURN_LOCKS.pop(game_id, None)
+    await manager.broadcast_update("lobby")
+    return True
+
+
+async def _watch_client_heartbeat(game_id: str, client_id: str) -> None:
+    key = (game_id, client_id)
+    try:
+        while True:
+            last_seen = manager.client_last_seen.get(key)
+            if last_seen is None:
+                return
+            remaining = CLIENT_HEARTBEAT_TIMEOUT_SECONDS - (time.monotonic() - last_seen)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+                continue
+            stale_connections = list(manager.client_connections.get(key, set()))
+            for websocket in stale_connections:
+                manager.disconnect(websocket, game_id, client_id)
+                try:
+                    await websocket.close(code=4000, reason="heartbeat timeout")
+                except Exception:
+                    pass
+            if manager.has_client_connection(game_id, client_id):
+                continue
+            await _release_disconnected_client_seats(game_id, client_id)
+            return
+    except asyncio.CancelledError:
+        return
+    finally:
+        if manager.heartbeat_tasks.get(key) is asyncio.current_task():
+            manager.heartbeat_tasks.pop(key, None)
 # =========================================================
 
 def _validate_seat(s: str, *, name: str = "seat") -> str:
@@ -1591,6 +1649,7 @@ async def websocket_endpoint(
     try:
         while True:
             await websocket.receive_text()
+            manager.touch_client(game_id, client_id)
     except WebSocketDisconnect:
         is_fully_disconnected = manager.disconnect(websocket, game_id, client_id)
         await manager.broadcast_update(game_id)
@@ -6450,6 +6509,56 @@ async def reset_game(
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
     return {"ok": True, "game_id": game_id, "dealer": dealer}
+
+
+@app.post("/games/{game_id}/reset_all_seats")
+async def reset_private_room_all_seats(
+    game_id: str,
+    requester: str = "W",
+    client_id: str = "",
+):
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(status_code=403, detail="Private rooms only.")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="game not found")
+    if requester != "A":
+        raise HTTPException(status_code=403, detail="Only player in seat A can reset all seats.")
+    _require_human_seat_owner(game, "A", client_id)
+
+    dealer = _validate_seat(str(game.get("dealer", "A")), name="dealer")
+    owners = {
+        str(owner)
+        for owner in game.get("human_seats", {}).values()
+        if owner
+    } if isinstance(game.get("human_seats"), dict) else set()
+    await reset_game(
+        game_id,
+        dealer=dealer,
+        requester="A",
+        client_id=client_id,
+        keep_score=False,
+        auto_start=False,
+    )
+
+    reset_game_obj = GAMES[game_id]
+    reset_game_obj["human_seats"] = {}
+    _store_ai_seats(reset_game_obj, set())
+    reset_game_obj["player_names"] = {seat: "" for seat in ALL_SEATS}
+    reset_game_obj["player_tags"] = {seat: "" for seat in ALL_SEATS}
+    for owner in owners:
+        manager.cancel_disconnect_release(game_id, owner)
+    for seat in ALL_SEATS:
+        await voice_manager.disconnect_seat(game_id, seat)
+
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "human_seats": [],
+        "ai_seats": [],
+    }
 
 
 @app.post("/games/{game_id}/reset_config")

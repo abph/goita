@@ -3276,6 +3276,7 @@
       font-size: 12px;
       font-weight: 900;
     }
+    .settings-danger-note { margin: 7px 0 0; color: #7b5555; font-size: 11px; line-height: 1.5; }
     .research-kifu-list-header > * {
       box-sizing: border-box;
       min-width: 0;
@@ -5914,6 +5915,10 @@
       <div id="forceResetSettingsRow" class="settings-danger-zone" style="display:none;">
         <button id="forceResetSettingsButton" class="settings-danger-button" type="button" onclick="confirmForceReset()">強制リセット</button>
       </div>
+      <div id="resetAllSeatsSettingsRow" class="settings-danger-zone" style="display:none;">
+        <button id="resetAllSeatsSettingsButton" class="settings-danger-button" type="button" onclick="confirmResetAllSeats()">全席を空けてリセット</button>
+        <p class="settings-danger-note">接続が残った席を含めて全員を退出させ、対局と得点をリセットします。</p>
+      </div>
     </section>
 
     <section id="roomManagementPanel" class="settings-panel" role="tabpanel">
@@ -6342,8 +6347,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260927a"></script>
-<script src="/static/i18n.js?v=20260927a"></script>
+<script src="/static/i18n-en.js?v=20260928a"></script>
+<script src="/static/i18n.js?v=20260928a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260926a"></script>
@@ -7886,11 +7891,17 @@ function saveLobbyPersonalSettings() {
 
 applyPersonalSettingsAppearance();
 
-let clientId = sessionStorage.getItem("goita_client_id");
+const CLIENT_ID_KEY = "goita_client_id";
+let clientId = "";
+try { clientId = localStorage.getItem(CLIENT_ID_KEY) || ""; } catch (_error) {}
+if (!clientId) {
+    try { clientId = sessionStorage.getItem(CLIENT_ID_KEY) || ""; } catch (_error) {}
+}
 if (!clientId) {
     clientId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    sessionStorage.setItem("goita_client_id", clientId);
 }
+try { localStorage.setItem(CLIENT_ID_KEY, clientId); } catch (_error) {}
+try { sessionStorage.removeItem(CLIENT_ID_KEY); } catch (_error) {}
 
 const ANALYTICS_ID_KEY = "goita_analytics_id";
 const ANALYTICS_SESSION_KEY = "goita_analytics_session_id";
@@ -8126,6 +8137,7 @@ let localChatNotices = [];
 let localAiThoughtMessages = [];
 let lastHintNoticeKey = "";
 let socket = null;
+let socketHeartbeatTimer = null;
 let voiceChatController = null;
 let voiceChatState = {
     joining: false,
@@ -8402,6 +8414,7 @@ document.addEventListener("pointerdown", unlockAudio, { once: true });
 document.addEventListener("keydown", unlockAudio, { once: true });
 
 function connectWS(targetGid) {
+    stopSocketHeartbeat();
     if (socket) {
         socket.onclose = null;
         socket.close();
@@ -8419,6 +8432,7 @@ function connectWS(targetGid) {
     socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
+        startSocketHeartbeat();
         if (currentWsGid !== "lobby") {
             refresh();
         }
@@ -8444,6 +8458,7 @@ function connectWS(targetGid) {
     };
 
     socket.onclose = (event) => {
+        stopSocketHeartbeat();
         if (isPersonalScoreRoom(targetGid) && [4001,4403].includes(event.code)) { void leaveExpiredScoreRoom(); return; }
         console.log("WebSocket disconnected. 3秒後に再接続します...");
         setTimeout(() => connectWS(currentWsGid), 3000);
@@ -8452,6 +8467,22 @@ function connectWS(targetGid) {
     socket.onerror = (err) => {
         console.error("WebSocket Error:", err);
     };
+}
+
+function stopSocketHeartbeat() {
+    if (socketHeartbeatTimer !== null) {
+        clearInterval(socketHeartbeatTimer);
+        socketHeartbeatTimer = null;
+    }
+}
+
+function startSocketHeartbeat() {
+    stopSocketHeartbeat();
+    const sendHeartbeat = () => {
+        if (socket?.readyState === WebSocket.OPEN) socket.send("heartbeat");
+    };
+    sendHeartbeat();
+    socketHeartbeatTimer = setInterval(sendHeartbeat, 20000);
 }
 
 function setAiThinking(active, seat = "") {
@@ -8807,6 +8838,7 @@ async function returnToLobby() {
     }
     
     if (socket) {
+        stopSocketHeartbeat();
         socket.onclose = null;
         socket.close();
         socket = null;
@@ -11328,6 +11360,7 @@ function updateRoomUI() {
     const actionsDetails = document.getElementById("actionsDetails"); 
     const btnNewGame = document.getElementById("btnNewGame");
     const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
+    const resetAllSeatsSettingsRow = document.getElementById("resetAllSeatsSettingsRow");
     const settingsBtn = document.getElementById("roomSettingsBtn");
     const hostControlsPanel = document.getElementById("hostControlsPanel");
     const hostToolsGrid = document.getElementById("hostToolsGrid");
@@ -11343,6 +11376,7 @@ function updateRoomUI() {
     
     if (btnNewGame) btnNewGame.style.display = (isHost && latestState?.finished) ? "" : "none";
     if (forceResetSettingsRow) forceResetSettingsRow.style.display = (isHost && latestState && !latestState.finished) ? "block" : "none";
+    if (resetAllSeatsSettingsRow) resetAllSeatsSettingsRow.style.display = (isHost && PRIVATE_ROOM_IDS.has(gid)) ? "block" : "none";
     if (hostControlsPanel) hostControlsPanel.style.display = isHost ? "block" : "none";
     if (dealerDetails) dealerDetails.style.display = isHost ? "block" : "none";
     if (presetDetails) presetDetails.style.display = (!isMain && isHost) ? "block" : "none";
@@ -15304,6 +15338,31 @@ async function confirmForceReset(){
   }
 }
 
+async function confirmResetAllSeats(){
+  if(!isCurrentClientHost() || !PRIVATE_ROOM_IDS.has(gid)) return;
+  const confirmed = window.confirm(uiText("現在の対局と得点をリセットし、A・B・C・Dの全席を空席にします。全員がルームを退出します。よろしいですか？"));
+  if(!confirmed) return;
+
+  const button = document.getElementById("resetAllSeatsSettingsButton");
+  if(button) button.disabled = true;
+  try{
+    const query = new URLSearchParams({requester:"A", client_id:clientId});
+    const response = await fetch(`${API}/games/${gid}/reset_all_seats?${query.toString()}`, {method:"POST"});
+    const data = await response.json().catch(() => ({}));
+    if(!response.ok) throw new Error(data?.detail || "全席を空けてリセットできませんでした。");
+    pending = null;
+    setAutoPlayEnabled(false);
+    mySeat = WATCH;
+    closeSettings();
+    await returnToLobby();
+  }catch(error){
+    setHint(uiText(error?.message || "全席を空けてリセットできませんでした。"));
+    await refresh();
+  }finally{
+    if(button) button.disabled = false;
+  }
+}
+
 function legalActionsContextKey(state){
   if(!state) return "";
   const hand = Array.isArray(state.hands?.[mySeat]) ? state.hands[mySeat].join("") : "";
@@ -15583,6 +15642,7 @@ async function refreshFromState(confirmedState = null){
   if(requestSequence !== refreshRequestSequence) return;
 
   const forceResetSettingsRow = document.getElementById("forceResetSettingsRow");
+  const resetAllSeatsSettingsRow = document.getElementById("resetAllSeatsSettingsRow");
   const isHost = isCurrentClientHost();
   const autoNextRoundPending = (
       gid === DEBUG_GID
@@ -15598,6 +15658,11 @@ async function refreshFromState(confirmedState = null){
   if (forceResetSettingsRow) {
       forceResetSettingsRow.style.display = (
           isHost && !state.finished && !state.practice_replay_active
+      ) ? "block" : "none";
+  }
+  if (resetAllSeatsSettingsRow) {
+      resetAllSeatsSettingsRow.style.display = (
+          isHost && PRIVATE_ROOM_IDS.has(gid) && !state.practice_replay_active
       ) ? "block" : "none";
   }
   
