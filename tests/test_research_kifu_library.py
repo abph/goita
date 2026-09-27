@@ -222,7 +222,12 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'id="researchKifuEditTags"' in HTML
     assert 'id="researchKifuTagFilter"' in HTML
     assert 'id="researchKifuSelectButton"' in HTML
+    assert 'id="researchKifuSelectAll"' in HTML
     assert 'id="researchKifuBulkDeleteButton"' in HTML
+    assert "function visibleResearchKifuRecords()" in HTML
+    assert "function toggleAllVisibleResearchKifus(checked)" in HTML
+    assert ".filter(record => record.favorite !== true)" in HTML
+    assert "selectAll.indeterminate = selectedCount > 0 && !allSelected" in HTML
     assert 'toggleResearchKifuFavorite(record.id)' in HTML
     assert 'researchKifuApi("/delete-many"' in HTML
     assert 'leading.disabled = record.favorite === true' in HTML
@@ -236,7 +241,8 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert '<summary id="memberKifuSaveTitle">棋譜をサーバーに保存</summary>' in HTML
     assert 'placeholder="タイトル　例：終盤の王受け"' in HTML
     assert 'placeholder="気になった点をメモできます"' in HTML
-    assert '<strong class="research-kifu-list-heading">棋譜一覧</strong>' in HTML
+    assert '<label class="research-kifu-list-heading">' in HTML
+    assert '<span>棋譜一覧</span>' in HTML
     assert 'id="researchKifuQuota" class="member-kifu-quota"' in HTML
     assert '<label for="researchKifuTitle">タイトル</label>' not in HTML
     assert '<label for="researchKifuMemo">研究メモ</label>' not in HTML

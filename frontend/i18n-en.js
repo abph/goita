@@ -677,6 +677,8 @@
     "お気に入りの棋譜は削除できません。先にお気に入りを解除してください。": "Favorite game records cannot be deleted. Remove the favorite first.",
     "選択": "Select",
     "キャンセル": "Cancel",
+    "表示中の棋譜をすべて選択": "Select all displayed records",
+    "表示中の棋譜をすべて解除": "Deselect all displayed records",
     "{count}局選択中": "{count} selected",
     "削除する": "Delete",
     "削除する棋譜を選択": "Select a game record to delete",

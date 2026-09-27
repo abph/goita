@@ -18,8 +18,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260925a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260925a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260927a"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260927a"></script>' in html
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n
@@ -245,6 +245,8 @@ def test_research_kifu_tags_are_translated() -> None:
         "タイトル　例：終盤の王受け",
         "気になった点をメモできます",
         "棋譜一覧",
+        "表示中の棋譜をすべて選択",
+        "表示中の棋譜をすべて解除",
         "棋譜再生",
         "停止",
         "もう一度再生",
