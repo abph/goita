@@ -3199,17 +3199,9 @@
       display: flex;
       flex-wrap: wrap;
       align-items: center;
+      justify-content: flex-end;
       gap: 7px;
       margin-top: 11px;
-    }
-    .research-kifu-list-heading {
-      display: inline-flex;
-      flex: 0 1 auto;
-      align-items: center;
-      gap: 6px;
-      color: #604322;
-      font-size: 14px;
-      font-weight: 900;
     }
     .research-kifu-select-all {
       width: 17px;
@@ -3265,21 +3257,50 @@
       font-size: 11px;
       font-weight: 800;
     }
+    .research-kifu-list-shell {
+      margin-top: 12px;
+      border: 1px solid #d7c2a4;
+      background: #fff;
+    }
+    .research-kifu-list-header,
+    .research-kifu-item {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) 74px;
+      align-items: center;
+    }
+    .research-kifu-list-header {
+      min-height: 34px;
+      border-bottom: 1px solid #c9ad84;
+      background: #f4eadb;
+      color: #604322;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .research-kifu-list-header > * {
+      box-sizing: border-box;
+      min-width: 0;
+      padding: 7px 8px;
+    }
+    .research-kifu-list-header > * + * { border-left: 1px solid #d7c2a4; }
+    .research-kifu-list-header-leading {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      padding: 0 !important;
+      font-size: 18px;
+    }
+    .research-kifu-list-header-action { text-align: center; }
     .research-kifu-list {
       max-height: 380px;
-      margin-top: 12px;
       overflow-y: auto;
       overscroll-behavior: contain;
-      border: 1px solid #d7c2a4;
       background: #fff;
     }
     .research-kifu-empty { padding: 18px 12px; color: #74695f; text-align: center; }
     .research-kifu-item {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 8px;
-      align-items: center;
-      padding: 9px 10px;
+      padding: 9px 8px;
       border-bottom: 1px solid #eee3d5;
     }
     .research-kifu-item:last-child { border-bottom: 0; }
@@ -3305,6 +3326,7 @@
       font-weight: 800;
     }
     .research-kifu-favorite-button {
+      justify-self: center;
       width: 30px;
       min-width: 30px;
       padding: 2px !important;
@@ -3315,7 +3337,7 @@
       line-height: 1 !important;
     }
     .research-kifu-favorite-button.is-favorite { color: #d49a16 !important; }
-    .research-kifu-select-check { width: 18px; height: 18px; margin: 0 6px; accent-color: #176b57; }
+    .research-kifu-select-check { width: 18px; height: 18px; margin: 0; justify-self: center; accent-color: #176b57; }
     .research-kifu-item.is-favorite .research-kifu-item-title { color: #715119; }
     .research-kifu-actions button {
       min-height: 34px;
@@ -5986,10 +6008,6 @@
           </details>
           <div id="researchKifuStatus" class="settings-status" aria-live="polite"></div>
           <div class="research-kifu-filter">
-            <label class="research-kifu-list-heading">
-              <input id="researchKifuSelectAll" class="research-kifu-select-all" type="checkbox" onchange="toggleAllVisibleResearchKifus(this.checked)" aria-label="表示中の棋譜をすべて選択" hidden disabled>
-              <span>棋譜一覧</span>
-            </label>
             <span id="researchKifuQuota" class="member-kifu-quota" aria-live="polite"></span>
             <select id="researchKifuTagFilter" aria-label="タグで絞り込み" onchange="changeResearchKifuFilter()"></select>
             <button id="researchKifuSelectButton" class="research-kifu-select-button" type="button" onclick="toggleResearchKifuSelection()">選択</button>
@@ -5998,7 +6016,17 @@
             <span id="researchKifuSelectionCount">0局選択中</span>
             <button id="researchKifuBulkDeleteButton" class="danger" type="button" onclick="deleteSelectedResearchKifus()" disabled>削除する</button>
           </div>
-          <div id="researchKifuList" class="research-kifu-list"></div>
+          <div class="research-kifu-list-shell">
+            <div class="research-kifu-list-header">
+              <span class="research-kifu-list-header-leading">
+                <span id="researchKifuFavoriteHeader" aria-hidden="true">☆</span>
+                <input id="researchKifuSelectAll" class="research-kifu-select-all" type="checkbox" onchange="toggleAllVisibleResearchKifus(this.checked)" aria-label="表示中の棋譜をすべて選択" hidden disabled>
+              </span>
+              <strong>棋譜一覧</strong>
+              <span id="researchKifuActionHeader" class="research-kifu-list-header-action">操作</span>
+            </div>
+            <div id="researchKifuList" class="research-kifu-list"></div>
+          </div>
           <section class="research-kifu-statistics-section" aria-labelledby="researchKifuStatisticsTitle">
             <h4 id="researchKifuStatisticsTitle">統計</h4>
             <button class="research-kifu-import-button" id="researchKifuStatisticsButton" type="button" onclick="createResearchKifuStatistics()">統計を作る</button>
@@ -10176,14 +10204,18 @@ function updateResearchKifuSelectionActions() {
     const actions = document.getElementById("researchKifuSelectionActions");
     const toggle = document.getElementById("researchKifuSelectButton");
     const selectAll = document.getElementById("researchKifuSelectAll");
+    const favoriteHeader = document.getElementById("researchKifuFavoriteHeader");
+    const actionHeader = document.getElementById("researchKifuActionHeader");
     const count = document.getElementById("researchKifuSelectionCount");
     const remove = document.getElementById("researchKifuBulkDeleteButton");
-    if (!actions || !toggle || !selectAll || !count || !remove) return;
+    if (!actions || !toggle || !selectAll || !favoriteHeader || !actionHeader || !count || !remove) return;
     const selectableRecords = visibleResearchKifuRecords().filter(record => record.favorite !== true);
     const selectedCount = selectableRecords.filter(record => selectedResearchKifuIds.has(record.id)).length;
     const allSelected = selectableRecords.length > 0 && selectedCount === selectableRecords.length;
     actions.hidden = !researchKifuSelectionMode;
     toggle.textContent = uiText(researchKifuSelectionMode ? "キャンセル" : "選択");
+    favoriteHeader.hidden = researchKifuSelectionMode;
+    actionHeader.hidden = researchKifuSelectionMode;
     selectAll.hidden = !researchKifuSelectionMode;
     selectAll.disabled = !researchKifuSelectionMode || selectableRecords.length === 0;
     selectAll.checked = allSelected;
