@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     i18n = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    i18n_en = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
 
     assert 'data-language-choice="ja"' in html
     assert 'data-language-choice="zh"' in html
@@ -18,8 +19,10 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260928a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260928a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260928b"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260928b"></script>' in html
+    assert '"棋譜をみんなに見せる": "Show Everyone"' in i18n_en
+    assert '"棋譜をみんなに見せる": "向大家展示棋谱"' in i18n
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n

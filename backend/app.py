@@ -80,7 +80,7 @@ from backend.survey_api import create_survey_router
 from backend.analytics_geo import infer_country_code, infer_prefecture
 from backend.regional_ads import REGIONS as REGIONAL_AD_REGIONS, infer_region, normalize_ads as normalize_regional_ads, select_ad as select_regional_ad
 from backend.member_store import MemberError, MemberStore, resolve_member_path
-from backend.member_api import MEMBER_COOKIE, PrivateRoute, create_member_router, require_member_origin
+from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
 from backend.score_attack_audit import (
     AUDIT_STATUSES,
@@ -167,6 +167,7 @@ MEMBER_PATH = resolve_member_path(
 if MEMBER_PATH.resolve().is_relative_to((Path(__file__).resolve().parents[1] / "frontend").resolve()):
     raise RuntimeError("GOITA_MEMBER_DB_PATH must be outside the public frontend directory")
 MEMBER_STORE = MemberStore(MEMBER_PATH)
+MEMBER_KIFU_STORE = MemberKifuStore(MEMBER_STORE)
 MEMBER_PERSISTENT = bool(
     str(os.environ.get("GOITA_MEMBER_DB_PATH", "") or "").strip()
     or str(os.environ.get("GOITA_PERSISTENT_DATA_DIR", "") or "").strip()
@@ -715,6 +716,7 @@ async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bo
             removed_seats.add(seat)
     if not removed_seats:
         return False
+    _clear_shared_kifu_for_client(game, client_id)
     _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
     await manager.broadcast_update(game_id)
     if (
@@ -1443,6 +1445,18 @@ def _clear_player_name(game: Dict[str, Any], seat: str) -> None:
     player_names[seat] = ""
     player_tags: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
     player_tags[seat] = ""
+
+
+def _clear_shared_kifu_for_client(game: Dict[str, Any], client_id: str) -> bool:
+    shared_kifu = game.get("shared_kifu")
+    if (
+        client_id
+        and isinstance(shared_kifu, dict)
+        and shared_kifu.get("owner_client_id") == client_id
+    ):
+        game["shared_kifu"] = None
+        return True
+    return False
 
 
 def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> bool:
@@ -2390,6 +2404,17 @@ class PracticeReplayRequest(BaseModel):
     scene_index: Optional[int] = Field(default=None, ge=0, le=500)
 
 
+class SharedKifuRequest(MemberInput):
+    game_id: str = Field(min_length=1, max_length=100)
+    client_id: str = Field(min_length=1, max_length=128)
+    seat: Literal["A", "B", "C", "D"]
+
+
+class SharedKifuStopRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    seat: Literal["A", "B", "C", "D"]
+
+
 class DebugAutoNextRoundRequest(BaseModel):
     requester: str = Field(default="W")
     client_id: str = ""
@@ -3292,6 +3317,33 @@ def _state_public_view(
         finished = state.finished
         winner = state.winner
 
+    shared_kifu = game_obj.get("shared_kifu")
+    shared_kifu_public = None
+    shared_kifu_can_stop = False
+    can_view_shared_kifu = bool(
+        client_id
+        and (
+            owned_human_seats
+            or manager.has_client_connection(game_id, client_id)
+        )
+    )
+    if (
+        can_view_shared_kifu
+        and isinstance(shared_kifu, dict)
+        and shared_kifu.get("token")
+    ):
+        shared_kifu_public = {
+            "token": str(shared_kifu.get("token", "")),
+            "title": str(shared_kifu.get("title", "")),
+            "shared_by": str(shared_kifu.get("shared_by", "")),
+            "shared_by_seat": str(shared_kifu.get("shared_by_seat", "")),
+            "payload": copy.deepcopy(shared_kifu.get("payload", {})),
+        }
+        shared_kifu_can_stop = bool(
+            "A" in owned_human_seats
+            or shared_kifu.get("owner_client_id") == client_id
+        )
+
     payload = {
         "action_token": _action_state_token(game_obj, state),
         "update_version": game_obj.get("update_version", 0),
@@ -3401,6 +3453,8 @@ def _state_public_view(
         "public_room_ad": _public_room_ad_public_payload(game_id),
         "chat_messages": chat_messages,
         "spectator_count": manager.spectator_count(game_id, game_obj),
+        "shared_kifu": shared_kifu_public,
+        "shared_kifu_can_stop": shared_kifu_can_stop,
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["owned_human_seats"] = sorted(owned_human_seats)
@@ -3464,6 +3518,7 @@ def _create_game_obj(
         "practice_replay_source": None,
         "practice_return_snapshot": None,
         "practice_scene_index": 0,
+        "shared_kifu": None,
         "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
@@ -6020,6 +6075,7 @@ async def _vacate_room_seat(game_id, req):
         raise HTTPException(status_code=409, detail="The seat occupant has changed.")
 
     del human_seats[seat]
+    _clear_shared_kifu_for_client(game, owner_client_id)
     _clear_player_name(game, seat)
     manager.cancel_disconnect_release(game_id, owner_client_id)
     await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
@@ -6061,6 +6117,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     if game.get("is_started"):
         return {"ok": False, "detail": "Already started"}
     
+    game["shared_kifu"] = None
     game["is_started"] = True
     dealer = game.get("dealer", "A")
     game["log"].append(f"Game start. dealer={dealer}")
@@ -7125,6 +7182,7 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
     if isinstance(hs, dict):
         if seat in hs and hs[seat] == client_id:
             del hs[seat]
+            _clear_shared_kifu_for_client(game, client_id)
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
             _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
@@ -7170,6 +7228,7 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
         if isinstance(hs, dict) and seat in hs:
             owner_client_id = hs.get(seat, "")
             del hs[seat]
+            _clear_shared_kifu_for_client(game, owner_client_id)
             await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
             _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
         _clear_player_name(game, seat)
@@ -7793,9 +7852,85 @@ def _member_kifu_snapshot(request: Request, game_id: str, anonymous: bool) -> Di
 
 
 app.include_router(create_member_kifu_router(
-    MemberKifuStore(MEMBER_STORE), _member_kifu_snapshot, _parse_research_kifu_text,
+    MEMBER_KIFU_STORE, _member_kifu_snapshot, _parse_research_kifu_text,
     persistent=MEMBER_PERSISTENT,
 ))
+
+
+@app.post("/api/member/kifu/{record_id}/share")
+async def share_member_kifu(
+    record_id: str,
+    data: SharedKifuRequest,
+    request: Request,
+):
+    require_member_origin(request)
+    game_id = data.game_id
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(status_code=403, detail="プライベートルームで利用してください。")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="部屋が見つかりません。")
+    _require_human_seat_owner(game, data.seat, data.client_id)
+    state = game.get("state")
+    if game.get("is_started") and not bool(getattr(state, "finished", False)):
+        raise HTTPException(status_code=409, detail="対局中は棋譜を共有できません。")
+    if game.get("practice_replay_active", False):
+        raise HTTPException(status_code=409, detail="練習局では棋譜を共有できません。")
+
+    try:
+        record = MEMBER_KIFU_STORE.access(
+            request.cookies.get(MEMBER_COOKIE, ""),
+            record_id,
+        )
+    except MemberError as error:
+        raise HTTPException(status_code=error.status, detail=str(error)) from error
+    payload = copy.deepcopy(record.get("payload", {}))
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=409, detail="棋譜データを共有できません。")
+    payload["my_seat"] = ""
+    player_name = _sanitize_player_name(
+        game.get("player_names", {}).get(data.seat, "")
+    )
+    shared_kifu = {
+        "token": secrets.token_urlsafe(18),
+        "title": str(record.get("title", ""))[:80],
+        "shared_by": player_name or f"{data.seat}席",
+        "shared_by_seat": data.seat,
+        "owner_client_id": data.client_id,
+        "payload": payload,
+    }
+    game["shared_kifu"] = shared_kifu
+    await manager.broadcast_update(game_id)
+    return {
+        "ok": True,
+        "shared_kifu": {
+            key: copy.deepcopy(value)
+            for key, value in shared_kifu.items()
+            if key != "owner_client_id"
+        },
+    }
+
+@app.post("/games/{game_id}/shared_kifu/stop")
+async def stop_shared_kifu(
+    game_id: str,
+    data: SharedKifuStopRequest,
+    request: Request,
+):
+    require_member_origin(request)
+    if game_id not in PRIVATE_ROOM_NAMES:
+        raise HTTPException(status_code=403, detail="プライベートルームで利用してください。")
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="部屋が見つかりません。")
+    _require_human_seat_owner(game, data.seat, data.client_id)
+    shared_kifu = game.get("shared_kifu")
+    if not isinstance(shared_kifu, dict):
+        return {"ok": True}
+    if data.seat != "A" and shared_kifu.get("owner_client_id") != data.client_id:
+        raise HTTPException(status_code=403, detail="共有した本人かホストが終了できます。")
+    game["shared_kifu"] = None
+    await manager.broadcast_update(game_id)
+    return {"ok": True}
 
 app.include_router(create_member_room_router(
     MEMBER_STORE, _member_room_options, _room_management_payload,

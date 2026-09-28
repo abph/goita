@@ -3460,9 +3460,35 @@
       cursor: default;
       opacity: 0.48;
     }
+    #researchKifuApplyButton { grid-column: 1 / -1; }
     .research-kifu-replay-button.is-playing {
       border-color: #a94132;
       color: #9a2c20;
+    }
+    .shared-kifu-modal-content { max-width: 720px; }
+    .shared-kifu-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      padding-right: 4px;
+    }
+    .shared-kifu-byline { margin: -4px 0 6px; color: #74695f; font-size: 12px; }
+    .shared-kifu-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 7px;
+      margin-top: 8px;
+    }
+    .shared-kifu-actions button { min-width: 0; font-weight: 800; }
+    .shared-kifu-stop { border-color: #c78888 !important; color: #a62424 !important; }
+    .shared-kifu-open-button {
+      padding: 6px 10px;
+      border: 1px solid #9d754e;
+      border-radius: 8px;
+      background: #fff9e8;
+      color: #69411e;
+      font-weight: 800;
     }
     .research-kifu-board-wrap {
       width: fit-content;
@@ -5262,6 +5288,7 @@
       <span class="voice-chat-privacy">音声は録音・保存されません。</span>
       <div id="voiceAudioOutputs" hidden></div>
     </div>
+    <button id="sharedKifuOpenButton" class="shared-kifu-open-button" type="button" onclick="openSharedKifuViewer()" hidden>共有中の棋譜を見る</button>
   </div>
 
   <div class="game-content-layout">
@@ -6071,6 +6098,7 @@
           </div>
           <div class="research-kifu-play-actions">
             <button id="researchKifuReplayButton" class="research-kifu-replay-button" type="button" onclick="toggleResearchKifuReplay()">棋譜再生</button>
+            <button id="researchKifuShareButton" type="button" onclick="shareSelectedResearchKifu()" hidden>棋譜をみんなに見せる</button>
             <button id="researchKifuApplyButton" type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
           </div>
           <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
@@ -6087,6 +6115,25 @@
       </div>
       <button type="button" onclick="closeSettings()">閉じる</button>
     </div>
+  </div>
+</div>
+
+<div id="sharedKifuModal" class="modal-overlay" onclick="if(event.target===this) closeSharedKifuViewer()">
+  <div class="modal-content settings-modal-content shared-kifu-modal-content" role="dialog" aria-modal="true" aria-labelledby="sharedKifuTitle">
+    <button class="settings-modal-close" type="button" onclick="closeSharedKifuViewer()" aria-label="共有棋譜を閉じる" title="閉じる">×</button>
+    <h3 id="sharedKifuTitle">共有された棋譜</h3>
+    <p id="sharedKifuByline" class="shared-kifu-byline"></p>
+    <div class="shared-kifu-scroll">
+      <div class="research-kifu-board-wrap">
+        <div id="sharedKifuBoard" class="research-kifu-board" aria-label="共有された棋譜の盤面"></div>
+      </div>
+      <div class="shared-kifu-actions">
+        <button id="sharedKifuReplayButton" class="research-kifu-replay-button" type="button" onclick="toggleSharedKifuReplay()">棋譜再生</button>
+        <button id="sharedKifuStopButton" class="shared-kifu-stop" type="button" onclick="stopSharedKifuSharing()" hidden>共有を終了</button>
+      </div>
+      <div id="sharedKifuStatus" class="settings-status" aria-live="polite"></div>
+    </div>
+    <div class="settings-footer"><button type="button" onclick="closeSharedKifuViewer()">閉じる</button></div>
   </div>
 </div>
 
@@ -6347,8 +6394,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260928a"></script>
-<script src="/static/i18n.js?v=20260928a"></script>
+<script src="/static/i18n-en.js?v=20260928b"></script>
+<script src="/static/i18n.js?v=20260928b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260926a"></script>
@@ -7607,6 +7654,11 @@ let researchKifuSelectionMode = false;
 let selectedResearchKifuIds = new Set();
 let researchKifuReplayToken = 0;
 let researchKifuReplayRunning = false;
+let sharedKifu = null;
+let sharedKifuReplayToken = 0;
+let sharedKifuReplayRunning = false;
+let dismissedSharedKifuToken = "";
+let sharedKifuCanStop = false;
 const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
     "王玉", "3し", "4し", "2香", "3香", "4香", "2中駒", "3中駒", "4中駒",
     "大駒ペア", "し攻め", "差し込み", "ダブル狙い", "だまし香", "だましし",
@@ -8837,6 +8889,7 @@ async function returnToLobby() {
         clearDirectPrivateRoomUrl();
     }
     
+    closeSharedKifuViewer({forget: true});
     if (socket) {
         stopSocketHeartbeat();
         socket.onclose = null;
@@ -10096,6 +10149,7 @@ function syncMemberKifuControls(canSave = window.goitaMembers?.canSaveKifu() ===
     });
     document.getElementById("researchKifuImportButton").disabled = !canSave;
     document.getElementById("researchKifuApplyButton").hidden = !inRoom || !PRIVATE_ROOM_IDS.has(gid);
+    syncResearchKifuShareButton();
     const quota = document.getElementById("researchKifuQuota");
     const usage = window.goitaMembers?.kifuStatus?.();
     if (quota && usage) {
@@ -10881,6 +10935,180 @@ async function toggleResearchKifuReplay() {
     if (status) status.textContent = uiText("再生が終了しました。");
 }
 
+function canShareResearchKifuNow() {
+    if (!PRIVATE_ROOM_IDS.has(gid) || isSpectator()) return false;
+    const ownedSeats = latestState?.owned_human_seats;
+    if (Array.isArray(ownedSeats) && !ownedSeats.includes(mySeat)) return false;
+    if (latestState?.practice_replay_active) return false;
+    return latestState?.is_started !== true || latestState?.finished === true;
+}
+
+function syncResearchKifuShareButton() {
+    const button = document.getElementById("researchKifuShareButton");
+    if (!button) return;
+    const inRoom = document.getElementById("gameView").style.display !== "none";
+    const seatedInPrivateRoom = inRoom && PRIVATE_ROOM_IDS.has(gid) && !isSpectator();
+    button.hidden = !seatedInPrivateRoom;
+    button.disabled = seatedInPrivateRoom && !canShareResearchKifuNow();
+    button.title = button.disabled ? uiText("対局中は棋譜を共有できません。") : "";
+}
+
+async function shareSelectedResearchKifu() {
+    const status = document.getElementById("researchKifuDetailStatus");
+    if (!selectedResearchKifu || !canShareResearchKifuNow()) {
+        if (status) status.textContent = uiText("待機中または局の終了後に共有できます。");
+        return;
+    }
+    const button = document.getElementById("researchKifuShareButton");
+    if (button) button.disabled = true;
+    if (status) status.textContent = uiText("棋譜を共有しています。");
+    try {
+        const data = await researchKifuApi(`/${encodeURIComponent(selectedResearchKifu.id)}/share`, {
+            game_id: gid,
+            client_id: clientId,
+            seat: mySeat,
+        });
+        closeSettings();
+        sharedKifu = data.shared_kifu || null;
+        sharedKifuCanStop = true;
+        dismissedSharedKifuToken = "";
+        openSharedKifuViewer();
+    } catch (error) {
+        if (status) status.textContent = uiText(error?.message || "棋譜を共有できませんでした。");
+    } finally {
+        syncResearchKifuShareButton();
+    }
+}
+
+function updateSharedKifuReplayControls(label = "棋譜再生") {
+    const button = document.getElementById("sharedKifuReplayButton");
+    if (!button) return;
+    button.textContent = uiText(label);
+    button.classList.toggle("is-playing", sharedKifuReplayRunning);
+}
+
+function stopSharedKifuReplay({restoreFinal = true, clearStatus = false} = {}) {
+    sharedKifuReplayToken += 1;
+    sharedKifuReplayRunning = false;
+    updateSharedKifuReplayControls("棋譜再生");
+    if (restoreFinal && sharedKifu?.payload) {
+        renderResearchKifuBoard(sharedKifu.payload, {
+            container: document.getElementById("sharedKifuBoard"),
+        });
+    }
+    if (clearStatus) document.getElementById("sharedKifuStatus").textContent = "";
+}
+
+function openSharedKifuViewer() {
+    if (!sharedKifu?.payload) return;
+    stopSharedKifuReplay({restoreFinal: false, clearStatus: true});
+    dismissedSharedKifuToken = "";
+    const title = String(sharedKifu.title || "").trim();
+    document.getElementById("sharedKifuTitle").textContent = title || uiText("共有された棋譜");
+    const sharedBy = String(sharedKifu.shared_by || sharedKifu.shared_by_seat || "");
+    document.getElementById("sharedKifuByline").textContent = sharedBy
+        ? `${sharedBy}${uiText("さんが共有しました。")}`
+        : uiText("棋譜が共有されました。");
+    renderResearchKifuBoard(sharedKifu.payload, {
+        container: document.getElementById("sharedKifuBoard"),
+    });
+    document.getElementById("sharedKifuStopButton").hidden = !sharedKifuCanStop;
+    document.getElementById("sharedKifuModal").style.display = "flex";
+}
+
+function closeSharedKifuViewer({forget = false} = {}) {
+    stopSharedKifuReplay({restoreFinal: false, clearStatus: true});
+    if (!forget && sharedKifu?.token) dismissedSharedKifuToken = sharedKifu.token;
+    document.getElementById("sharedKifuModal").style.display = "none";
+    if (forget) {
+        sharedKifu = null;
+        sharedKifuCanStop = false;
+        dismissedSharedKifuToken = "";
+    }
+}
+
+async function toggleSharedKifuReplay() {
+    if (sharedKifuReplayRunning) {
+        stopSharedKifuReplay({restoreFinal: true, clearStatus: true});
+        return;
+    }
+    const payload = sharedKifu?.payload;
+    const status = document.getElementById("sharedKifuStatus");
+    const frames = payload ? researchKifuReplayFrames(payload) : [];
+    if (!frames.length) {
+        if (status) status.textContent = uiText("再生できる手順がありません。");
+        return;
+    }
+    const token = ++sharedKifuReplayToken;
+    sharedKifuReplayRunning = true;
+    updateSharedKifuReplayControls("停止");
+    renderResearchKifuBoard(payload, {
+        container: document.getElementById("sharedKifuBoard"),
+        rows: [],
+        finished: false,
+    });
+    if (status) status.textContent = uiText("棋譜を再生しています。");
+    await new Promise(resolve => setTimeout(resolve, 620));
+    for (const frame of frames) {
+        if (token !== sharedKifuReplayToken || !sharedKifuReplayRunning) return;
+        renderResearchKifuBoard(payload, {
+            container: document.getElementById("sharedKifuBoard"),
+            rows: frame.rows,
+            finished: false,
+            latestAction: frame.latestAction,
+        });
+        if (status) status.textContent = frame.label;
+        await new Promise(resolve => setTimeout(resolve, frame.delay));
+    }
+    if (token !== sharedKifuReplayToken || !sharedKifuReplayRunning) return;
+    sharedKifuReplayRunning = false;
+    renderResearchKifuBoard(payload, {
+        container: document.getElementById("sharedKifuBoard"),
+    });
+    updateSharedKifuReplayControls("もう一度再生");
+    if (status) status.textContent = uiText("再生が終了しました。");
+}
+
+function syncSharedKifuViewer(state) {
+    const incoming = state?.shared_kifu;
+    const openButton = document.getElementById("sharedKifuOpenButton");
+    if (!incoming?.token || !incoming?.payload) {
+        if (openButton) openButton.hidden = true;
+        if (sharedKifu) closeSharedKifuViewer({forget: true});
+        return;
+    }
+    const changed = incoming.token !== sharedKifu?.token;
+    sharedKifu = incoming;
+    sharedKifuCanStop = state.shared_kifu_can_stop === true;
+    if (openButton) openButton.hidden = false;
+    const stopButton = document.getElementById("sharedKifuStopButton");
+    if (stopButton) stopButton.hidden = !sharedKifuCanStop;
+    if (changed && incoming.token !== dismissedSharedKifuToken) {
+        openSharedKifuViewer();
+    }
+}
+
+async function stopSharedKifuSharing() {
+    if (!sharedKifu || !sharedKifuCanStop || isSpectator()) return;
+    const button = document.getElementById("sharedKifuStopButton");
+    const status = document.getElementById("sharedKifuStatus");
+    if (button) button.disabled = true;
+    try {
+        const response = await fetch(`${API}/games/${gid}/shared_kifu/stop`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
+            body: JSON.stringify({client_id: clientId, seat: mySeat}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || "共有を終了できませんでした。");
+        closeSharedKifuViewer({forget: true});
+    } catch (error) {
+        if (status) status.textContent = uiText(error?.message || "共有を終了できませんでした。");
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 function renderResearchKifuDetail(record) {
     document.getElementById("researchKifuPanel").closest(".settings-panel")?.scrollTo({top: 0});
     stopResearchKifuReplay({restoreFinal: false, clearStatus: true});
@@ -10913,6 +11141,7 @@ function renderResearchKifuDetail(record) {
     renderResearchKifuTagOptions("researchKifuEditTags", record.tags);
     renderResearchKifuBoard(payload);
     updateResearchKifuReplayControls("棋譜再生");
+    syncResearchKifuShareButton();
 
     document.getElementById("researchKifuDetailStatus").textContent = "";
 }
@@ -15554,6 +15783,7 @@ async function refreshFromState(confirmedState = null){
     return;
   }
   latestState = state;
+  syncSharedKifuViewer(state);
   rememberImmediateFeedback(state);
   syncDebugAutoNextRoundControls();
   syncActiveDealModeBadge();
