@@ -108,5 +108,7 @@ def test_frontend_exposes_immediate_private_seat_vacate() -> None:
     assert 'onclick="vacateOccupiedSeat()"' in html
     assert "/seat_vacate`" in html
     assert "occupiedByOther && !PRIVATE_ROOM_IDS.has(gid)" in html
+    assert "btn.classList.toggle('occupied-seat', occupiedByOther);" in html
+    assert ".seat-btn.occupied-seat" in html
     assert "seatVacateRequestModal" not in html
     assert "退席確認中" not in html

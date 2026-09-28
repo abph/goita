@@ -818,6 +818,17 @@
     .seat-btn.empty-seat {
       opacity: 0.8;
     }
+    .seat-btn.occupied-seat {
+      background: #e0d8c8;
+      color: #999;
+      border-color: #bfa88f;
+    }
+    .seat-btn.occupied-seat:not(:disabled) {
+      cursor: pointer;
+    }
+    .seat-btn.occupied-seat:not(:disabled):hover {
+      background: #d6ccba;
+    }
     .seat-btn:disabled {
       background: #e0d8c8;
       color: #999;
@@ -11425,6 +11436,7 @@ function updateSeatButtons(state) {
         btn.classList.toggle('active', mySeat === s);
         btn.classList.toggle('ai-mode', isAi);
         btn.classList.toggle('empty-seat', !isHuman && !isAi);
+        btn.classList.toggle('occupied-seat', occupiedByOther);
         btn.disabled = isPersonalScoreRoom() || (occupiedByOther && !PRIVATE_ROOM_IDS.has(gid));
 
         if (mySeat === s) {
