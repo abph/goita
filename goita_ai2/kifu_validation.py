@@ -175,6 +175,7 @@ def _case_record(
         "history": copy.deepcopy(list(history)),
         "player": player,
         "actual_action": list(action),
+        "legal_actions": [list(item) for item in state.legal_actions(player)],
         "position": {
             "phase": state.phase,
             "hand_size": len(state.hands[player]),
