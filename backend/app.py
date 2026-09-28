@@ -264,8 +264,6 @@ AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
 CLIENT_HEARTBEAT_TIMEOUT_SECONDS = 90
-SEAT_VACATE_REQUEST_SECONDS = 60
-SEAT_VACATE_COOLDOWN_SECONDS = 300
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 DEAL_MODE_OPTIONS = frozenset({"normal", "balanced", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
@@ -407,8 +405,6 @@ class ConnectionManager:
             self.heartbeat_tasks[key] = asyncio.create_task(
                 _watch_client_heartbeat(game_id, client_id)
             )
-        if _acknowledge_seat_vacate_requests(game_id, client_id):
-            asyncio.create_task(self.broadcast_update(game_id))
 
     def cancel_heartbeat_watch(self, game_id: str, client_id: str) -> None:
         task = self.heartbeat_tasks.pop((game_id, client_id), None)
@@ -715,7 +711,6 @@ async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bo
     for seat, owner_client_id in list(human_seats.items()):
         if owner_client_id == client_id:
             del human_seats[seat]
-            _cancel_seat_vacate_request(game_id, game, seat)
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
             removed_seats.add(seat)
@@ -1464,117 +1459,6 @@ def _clear_shared_kifu_for_client(game: Dict[str, Any], client_id: str) -> bool:
     return False
 
 
-def _seat_vacate_request_map(game: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    requests = game.setdefault("seat_vacate_requests", {})
-    if not isinstance(requests, dict):
-        requests = {}
-        game["seat_vacate_requests"] = requests
-    return requests
-
-
-def _cancel_seat_vacate_request(
-    game_id: str,
-    game: Dict[str, Any],
-    seat: str,
-    *,
-    cooldown: bool = False,
-) -> bool:
-    request = _seat_vacate_request_map(game).pop(seat, None)
-    task = SEAT_VACATE_TASKS.pop((game_id, seat), None)
-    if task is not None and task is not asyncio.current_task() and not task.done():
-        task.cancel()
-    if request is None:
-        return False
-    if cooldown:
-        cooldowns = game.setdefault("seat_vacate_request_cooldowns", {})
-        if not isinstance(cooldowns, dict):
-            cooldowns = {}
-            game["seat_vacate_request_cooldowns"] = cooldowns
-        cooldowns[seat] = time.time() + SEAT_VACATE_COOLDOWN_SECONDS
-    return True
-
-
-def _acknowledge_seat_vacate_requests(game_id: str, client_id: str) -> bool:
-    game = GAMES.get(game_id)
-    if not game or not client_id:
-        return False
-    seats = [
-        seat
-        for seat, request in list(_seat_vacate_request_map(game).items())
-        if isinstance(request, dict)
-        and request.get("target_client_id") == client_id
-    ]
-    changed = False
-    for seat in seats:
-        changed = _cancel_seat_vacate_request(
-            game_id,
-            game,
-            seat,
-            cooldown=True,
-        ) or changed
-    return changed
-
-
-def _cancel_all_seat_vacate_requests(game_id: str, game: Dict[str, Any]) -> None:
-    for seat in list(_seat_vacate_request_map(game)):
-        _cancel_seat_vacate_request(game_id, game, seat)
-    game["seat_vacate_request_cooldowns"] = {}
-
-
-async def _expire_seat_vacate_request(
-    game_id: str,
-    seat: str,
-    token: str,
-) -> None:
-    key = (game_id, seat)
-    try:
-        game = GAMES.get(game_id)
-        request = _seat_vacate_request_map(game).get(seat) if game else None
-        expires_at = float(request.get("expires_at", 0)) if isinstance(request, dict) else 0
-        if expires_at > time.time():
-            await asyncio.sleep(expires_at - time.time())
-
-        game = GAMES.get(game_id)
-        if not game:
-            return
-        request = _seat_vacate_request_map(game).get(seat)
-        if not isinstance(request, dict) or request.get("token") != token:
-            return
-        target_client_id = str(request.get("target_client_id", ""))
-        human_seats = game.get("human_seats", {})
-        if not isinstance(human_seats, dict) or human_seats.get(seat) != target_client_id:
-            _cancel_seat_vacate_request(game_id, game, seat)
-            return
-
-        _cancel_seat_vacate_request(game_id, game, seat)
-        del human_seats[seat]
-        _clear_shared_kifu_for_client(game, target_client_id)
-        _clear_player_name(game, seat)
-        manager.cancel_disconnect_release(game_id, target_client_id)
-        await voice_manager.disconnect_seat(game_id, seat, target_client_id)
-        _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
-        chat_messages = game.setdefault("chat_messages", [])
-        chat_messages.append({
-            "seat": "notice",
-            "sender": "連絡",
-            "message": f"{seat}席は応答がなかったため空席になりました。",
-            "ts": _next_chat_timestamp(),
-            "notice_importance": "important",
-        })
-        if len(chat_messages) > 100:
-            del chat_messages[:-100]
-        state = game.get("state")
-        if game.get("is_started") and getattr(state, "turn", None) == seat:
-            _arm_turn_timeout(game_id)
-        await manager.broadcast_update(game_id)
-        await manager.broadcast_update("lobby")
-    except asyncio.CancelledError:
-        return
-    finally:
-        if SEAT_VACATE_TASKS.get(key) is asyncio.current_task():
-            SEAT_VACATE_TASKS.pop(key, None)
-
-
 def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> bool:
     return seat in _client_owned_human_seats(game, client_id)
 
@@ -2227,7 +2111,6 @@ def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str
 GAMES: Dict[str, Dict[str, Any]] = {}
 GAME_TURN_LOCKS: Dict[str, asyncio.Lock] = {}
 TURN_TIMEOUT_TASKS: Dict[str, asyncio.Task] = {}
-SEAT_VACATE_TASKS: Dict[Tuple[str, str], asyncio.Task] = {}
 DEBUG_AUTO_NEXT_ROUND_TASKS: Dict[str, asyncio.Task] = {}
 
 
@@ -3466,25 +3349,6 @@ def _state_public_view(
             or shared_kifu.get("owner_client_id") == client_id
         )
 
-    seat_vacate_requests: Dict[str, Dict[str, Any]] = {}
-    now = time.time()
-    for seat, request in list(_seat_vacate_request_map(game_obj).items()):
-        if not isinstance(request, dict):
-            continue
-        target_client_id = str(request.get("target_client_id", ""))
-        expires_at = float(request.get("expires_at", 0))
-        if (
-            seat not in ALL_SEATS
-            or expires_at <= now
-            or not isinstance(human_seats, dict)
-            or human_seats.get(seat) != target_client_id
-        ):
-            continue
-        seat_vacate_requests[seat] = {
-            "expires_at_ms": int(expires_at * 1000),
-            "is_target": bool(client_id and target_client_id == client_id),
-        }
-
     payload = {
         "action_token": _action_state_token(game_obj, state),
         "update_version": game_obj.get("update_version", 0),
@@ -3596,7 +3460,6 @@ def _state_public_view(
         "spectator_count": manager.spectator_count(game_id, game_obj),
         "shared_kifu": shared_kifu_public,
         "shared_kifu_can_stop": shared_kifu_can_stop,
-        "seat_vacate_requests": seat_vacate_requests,
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["owned_human_seats"] = sorted(owned_human_seats)
@@ -3661,8 +3524,6 @@ def _create_game_obj(
         "practice_return_snapshot": None,
         "practice_scene_index": 0,
         "shared_kifu": None,
-        "seat_vacate_requests": {},
-        "seat_vacate_request_cooldowns": {},
         "member_kifu_round_id": secrets.token_hex(24),
         "turn_time_limit_seconds": 0,
         "next_turn_time_limit_seconds": 0,
@@ -6219,7 +6080,6 @@ async def _vacate_room_seat(game_id, req):
         raise HTTPException(status_code=409, detail="The seat occupant has changed.")
 
     del human_seats[seat]
-    _cancel_seat_vacate_request(game_id, game, seat)
     _clear_shared_kifu_for_client(game, owner_client_id)
     _clear_player_name(game, seat)
     manager.cancel_disconnect_release(game_id, owner_client_id)
@@ -6636,7 +6496,6 @@ async def reset_game(
 
     old_game = GAMES.get(game_id, {})
     _require_human_seat_owner(old_game, "A", client_id)
-    _cancel_all_seat_vacate_requests(game_id, old_game)
     _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
     admin_password = old_game.get("admin_password")
@@ -7262,8 +7121,8 @@ def report_trace_original(game_id: str, attempt_id: str, request: Request, respo
 app.include_router(trace_router)
 
 
-@app.post("/games/{game_id}/seat_vacate/request")
-async def request_seat_vacate(
+@app.post("/games/{game_id}/seat_vacate")
+async def vacate_private_room_seat(
     game_id: str,
     data: SeatVacateRequest,
     request: Request,
@@ -7276,79 +7135,41 @@ async def request_seat_vacate(
         raise HTTPException(status_code=404, detail="部屋が見つかりません。")
     if not manager.has_client_connection(game_id, data.client_id):
         raise HTTPException(status_code=403, detail="このルームに接続してから操作してください。")
+
     human_seats = game.get("human_seats", {})
     if not isinstance(human_seats, dict):
         raise HTTPException(status_code=409, detail="その席は空席です。")
-    target_client_id = str(human_seats.get(data.seat, ""))
-    if not target_client_id:
+    owner_client_id = str(human_seats.get(data.seat, ""))
+    if not owner_client_id:
         raise HTTPException(status_code=409, detail="その席は空席です。")
-    if target_client_id == data.client_id:
-        raise HTTPException(status_code=409, detail="自分の席には依頼できません。")
-    requests = _seat_vacate_request_map(game)
-    existing = requests.get(data.seat)
-    if isinstance(existing, dict) and float(existing.get("expires_at", 0)) > time.time():
-        raise HTTPException(status_code=409, detail="この席は退席確認中です。")
-    cooldowns = game.setdefault("seat_vacate_request_cooldowns", {})
-    if not isinstance(cooldowns, dict):
-        cooldowns = {}
-        game["seat_vacate_request_cooldowns"] = cooldowns
-    cooldown_until = float(cooldowns.get(data.seat, 0))
-    if cooldown_until > time.time():
-        remaining = max(1, int(cooldown_until - time.time() + 0.999))
-        raise HTTPException(
-            status_code=429,
-            detail=f"この席の利用が確認されています。{remaining}秒後に再度依頼できます。",
-        )
+    if owner_client_id == data.client_id:
+        raise HTTPException(status_code=409, detail="自分の席は「席を離れる」で空けてください。")
 
-    token = secrets.token_urlsafe(16)
-    expires_at = time.time() + SEAT_VACATE_REQUEST_SECONDS
-    requests[data.seat] = {
-        "token": token,
-        "target_client_id": target_client_id,
-        "requester_client_id": data.client_id,
-        "expires_at": expires_at,
-    }
-    previous_task = SEAT_VACATE_TASKS.pop((game_id, data.seat), None)
-    if previous_task is not None and not previous_task.done():
-        previous_task.cancel()
-    SEAT_VACATE_TASKS[(game_id, data.seat)] = asyncio.create_task(
-        _expire_seat_vacate_request(game_id, data.seat, token)
-    )
+    del human_seats[data.seat]
+    _clear_shared_kifu_for_client(game, owner_client_id)
+    _clear_player_name(game, data.seat)
+    manager.cancel_disconnect_release(game_id, owner_client_id)
+    await voice_manager.disconnect_seat(game_id, data.seat, owner_client_id)
+    _reset_public_deal_mode_after_host_leaves(game_id, game, {data.seat})
+
+    chat_messages = game.setdefault("chat_messages", [])
+    chat_messages.append({
+        "seat": "notice",
+        "sender": "連絡",
+        "message": f"{data.seat}席が空席になりました。",
+        "ts": _next_chat_timestamp(),
+        "notice_importance": "important",
+    })
+    if len(chat_messages) > 100:
+        del chat_messages[:-100]
+
+    state = game.get("state")
+    if game.get("is_started") and getattr(state, "turn", None) == data.seat:
+        _arm_turn_timeout(game_id)
+
     await manager.broadcast_update(game_id)
-    return {
-        "ok": True,
-        "seat": data.seat,
-        "expires_at_ms": int(expires_at * 1000),
-    }
-
-
-@app.post("/games/{game_id}/seat_vacate/respond")
-async def respond_seat_vacate(
-    game_id: str,
-    data: SeatVacateRequest,
-    request: Request,
-):
-    require_member_origin(request)
-    if game_id not in PRIVATE_ROOM_NAMES:
-        raise HTTPException(status_code=403, detail="プライベートルームで利用してください。")
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="部屋が見つかりません。")
-    _require_human_seat_owner(game, data.seat, data.client_id)
-    request_data = _seat_vacate_request_map(game).get(data.seat)
-    if (
-        not isinstance(request_data, dict)
-        or request_data.get("target_client_id") != data.client_id
-    ):
-        return {"ok": True, "acknowledged": False}
-    _cancel_seat_vacate_request(
-        game_id,
-        game,
-        data.seat,
-        cooldown=True,
-    )
-    await manager.broadcast_update(game_id)
-    return {"ok": True, "acknowledged": True}
+    await manager.broadcast_update("lobby")
+    return {"ok": True, "vacated_seat": data.seat}
 
 
 @app.post("/games/{game_id}/claim")
@@ -7371,13 +7192,8 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         for k, v in list(hs.items()):
             if v == client_id and k != seat:
                 del hs[k]
-                _cancel_seat_vacate_request(game_id, game, k)
                 _clear_player_name(game, k)
                 released_seats.append(k)
-        _cancel_seat_vacate_request(game_id, game, seat)
-        cooldowns = game.get("seat_vacate_request_cooldowns", {})
-        if isinstance(cooldowns, dict):
-            cooldowns.pop(seat, None)
         hs[seat] = client_id
     else:
         game["human_seats"] = {seat: client_id}
@@ -7422,7 +7238,6 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
     if isinstance(hs, dict):
         if seat in hs and hs[seat] == client_id:
             del hs[seat]
-            _cancel_seat_vacate_request(game_id, game, seat)
             _clear_shared_kifu_for_client(game, client_id)
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
@@ -7469,7 +7284,6 @@ async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: 
         if isinstance(hs, dict) and seat in hs:
             owner_client_id = hs.get(seat, "")
             del hs[seat]
-            _cancel_seat_vacate_request(game_id, game, seat)
             _clear_shared_kifu_for_client(game, owner_client_id)
             await voice_manager.disconnect_seat(game_id, seat, owner_client_id)
             _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})

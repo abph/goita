@@ -19,12 +19,10 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260928c"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260928c"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260928b"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260928b"></script>' in html
     assert '"棋譜をみんなに見せる": "Show Everyone"' in i18n_en
     assert '"棋譜をみんなに見せる": "向大家展示棋谱"' in i18n
-    assert '"席を空けるように頼む": "Ask to Vacate Seat"' in i18n_en
-    assert '"席を空けるように頼む": "请求对方让出座位"' in i18n
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
     assert 'const SUPPORTED_LANGUAGES = new Set(["ja", "zh", "en"])' in i18n
     assert 'new URLSearchParams(window.location.search).get("lang")' in i18n

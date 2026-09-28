@@ -3890,9 +3890,6 @@
       color: #fff;
       border-color: #2c5423;
     }
-    #seatModeVacateRequestBtn { background: #fff4dd; color: #8a4d12; border-color: #c58a48; }
-    #seatVacateRequestModal { z-index: 1100; }
-    #seatVacateRequestMessage { line-height: 1.7; }
     
     .gear-btn {
       display: inline-flex;
@@ -5474,19 +5471,8 @@
       <button type="button" id="seatModeLeaveBtn" onclick="chooseSeatMode('leave')" style="display:none;">席を離れる</button>
       <button type="button" id="seatModeAiBtn" class="ai" onclick="chooseSeatMode('ai')">AIモードにする</button>
       <button type="button" id="seatModeEmptyBtn" onclick="chooseSeatMode('empty')">空席にする</button>
-      <button type="button" id="seatModeVacateRequestBtn" onclick="requestSeatVacate()" style="display:none;">席を空けるように頼む</button>
+      <button type="button" id="seatModeVacateBtn" onclick="vacateOccupiedSeat()" style="display:none;">席を空ける</button>
       <button type="button" onclick="closeSeatMenu()">閉じる</button>
-    </div>
-  </div>
-</div>
-
-<div id="seatVacateRequestModal" class="modal-overlay">
-  <div class="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="seatVacateRequestTitle">
-    <h3 id="seatVacateRequestTitle">席の利用確認</h3>
-    <p id="seatVacateRequestMessage"></p>
-    <p id="seatVacateRequestCountdown" class="seat-mode-status" aria-live="polite"></p>
-    <div class="seat-mode-actions">
-      <button id="seatVacateRespondButton" class="primary" type="button" onclick="respondSeatVacateRequest()">この席を使っています</button>
     </div>
   </div>
 </div>
@@ -6409,8 +6395,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20260914a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260928c"></script>
-<script src="/static/i18n.js?v=20260928c"></script>
+<script src="/static/i18n-en.js?v=20260928b"></script>
+<script src="/static/i18n.js?v=20260928b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20260926a"></script>
@@ -7680,9 +7666,6 @@ const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
 ]);
 const RESEARCH_KIFU_FAVORITE_FILTER = "__favorite__";
 let seatModeTarget = null;
-let seatVacateCountdownTimer = null;
-let previousSeatVacateRequests = {};
-let seatVacateResponding = false;
 let lobbySitePeople = [];
 let roomSitePeople = [];
 let roomChatPeopleFetching = false;
@@ -8908,14 +8891,6 @@ async function returnToLobby() {
     }
     
     closeSharedKifuViewer({forget: true});
-    if (seatVacateCountdownTimer !== null) {
-        clearInterval(seatVacateCountdownTimer);
-        seatVacateCountdownTimer = null;
-    }
-    previousSeatVacateRequests = {};
-    seatVacateResponding = false;
-    const seatVacateModal = document.getElementById("seatVacateRequestModal");
-    if (seatVacateModal) seatVacateModal.style.display = "none";
     if (socket) {
         stopSocketHeartbeat();
         socket.onclose = null;
@@ -11424,122 +11399,6 @@ async function saveRoomManagement() {
     }
 }
 
-function seatVacateRequestFor(state, seat) {
-    const requests = state?.seat_vacate_requests;
-    if (!requests || typeof requests !== "object") return null;
-    const request = requests[seat];
-    return request && typeof request === "object" ? request : null;
-}
-
-function seatVacateSecondsRemaining(request) {
-    return Math.max(0, Math.ceil((Number(request?.expires_at_ms || 0) - Date.now()) / 1000));
-}
-
-function updateSeatVacateTargetModal(state) {
-    const modal = document.getElementById("seatVacateRequestModal");
-    const message = document.getElementById("seatVacateRequestMessage");
-    const countdown = document.getElementById("seatVacateRequestCountdown");
-    if (!modal || !message || !countdown) return;
-    const target = Object.entries(state?.seat_vacate_requests || {}).find(
-        ([seat, request]) => request?.is_target === true
-            && Array.isArray(state?.owned_human_seats)
-            && state.owned_human_seats.includes(seat)
-    );
-    if (!target) {
-        modal.style.display = "none";
-        seatVacateResponding = false;
-        const button = document.getElementById("seatVacateRespondButton");
-        if (button) button.disabled = false;
-        return;
-    }
-    const [seat, request] = target;
-    message.textContent = `${seat}${uiText("席を空けるよう依頼されています。現在も利用している場合は、下のボタンを押してください。")}`;
-    countdown.textContent = `${uiText("残り")} ${seatVacateSecondsRemaining(request)}${uiText("秒")}`;
-    modal.style.display = "flex";
-}
-
-function syncSeatVacateRequests(state) {
-    const next = state?.seat_vacate_requests && typeof state.seat_vacate_requests === "object"
-        ? state.seat_vacate_requests
-        : {};
-    const humanSeats = new Set(Array.isArray(state?.human_seats) ? state.human_seats : []);
-    Object.keys(previousSeatVacateRequests).forEach(seat => {
-        if (next[seat]) return;
-        setHint(humanSeats.has(seat)
-            ? `${seat}${uiText("席の利用が確認されました。")}`
-            : `${seat}${uiText("席が空席になりました。")}`);
-    });
-    previousSeatVacateRequests = {...next};
-    updateSeatVacateTargetModal(state);
-    const hasActiveRequest = Object.values(next).some(
-        request => seatVacateSecondsRemaining(request) > 0
-    );
-    if (hasActiveRequest && seatVacateCountdownTimer === null) {
-        seatVacateCountdownTimer = window.setInterval(() => {
-            updateSeatButtons(latestState);
-            updateSeatVacateTargetModal(latestState);
-        }, 1000);
-    } else if (!hasActiveRequest && seatVacateCountdownTimer !== null) {
-        clearInterval(seatVacateCountdownTimer);
-        seatVacateCountdownTimer = null;
-    }
-}
-
-async function requestSeatVacate() {
-    const seat = seatModeTarget;
-    if (!seat || !PRIVATE_ROOM_IDS.has(gid)) return;
-    const button = document.getElementById("seatModeVacateRequestBtn");
-    const status = document.getElementById("seatModeStatus");
-    if (button) button.disabled = true;
-    if (status) status.textContent = uiText("退席確認を送っています。");
-    try {
-        const response = await fetch(`${API}/games/${gid}/seat_vacate/request`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
-            body: JSON.stringify({client_id: clientId, seat}),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.detail || "退席確認を開始できませんでした。");
-        closeSeatMenu();
-        setHint(`${seat}${uiText("席へ退席確認を送りました。反応がなければ60秒後に空席になります。")}`);
-        await refresh();
-    } catch (error) {
-        if (status) status.textContent = uiText(error?.message || "退席確認を開始できませんでした。");
-        if (button) button.disabled = false;
-    }
-}
-
-async function respondSeatVacateRequest() {
-    if (seatVacateResponding) return;
-    const target = Object.entries(latestState?.seat_vacate_requests || {}).find(
-        ([seat, request]) => request?.is_target === true
-            && Array.isArray(latestState?.owned_human_seats)
-            && latestState.owned_human_seats.includes(seat)
-    );
-    if (!target) return;
-    const [seat] = target;
-    const button = document.getElementById("seatVacateRespondButton");
-    seatVacateResponding = true;
-    if (button) button.disabled = true;
-    try {
-        const response = await fetch(`${API}/games/${gid}/seat_vacate/respond`, {
-            method: "POST",
-            headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
-            body: JSON.stringify({client_id: clientId, seat}),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.detail || "席の利用を確認できませんでした。");
-        document.getElementById("seatVacateRequestModal").style.display = "none";
-        setHint(`${seat}${uiText("席の利用を確認しました。")}`);
-        await refresh();
-    } catch (error) {
-        setHint(uiText(error?.message || "席の利用を確認できませんでした。"));
-    } finally {
-        seatVacateResponding = false;
-        if (button) button.disabled = false;
-    }
-}
-
 function updateSeatButtons(state) {
     const seats = ['A', 'B', 'C', 'D'];
     const humanSeats = Array.isArray(state?.human_seats) ? state.human_seats : [];
@@ -11561,8 +11420,6 @@ function updateSeatButtons(state) {
         const isHuman = humanSeats.includes(s);
         const isAi = aiSeats.includes(s);
         const occupiedByOther = isHuman && mySeat !== s;
-        const vacateRequest = seatVacateRequestFor(state, s);
-        const vacateSeconds = seatVacateSecondsRemaining(vacateRequest);
         const speakingSuffix = voiceChatIsSpeaking(s) ? " 🎙" : "";
 
         btn.classList.toggle('active', mySeat === s);
@@ -11570,10 +11427,7 @@ function updateSeatButtons(state) {
         btn.classList.toggle('empty-seat', !isHuman && !isAi);
         btn.disabled = isPersonalScoreRoom() || (occupiedByOther && !PRIVATE_ROOM_IDS.has(gid));
 
-        if (vacateRequest) {
-            const ownerLabel = mySeat === s ? " (自分)" : " [人]";
-            btn.textContent = `${displayName}${ownerLabel} [${uiText("退席確認中")} ${vacateSeconds}${uiText("秒")}]${speakingSuffix}`;
-        } else if (mySeat === s) {
+        if (mySeat === s) {
             btn.textContent = `${displayName} (自分)${speakingSuffix}`;
         } else if (isAi) {
             btn.textContent = `${displayName} [AI]`;
@@ -11694,41 +11548,19 @@ async function openSeatMenu(seat) {
     const leaveBtn = document.getElementById("seatModeLeaveBtn");
     const aiBtn = document.getElementById("seatModeAiBtn");
     const emptyBtn = document.getElementById("seatModeEmptyBtn");
-    const requestBtn = document.getElementById("seatModeVacateRequestBtn");
+    const vacateBtn = document.getElementById("seatModeVacateBtn");
     const modal = document.getElementById("seatModeModal");
     if(title) title.textContent = `${seat} の設定`;
-    if (occupiedByOther) {
-        const pendingRequest = seatVacateRequestFor(latestState, seat);
-        const seconds = seatVacateSecondsRemaining(pendingRequest);
-        if (status) {
-            status.textContent = pendingRequest
-                ? `${uiText("退席確認中")}（${seconds}${uiText("秒")}）`
-                : uiText("現在: 人間");
-        }
-        if (humanBtn) humanBtn.style.display = "none";
-        if (leaveBtn) leaveBtn.style.display = "none";
-        if (aiBtn) aiBtn.style.display = "none";
-        if (emptyBtn) emptyBtn.style.display = "none";
-        if (requestBtn) {
-            requestBtn.style.display = "";
-            requestBtn.disabled = Boolean(pendingRequest);
-            requestBtn.textContent = pendingRequest
-                ? `${uiText("退席確認中")}（${seconds}${uiText("秒")}）`
-                : uiText("席を空けるように頼む");
-        }
-    } else {
-        if(status){
-            status.textContent = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
-        }
-        if (humanBtn) humanBtn.style.display = "";
-        if (leaveBtn) leaveBtn.style.display = (mySeat === seat) ? "" : "none";
-        if (aiBtn) aiBtn.style.display = "";
-        if (emptyBtn) emptyBtn.style.display = "";
-        if (requestBtn) {
-            requestBtn.style.display = "none";
-            requestBtn.disabled = false;
-            requestBtn.textContent = uiText("席を空けるように頼む");
-        }
+    if(status){
+        status.textContent = isAi ? "現在: AIモード" : (isHuman ? "現在: 人間" : "現在: 空席");
+    }
+    if (humanBtn) humanBtn.style.display = occupiedByOther ? "none" : "";
+    if (leaveBtn) leaveBtn.style.display = (mySeat === seat) ? "" : "none";
+    if (aiBtn) aiBtn.style.display = occupiedByOther ? "none" : "";
+    if (emptyBtn) emptyBtn.style.display = occupiedByOther ? "none" : "";
+    if (vacateBtn) {
+        vacateBtn.style.display = occupiedByOther ? "" : "none";
+        vacateBtn.disabled = false;
     }
     if(modal) modal.style.display = "flex";
 }
@@ -11737,6 +11569,30 @@ function closeSeatMenu() {
     seatModeTarget = null;
     const modal = document.getElementById("seatModeModal");
     if(modal) modal.style.display = "none";
+}
+
+async function vacateOccupiedSeat() {
+    const seat = seatModeTarget;
+    if (!seat || !PRIVATE_ROOM_IDS.has(gid)) return;
+    const button = document.getElementById("seatModeVacateBtn");
+    const status = document.getElementById("seatModeStatus");
+    if (button) button.disabled = true;
+    if (status) status.textContent = uiText("処理しています...");
+    try {
+        const response = await fetch(`${API}/games/${gid}/seat_vacate`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
+            body: JSON.stringify({client_id: clientId, seat}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || "席を空けられませんでした。");
+        closeSeatMenu();
+        setHint(uiText("席を空けました。"));
+        await refresh();
+    } catch (error) {
+        if (status) status.textContent = uiText(error?.message || "席を空けられませんでした。");
+        if (button) button.disabled = false;
+    }
 }
 
 async function chooseSeatMode(mode) {
@@ -15964,7 +15820,6 @@ async function refreshFromState(confirmedState = null){
     return;
   }
   latestState = state;
-  syncSeatVacateRequests(state);
   syncSharedKifuViewer(state);
   rememberImmediateFeedback(state);
   syncDebugAutoNextRoundControls();
