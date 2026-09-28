@@ -35,6 +35,7 @@ from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperR
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle2 import RuleBasedAgent as IntermediateMiddle2RuleBasedAgent
+from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
 from goita_ai2.current_ai.telemetry import (
@@ -271,6 +272,7 @@ VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
 DEFAULT_AI_PROFILE = "intermediate_middle2"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
+    "experimental_ai2": {"label": "強化中AI2", "class": ExperimentalAI2RuleBasedAgent},
     "intermediate_middle2": {"label": "中級者（中2）", "class": IntermediateMiddle2RuleBasedAgent},
     "intermediate_middle": {"label": "中級者（中）", "class": IntermediateMiddleRuleBasedAgent},
     "intermediate_lower": {"label": "中級者（下）", "class": IntermediateLowerRuleBasedAgent},
@@ -2739,6 +2741,21 @@ def _trace_action_label(
     return f"{action_type}({_trace_piece_label(block)},{_trace_piece_label(attack)})"
 
 
+def _format_neural_shadow(agent: Any) -> str:
+    snapshot = getattr(agent, "last_neural_shadow", None)
+    if not isinstance(snapshot, dict) or not snapshot.get("available"):
+        return ""
+    recommended = _trace_action_label(tuple(snapshot.get("recommended_action", ())))
+    rule_action = _trace_action_label(tuple(snapshot.get("rule_action", ())))
+    match_label = "一致" if snapshot.get("match") else "不一致"
+    margin = float(snapshot.get("margin") or 0.0)
+    elapsed = float(snapshot.get("elapsed_ms") or 0.0)
+    return (
+        f" [NEURAL-SHADOW:推奨={recommended} / 現AI={rule_action} / {match_label}"
+        f" / 差={margin:.3f} / {elapsed:.1f}ms]"
+    )
+
+
 def _trace_analysis_candidate_labels(agent: Any) -> str:
     """Format the shadow decision's attack candidates without exposing blocks."""
     snapshot = getattr(agent, "last_attack_candidate_snapshot", None)
@@ -2797,6 +2814,7 @@ def _analyze_trace_action(
             "_track",
             "_my_initial_hands_by_state_id",
             "_active_branched_attack_plans",
+            "_neural_public_history_by_state_id",
         ):
             value = getattr(shadow_agent, attribute, None)
             if not isinstance(value, dict):
@@ -5202,7 +5220,10 @@ def _apply_agent_turn(
         return {"status": "no_legal_actions"}
 
     agent = agents[player]
-    current_ai = _normalize_ai_profile(game.get("ai_profile")) == "current"
+    current_ai = _normalize_ai_profile(game.get("ai_profile")) in {
+        "current",
+        "experimental_ai2",
+    }
     if hasattr(agent, "GENERIC_RESPONSE_NARROWING_ENABLED"):
         agent.GENERIC_RESPONSE_NARROWING_ENABLED = bool(
             game.get("is_debug_room", False)
@@ -5273,6 +5294,7 @@ def _apply_agent_turn(
         log_str += _format_ai_decision(agent)
         log_str += _format_ai_attack_candidates(agent)
         log_str += _format_ai_performance(agent)
+        log_str += _format_neural_shadow(agent)
     log_str += str(log_suffix or "")
     if trace_used:
         log_str += " [TRACE]"

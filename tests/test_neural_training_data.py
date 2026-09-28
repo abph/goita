@@ -7,6 +7,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from goita_ai2.neural_training_data import build_training_dataset
+from goita_ai2.neural_training_data import training_record
+from goita_ai2.kifu_validation import iter_kifu_decisions, replay_validation_case
+from goita_ai2.neural_policy import live_state_payload
 
 
 def _archive() -> dict:
@@ -112,7 +115,30 @@ def test_hides_other_players_blocks_but_keeps_actors_own_knowledge() -> None:
     assert other_view[0]["block_known"] is False
 
 
+def test_training_and_live_feature_payloads_match() -> None:
+    with TemporaryDirectory() as directory:
+        source = Path(directory) / "source.json"
+        source.write_text(json.dumps(_archive(), ensure_ascii=False), encoding="utf-8")
+        case = next(
+            item
+            for item in iter_kifu_decisions(source)
+            if item["history"] and len(item["legal_actions"]) > 1
+        )
+    record = training_record(case, player_name="1222", target_player="1222")
+    state = replay_validation_case(case)
+    actor = str(case["player"])
+    live = live_state_payload(
+        state,
+        actor,
+        initial_hand=case["initial_hands"][actor],
+        history=case["history"],
+    )
+
+    assert live == record["state"]
+
+
 if __name__ == "__main__":
     test_builds_trainable_records_without_private_opponent_data()
     test_hides_other_players_blocks_but_keeps_actors_own_knowledge()
+    test_training_and_live_feature_payloads_match()
     print("NEURAL_TRAINING_DATA_TEST_OK")

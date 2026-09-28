@@ -8,21 +8,24 @@ from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperR
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle2 import RuleBasedAgent as IntermediateMiddle2RuleBasedAgent
+from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_five_ai_profiles_are_available() -> None:
+def test_six_ai_profiles_are_available() -> None:
     assert app_module.DEFAULT_AI_PROFILE == "intermediate_middle2"
     assert set(app_module.AI_PROFILES) == {
         "current",
+        "experimental_ai2",
         "intermediate_middle2",
         "intermediate_middle",
         "intermediate_lower",
         "beginner_upper",
     }
     assert app_module.AI_PROFILES["current"]["class"] is CurrentRuleBasedAgent
+    assert app_module.AI_PROFILES["experimental_ai2"]["class"] is ExperimentalAI2RuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_middle2"]["class"] is IntermediateMiddle2RuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_middle"]["class"] is IntermediateMiddleRuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_lower"]["class"] is IntermediateLowerRuleBasedAgent
@@ -71,6 +74,7 @@ def test_settings_fallback_contains_all_profiles() -> None:
     zh = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
     en = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
     assert '<option value="current">強化中AI</option>' in html
+    assert '<option value="experimental_ai2">強化中AI2</option>' in html
     assert '<option value="intermediate_middle2" selected>中級者（中2）</option>' in html
     assert '<option value="intermediate_middle">中級者（中）</option>' in html
     assert '<option value="intermediate_lower">中級者（下）</option>' in html
@@ -78,12 +82,14 @@ def test_settings_fallback_contains_all_profiles() -> None:
     assert "opt.textContent = uiText(label)" in html
     assert '"中級者（中）": "中级（中阶）"' in zh
     assert '"中級者（中2）": "中级（中阶2）"' in zh
+    assert '"強化中AI2": "强化中AI2"' in zh
     assert '"中級者（中）": "Intermediate (Middle)"' in en
     assert '"中級者（中2）": "Intermediate (Middle 2)"' in en
+    assert '"強化中AI2": "AI in Development 2"' in en
 
 
 if __name__ == "__main__":
-    test_five_ai_profiles_are_available()
+    test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()
     test_intermediate_lower_profile_creates_frozen_agents()
     test_intermediate_middle_profile_is_isolated_from_current_ai()

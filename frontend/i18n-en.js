@@ -641,6 +641,7 @@
     "空欄にすると誰でも入れる公開部屋になります": "Leave blank to make this a public room",
     "AIの選択": "AI Selection",
     "強化中AI": "AI in Development",
+    "強化中AI2": "AI in Development 2",
     "中級者（中2）": "Intermediate (Middle 2)",
     "中級者（中）": "Intermediate (Middle)",
     "中級者（下）": "Intermediate (Lower)",
