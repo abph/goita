@@ -19,8 +19,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20260928b"></script>' in html
-    assert '<script src="/static/i18n.js?v=20260928b"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20260928d"></script>' in html
+    assert '<script src="/static/i18n.js?v=20260928d"></script>' in html
     assert '"棋譜をみんなに見せる": "Show Everyone"' in i18n_en
     assert '"棋譜をみんなに見せる": "向大家展示棋谱"' in i18n
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
@@ -298,7 +298,7 @@ def test_score_attack_ui_is_translated() -> None:
         "挑戦する",
         "ランキングを見る",
         "棋譜と同じ手駒・親でAIに挑戦し、元の対局を超える1人用モードです。結果はランキングで競えます。",
-        "同じ手駒・親でAIと対戦し、元の棋譜を超えてランキング上位を目指します。",
+        "同じ手駒・親でAIと対戦します。",
         "スコアアタック開始",
         "スコアアタックの遊び方",
         "過去の対局と同じ条件でAIに挑み、元の対局より良い結果を目指す1人用モードです。",

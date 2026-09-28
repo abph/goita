@@ -66,7 +66,7 @@
     "デイリーランキングを読み込んでいます。": "Loading today's rankings...",
     "今日の記録はまだありません。": "There are no records today yet.",
     "棋譜と同じ手駒・親でAIに挑戦し、元の対局を超える1人用モードです。結果はランキングで競えます。": "Challenge the AI with the same hands and dealer, beat the original result, and compete on the rankings.",
-    "同じ手駒・親でAIと対戦し、元の棋譜を超えてランキング上位を目指します。": "Face the AI with the same hands and dealer, beat the original record, and climb the rankings.",
+    "同じ手駒・親でAIと対戦します。": "Play against the AI with the same hands and dealer.",
     "スコアアタックを閉じる": "Close Score Attack",
     "ランキングを閉じる": "Close Rankings",
     "スコアアタック開始": "Start Score Attack",
