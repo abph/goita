@@ -153,6 +153,7 @@ class DecisionMixin:
         if (
             detail.startswith("attack_sequence_")
             or detail.startswith("pass_ally_kyosha_continuation")
+            or detail.startswith("pass_preserve_public_unstoppable_finish_piece_")
             or detail.startswith("pass_ally_reach_royal_")
             or detail.startswith("pass_royal_reserve_")
             or detail.startswith("pass_enemy_first_ally_passed_weak_followup")
@@ -1706,6 +1707,14 @@ class DecisionMixin:
                 else "attack_four_shi_receive_return"
             )
             return four_shi_return
+
+        preserve_unstoppable = self._pass_preserves_public_unstoppable_finish_piece_action(
+            state,
+            player,
+            actions,
+        )
+        if preserve_unstoppable is not None:
+            return preserve_unstoppable
 
         give_way_action = self._give_way_to_ally_guaranteed_win_action(state, player, actions)
         if give_way_action is not None:

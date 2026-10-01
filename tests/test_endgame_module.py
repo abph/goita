@@ -19,6 +19,7 @@ def test_endgame_methods_are_owned_by_mixin() -> None:
         "_reach_avoidance_conditional_tsume_action",
         "_inferred_ally_shi_sashikomi_finish_action",
         "_inferred_endgame_team_result_action",
+        "_pass_preserves_public_unstoppable_finish_piece_action",
         "_give_way_to_ally_guaranteed_win_action",
     ):
         assert method_name in EndgameMixin.__dict__

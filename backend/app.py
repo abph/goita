@@ -2765,6 +2765,8 @@ def _format_neural_shadow(agent: Any) -> str:
             result = "確定判断のため現AIを採用"
         elif snapshot.get("confidence_deferred") and snapshot.get("protect_attack_reserve"):
             result = "連続攻めの駒を残すため現AIを採用"
+        elif snapshot.get("confidence_deferred") and snapshot.get("protect_unstoppable_finish"):
+            result = "一巡確定の攻め駒を残すため現AIを採用"
         elif snapshot.get("confidence_deferred") and hidden_block_difference:
             result = "伏せ駒を変える確信が不足したため現AIを採用"
         elif snapshot.get("confidence_deferred"):

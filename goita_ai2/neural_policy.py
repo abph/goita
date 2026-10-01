@@ -92,6 +92,60 @@ def encode_state(state: Mapping[str, Any], legal_action_count: int) -> tuple[lis
     _counts(names, values, "remaining_hand_sizes", dict(counters.get("remaining_hand_sizes", {}) or {}), RELATIONS)
 
     full_history = list(state.get("history", []) or [])
+    current_attack = state.get("current_attack")
+    own_hand = dict(state.get("own_hand", {}) or {})
+    attack_counts = dict(counters.get("attack_piece_counts", {}) or {})
+    receive_counts = dict(counters.get("receive_piece_counts", {}) or {})
+    own_hidden_counts = {piece: 0 for piece in PIECES}
+    for raw_item in full_history:
+        event = dict(raw_item or {})
+        block = None if event.get("block") is None else str(event.get("block"))
+        if (
+            event.get("actor") == "self"
+            and event.get("type") == "attack_after_block"
+            and event.get("block_known")
+            and block in own_hidden_counts
+        ):
+            own_hidden_counts[block] += 1
+
+    def accounted(piece: str) -> int:
+        return (
+            int(attack_counts.get(piece, 0))
+            + int(receive_counts.get(piece, 0))
+            + int(own_hidden_counts.get(piece, 0))
+            + int(own_hand.get(piece, 0))
+        )
+
+    attack_piece = str(current_attack) if current_attack in PIECES else None
+    own_attack_count = int(own_hand.get(attack_piece, 0)) if attack_piece else 0
+    attack_accounted = bool(
+        attack_piece is not None
+        and accounted(attack_piece) >= int(PIECE_TOTALS[attack_piece])
+    )
+    royals_accounted = accounted("8") + accounted("9") >= int(
+        PIECE_TOTALS["8"] + PIECE_TOTALS["9"]
+    )
+    attack_unstoppable = bool(
+        own_attack_count == 1
+        and attack_accounted
+        and (
+            attack_piece in ("1", "2")
+            or (attack_piece in ("3", "4", "5", "6", "7") and royals_accounted)
+        )
+    )
+    names.extend((
+        "own_current_attack_count",
+        "current_attack_all_copies_accounted",
+        "royal_receivers_all_accounted",
+        "own_current_attack_is_publicly_unstoppable",
+    ))
+    values.extend((
+        float(own_attack_count),
+        float(attack_accounted),
+        float(royals_accounted),
+        float(attack_unstoppable),
+    ))
+
     relation_attacks = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}
     relation_receives = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}
     self_attack_receivers = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}

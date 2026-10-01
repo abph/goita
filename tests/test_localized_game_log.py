@@ -93,6 +93,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'receive_enemy_big_piece_ally_signal: "相方へ2回目の攻め情報を伝えるため、飛・角を同じ駒で受ける"',
         'pass_ally_guaranteed_win_no_self_finish: "相方の上がりが確定しているため、その攻めを受けずにパス"',
         'pass_ally_shi_preserve_third_attack: "自分の3回目の攻めに使うしを残すためパス"',
+        'startsWith("pass_preserve_public_unstoppable_finish_piece_")',
+        '公開情報から一巡が確定している上がり用の攻め駒を残すためパス',
         'startsWith("low_reentry_receive_")',
         'return "敵の3枚目を待っても上がれると判断してパス";',
         "function localizeGameLogAiDetail(",

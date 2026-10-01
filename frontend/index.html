@@ -6729,6 +6729,11 @@ function localizeGameLogAiDetail(detail, language) {
     if(String(detail || "").startsWith("attack_sequence_")) {
         return language === "zh" ? "按照手牌结构选择进攻顺序" : "手駒構成に合う攻め順を選択";
     }
+    if(String(detail || "").startsWith("pass_preserve_public_unstoppable_finish_piece_")) {
+        if(language === "zh") return "保留依据公开信息可确定无人能接住的获胜进攻棋子，因此跳过";
+        if(language === "en") return "Pass to preserve an unanswerable finishing attack confirmed by public information";
+        return "公開情報から一巡が確定している上がり用の攻め駒を残すためパス";
+    }
     if(String(detail || "").startsWith("wait_enemy_third_guaranteed_win_")) {
         if(language === "zh") return "确认等待对手第三次进攻仍可获胜，因此暂时跳过";
         if(language === "en") return "Pass now because waiting for the opponent's third attack still preserves a forced win";

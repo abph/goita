@@ -112,6 +112,7 @@ class RuleBasedAgent(
         self.last_ally_reach_comparison = None
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = False
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = False
+        self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = False
 
         self.LAST_ONE_BONUS = 65.0
 

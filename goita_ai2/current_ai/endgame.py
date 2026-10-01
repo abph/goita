@@ -1447,6 +1447,74 @@ class EndgameMixin:
             return known_kings >= 2
         return False
 
+    def _my_current_attack_piece_is_publicly_unstoppable(
+        self,
+        state,
+        player: str,
+    ) -> bool:
+        """Whether our copy of the current attack cannot be answered later."""
+        tr = self._track.get(id(state))
+        attack = state.current_attack
+        if tr is None or attack is None or state.hands[player].count(attack) != 1:
+            return False
+
+        public_seen = tr.get("public_seen_counts", {})
+        accounted = int(public_seen.get(attack, 0)) + state.hands[player].count(attack)
+        if accounted < int(PIECE_TOTALS[attack]):
+            return False
+        if attack in ("1", "2"):
+            return True
+        if attack not in ("3", "4", "5", "6", "7"):
+            return False
+
+        known_royals = (
+            int(public_seen.get("8", 0))
+            + int(public_seen.get("9", 0))
+            + state.hands[player].count("8")
+            + state.hands[player].count("9")
+        )
+        return known_royals >= int(PIECE_TOTALS["8"] + PIECE_TOTALS["9"])
+
+    def _pass_preserves_public_unstoppable_finish_piece_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[Action]:
+        """Keep the last unanswerable piece instead of receiving an ally attack."""
+        pass_action = next((act for act in actions if act[0] == "pass"), None)
+        if (
+            pass_action is None
+            or not getattr(
+                self,
+                "PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED",
+                False,
+            )
+            or state.phase != "receive"
+            or state.attacker is None
+            or not self._same_team(state.attacker, player)
+            or len(state.hands[player]) != 4
+            or not self._my_current_attack_piece_is_publicly_unstoppable(
+                state,
+                player,
+            )
+        ):
+            return None
+
+        # Finishing immediately is better than preserving a later route.
+        if any(
+            action[0] == "receive"
+            and self._best_finish_score_after_receive(state, player, action) is not None
+            for action in actions
+        ):
+            return None
+
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail(
+            f"pass_preserve_public_unstoppable_finish_piece_{state.current_attack}"
+        )
+        return pass_action
+
     def _give_way_to_ally_guaranteed_win_action(
         self,
         state,

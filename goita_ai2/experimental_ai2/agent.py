@@ -25,6 +25,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         super().__init__(name=name)
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = True
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
+        self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = True
         self.NEURAL_PRIMARY_ENABLED = True
         self.NEURAL_PRIMARY_MIN_MARGIN = 0.0
         self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN = 3.0
@@ -35,6 +36,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         # Keep the final copy needed to continue a three-of-a-kind attack.  A
         # much clearer neural preference may still override the rule engine.
         self.NEURAL_PRIMARY_ATTACK_RESERVE_MIN_MARGIN = 3.0
+        self.NEURAL_PRIMARY_UNSTOPPABLE_FINISH_MIN_MARGIN = 8.0
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
@@ -75,6 +77,9 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         protect_shi_continuation = rule_detail.startswith(
             "attack_enemy_team_shi_remaining_"
         )
+        protect_unstoppable_finish = rule_detail.startswith(
+            "pass_preserve_public_unstoppable_finish_piece_"
+        )
         if protect_shi_continuation:
             rule_authority = "strong"
 
@@ -110,6 +115,11 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
                 required_margin,
                 float(self.NEURAL_PRIMARY_ATTACK_RESERVE_MIN_MARGIN),
             )
+        if protect_unstoppable_finish:
+            required_margin = max(
+                required_margin,
+                float(self.NEURAL_PRIMARY_UNSTOPPABLE_FINISH_MIN_MARGIN),
+            )
         confidence_deferred = bool(
             neural_available
             and recommended != rule_action
@@ -135,6 +145,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             "protect_shi_continuation": protect_shi_continuation,
             "block_only_disagreement": block_only_disagreement,
             "protect_attack_reserve": protect_attack_reserve,
+            "protect_unstoppable_finish": protect_unstoppable_finish,
             "rule_reason": rule_reason,
             "rule_detail": rule_detail,
             "rule_authority": rule_authority,
