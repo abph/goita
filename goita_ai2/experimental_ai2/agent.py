@@ -28,6 +28,13 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         self.NEURAL_PRIMARY_ENABLED = True
         self.NEURAL_PRIMARY_MIN_MARGIN = 0.0
         self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN = 3.0
+        # A combined neural action can identify the attack correctly while
+        # choosing a poor hidden piece.  Hidden-piece-only overrides therefore
+        # need more evidence than a completely ordinary disagreement.
+        self.NEURAL_PRIMARY_BLOCK_ONLY_MIN_MARGIN = 1.0
+        # Keep the final copy needed to continue a three-of-a-kind attack.  A
+        # much clearer neural preference may still override the rule engine.
+        self.NEURAL_PRIMARY_ATTACK_RESERVE_MIN_MARGIN = 3.0
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
@@ -77,11 +84,32 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         neural_available = bool(snapshot.get("available")) and recommended in actions
         margin = float(snapshot.get("margin") or 0.0)
         safety_locked = rule_authority == "proven"
-        required_margin = (
-            float(self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN)
-            if protect_shi_continuation
-            else float(self.NEURAL_PRIMARY_MIN_MARGIN)
+        block_only_disagreement = self._neural_block_only_disagreement(
+            rule_action,
+            recommended,
         )
+        protect_attack_reserve = self._neural_spends_continuation_reserve(
+            state,
+            player,
+            rule_action,
+            recommended,
+        )
+        required_margin = float(self.NEURAL_PRIMARY_MIN_MARGIN)
+        if protect_shi_continuation:
+            required_margin = max(
+                required_margin,
+                float(self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN),
+            )
+        if block_only_disagreement:
+            required_margin = max(
+                required_margin,
+                float(self.NEURAL_PRIMARY_BLOCK_ONLY_MIN_MARGIN),
+            )
+        if protect_attack_reserve:
+            required_margin = max(
+                required_margin,
+                float(self.NEURAL_PRIMARY_ATTACK_RESERVE_MIN_MARGIN),
+            )
         confidence_deferred = bool(
             neural_available
             and recommended != rule_action
@@ -105,6 +133,8 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             "confidence_deferred": confidence_deferred,
             "required_margin": required_margin,
             "protect_shi_continuation": protect_shi_continuation,
+            "block_only_disagreement": block_only_disagreement,
+            "protect_attack_reserve": protect_attack_reserve,
             "rule_reason": rule_reason,
             "rule_detail": rule_detail,
             "rule_authority": rule_authority,
@@ -130,6 +160,41 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             f"neural_primary_margin_{margin:.3f}"
         )
         return selected
+
+    @staticmethod
+    def _neural_block_only_disagreement(
+        rule_action: Action,
+        neural_action: Action,
+    ) -> bool:
+        """Whether both policies chose the same attack but different blocks."""
+        return bool(
+            len(rule_action) == 3
+            and len(neural_action) == 3
+            and rule_action[0] == neural_action[0] == "attack_after_block"
+            and rule_action[2] == neural_action[2]
+            and rule_action[1] != neural_action[1]
+        )
+
+    def _neural_spends_continuation_reserve(
+        self,
+        state,
+        player: str,
+        rule_action: Action,
+        neural_action: Action,
+    ) -> bool:
+        """Detect spending both remaining copies of an active repeated attack."""
+        if not self._neural_block_only_disagreement(rule_action, neural_action):
+            return False
+        _action_type, neural_block, attack = neural_action
+        if attack is None or neural_block != attack or rule_action[1] == attack:
+            return False
+        initial_hand = self._get_my_initial_hand(state)
+        tracker = self._track.get(id(state), {})
+        return bool(
+            initial_hand.count(attack) >= 3
+            and state.hands[player].count(attack) == 2
+            and tracker.get("my_last_attack") == attack
+        )
 
     def _commit_neural_primary_action(
         self,

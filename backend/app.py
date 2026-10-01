@@ -2750,6 +2750,11 @@ def _format_neural_shadow(agent: Any) -> str:
     match_label = "一致" if snapshot.get("match") else "不一致"
     margin = float(snapshot.get("margin") or 0.0)
     elapsed = float(snapshot.get("elapsed_ms") or 0.0)
+    hidden_block_difference = bool(
+        not snapshot.get("match")
+        and snapshot.get("block_only_disagreement")
+    )
+    difference_label = " / 伏せ駒のみ不一致" if hidden_block_difference else ""
     if snapshot.get("mode") == "primary":
         selected = _trace_action_label(tuple(snapshot.get("selected_action", ())))
         if snapshot.get("match"):
@@ -2758,13 +2763,18 @@ def _format_neural_shadow(agent: Any) -> str:
             result = "ニューラル候補を採用"
         elif snapshot.get("safety_locked"):
             result = "確定判断のため現AIを採用"
+        elif snapshot.get("confidence_deferred") and snapshot.get("protect_attack_reserve"):
+            result = "連続攻めの駒を残すため現AIを採用"
+        elif snapshot.get("confidence_deferred") and hidden_block_difference:
+            result = "伏せ駒を変える確信が不足したため現AIを採用"
         elif snapshot.get("confidence_deferred"):
             result = "強い戦術を覆す確信が不足したため現AIを採用"
         else:
             result = "現AIを採用"
         return (
             f" [NEURAL-PRIMARY:採用={selected} / ニューラル候補={recommended}"
-            f" / 現AI={rule_action} / {result} / 差={margin:.3f} / {elapsed:.1f}ms]"
+            f" / 現AI={rule_action}{difference_label} / {result}"
+            f" / 差={margin:.3f} / {elapsed:.1f}ms]"
         )
     return (
         f" [NEURAL-SHADOW:推奨={recommended} / 現AI={rule_action} / {match_label}"

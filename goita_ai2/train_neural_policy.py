@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from collections import Counter
 from pathlib import Path
@@ -31,6 +32,32 @@ def _optional_records(path: Optional[Path]) -> list[Dict[str, Any]]:
 def _selected_action(record: Mapping[str, Any]):
     legal = list(record["legal_actions"])
     return action_tuple(legal[int(record["selected_action_index"])])
+
+
+def _expand_acceptable_actions(
+    records: Sequence[Mapping[str, Any]],
+) -> list[Dict[str, Any]]:
+    """Turn a human review with several acceptable moves into soft examples.
+
+    The classifier uses one label per row.  Repeating the same position once
+    for every accepted action avoids teaching one arbitrary hidden piece as
+    the sole correct answer.
+    """
+    expanded: list[Dict[str, Any]] = []
+    for record in records:
+        indices = record.get("acceptable_action_indices")
+        if not isinstance(indices, list) or not indices:
+            expanded.append(copy.deepcopy(dict(record)))
+            continue
+        legal_count = len(record.get("legal_actions", []))
+        unique_indices = sorted({int(index) for index in indices})
+        if any(index < 0 or index >= legal_count for index in unique_indices):
+            raise ValueError("acceptable action index is outside legal actions")
+        for index in unique_indices:
+            clone = copy.deepcopy(dict(record))
+            clone["selected_action_index"] = index
+            expanded.append(clone)
+    return expanded
 
 
 def _arrays(records: Sequence[Mapping[str, Any]]):
@@ -108,10 +135,11 @@ def train_policy(
     test = [item for item in records if item["split"] == "test"]
     target_train = [item for item in train if item.get("is_target_player")]
     corrections = _optional_records(corrections_path)
+    expanded_corrections = _expand_acceptable_actions(corrections)
     weighted_train = (
         train
         + target_train * max(0, int(target_repeat) - 1)
-        + corrections * max(0, int(correction_repeat))
+        + expanded_corrections * max(0, int(correction_repeat))
     )
     feature_names, train_x, train_y = _arrays(weighted_train)
     scaler = StandardScaler()
@@ -160,6 +188,7 @@ def train_policy(
             "weighted_train_records": len(weighted_train),
             "target_repeat": int(target_repeat),
             "correction_records": len(corrections),
+            "correction_training_records": len(expanded_corrections),
             "correction_repeat": int(correction_repeat),
             "iterations": int(model.n_iter_),
             "loss": float(model.loss_),

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
 from goita_ai2.current_ai.agent import RuleBasedAgent as CurrentRuleBasedAgent
 from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
+from goita_ai2.instruction_case_audit import apply_action
 from goita_ai2.neural_policy import NeuralPolicyModel, encode_state, live_state_payload
 from goita_ai2.state import GoitaState
+from goita_ai2.train_neural_policy import _expand_acceptable_actions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +26,43 @@ def _hands() -> dict[str, list[str]]:
         "C": list("12334456"),
         "D": list("11122369"),
     }
+
+
+def _three_kyosha_continuation():
+    hands = {
+        "A": list("31251163"),
+        "B": list("71242652"),
+        "C": list("44411987"),
+        "D": list("31151153"),
+    }
+    history = [
+        ("D", ("attack_after_block", "1", "5")),
+        ("A", ("receive", "5", None)),
+        ("A", ("attack", None, "3")),
+        ("B", ("pass", None, None)),
+        ("C", ("pass", None, None)),
+        ("D", ("receive", "3", None)),
+        ("D", ("attack", None, "5")),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("receive", "9", None)),
+        ("C", ("attack", None, "4")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("receive", "4", None)),
+        ("B", ("attack", None, "2")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+    ]
+    state = GoitaState(copy.deepcopy(hands), dealer="D")
+    agent = ExperimentalAI2RuleBasedAgent()
+    agent.bind_player("B")
+    for actor, action in history:
+        assert action in state.legal_actions(actor)
+        apply_action(state, actor, action)
+        agent.on_public_action(state, actor, action)
+    return state, agent
 
 
 def test_exported_policy_ranks_only_the_supplied_legal_actions() -> None:
@@ -165,8 +205,60 @@ def test_experimental_profile_requires_more_confidence_to_override_strong_shi_pl
     assert agent.last_neural_shadow["required_margin"] == 3.0
 
 
+def test_experimental_profile_preserves_repeated_attack_reserve(monkeypatch) -> None:
+    state, agent = _three_kyosha_continuation()
+    legal = state.legal_actions("B")
+    rule_choice = ("attack_after_block", "1", "2")
+    neural_choice = ("attack_after_block", "2", "2")
+    second_choice = ("attack_after_block", "6", "2")
+
+    class FakeModel:
+        def rank_actions(self, _payload, actions):
+            ranked = [(neural_choice, 5.0), (second_choice, 4.8)]
+            ranked.extend(
+                (action, 1.0)
+                for action in actions
+                if action not in {neural_choice, second_choice}
+            )
+            return ranked
+
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_model", FakeModel())
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_error", None)
+    monkeypatch.setattr(
+        CurrentRuleBasedAgent,
+        "select_action",
+        lambda self, current_state, player, actions: rule_choice,
+    )
+
+    selected = agent.select_action(state, "B", legal)
+
+    assert selected == rule_choice
+    assert agent.last_neural_shadow["block_only_disagreement"] is True
+    assert agent.last_neural_shadow["protect_attack_reserve"] is True
+    assert agent.last_neural_shadow["confidence_deferred"] is True
+    assert agent.last_neural_shadow["required_margin"] == 3.0
+
+
+def test_reported_three_kyosha_position_keeps_a_kyosha_for_continuation() -> None:
+    state, agent = _three_kyosha_continuation()
+
+    selected = agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert selected[0] == "attack_after_block"
+    assert selected[2] == "2"
+    assert selected[1] != "2"
+
+
 def test_review_correction_teaches_target_shi_continuation() -> None:
-    record = json.loads(CORRECTIONS_PATH.read_text(encoding="utf-8").strip())
+    records = [
+        json.loads(line)
+        for line in CORRECTIONS_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    record = next(
+        item for item in records
+        if item["decision_id"] == "review-20261001063211-round6-B-turn7-attack"
+    )
     legal = [
         (item["type"], item.get("block"), item.get("attack"))
         for item in record["legal_actions"]
@@ -178,6 +270,36 @@ def test_review_correction_teaches_target_shi_continuation() -> None:
 
     assert corrected == ("attack", None, "1")
     assert ranked[0][0] == corrected
+
+
+def test_review_correction_accepts_several_hidden_blocks_without_kyosha() -> None:
+    records = [
+        json.loads(line)
+        for line in CORRECTIONS_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    record = next(
+        item for item in records
+        if item["decision_id"] == "review-20261001082211-round1-B-turn15-hidden-block"
+    )
+    legal = [
+        (item["type"], item.get("block"), item.get("attack"))
+        for item in record["legal_actions"]
+    ]
+    acceptable = {
+        legal[index] for index in record["acceptable_action_indices"]
+    }
+    expanded = _expand_acceptable_actions([record])
+    model = NeuralPolicyModel.load(MODEL_PATH)
+
+    ranked = model.rank_actions(record["state"], legal)
+
+    assert len(expanded) == 3
+    assert {_selected["selected_action_index"] for _selected in expanded} == set(
+        record["acceptable_action_indices"]
+    )
+    assert ranked[0][0] in acceptable
+    assert ("attack_after_block", "2", "2") not in acceptable
 
 
 def test_experimental_profile_owns_new_ally_and_shi_guards() -> None:

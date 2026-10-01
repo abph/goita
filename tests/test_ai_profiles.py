@@ -133,6 +133,31 @@ def test_neural_primary_log_explains_low_confidence_strong_rule_fallback() -> No
     assert "強い戦術を覆す確信が不足したため現AIを採用" in log
 
 
+def test_neural_primary_log_marks_hidden_block_only_disagreement() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "primary",
+            "recommended_action": ["attack_after_block", "2", "2"],
+            "selected_action": ["attack_after_block", "1", "2"],
+            "rule_action": ["attack_after_block", "1", "2"],
+            "match": False,
+            "applied": False,
+            "safety_locked": False,
+            "confidence_deferred": True,
+            "block_only_disagreement": True,
+            "protect_attack_reserve": True,
+            "margin": 0.160,
+            "elapsed_ms": 3.0,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "伏せ駒のみ不一致" in log
+    assert "連続攻めの駒を残すため現AIを採用" in log
+    assert "香を伏せて" not in log
+
+
 if __name__ == "__main__":
     test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()
