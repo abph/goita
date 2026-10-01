@@ -215,6 +215,10 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert "async function saveCurrentResearchKifu(anonymous = false)" in HTML
     assert "openResearchKifu(record.id)" in HTML
     assert "applySelectedResearchKifu()" in HTML
+    assert "function isResearchKifuPracticeRoom(roomId)" in HTML
+    assert "return PRIVATE_ROOM_IDS.has(roomId) || roomId === DEBUG_GID;" in HTML
+    assert "!isResearchKifuPracticeRoom(gid)" in HTML
+    assert "!inRoom || !isResearchKifuPracticeRoom(gid)" in HTML
     assert "startResearchKifuEdit()" in HTML
     assert "saveResearchKifuEdit()" in HTML
     assert 'id="researchKifuTitleEditInput"' in HTML

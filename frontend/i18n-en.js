@@ -738,7 +738,7 @@
     "この配牌で対局": "Play These Hands",
     "この棋譜を削除しますか？": "Delete this game record?",
     "研究用棋譜の配牌と親を反映しました。": "Applied the hands and dealer from the research record.",
-    "この配牌は、対象のプライベートルームでホストになっているときに反映できます。": "These hands can be applied while you are the host in the corresponding private room.",
+    "この配牌は、対象のプライベートルームまたはデバッグルームでホストになっているときに反映できます。": "These hands can be applied while you are the host in the corresponding private room or the debug room.",
     "ローカル保存です。本番では永続ディスクの設定を確認してください。": "Records are stored locally. Check persistent-disk configuration in production.",
     "保存できる終局済みの棋譜がありません": "There is no completed game record available to save.",
     "棋譜が見つかりません": "The game record was not found.",

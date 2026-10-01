@@ -10155,13 +10155,16 @@ function mountMemberKifuLibrary(slot, canSave) {
     slot.appendChild(document.getElementById("researchKifuPanel"));
     syncMemberKifuControls(canSave);
 }
+function isResearchKifuPracticeRoom(roomId) {
+    return PRIVATE_ROOM_IDS.has(roomId) || roomId === DEBUG_GID;
+}
 function syncMemberKifuControls(canSave = window.goitaMembers?.canSaveKifu() === true) {
     const inRoom = document.getElementById("gameView").style.display !== "none";
     document.querySelectorAll("#researchKifuPanel .settings-save-button").forEach(button => {
         button.disabled = !canSave || !inRoom || latestState?.finished !== true;
     });
     document.getElementById("researchKifuImportButton").disabled = !canSave;
-    document.getElementById("researchKifuApplyButton").hidden = !inRoom || !PRIVATE_ROOM_IDS.has(gid);
+    document.getElementById("researchKifuApplyButton").hidden = !inRoom || !isResearchKifuPracticeRoom(gid);
     syncResearchKifuShareButton();
     const quota = document.getElementById("researchKifuQuota");
     const usage = window.goitaMembers?.kifuStatus?.();
@@ -11326,8 +11329,8 @@ function closeResearchKifuDetail() {
 
 function applySelectedResearchKifu() {
     const status = document.getElementById("researchKifuDetailStatus");
-    if (document.getElementById("gameView").style.display === "none" || !isCurrentClientHost() || !PRIVATE_ROOM_IDS.has(gid)) {
-        status.textContent = uiText("この配牌は、対象のプライベートルームでホストになっているときに反映できます。");
+    if (document.getElementById("gameView").style.display === "none" || !isCurrentClientHost() || !isResearchKifuPracticeRoom(gid)) {
+        status.textContent = uiText("この配牌は、対象のプライベートルームまたはデバッグルームでホストになっているときに反映できます。");
         return;
     }
     const payload = selectedResearchKifu?.payload;
