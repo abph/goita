@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 from goita_ai2.neural_policy import ACTION_TO_INDEX, action_tuple, record_features
+from goita_ai2.neural_policy import NeuralPolicyModel
+from goita_ai2.reviewed_policy_evaluation import (
+    DEFAULT_CASES as DEFAULT_REVIEWED_CASES,
+)
+from goita_ai2.reviewed_policy_evaluation import evaluate_reviewed_cases
+from goita_ai2.reviewed_policy_evaluation import load_reviewed_cases
 
 
 DEFAULT_DATA = Path("private_data/neural_training/decisions.jsonl")
@@ -198,6 +204,11 @@ def train_policy(
         },
         "evaluation": evaluation,
     }
+    if DEFAULT_REVIEWED_CASES.exists():
+        payload["reviewed_disagreement_evaluation"] = evaluate_reviewed_cases(
+            load_reviewed_cases(DEFAULT_REVIEWED_CASES),
+            neural_model=NeuralPolicyModel(payload),
+        )
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     report = {
