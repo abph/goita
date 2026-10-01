@@ -2758,6 +2758,8 @@ def _format_neural_shadow(agent: Any) -> str:
             result = "ニューラル候補を採用"
         elif snapshot.get("safety_locked"):
             result = "確定判断のため現AIを採用"
+        elif snapshot.get("confidence_deferred"):
+            result = "強い戦術を覆す確信が不足したため現AIを採用"
         else:
             result = "現AIを採用"
         return (

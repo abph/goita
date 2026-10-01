@@ -12,6 +12,9 @@ from backend.ai_review_report import build_review_snapshot, log_turn_numbers
 from goita_ai2.state import GoitaState
 
 
+REPORT_JS = (Path(__file__).parents[1] / "frontend" / "ai-review-report.js").read_text(encoding="utf-8")
+
+
 def make_game():
     hands = {"A": list("73124569"), "B": list("11112345"),
              "C": list("31112456"), "D": list("17123458")}
@@ -104,6 +107,11 @@ def test_endpoint_requires_debug_host_and_same_round(monkeypatch):
                 await app_module.ai_review_snapshot(room, round_id, client)
             assert error.value.status_code == status
     asyncio.run(scenario())
+
+
+def test_receive_attack_turn_defaults_to_followup_attack_for_review():
+    assert "const decisions = snapshot.decisions.filter" in REPORT_JS
+    assert 'if(decisions.length > 1) $("aiReviewDecision").value = String(decisions[decisions.length - 1].log_index);' in REPORT_JS
 
 
 if __name__ == "__main__":

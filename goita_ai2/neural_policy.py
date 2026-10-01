@@ -15,7 +15,7 @@ PIECES = tuple(sorted(PIECE_TOTALS))
 RELATIONS = ("self", "next", "partner", "previous")
 PHASES = ("attack", "receive")
 ACTION_TYPES = ("pass", "receive", "attack", "attack_after_block")
-HISTORY_LENGTH = 4
+HISTORY_LENGTH = 8
 
 
 def action_vocabulary() -> tuple[Action, ...]:
@@ -91,7 +91,56 @@ def encode_state(state: Mapping[str, Any], legal_action_count: int) -> tuple[lis
     _counts(names, values, "face_down_counts", dict(counters.get("face_down_counts", {}) or {}), RELATIONS)
     _counts(names, values, "remaining_hand_sizes", dict(counters.get("remaining_hand_sizes", {}) or {}), RELATIONS)
 
-    history = list(state.get("history", []) or [])[-HISTORY_LENGTH:]
+    full_history = list(state.get("history", []) or [])
+    relation_attacks = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}
+    relation_receives = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}
+    self_attack_receivers = {relation: {piece: 0 for piece in PIECES} for relation in RELATIONS}
+    active_attacker = "none"
+    active_piece: Optional[str] = None
+    for raw_item in full_history:
+        event = dict(raw_item or {})
+        relation = str(event.get("actor", "none"))
+        action_type = str(event.get("type", ""))
+        block = None if event.get("block") is None else str(event.get("block"))
+        attack = None if event.get("attack") is None else str(event.get("attack"))
+        if action_type == "receive" and relation in relation_receives and block in PIECES:
+            relation_receives[relation][block] += 1
+            if active_attacker == "self" and active_piece in PIECES:
+                self_attack_receivers[relation][active_piece] += 1
+        if (
+            action_type in {"attack", "attack_after_block"}
+            and relation in relation_attacks
+            and attack in PIECES
+        ):
+            relation_attacks[relation][attack] += 1
+            active_attacker = relation
+            active_piece = attack
+
+    for relation in RELATIONS:
+        _counts(
+            names,
+            values,
+            f"relation_attack_piece_counts.{relation}",
+            relation_attacks[relation],
+            PIECES,
+        )
+        _counts(
+            names,
+            values,
+            f"relation_receive_piece_counts.{relation}",
+            relation_receives[relation],
+            PIECES,
+        )
+    for relation in ("next", "partner", "previous"):
+        _counts(
+            names,
+            values,
+            f"self_attack_received_by.{relation}",
+            self_attack_receivers[relation],
+            PIECES,
+        )
+
+    history = full_history[-HISTORY_LENGTH:]
     history = ([None] * (HISTORY_LENGTH - len(history))) + history
     for slot, item in enumerate(history):
         event = dict(item or {})

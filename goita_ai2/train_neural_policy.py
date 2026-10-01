@@ -14,11 +14,18 @@ from goita_ai2.neural_policy import ACTION_TO_INDEX, action_tuple, record_featur
 DEFAULT_DATA = Path("private_data/neural_training/decisions.jsonl")
 DEFAULT_MODEL = Path("goita_ai2/experimental_ai2/data/neural_policy.json")
 DEFAULT_REPORT = Path("private_data/neural_training/training_report.json")
+DEFAULT_CORRECTIONS = Path("goita_ai2/experimental_ai2/data/review_corrections.jsonl")
 
 
 def _records(path: Path) -> list[Dict[str, Any]]:
     with path.open(encoding="utf-8") as stream:
         return [json.loads(line) for line in stream if line.strip()]
+
+
+def _optional_records(path: Optional[Path]) -> list[Dict[str, Any]]:
+    if path is None or not path.exists():
+        return []
+    return _records(path)
 
 
 def _selected_action(record: Mapping[str, Any]):
@@ -85,6 +92,8 @@ def train_policy(
     report_path: Path,
     *,
     target_repeat: int = 3,
+    corrections_path: Optional[Path] = DEFAULT_CORRECTIONS,
+    correction_repeat: int = 40,
     hidden_layers: tuple[int, ...] = (96, 48),
     max_iter: int = 60,
     random_state: int = 1222,
@@ -98,7 +107,12 @@ def train_policy(
     validation = [item for item in records if item["split"] == "validation"]
     test = [item for item in records if item["split"] == "test"]
     target_train = [item for item in train if item.get("is_target_player")]
-    weighted_train = train + target_train * max(0, int(target_repeat) - 1)
+    corrections = _optional_records(corrections_path)
+    weighted_train = (
+        train
+        + target_train * max(0, int(target_repeat) - 1)
+        + corrections * max(0, int(correction_repeat))
+    )
     feature_names, train_x, train_y = _arrays(weighted_train)
     scaler = StandardScaler()
     transformed = scaler.fit_transform(train_x)
@@ -145,6 +159,8 @@ def train_policy(
             "train_records": len(train),
             "weighted_train_records": len(weighted_train),
             "target_repeat": int(target_repeat),
+            "correction_records": len(corrections),
+            "correction_repeat": int(correction_repeat),
             "iterations": int(model.n_iter_),
             "loss": float(model.loss_),
             "hidden_layers": list(hidden_layers),
@@ -174,6 +190,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--target-repeat", type=int, default=3)
+    parser.add_argument("--corrections", type=Path, default=DEFAULT_CORRECTIONS)
+    parser.add_argument("--correction-repeat", type=int, default=40)
     parser.add_argument("--max-iter", type=int, default=60)
     return parser.parse_args(argv)
 
@@ -185,6 +203,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args.model,
         args.report,
         target_repeat=max(1, int(args.target_repeat)),
+        corrections_path=args.corrections,
+        correction_repeat=max(0, int(args.correction_repeat)),
         max_iter=max(1, int(args.max_iter)),
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))

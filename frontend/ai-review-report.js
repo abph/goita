@@ -85,12 +85,17 @@
       button.setAttribute("aria-pressed", String(active));
     });
     $("aiReviewDecision").replaceChildren();
-    for(const item of snapshot.decisions.filter(item => group.logIndices.includes(item.log_index))) {
+    const decisions = snapshot.decisions.filter(item => group.logIndices.includes(item.log_index));
+    for(const item of decisions) {
       const option = document.createElement("option");
       option.value = item.log_index;
       option.textContent = `${actionLabels[item.action[0]]}：${removeGameLogSeatPrefix(localizeGameLogLine(stripGameLogTechnicalDetails(item.log), "ja"), item.seat)}`;
       $("aiReviewDecision").appendChild(option);
     }
+    // A receive followed by an attack is displayed as one turn. Default to
+    // the follow-up attack, where the alternatives usually diverge, while
+    // keeping the receive selectable in the same list.
+    if(decisions.length > 1) $("aiReviewDecision").value = String(decisions[decisions.length - 1].log_index);
     renderPosition();
   }
 

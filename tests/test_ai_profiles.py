@@ -112,6 +112,27 @@ def test_neural_primary_log_distinguishes_selected_and_rule_actions() -> None:
     assert "ニューラル候補を採用" in log
 
 
+def test_neural_primary_log_explains_low_confidence_strong_rule_fallback() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "primary",
+            "recommended_action": ["attack", None, "3"],
+            "selected_action": ["attack", None, "1"],
+            "rule_action": ["attack", None, "1"],
+            "match": False,
+            "applied": False,
+            "safety_locked": False,
+            "confidence_deferred": True,
+            "margin": 1.282,
+            "elapsed_ms": 3.0,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "強い戦術を覆す確信が不足したため現AIを採用" in log
+
+
 if __name__ == "__main__":
     test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()

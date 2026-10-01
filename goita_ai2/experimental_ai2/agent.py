@@ -27,6 +27,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
         self.NEURAL_PRIMARY_ENABLED = True
         self.NEURAL_PRIMARY_MIN_MARGIN = 0.0
+        self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN = 3.0
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
@@ -64,6 +65,11 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         rule_reason = str(self.last_decision_reason or "")
         rule_detail = str(self.last_score_fallback_detail or "")
         rule_authority = str(self.last_rule_search_authority or "ordinary")
+        protect_shi_continuation = rule_detail.startswith(
+            "attack_enemy_team_shi_remaining_"
+        )
+        if protect_shi_continuation:
+            rule_authority = "strong"
 
         self._record_neural_shadow(state, player, actions, rule_action)
         snapshot = self.last_neural_shadow
@@ -71,12 +77,23 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         neural_available = bool(snapshot.get("available")) and recommended in actions
         margin = float(snapshot.get("margin") or 0.0)
         safety_locked = rule_authority == "proven"
+        required_margin = (
+            float(self.NEURAL_PRIMARY_SHI_CONTINUATION_MIN_MARGIN)
+            if protect_shi_continuation
+            else float(self.NEURAL_PRIMARY_MIN_MARGIN)
+        )
+        confidence_deferred = bool(
+            neural_available
+            and recommended != rule_action
+            and not safety_locked
+            and margin < required_margin
+        )
         apply_neural = bool(
             self.NEURAL_PRIMARY_ENABLED
             and neural_available
             and recommended != rule_action
             and not safety_locked
-            and margin >= float(self.NEURAL_PRIMARY_MIN_MARGIN)
+            and margin >= required_margin
         )
 
         selected = recommended if apply_neural else rule_action
@@ -85,6 +102,9 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             "applied": apply_neural,
             "selected_action": list(selected),
             "safety_locked": safety_locked,
+            "confidence_deferred": confidence_deferred,
+            "required_margin": required_margin,
+            "protect_shi_continuation": protect_shi_continuation,
             "rule_reason": rule_reason,
             "rule_detail": rule_detail,
             "rule_authority": rule_authority,
