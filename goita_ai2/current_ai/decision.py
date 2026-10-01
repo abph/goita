@@ -366,8 +366,23 @@ class DecisionMixin:
                     return "attack_three_shi_after_big_receive"
                 return "attack_four_shi_over_single_middle"
 
+            if (
+                attack == "1"
+                and self._three_shi_enemy_receive_return_bonus(state, player) > 0
+            ):
+                return "attack_three_shi_after_enemy_shi_receive"
+
             if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
                 return "attack_avoid_single_middle_over_four_shi"
+
+            if self._singleton_first_attack_signal_penalty(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            ) > 0:
+                return "attack_avoid_false_first_signal"
 
             if (
                 attack == "2"
@@ -2370,6 +2385,33 @@ class DecisionMixin:
                         },
                     )
             if best_action[0] in ("attack", "attack_after_block"):
+                if (
+                    best_action[2] == "1"
+                    and self._three_shi_enemy_receive_return_bonus(
+                        state,
+                        player,
+                    ) > 0
+                ):
+                    tr["shi_attack_mode"] = True
+                    tr["shi_attack_mode_source"] = (
+                        "three_shi_enemy_receive_return"
+                    )
+                    self._set_attack_intent_plan(
+                        state,
+                        player,
+                        kind="signal_ally_shi",
+                        attack_piece="1",
+                        source="three_shi_enemy_receive_return",
+                        target_team="ally",
+                        success_condition={"receive_piece": ["1"]},
+                        evidence={
+                            "initial_shi": 3,
+                            "remaining_shi_before_attack": (
+                                state.hands[player].count("1")
+                            ),
+                            "received_piece": "1",
+                        },
+                    )
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 if tr.get("kg_plan_active") and tr["my_attack_count"] == 2 and best_action[2] in ("8", "9") and tr.get("kg_second") is None:
                     tr["kg_second"] = best_action[2]

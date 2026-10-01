@@ -213,6 +213,10 @@ class RuleBasedAgent(
         self.TOP_ATTACK_SHAPE_BLOCK_PENALTY = 35.0
         self.SAME_PIECE_PAIR_SPEND_PENALTY = 75.0
         self.SINGLE_MIDDLE_AFTER_BIG_RECEIVE_FIRST_ATTACK_PENALTY = 220.0
+        # 攻め1の香・馬・銀・金は、通常は同種を複数持つという合図になる。
+        # 1枚だけの駒で誤った合図を送る手は、明確な成功経路がない限り避ける。
+        self.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY = 320.0
+        self.THREE_SHI_ENEMY_RECEIVE_RETURN_BONUS = 360.0
         self.FOURTH_MIDDLE_EARLY_ATTACK_DELAY_PENALTY = 2400.0
         self.FOURTH_MIDDLE_WEAK_SECOND_BRIDGE_PENALTY = 1000.0
         self.FOURTH_MIDDLE_THIRD_ATTACK_BONUS = 1400.0

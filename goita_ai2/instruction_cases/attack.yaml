@@ -3,22 +3,28 @@ category: attack
 cases:
   - id: ATT-001
     status: confirmed
-    title: 1枚しかない中駒よりし攻めを優先する
+    title: 攻め1で単発の香・馬・銀・金を安易に出さない
     classification: singleton_avoidance
     priority: high
     conditions:
       - 攻め1枚目
-      - 馬・銀・金が1枚だけ
-      - しを複数枚持つ
-      - だまし香・だまししではない
-    required: しを第一候補にする
+      - 香・馬・銀・金の候補が1枚だけ
+      - 複数持ちの攻め、または正しい情報を伝えるし攻めが候補にある
+    required: 複数持ちの攻め、またはし攻めを優先し、相方に正しい手駒情報を伝える
     forbidden:
-      - 占有率が高いように見せられない単発の中駒を先に出す
-    reason: 1枚目は占有率の情報になるため、単発中駒は味方を誤認させ、連打にもならない
+      - 明確な目的がないのに単発の香・馬・銀・金を先に出す
+    exceptions:
+      - 確定上がり・高得点上がりの経路がある
+      - 香を一巡させた後、王と玉で上がる短い経路がある
+      - 公開情報上の4枚目で、相方も単発と判断できる
+      - 明確なかかりごたえ、または敵の確定上がりを防ぐ目的がある
+    reason: 攻め1の香・馬・銀・金は同種を2枚以上持つ合図になる。勝算なく単発を出すと相方の戦略を誤らせる
     regression:
       state: covered
       tests:
         - tests/test_attack_strategy_module.py::test_three_shi_is_preferred_over_singletons_after_receiving_big_piece
+        - tests/test_attack_strategy_module.py::test_three_shi_returns_shi_instead_of_false_singleton_first_signal
+        - tests/test_attack_strategy_module.py::test_singleton_first_attack_penalty_covers_all_signals_and_keeps_royal_finish
 
   - id: ATT-002
     status: confirmed

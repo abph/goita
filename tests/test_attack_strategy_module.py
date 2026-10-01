@@ -74,6 +74,9 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_inferred_enemy_team_shi_attack_action",
         "_fuse_strategy_hidden_block_adjustment",
         "_enemy_used_attack_reuse_penalty",
+        "_three_shi_enemy_receive_return_bonus",
+        "_singleton_first_attack_has_concrete_purpose",
+        "_singleton_first_attack_signal_penalty",
         "_score_attack_phase",
     ):
         assert method_name in AttackStrategyMixin.__dict__
@@ -845,6 +848,117 @@ def test_enemy_used_attack_piece_is_avoided_when_enemy_may_still_hold_it() -> No
     assert chosen[2] in ("3", "4", "5")
     assert chosen[2] != "2"
     assert b_agent.last_score_fallback_detail == "attack_avoid_enemy_used_piece"
+
+
+def test_three_shi_returns_shi_instead_of_false_singleton_first_signal() -> None:
+    """Regression for 2026-10-01 D turn 6 review."""
+    state = GoitaState(
+        hands={
+            "A": list("12233446"),
+            "B": list("11149267"),
+            "C": list("11135578"),
+            "D": list("11123455"),
+        },
+        dealer="C",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+        agent._ensure_trackers(state)
+
+    history = (
+        ("C", ("attack_after_block", "1", "5")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "7", "1")),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+
+    d_agent = agents["D"]
+    receive = d_agent.select_action(state, "D", state.legal_actions("D"))
+    assert receive == ("receive", "1", None)
+    state.apply_receive("D", "1")
+    for agent in agents.values():
+        agent.on_public_action(state, "D", receive)
+
+    assert d_agent._singleton_first_attack_signal_penalty(
+        state,
+        "D",
+        "attack",
+        None,
+        "2",
+    ) == d_agent.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY
+    assert (
+        d_agent._three_shi_enemy_receive_return_bonus(state, "D")
+        == d_agent.THREE_SHI_ENEMY_RECEIVE_RETURN_BONUS
+    )
+
+    attack = d_agent.select_action(state, "D", state.legal_actions("D"))
+
+    assert attack == ("attack", None, "1")
+    assert d_agent.last_decision_reason == "score_fallback"
+    assert (
+        d_agent.last_score_fallback_detail
+        == "attack_three_shi_after_enemy_shi_receive"
+    )
+    planned_intent = d_agent._track[id(state)]["planned_attack_intent"]
+    assert planned_intent["kind"] == "signal_ally_shi"
+    assert planned_intent["source"] == "three_shi_enemy_receive_return"
+
+
+def test_singleton_first_attack_penalty_covers_all_signals_and_keeps_royal_finish() -> None:
+    state = GoitaState(
+        hands={
+            "A": list("11112234"),
+            "B": list("11122345"),
+            "C": list("11223345"),
+            "D": list("12345689"),
+        },
+        dealer="D",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("D")
+    agent.TIME_LIMITED_SEARCH_ENABLED = False
+    agent._ensure_trackers(state)
+
+    for piece in ("2", "3", "4", "5"):
+        assert agent._singleton_first_attack_signal_penalty(
+            state,
+            "D",
+            "attack",
+            None,
+            piece,
+        ) == agent.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY
+
+    state.hands["D"] = list("289")
+
+    assert agent._singleton_first_attack_has_concrete_purpose(
+        state,
+        "D",
+        "attack",
+        None,
+        "2",
+    )
+    assert agent._singleton_first_attack_signal_penalty(
+        state,
+        "D",
+        "attack",
+        None,
+        "2",
+    ) == 0.0
 
 
 def test_four_shi_continues_after_royal_receives_enemy_attack() -> None:

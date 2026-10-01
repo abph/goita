@@ -245,6 +245,110 @@ class AttackStrategyMixin:
             None,
         )
 
+    def _three_shi_enemy_receive_return_bonus(
+        self,
+        state,
+        player: str,
+    ) -> float:
+        """Value a truthful shi return when first-attack alternatives mislead.
+
+        With three initial shi, receiving an enemy shi leaves two.  Returning
+        one truthfully tells the ally that shi support exists.  Prefer a real,
+        safe repeated attack when one is available; otherwise do not replace
+        that truthful signal with a singleton middle piece or with a repeated
+        piece that the enemy has already advertised it may receive.
+        """
+        tr = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            tr is None
+            or state.phase != "attack"
+            or state.turn != player
+            or int(tr.get("my_attack_count", 0)) != 0
+            or tr.get("my_last_receive_piece") != "1"
+            or tr.get("my_last_received_attack") != "1"
+            or int(tr.get("my_init_count", Counter()).get("1", 0)) != 3
+            or hand.count("1") < 2
+        ):
+            return 0.0
+
+        for attack in ("2", "3", "4", "5", "6", "7"):
+            if hand.count(attack) < 2:
+                continue
+            if self._enemy_used_attack_reuse_penalty(state, player, attack) <= 0:
+                return 0.0
+
+        return self.THREE_SHI_ENEMY_RECEIVE_RETURN_BONUS
+
+    def _singleton_first_attack_has_concrete_purpose(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> bool:
+        """Return whether a singleton first attack has a public tactical aim."""
+        if attack not in ("2", "3", "4", "5"):
+            return False
+
+        if self._conditional_shi_royal_finish_score(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        ) is not None:
+            return True
+        if self._is_fourth_middle_attack(state, player, attack):
+            return True
+
+        tr = self._track.get(id(state))
+        if tr is not None and (
+            attack == tr.get("ally_first_attack")
+            or attack in tr.get("ally_past_attacks", set())
+        ):
+            return True
+
+        # A lone probe followed by both royals is the standard short bluff:
+        # if the probe makes a full round, one royal can be hidden and the
+        # other attacked to finish.  This is a concrete route, not a purposeless
+        # false multiplicity signal.
+        remaining = self._remaining_hand_after_attack_action(
+            state,
+            player,
+            block,
+            attack,
+        )
+        return remaining is not None and len(remaining) == 2 and set(remaining) == {"8", "9"}
+
+    def _singleton_first_attack_signal_penalty(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        """Penalize a first attack that falsely advertises multiplicity."""
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or attack not in ("2", "3", "4", "5")
+            or int(tr.get("my_attack_count", 0)) != 0
+            or state.hands[player].count(attack) != 1
+            or self._singleton_first_attack_has_concrete_purpose(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            )
+        ):
+            return 0.0
+        return self.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY
+
     def _four_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
         if state.hands[player].count("1") < 4:
             return 0.0
@@ -259,6 +363,13 @@ class AttackStrategyMixin:
         tr = self._track.get(id(state))
         if tr is None:
             return -self.NON_WEAK_SHI_ATTACK_PENALTY
+
+        received_enemy_shi_bonus = self._three_shi_enemy_receive_return_bonus(
+            state,
+            player,
+        )
+        if received_enemy_shi_bonus > 0:
+            return received_enemy_shi_bonus
 
         shi_spend = 1 + (1 if block == "1" else 0)
         team_pressure = self._inferred_enemy_team_shi_pressure(
@@ -1079,20 +1190,26 @@ class AttackStrategyMixin:
         )
         score += self._dealer_opening_plan_adjustment(state, player, action_type, block, attack)
 
-        if tr is not None and tr.get("my_attack_count", 0) == 0 and state.hands[player].count(attack) == 1:
-            if attack not in ("8", "9", "1"):
-                score -= 30.0
-        score -= self._single_middle_after_big_receive_first_attack_penalty(
-            state,
-            player,
-            action_type,
-            attack,
-        )
-        score -= self._single_middle_over_four_shi_signal_penalty(
-            state,
-            player,
-            action_type,
-            attack,
+        score -= max(
+            self._singleton_first_attack_signal_penalty(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            ),
+            self._single_middle_after_big_receive_first_attack_penalty(
+                state,
+                player,
+                action_type,
+                attack,
+            ),
+            self._single_middle_over_four_shi_signal_penalty(
+                state,
+                player,
+                action_type,
+                attack,
+            ),
         )
         score -= self._fourth_middle_early_attack_delay_penalty(
             state,
