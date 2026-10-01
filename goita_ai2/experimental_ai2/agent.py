@@ -1,7 +1,8 @@
-"""強化中AI plus a neural recommendation that cannot change live actions."""
+"""強化中AI2: neural-first play with the rule engine as a safety guard."""
 
 from __future__ import annotations
 
+import copy
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,7 +16,7 @@ MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
 class RuleBasedAgent(CurrentRuleBasedAgent):
-    """Keep the current AI decision and record the neural policy beside it."""
+    """Use the learned policy first, while preserving proven rule decisions."""
 
     _shared_neural_model: Optional[NeuralPolicyModel] = None
     _shared_neural_error: Optional[str] = None
@@ -24,6 +25,8 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         super().__init__(name=name)
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = True
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
+        self.NEURAL_PRIMARY_ENABLED = True
+        self.NEURAL_PRIMARY_MIN_MARGIN = 0.0
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
@@ -51,9 +54,95 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         })
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
-        chosen = super().select_action(state, player, actions)
-        self._record_neural_shadow(state, player, actions, chosen)
-        return chosen
+        # The current AI still evaluates the position so proven wins and other
+        # exact guards remain available. Keep a clean tracker snapshot because
+        # its chosen move may be replaced by the learned human policy.
+        self._ensure_trackers(state)
+        tracker = self._track.get(id(state))
+        tracker_before = copy.deepcopy(tracker) if tracker is not None else None
+        rule_action = super().select_action(state, player, actions)
+        rule_reason = str(self.last_decision_reason or "")
+        rule_detail = str(self.last_score_fallback_detail or "")
+        rule_authority = str(self.last_rule_search_authority or "ordinary")
+
+        self._record_neural_shadow(state, player, actions, rule_action)
+        snapshot = self.last_neural_shadow
+        recommended = tuple(snapshot.get("recommended_action", ()))
+        neural_available = bool(snapshot.get("available")) and recommended in actions
+        margin = float(snapshot.get("margin") or 0.0)
+        safety_locked = rule_authority == "proven"
+        apply_neural = bool(
+            self.NEURAL_PRIMARY_ENABLED
+            and neural_available
+            and recommended != rule_action
+            and not safety_locked
+            and margin >= float(self.NEURAL_PRIMARY_MIN_MARGIN)
+        )
+
+        selected = recommended if apply_neural else rule_action
+        snapshot.update({
+            "mode": "primary",
+            "applied": apply_neural,
+            "selected_action": list(selected),
+            "safety_locked": safety_locked,
+            "rule_reason": rule_reason,
+            "rule_detail": rule_detail,
+            "rule_authority": rule_authority,
+        })
+        if not apply_neural:
+            return rule_action
+
+        if tracker_before is not None:
+            live_tracker = self._track.get(id(state))
+            if live_tracker is not None:
+                live_tracker.clear()
+                live_tracker.update(tracker_before)
+        self._commit_neural_primary_action(state, player, selected)
+        self.last_attack_candidate_scores = [
+            dict(item) for item in snapshot.get("top_candidates", [])
+            if isinstance(item, dict)
+        ]
+        self.last_attack_intent_comparison = None
+        self.last_attack_candidate_snapshot = {}
+        self._finalize_attack_candidate_snapshot(actions, selected)
+        self._set_decision_reason("neural_primary")
+        self._set_score_fallback_detail(
+            f"neural_primary_margin_{margin:.3f}"
+        )
+        return selected
+
+    def _commit_neural_primary_action(
+        self,
+        state,
+        player: str,
+        action: Action,
+    ) -> None:
+        """Commit only state needed before on_public_action sees the move."""
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return
+        for key in (
+            "pending_weak_hand_shi_signal",
+            "pending_ally_force_king_attack_piece",
+            "pending_inferred_endgame_attack",
+            "pending_low_reentry_attack_piece",
+            "pending_kyosha_receive_attack_piece",
+            "pending_kyosha_receive_source",
+            "pending_conditional_response_attack_piece",
+            "pending_shi_insertion_attack_piece",
+        ):
+            tracker[key] = False if key == "pending_weak_hand_shi_signal" else None
+
+        action_type, block, _attack = action
+        if action_type in ("attack", "attack_after_block"):
+            self._commit_timed_search_action(state, player, action)
+        elif (
+            action_type == "receive"
+            and block == "1"
+            and state.attacker == tracker.get("ally")
+            and state.current_attack == "1"
+        ):
+            tracker["my_shi_approval_pending"] = True
 
     def _record_neural_shadow(
         self,
@@ -85,7 +174,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             second_score = ranked[1][1] if len(ranked) > 1 else top_score
             self.last_neural_shadow = {
                 "available": True,
-                "mode": "shadow",
+                "mode": "primary_candidate",
                 "rule_action": list(chosen),
                 "recommended_action": list(recommended),
                 "match": tuple(recommended) == tuple(chosen),

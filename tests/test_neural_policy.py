@@ -1,4 +1,4 @@
-"""Tests the exported policy and the non-authoritative 強化中AI2 wrapper."""
+"""Tests the exported policy and neural-first 強化中AI2 wrapper."""
 
 from __future__ import annotations
 
@@ -37,12 +37,22 @@ def test_exported_policy_ranks_only_the_supplied_legal_actions() -> None:
     assert ranked == sorted(ranked, key=lambda item: item[1], reverse=True)
 
 
-def test_experimental_profile_keeps_rule_action_and_records_shadow(monkeypatch) -> None:
+def test_experimental_profile_uses_neural_action_outside_proven_safety(monkeypatch) -> None:
     state = GoitaState(_hands(), dealer="A")
     agent = ExperimentalAI2RuleBasedAgent()
     agent.bind_player("A")
     legal = state.legal_actions("A")
     rule_choice = legal[-1]
+    neural_choice = legal[0]
+
+    class FakeModel:
+        def rank_actions(self, _payload, actions):
+            return [(neural_choice, 5.0)] + [
+                (action, 1.0) for action in actions if action != neural_choice
+            ]
+
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_model", FakeModel())
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_error", None)
     monkeypatch.setattr(
         CurrentRuleBasedAgent,
         "select_action",
@@ -51,11 +61,48 @@ def test_experimental_profile_keeps_rule_action_and_records_shadow(monkeypatch) 
 
     selected = agent.select_action(state, "A", legal)
 
-    assert selected == rule_choice
+    assert selected == neural_choice
     assert agent.last_neural_shadow["available"] is True
-    assert agent.last_neural_shadow["mode"] == "shadow"
+    assert agent.last_neural_shadow["mode"] == "primary"
+    assert agent.last_neural_shadow["applied"] is True
     assert tuple(agent.last_neural_shadow["rule_action"]) == rule_choice
-    assert tuple(agent.last_neural_shadow["recommended_action"]) in legal
+    assert tuple(agent.last_neural_shadow["recommended_action"]) == neural_choice
+    assert agent.last_decision_reason == "neural_primary"
+    assert tuple(agent.last_attack_candidate_scores[0]["action"]) == neural_choice
+    assert agent.last_attack_candidate_scores[0]["score"] == 5.0
+
+
+def test_experimental_profile_keeps_proven_rule_as_safety_guard(monkeypatch) -> None:
+    state = GoitaState(_hands(), dealer="A")
+    agent = ExperimentalAI2RuleBasedAgent()
+    agent.bind_player("A")
+    legal = state.legal_actions("A")
+    rule_choice = legal[-1]
+    neural_choice = legal[0]
+
+    class FakeModel:
+        def rank_actions(self, _payload, actions):
+            return [(neural_choice, 5.0)] + [
+                (action, 1.0) for action in actions if action != neural_choice
+            ]
+
+    def proven_rule(self, current_state, player, actions):
+        self.last_rule_search_authority = "proven"
+        self.last_decision_reason = "win_now"
+        self.last_score_fallback_detail = "high_score_20"
+        return rule_choice
+
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_model", FakeModel())
+    monkeypatch.setattr(ExperimentalAI2RuleBasedAgent, "_shared_neural_error", None)
+    monkeypatch.setattr(CurrentRuleBasedAgent, "select_action", proven_rule)
+
+    selected = agent.select_action(state, "A", legal)
+
+    assert selected == rule_choice
+    assert agent.last_neural_shadow["mode"] == "primary"
+    assert agent.last_neural_shadow["applied"] is False
+    assert agent.last_neural_shadow["safety_locked"] is True
+    assert agent.last_decision_reason == "win_now"
 
 
 def test_experimental_profile_owns_new_ally_and_shi_guards() -> None:
@@ -66,6 +113,7 @@ def test_experimental_profile_owns_new_ally_and_shi_guards() -> None:
     assert current.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED is False
     assert experimental.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED is True
     assert experimental.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED is True
+    assert experimental.NEURAL_PRIMARY_ENABLED is True
 
 
 def test_experimental_history_never_keeps_an_opponent_hidden_piece() -> None:

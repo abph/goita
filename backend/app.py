@@ -2750,6 +2750,20 @@ def _format_neural_shadow(agent: Any) -> str:
     match_label = "一致" if snapshot.get("match") else "不一致"
     margin = float(snapshot.get("margin") or 0.0)
     elapsed = float(snapshot.get("elapsed_ms") or 0.0)
+    if snapshot.get("mode") == "primary":
+        selected = _trace_action_label(tuple(snapshot.get("selected_action", ())))
+        if snapshot.get("match"):
+            result = "現AIと一致"
+        elif snapshot.get("applied"):
+            result = "ニューラル候補を採用"
+        elif snapshot.get("safety_locked"):
+            result = "確定判断のため現AIを採用"
+        else:
+            result = "現AIを採用"
+        return (
+            f" [NEURAL-PRIMARY:採用={selected} / ニューラル候補={recommended}"
+            f" / 現AI={rule_action} / {result} / 差={margin:.3f} / {elapsed:.1f}ms]"
+        )
     return (
         f" [NEURAL-SHADOW:推奨={recommended} / 現AI={rule_action} / {match_label}"
         f" / 差={margin:.3f} / {elapsed:.1f}ms]"

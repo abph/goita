@@ -88,6 +88,30 @@ def test_settings_fallback_contains_all_profiles() -> None:
     assert '"強化中AI2": "AI in Development 2"' in en
 
 
+def test_neural_primary_log_distinguishes_selected_and_rule_actions() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "primary",
+            "recommended_action": ["pass", None, None],
+            "selected_action": ["pass", None, None],
+            "rule_action": ["receive", "1", None],
+            "match": False,
+            "applied": True,
+            "safety_locked": False,
+            "margin": 5.523,
+            "elapsed_ms": 3.6,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "NEURAL-PRIMARY" in log
+    assert "採用=パス" in log
+    assert "ニューラル候補=パス" in log
+    assert "現AI=しで受ける" in log
+    assert "ニューラル候補を採用" in log
+
+
 if __name__ == "__main__":
     test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()

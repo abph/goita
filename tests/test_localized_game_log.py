@@ -50,6 +50,7 @@ def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
     assert r"/\s*\[AI:[^\]]+\]/g" in strip_source
     assert r"/\s*\[AI-CANDIDATES:[^\]]+\]/g" in strip_source
     assert r"/\s*\[TRACE-ANALYSIS:[^\]]+\]/g" in strip_source
+    assert r"/\s*\[NEURAL-(?:SHADOW|PRIMARY):[^\]]+\]/g" in strip_source
     assert r"/\s*\[PERF\(ms\):[^\]]+\]/g" in strip_source
 
     thought_start = HTML.index("function gameLogThoughtRows(")
@@ -58,6 +59,7 @@ def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
     assert "localizeGameLogAiDecision" in thought_source
     assert "localizeGameLogAttackCandidates" in thought_source
     assert "labels.traceAnalysis" in thought_source
+    assert "labels.neuralDecision" in thought_source
     assert "localizeGameLogPerformance" in thought_source
     assert 'receiveDecision: "受け判断"' in HTML
     assert 'attackDecision: "攻め判断"' in HTML
@@ -84,6 +86,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'shi_signal: "し攻めに賛同する意思表示"',
         'kakari: "味方の攻めに合わせる判断"',
         'upside_finish: "確定上がりを基準に高得点を狙う"',
+        'neural_primary: "学習した1222の判断を優先"',
         'attack_tatewari: "王を切らせる攻め"',
         'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
         'pass_enemy_big_piece_weak_followup: "飛・角を受けても有力な攻めが続かないためパス"',

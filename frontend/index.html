@@ -6544,6 +6544,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         branched_plan: "分岐付き攻め計画",
         time_search: "時間制限付き探索",
         response_dictionary: "事前に用意した応答計画",
+        neural_primary: "学習した1222の判断を優先",
         forced_king_third: "相手に王・玉を使わせる3枚目の攻め",
         king_order: "王・玉を使う順番の調整",
         safe_nonking_third: "王・玉を温存する安全な3枚目の攻め",
@@ -6562,6 +6563,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         branched_plan: "分支进攻计划",
         time_search: "限时搜索",
         response_dictionary: "预先准备的应对计划",
+        neural_primary: "优先采用学习到的1222判断",
         forced_king_third: "第三次进攻迫使对手使用王或玉",
         king_order: "调整王与玉的使用顺序",
         safe_nonking_third: "保留王或玉的安全第三次进攻",
@@ -6580,6 +6582,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         branched_plan: "Branched attack plan",
         time_search: "Time-limited search",
         response_dictionary: "Precomputed response plan",
+        neural_primary: "Prioritize the learned 1222 decision",
         forced_king_third: "Third attack intended to force a King",
         king_order: "Adjust the King play order",
         safe_nonking_third: "Safe third attack that preserves the King",
@@ -7126,6 +7129,7 @@ function gameLogUiLabels(language) {
             receiveDecision: "Receive", attackDecision: "Attack",
             blockDecision: "Hidden piece", passDecision: "Pass",
             candidates: "Candidates", traceAnalysis: "Trace analysis",
+            neuralDecision: "Neural policy",
             time: "Thinking time", empty: "No log entries yet.",
         };
     }
@@ -7136,6 +7140,7 @@ function gameLogUiLabels(language) {
             receiveDecision: "防守判断", attackDecision: "进攻判断",
             blockDecision: "暗置判断", passDecision: "跳过判断",
             candidates: "候选比较", traceAnalysis: "轨迹分析",
+            neuralDecision: "神经网络判断",
             time: "思考时间", empty: "暂无日志。",
         };
     }
@@ -7145,6 +7150,7 @@ function gameLogUiLabels(language) {
         receiveDecision: "受け判断", attackDecision: "攻め判断",
         blockDecision: "伏せ判断", passDecision: "パス判断",
         candidates: "候補比較", traceAnalysis: "トレース分析",
+        neuralDecision: "学習モデルの判断",
         time: "思考時間", empty: "ログはまだありません。",
     };
 }
@@ -7165,6 +7171,7 @@ function stripGameLogTechnicalDetails(entry) {
         .replace(/\s*\[AI:[^\]]+\]/g, "")
         .replace(/\s*\[AI-CANDIDATES:[^\]]+\]/g, "")
         .replace(/\s*\[TRACE-ANALYSIS:[^\]]+\]/g, "")
+        .replace(/\s*\[NEURAL-(?:SHADOW|PRIMARY):[^\]]+\]/g, "")
         .replace(/\s*\[PERF\(ms\):[^\]]+\]/g, "")
         .trimEnd();
 }
@@ -7244,6 +7251,9 @@ function gameLogThoughtRows(entry, language) {
     }
     for(const match of source.matchAll(/\[TRACE-ANALYSIS:([^\]]+)\]/g)) {
         rows.push({label: labels.traceAnalysis, value: trimGameLogDecoration(match[1])});
+    }
+    for(const match of source.matchAll(/\[NEURAL-(?:SHADOW|PRIMARY):([^\]]+)\]/g)) {
+        rows.push({label: labels.neuralDecision, value: trimGameLogDecoration(match[1])});
     }
     for(const match of source.matchAll(/\[PERF\(ms\):([^\]]+)\]/g)) {
         rows.push({label: labels.time, value: trimGameLogDecoration(localizeGameLogPerformance(match[1], language))});
