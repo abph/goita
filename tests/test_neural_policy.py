@@ -585,6 +585,46 @@ def test_experimental_history_never_keeps_an_opponent_hidden_piece() -> None:
     }
 
 
+def test_false_big_kyosha_signal_is_locked_against_neural_override() -> None:
+    """Regression for 2026-10-02 B turn 7 review in 強化中AI2."""
+    state = GoitaState(
+        {
+            "A": list("11345567"),
+            "B": list("41193265"),
+            "C": list("11122234"),
+            "D": list("11134578"),
+        },
+        dealer="D",
+    )
+    agent = ExperimentalAI2RuleBasedAgent()
+    agent.bind_player("B")
+    agent.TIME_LIMITED_SEARCH_ENABLED = False
+    agent.TIME_SEARCH_ENABLED = False
+    history = (
+        ("D", ("attack_after_block", "3", "1")),
+        ("A", ("receive", "1", None)),
+        ("A", ("attack", None, "5")),
+        ("B", ("receive", "5", None)),
+        ("B", ("attack", None, "6")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "6", None)),
+        ("A", ("attack", None, "7")),
+        ("B", ("receive", "9", None)),
+    )
+    for actor, action in history:
+        apply_action(state, actor, action)
+        agent.on_public_action(state, actor, action)
+
+    selected = agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert selected == ("attack", None, "4")
+    assert agent.last_score_fallback_detail == "attack_avoid_false_sequence_signal"
+    assert agent.last_neural_shadow["recommended_action"] == ["attack", None, "2"]
+    assert agent.last_neural_shadow["applied"] is False
+    assert agent.last_neural_shadow["current_choice_status"] == "rule_locked"
+
+
 if __name__ == "__main__":
     test_exported_policy_ranks_only_the_supplied_legal_actions()
     print("NEURAL_POLICY_TEST_OK")

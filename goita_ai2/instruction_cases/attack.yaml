@@ -249,3 +249,29 @@ cases:
       tests:
         - tests/test_attack_intent.py::test_attack_intent_reconsiders_fixed_sequence_after_all_passes
         - tests/test_attack_intent.py::test_attack_intent_is_archived_when_enemy_uses_royal
+
+  - id: ATT-014
+    status: confirmed
+    title: 公開した攻め順の続き駒を実際に残す
+    classification: attack_sequence_signal
+    priority: high
+    conditions:
+      - 自分の攻め1と攻め2が、経験者に知られた複数枚の攻め型を示す
+      - 味方がその攻め順から、攻め3に残る駒を推測できる
+    required:
+      - 攻め2を出した後も、攻め順が示した続き駒を手元に残す
+      - 続きがない場合は、定型を示さない別の攻め駒と比較する
+    example: 大駒または中駒から香を出すなら、もう1枚の香を残して香攻めを続行できるようにする
+    exceptions:
+      - 確定上がり
+      - かかりごたえ
+      - 公開された4枚目
+      - 成功条件を持つ攻め目的
+    forbidden:
+      - 1香しかないのに大駒から香へつなぎ、相方に2香の続行を期待させる
+    reason: 味方は1枚ごとの攻めだけでなく、公開された攻め順から残りの攻め駒を推測して戦略を決める
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_second_attack_avoids_false_big_kyosha_continuation_signal
+        - tests/test_attack_strategy_module.py::test_second_attack_keeps_truthful_big_kyosha_continuation

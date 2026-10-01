@@ -349,6 +349,97 @@ class AttackStrategyMixin:
             return 0.0
         return self.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY
 
+    def _attack_sequence_signal_has_concrete_purpose(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> bool:
+        """Return whether an otherwise misleading sequence has a real aim."""
+        if attack is None:
+            return False
+
+        action = (action_type, block, attack)
+        if self._win_now_bonus(state, player, action) > 0:
+            return True
+        if self._conditional_shi_royal_finish_score(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        ) is not None:
+            return True
+        if self._is_fourth_middle_attack(state, player, attack):
+            return True
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return False
+        if self._is_kakarigotae_piece(attack) and (
+            attack == tr.get("ally_first_attack")
+            or attack in tr.get("ally_past_attacks", set())
+        ):
+            return True
+
+        planned = tr.get("planned_attack_intent")
+        if (
+            isinstance(planned, dict)
+            and str(planned.get("attack_piece")) == str(attack)
+            and bool(planned.get("success_condition"))
+        ):
+            return True
+        return False
+
+    def _false_attack_sequence_signal_penalty(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        """Penalize a public attack prefix whose advertised continuation is absent.
+
+        Established two-kyosha shapes use a middle or big piece followed by
+        kyosha, then keep another kyosha for the continuation. Once the first
+        two attacks have been shown, the ally is entitled to plan around that
+        reserve. This check is based on the public sequence, rather than on one
+        particular hand, and stays soft when the attack has a concrete purpose.
+        """
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or action_type not in ("attack", "attack_after_block")
+            or attack != "2"
+            or int(tr.get("my_attack_count", 0)) != 1
+        ):
+            return 0.0
+
+        history = tuple(str(piece) for piece in tr.get("my_attack_history", ()))
+        if len(history) != 1 or history[0] not in ("3", "4", "5", "6", "7"):
+            return 0.0
+
+        remaining = self._remaining_hand_after_attack_action(
+            state,
+            player,
+            block,
+            attack,
+        )
+        if remaining is None or remaining.count("2") > 0:
+            return 0.0
+        if self._attack_sequence_signal_has_concrete_purpose(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        ):
+            return 0.0
+        return self.FALSE_ATTACK_SEQUENCE_SIGNAL_PENALTY
+
     def _four_shi_after_big_receive_first_attack_bonus(self, state, player: str) -> float:
         if state.hands[player].count("1") < 4:
             return 0.0
@@ -429,8 +520,6 @@ class AttackStrategyMixin:
         if (
             tr.get("shi_attack_mode")
             or tr.get("inherit_ally_shi_attack")
-            or tr.get("ally_first_attack") == "1"
-            or "1" in tr.get("ally_past_attacks", set())
             or str(tr.get("ally_shi_signal", "unknown")) in ("returned_shi", "sashikomi")
         ):
             return False
@@ -1189,6 +1278,14 @@ class AttackStrategyMixin:
             attack,
         )
         score += self._dealer_opening_plan_adjustment(state, player, action_type, block, attack)
+
+        score -= self._false_attack_sequence_signal_penalty(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
 
         score -= max(
             self._singleton_first_attack_signal_penalty(

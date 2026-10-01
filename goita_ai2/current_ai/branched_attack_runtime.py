@@ -184,6 +184,18 @@ class BranchedAttackRuntimeMixin:
                 "two_shi_second_signal_risk": bool(
                     self._two_shi_second_attack_signal_risk(state, player)
                 ),
+                "false_sequence_signal_actions": [
+                    list(action)
+                    for action in actions
+                    if action[0] in ("attack", "attack_after_block")
+                    and self._false_attack_sequence_signal_penalty(
+                        state,
+                        player,
+                        action[0],
+                        action[1],
+                        action[2],
+                    ) > 0
+                ],
                 "special_attack_plan": tr.get("special_attack_plan"),
                 "ranks": {
                     seat: {
@@ -237,6 +249,13 @@ class BranchedAttackRuntimeMixin:
                     block,
                     hand,
                 )
+            score -= self._false_attack_sequence_signal_penalty(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            )
             return (
                 score,
                 POINTS.get(str(attack), 0),
@@ -346,16 +365,33 @@ class BranchedAttackRuntimeMixin:
         if self._branched_root_has_critical_danger(item):
             return False
         root_action = item.plan.node(item.plan.root_node_id).action
+        false_sequence_signal = bool(
+            state is not None
+            and player is not None
+            and root_action is not None
+            and self._false_attack_sequence_signal_penalty(
+                state,
+                player,
+                root_action[0],
+                root_action[1],
+                root_action[2],
+            ) > 0
+        )
         if (
             state is not None
             and player is not None
             and root_action is not None
-            and root_action[2] == "1"
-            and self._two_shi_second_attack_signal_penalty(
-                state,
-                player,
-                root_action[2],
-            ) > 0
+            and (
+                (
+                    root_action[2] == "1"
+                    and self._two_shi_second_attack_signal_penalty(
+                        state,
+                        player,
+                        root_action[2],
+                    ) > 0
+                )
+                or false_sequence_signal
+            )
             and evaluation.minimum_score <= 0.0
             and evaluation.expected_score <= 0.0
             and evaluation.failure_risk
@@ -459,12 +495,23 @@ class BranchedAttackRuntimeMixin:
             continued_action is not None
             and active is not None
             and not active.plan.evaluation.guaranteed_win
-            and continued_action[2] == "1"
-            and self._two_shi_second_attack_signal_penalty(
-                state,
-                player,
-                continued_action[2],
-            ) > 0
+            and (
+                (
+                    continued_action[2] == "1"
+                    and self._two_shi_second_attack_signal_penalty(
+                        state,
+                        player,
+                        continued_action[2],
+                    ) > 0
+                )
+                or self._false_attack_sequence_signal_penalty(
+                    state,
+                    player,
+                    continued_action[0],
+                    continued_action[1],
+                    continued_action[2],
+                ) > 0
+            )
         )
         requires_revalidation = bool(
             continued_action is not None

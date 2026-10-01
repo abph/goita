@@ -216,6 +216,9 @@ class RuleBasedAgent(
         # 攻め1の香・馬・銀・金は、通常は同種を複数持つという合図になる。
         # 1枚だけの駒で誤った合図を送る手は、明確な成功経路がない限り避ける。
         self.SINGLETON_FIRST_ATTACK_SIGNAL_PENALTY = 320.0
+        # 定型の途中までを見せた時は、相方が期待する続き駒を実際に
+        # 残せることを確認する。続きがない見せかけの攻め順は避ける。
+        self.FALSE_ATTACK_SEQUENCE_SIGNAL_PENALTY = 180.0
         self.THREE_SHI_ENEMY_RECEIVE_RETURN_BONUS = 360.0
         self.FOURTH_MIDDLE_EARLY_ATTACK_DELAY_PENALTY = 2400.0
         self.FOURTH_MIDDLE_WEAK_SECOND_BRIDGE_PENALTY = 1000.0

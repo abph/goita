@@ -152,6 +152,7 @@ class DecisionMixin:
             return "strong"
         if (
             detail.startswith("attack_sequence_")
+            or detail.startswith("attack_avoid_false_sequence_signal")
             or detail.startswith("pass_ally_kyosha_continuation")
             or detail.startswith("pass_preserve_public_unstoppable_finish_piece_")
             or detail.startswith("pass_ally_reach_royal_")
@@ -295,6 +296,57 @@ class DecisionMixin:
             )
             if conditional_finish_score is not None:
                 return f"attack_conditional_shi_royal_finish_{int(conditional_finish_score)}"
+            scored = list(getattr(self, "last_attack_candidate_scores", ()))
+            attack_scores = [
+                item
+                for item in scored
+                if tuple(item.get("action", (None, None, None)))[0]
+                in ("attack", "attack_after_block")
+            ]
+            if attack_scores:
+                false_signal_raw_best = max(
+                    attack_scores,
+                    key=lambda item: float(item["score"])
+                    + self._false_attack_sequence_signal_penalty(
+                        state,
+                        player,
+                        item["action"][0],
+                        item["action"][1],
+                        item["action"][2],
+                    ),
+                )
+                false_signal_action = tuple(false_signal_raw_best["action"])
+                if (
+                    false_signal_action != action
+                    and self._false_attack_sequence_signal_penalty(
+                        state,
+                        player,
+                        false_signal_action[0],
+                        false_signal_action[1],
+                        false_signal_action[2],
+                    ) > 0
+                ):
+                    return "attack_avoid_false_sequence_signal"
+
+                two_shi_raw_best = max(
+                    attack_scores,
+                    key=lambda item: float(item["score"])
+                    + self._two_shi_second_attack_signal_penalty(
+                        state,
+                        player,
+                        item["action"][2],
+                    ),
+                )
+                two_shi_action = tuple(two_shi_raw_best["action"])
+                if (
+                    two_shi_action != action
+                    and self._two_shi_second_attack_signal_penalty(
+                        state,
+                        player,
+                        two_shi_action[2],
+                    ) > 0
+                ):
+                    return "attack_avoid_two_shi_second_signal"
             if (
                 attack != "1"
                 and self._two_shi_second_attack_signal_risk(state, player)
@@ -2341,6 +2393,13 @@ class DecisionMixin:
                 + self._enemy_used_attack_reuse_penalty(
                     state,
                     player,
+                    item["action"][2],
+                )
+                + self._false_attack_sequence_signal_penalty(
+                    state,
+                    player,
+                    item["action"][0],
+                    item["action"][1],
                     item["action"][2],
                 ),
             )

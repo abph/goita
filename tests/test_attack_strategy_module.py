@@ -77,6 +77,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_three_shi_enemy_receive_return_bonus",
         "_singleton_first_attack_has_concrete_purpose",
         "_singleton_first_attack_signal_penalty",
+        "_attack_sequence_signal_has_concrete_purpose",
+        "_false_attack_sequence_signal_penalty",
         "_score_attack_phase",
     ):
         assert method_name in AttackStrategyMixin.__dict__
@@ -1015,3 +1017,83 @@ def test_four_shi_continues_after_royal_receives_enemy_attack() -> None:
 
     assert attack == ("attack", None, "1")
     assert a_agent.last_score_fallback_detail == "attack_four_shi_after_royal_receive"
+
+
+def _replay_big_then_second_attack_review(*, two_kyosha: bool):
+    state = GoitaState(
+        hands={
+            "A": list("11345567"),
+            "B": list("41293265" if two_kyosha else "41193265"),
+            "C": list("11112234" if two_kyosha else "11122234"),
+            "D": list("11134578"),
+        },
+        dealer="D",
+    )
+    agents = {player: RuleBasedAgent() for player in "ABCD"}
+    for player, agent in agents.items():
+        agent.bind_player(player)
+        agent.TIME_LIMITED_SEARCH_ENABLED = False
+        agent.TIME_SEARCH_ENABLED = False
+
+    history = (
+        ("D", ("attack_after_block", "3", "1")),
+        ("A", ("receive", "1", None)),
+        ("A", ("attack", None, "5")),
+        ("B", ("receive", "5", None)),
+        ("B", ("attack", None, "6")),
+        ("C", ("pass", None, None)),
+        ("D", ("pass", None, None)),
+        ("A", ("receive", "6", None)),
+        ("A", ("attack", None, "7")),
+        ("B", ("receive", "9", None)),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        for agent in agents.values():
+            agent.on_public_action(state, action_player, action)
+    return state, agents["B"]
+
+
+def test_second_attack_avoids_false_big_kyosha_continuation_signal() -> None:
+    """Regression for 2026-10-02 B turn 7 review."""
+    state, agent = _replay_big_then_second_attack_review(two_kyosha=False)
+
+    assert agent._false_attack_sequence_signal_penalty(
+        state,
+        "B",
+        "attack",
+        None,
+        "2",
+    ) == agent.FALSE_ATTACK_SEQUENCE_SIGNAL_PENALTY
+    assert agent._two_shi_second_attack_signal_risk(state, "B") is True
+
+    chosen = agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert chosen == ("attack", None, "4")
+    assert agent.last_decision_reason == "score_fallback"
+    assert agent.last_score_fallback_detail == "attack_avoid_false_sequence_signal"
+    assert agent.last_rule_search_authority == "strong"
+
+
+def test_second_attack_keeps_truthful_big_kyosha_continuation() -> None:
+    state, agent = _replay_big_then_second_attack_review(two_kyosha=True)
+
+    assert agent._false_attack_sequence_signal_penalty(
+        state,
+        "B",
+        "attack",
+        None,
+        "2",
+    ) == 0.0
+
+    chosen = agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert chosen == ("attack", None, "2")
