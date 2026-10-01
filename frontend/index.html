@@ -6631,6 +6631,8 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続",
         inferred_endgame_followup_attack: "推定した終盤の上がり筋を継続",
         ally_shi_approval_already_sent_pass: "し攻めへの賛同は伝達済みのためパス",
+        pass_ally_guaranteed_win_no_self_finish: "相方の上がりが確定しているため、その攻めを受けずにパス",
+        pass_ally_shi_preserve_third_attack: "自分の3回目の攻めに使うしを残すためパス",
         shi_insertion_followup_1: "し攻め・味方の反応・味方の進行を狙って、しを差し込む",
     },
     zh: {
@@ -6656,6 +6658,8 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         receive_enemy_big_piece_ally_signal: "为向搭档传达第二次进攻信息，用同种飞或角接牌",
         receive_before_unproven_enemy_third_attack: "无法确认等待对手第三次进攻是否安全，因此用同种棋子接下",
         low_reentry_followup_attack: "为保留再次参与的机会，接牌后继续选择公开信息下安全的进攻",
+        pass_ally_guaranteed_win_no_self_finish: "搭档已确定可以获胜，因此不接下搭档的进攻",
+        pass_ally_shi_preserve_third_attack: "为自己的第三次进攻保留“し”，因此跳过",
         shi_insertion_followup_1: "用“し”进攻，同时观察搭档反应并帮助搭档推进手牌",
     },
     en: {
@@ -6668,6 +6672,8 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         receive_enemy_big_piece_ally_signal: "Receive the rook or bishop with the matching piece to send the ally a second attack signal",
         receive_before_unproven_enemy_third_attack: "Receive with the matching piece because waiting for the opponent's third attack is not proven safe",
         low_reentry_followup_attack: "Continue with a publicly safe attack after receiving to preserve re-entry",
+        pass_ally_guaranteed_win_no_self_finish: "Pass the ally's attack because the ally has a guaranteed finish",
+        pass_ally_shi_preserve_third_attack: "Pass to preserve a shi for the third attack",
         shi_insertion_followup_1: "Insert shi to pressure the opponents, read the ally's response, and advance the ally's hand",
     },
 });

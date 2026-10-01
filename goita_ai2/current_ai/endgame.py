@@ -1470,7 +1470,13 @@ class EndgameMixin:
                 best_self_score = score
 
         if best_self_score is None:
-            return None
+            if not self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED:
+                return None
+            self._set_decision_reason("score_fallback")
+            self._set_score_fallback_detail(
+                "pass_ally_guaranteed_win_no_self_finish"
+            )
+            return pass_action
         if best_self_score <= self.ALLY_GUARANTEED_WIN_GIVE_WAY_MAX_SCORE:
             self._set_decision_reason("score_fallback")
             self._set_score_fallback_detail(f"pass_ally_guaranteed_win_self_score_{int(best_self_score)}")

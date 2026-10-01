@@ -110,6 +110,8 @@ class RuleBasedAgent(
         self.ALLY_REACH_HANDOFF_MIN_CHANCE = 0.05
         self.ALLY_REACH_HANDOFF_MIN_ADVANTAGE = 0.02
         self.last_ally_reach_comparison = None
+        self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = False
+        self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = False
 
         self.LAST_ONE_BONUS = 65.0
 

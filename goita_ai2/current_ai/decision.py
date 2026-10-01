@@ -130,6 +130,7 @@ class DecisionMixin:
         if (
             detail.startswith("pass_full_receive_cover_")
             or detail.startswith("pass_ally_guaranteed_win_")
+            or detail == "pass_ally_shi_preserve_third_attack"
         ):
             return "proven"
 
@@ -2166,6 +2167,30 @@ class DecisionMixin:
                         self._set_decision_reason("shi_signal")
                         self._set_score_fallback_detail(
                             "ally_shi_approval_already_sent_pass"
+                        )
+                        return pass_action
+
+                # A four-shi opener still needs one shi for its own third
+                # attack. Do not spend the final pair merely to acknowledge
+                # an ally's shi. Proven finishes were considered above, and
+                # an already-sent approval keeps its more precise explanation.
+                if (
+                    self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED
+                    and int(tr.get("my_init_count", Counter()).get("1", 0)) >= 4
+                    and int(tr.get("my_attack_count", 0)) == 1
+                    and bool(tr.get("shi_attack_mode"))
+                    and str(tr.get("shi_attack_mode_source") or "") == "self"
+                    and state.hands[player].count("1") == 2
+                    and ("receive", "1", None) in actions
+                ):
+                    pass_action = next(
+                        (act for act in actions if act[0] == "pass"),
+                        None,
+                    )
+                    if pass_action is not None:
+                        self._set_decision_reason("shi_signal")
+                        self._set_score_fallback_detail(
+                            "pass_ally_shi_preserve_third_attack"
                         )
                         return pass_action
                 can_show_four_shi_signal = (

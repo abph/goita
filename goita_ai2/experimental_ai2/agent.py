@@ -22,6 +22,8 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
 
     def __init__(self, name: str = "強化中AI2"):
         super().__init__(name=name)
+        self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = True
+        self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 

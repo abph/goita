@@ -58,6 +58,16 @@ def test_experimental_profile_keeps_rule_action_and_records_shadow(monkeypatch) 
     assert tuple(agent.last_neural_shadow["recommended_action"]) in legal
 
 
+def test_experimental_profile_owns_new_ally_and_shi_guards() -> None:
+    current = CurrentRuleBasedAgent()
+    experimental = ExperimentalAI2RuleBasedAgent()
+
+    assert current.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED is False
+    assert current.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED is False
+    assert experimental.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED is True
+    assert experimental.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED is True
+
+
 def test_experimental_history_never_keeps_an_opponent_hidden_piece() -> None:
     state = GoitaState(_hands(), dealer="A")
     agent = ExperimentalAI2RuleBasedAgent()
