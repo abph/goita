@@ -18,26 +18,26 @@ def test_reviewed_set_keeps_both_kinds_of_policy_win() -> None:
 
     report = evaluate_reviewed_cases(cases)
 
-    assert report["records"] == 4
+    assert report["records"] == 5
     assert report["composition"] == {
         "review_reference_not_correction": 1,
-        "training_correction": 3,
+        "training_correction": 4,
     }
     assert report["captured_disagreement_outcomes"] == {
-        "current_only": 3,
+        "current_only": 4,
         "neural_only": 1,
         "both_match": 0,
         "neither": 0,
     }
     assert report["captured_at_review"]["current"] == {
-        "matches": 3,
-        "records": 4,
-        "match_rate": 0.75,
+        "matches": 4,
+        "records": 5,
+        "match_rate": 0.8,
     }
     assert report["captured_at_review"]["neural"] == {
         "matches": 1,
-        "records": 4,
-        "match_rate": 0.25,
+        "records": 5,
+        "match_rate": 0.2,
     }
     assert report["captured_at_review"]["hybrid"]["matches"] == 0
 
@@ -49,8 +49,8 @@ def test_exported_neural_model_matches_all_reviewed_preferences() -> None:
     report = evaluate_reviewed_cases(cases, neural_model=model)
 
     assert report["live_neural"] == {
-        "matches": 4,
-        "records": 4,
+        "matches": 5,
+        "records": 5,
         "match_rate": 1.0,
     }
     assert all(

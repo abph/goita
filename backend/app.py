@@ -2778,6 +2778,36 @@ def _format_neural_shadow(agent: Any) -> str:
             f" / 現AI={rule_action}{difference_label} / {result}"
             f" / 差={margin:.3f} / {elapsed:.1f}ms]"
         )
+    if snapshot.get("mode") == "tiebreak":
+        selected = _trace_action_label(tuple(snapshot.get("selected_action", ())))
+        status = str(snapshot.get("current_choice_status") or "")
+        if snapshot.get("match"):
+            result = "現AIと一致"
+        elif snapshot.get("applied"):
+            result = "現AIの僅差候補からニューラル候補を採用"
+        elif snapshot.get("safety_locked"):
+            result = "確定判断のため現AIを採用"
+        elif status == "rule_locked":
+            result = "明確な戦術判断のため現AIを採用"
+        elif status == "clear":
+            result = "現AIの候補差が明確なため現AIを採用"
+        elif status in ("score_unavailable", "rule_selected_outside_score"):
+            result = "比較可能な僅差候補がないため現AIを採用"
+        elif snapshot.get("confidence_deferred"):
+            result = "ニューラルの候補差が小さいため現AIを採用"
+        else:
+            result = "現AIを採用"
+        current_gap = snapshot.get("current_score_gap")
+        gap_label = (
+            f" / 現AI差={float(current_gap):.3f}"
+            if current_gap is not None
+            else ""
+        )
+        return (
+            f" [NEURAL-TIEBREAK:採用={selected} / ニューラル候補={recommended}"
+            f" / 現AI={rule_action}{difference_label} / {result}"
+            f"{gap_label} / ニューラル差={margin:.3f} / {elapsed:.1f}ms]"
+        )
     return (
         f" [NEURAL-SHADOW:推奨={recommended} / 現AI={rule_action} / {match_label}"
         f" / 差={margin:.3f} / {elapsed:.1f}ms]"

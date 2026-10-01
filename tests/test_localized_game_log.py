@@ -50,7 +50,7 @@ def test_normal_log_hides_internal_ai_fields_but_thinking_view_extracts_them():
     assert r"/\s*\[AI:[^\]]+\]/g" in strip_source
     assert r"/\s*\[AI-CANDIDATES:[^\]]+\]/g" in strip_source
     assert r"/\s*\[TRACE-ANALYSIS:[^\]]+\]/g" in strip_source
-    assert r"/\s*\[NEURAL-(?:SHADOW|PRIMARY):[^\]]+\]/g" in strip_source
+    assert r"/\s*\[NEURAL-(?:SHADOW|PRIMARY|TIEBREAK):[^\]]+\]/g" in strip_source
     assert r"/\s*\[PERF\(ms\):[^\]]+\]/g" in strip_source
 
     thought_start = HTML.index("function gameLogThoughtRows(")
@@ -87,10 +87,13 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'kakari: "味方の攻めに合わせる判断"',
         'upside_finish: "確定上がりを基準に高得点を狙う"',
         'neural_primary: "学習した1222の判断を優先"',
+        'neural_tiebreak: "現AIの僅差候補を学習結果で比較"',
         'attack_tatewari: "王を切らせる攻め"',
         'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
         'pass_enemy_big_piece_weak_followup: "飛・角を受けても有力な攻めが続かないためパス"',
         'receive_enemy_big_piece_ally_signal: "相方へ2回目の攻め情報を伝えるため、飛・角を同じ駒で受ける"',
+        'receive_prevent_enemy_immediate_finish: "パスすると敵の上がりが確定するため受ける"',
+        'match(/^neural_tiebreak_current_gap_',
         'pass_ally_guaranteed_win_no_self_finish: "相方の上がりが確定しているため、その攻めを受けずにパス"',
         'pass_ally_shi_preserve_third_attack: "自分の3回目の攻めに使うしを残すためパス"',
         'startsWith("pass_preserve_public_unstoppable_finish_piece_")',

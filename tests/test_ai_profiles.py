@@ -180,6 +180,51 @@ def test_neural_primary_log_explains_unstoppable_finish_preservation() -> None:
     assert "一巡確定の攻め駒を残すため現AIを採用" in log
 
 
+def test_neural_tiebreak_log_explains_current_ai_close_choice() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "tiebreak",
+            "recommended_action": ["attack", None, "3"],
+            "selected_action": ["attack", None, "3"],
+            "rule_action": ["attack", None, "1"],
+            "match": False,
+            "applied": True,
+            "safety_locked": False,
+            "current_choice_status": "close",
+            "current_score_gap": 2.0,
+            "margin": 1.25,
+            "elapsed_ms": 3.0,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "NEURAL-TIEBREAK" in log
+    assert "現AIの僅差候補からニューラル候補を採用" in log
+    assert "現AI差=2.000" in log
+
+
+def test_neural_tiebreak_log_explains_clear_current_ai_choice() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "tiebreak",
+            "recommended_action": ["pass", None, None],
+            "selected_action": ["receive", "9", None],
+            "rule_action": ["receive", "9", None],
+            "match": False,
+            "applied": False,
+            "safety_locked": False,
+            "current_choice_status": "clear",
+            "margin": 2.139,
+            "elapsed_ms": 5.0,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "現AIの候補差が明確なため現AIを採用" in log
+
+
 if __name__ == "__main__":
     test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()

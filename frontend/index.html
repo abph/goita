@@ -6545,6 +6545,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         time_search: "時間制限付き探索",
         response_dictionary: "事前に用意した応答計画",
         neural_primary: "学習した1222の判断を優先",
+        neural_tiebreak: "現AIの僅差候補を学習結果で比較",
         forced_king_third: "相手に王・玉を使わせる3枚目の攻め",
         king_order: "王・玉を使う順番の調整",
         safe_nonking_third: "王・玉を温存する安全な3枚目の攻め",
@@ -6564,6 +6565,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         time_search: "限时搜索",
         response_dictionary: "预先准备的应对计划",
         neural_primary: "优先采用学习到的1222判断",
+        neural_tiebreak: "用学习结果比较当前AI的接近候选",
         forced_king_third: "第三次进攻迫使对手使用王或玉",
         king_order: "调整王与玉的使用顺序",
         safe_nonking_third: "保留王或玉的安全第三次进攻",
@@ -6583,6 +6585,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         time_search: "Time-limited search",
         response_dictionary: "Precomputed response plan",
         neural_primary: "Prioritize the learned 1222 decision",
+        neural_tiebreak: "Use the learned policy to break a close Current AI tie",
         forced_king_third: "Third attack intended to force a King",
         king_order: "Adjust the King play order",
         safe_nonking_third: "Safe third attack that preserves the King",
@@ -6597,6 +6600,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         enemy_later_pass: "敵の2枚目以降の攻めをパス",
         enemy_later_receive: "敵の2枚目以降の攻めを受ける",
         enemy_later_receive_king: "敵の2枚目以降の攻めを王・玉で受ける",
+        receive_prevent_enemy_immediate_finish: "パスすると敵の上がりが確定するため受ける",
         receive_win_after: "受けた後にそのまま上がれる",
         receive_tsume_after: "受けた後に上がり筋がある",
         receive_piece_count_risk: "残り枚数の推定から受ける",
@@ -6645,6 +6649,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         enemy_later_pass: "跳过对手第二次以后的进攻",
         enemy_later_receive: "接下对手第二次以后的进攻",
         enemy_later_receive_king: "用王或玉接下对手第二次以后的进攻",
+        receive_prevent_enemy_immediate_finish: "如果跳过，对手将确定获胜，因此接牌",
         receive_win_after: "接牌后可以直接获胜",
         receive_tsume_after: "接牌后存在获胜路线",
         attack_continuous_score: "继续使用相同棋子进攻",
@@ -6666,6 +6671,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         shi_insertion_followup_1: "用“し”进攻，同时观察搭档反应并帮助搭档推进手牌",
     },
     en: {
+        receive_prevent_enemy_immediate_finish: "Receive because passing gives the opponent a guaranteed finish",
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
         attack_avoid_enemy_used_piece: "Avoid a piece the opponents attacked with and may still hold",
         attack_avoid_two_shi_second_signal: "Compare other attacks instead of overstating two shi to the ally",
@@ -6719,6 +6725,12 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return `继续预先准备的计划，以${piece}进攻`;
         if(language === "en") return `Continue the precomputed plan by attacking with ${piece}`;
         return `事前に用意した計画を継続し、${piece}で攻める`;
+    }
+    match = String(detail || "").match(/^neural_tiebreak_current_gap_(-?[\d.]+)_neural_margin_(-?[\d.]+)$/);
+    if(match) {
+        if(language === "zh") return `当前AI的候选接近（差${match[1]}），用学习结果进行比较（神经网络差${match[2]}）`;
+        if(language === "en") return `Use the learned policy to break a close Current AI choice (Current AI gap ${match[1]}, neural gap ${match[2]})`;
+        return `現AIの候補が僅差（差${match[1]}）のため学習結果で比較（ニューラル差${match[2]}）`;
     }
     match = String(detail || "").match(/^safe_(\d+)_target_(\d+)_chance_(\d+)_risk_(\d+)$/);
     if(match) {
@@ -7176,7 +7188,7 @@ function stripGameLogTechnicalDetails(entry) {
         .replace(/\s*\[AI:[^\]]+\]/g, "")
         .replace(/\s*\[AI-CANDIDATES:[^\]]+\]/g, "")
         .replace(/\s*\[TRACE-ANALYSIS:[^\]]+\]/g, "")
-        .replace(/\s*\[NEURAL-(?:SHADOW|PRIMARY):[^\]]+\]/g, "")
+        .replace(/\s*\[NEURAL-(?:SHADOW|PRIMARY|TIEBREAK):[^\]]+\]/g, "")
         .replace(/\s*\[PERF\(ms\):[^\]]+\]/g, "")
         .trimEnd();
 }
@@ -7257,7 +7269,7 @@ function gameLogThoughtRows(entry, language) {
     for(const match of source.matchAll(/\[TRACE-ANALYSIS:([^\]]+)\]/g)) {
         rows.push({label: labels.traceAnalysis, value: trimGameLogDecoration(match[1])});
     }
-    for(const match of source.matchAll(/\[NEURAL-(?:SHADOW|PRIMARY):([^\]]+)\]/g)) {
+    for(const match of source.matchAll(/\[NEURAL-(?:SHADOW|PRIMARY|TIEBREAK):([^\]]+)\]/g)) {
         rows.push({label: labels.neuralDecision, value: trimGameLogDecoration(match[1])});
     }
     for(const match of source.matchAll(/\[PERF\(ms\):([^\]]+)\]/g)) {
