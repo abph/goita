@@ -6533,6 +6533,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
     ja: {
         score_fallback: "局面全体の評価",
         shi_signal: "し攻めに賛同する意思表示",
+        shi_attack_package: "し攻めパッケージ",
         kakari: "味方の攻めに合わせる判断",
         win_now: "この手で上がれる",
         tsume: "上がり筋を優先",
@@ -6553,6 +6554,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
     zh: {
         score_fallback: "综合局面评估",
         shi_signal: "表示赞同以“し”进攻",
+        shi_attack_package: "“し”进攻方案",
         kakari: "配合搭档的进攻",
         win_now: "此手可以获胜",
         tsume: "优先获胜路线",
@@ -6573,6 +6575,7 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
     en: {
         score_fallback: "Overall position evaluation",
         shi_signal: "Signal support for a shi attack",
+        shi_attack_package: "Shi attack package",
         kakari: "Coordinate with the ally's attack",
         win_now: "Win with this move",
         tsume: "Prioritize a winning line",
@@ -6693,6 +6696,14 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const shiPackage = String(detail || "").match(/^shi_package_final_attack_enemy_map_(\d+)_expected_(\d+)_distribution_A(\d+)_B(\d+)_C(\d+)_D(\d+)$/);
+    if(shiPackage) {
+        const expected = (Number(shiPackage[2]) / 100).toFixed(2);
+        const distribution = `A${shiPackage[3]}・B${shiPackage[4]}・C${shiPackage[5]}・D${shiPackage[6]}`;
+        if(language === "en") return `Most likely initial shi distribution: ${distribution}. The opponents most likely have ${shiPackage[1]} shi left (expected ${expected}), so play the last shi as the third attack.`;
+        if(language === "zh") return `最可能的初始“し”分配为${distribution}。对手最可能剩余${shiPackage[1]}枚（期望值${expected}枚），因此第三次进攻打出最后一枚“し”。`;
+        return `初期し配分は${distribution}が最有力。敵方の残りしは最有力${shiPackage[1]}枚（期待値${expected}枚）のため、3回目の攻めで最後のしを出す`;
+    }
     const handoff = String(detail || "").match(/^pass_ally_reach_royal_([ABCD])_piece_([3-7])_chance_(\d+)_receive_(\d+)$/);
     if(handoff) {
         const piece = gameLogCandidatePieceLabel(handoff[2], language);

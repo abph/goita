@@ -41,6 +41,7 @@ from goita_ai2.current_ai.receive_strategy import ReceiveStrategyMixin
 from goita_ai2.current_ai.round_strategy import RoundStrategyMixin
 from goita_ai2.current_ai.search_cache import SearchCacheMixin
 from goita_ai2.current_ai.search_budget import SearchBudgetMixin
+from goita_ai2.current_ai.shi_attack_package import ShiAttackPackageMixin
 from goita_ai2.current_ai.shi_insertion import ShiInsertionStrategyMixin
 from goita_ai2.current_ai.timed_search import TimedSearchMixin
 from goita_ai2.current_ai.tracking import TrackingMixin
@@ -76,6 +77,7 @@ class RuleBasedAgent(
     EndgameMixin,
     AttackPlanningMixin,
     RoundStrategyMixin,
+    ShiAttackPackageMixin,
     AttackStrategyMixin,
     ShiInsertionStrategyMixin,
     ReceiveStrategyMixin,
@@ -111,6 +113,10 @@ class RuleBasedAgent(
         self.ALLY_REACH_HANDOFF_MIN_ADVANTAGE = 0.02
         self.last_ally_reach_comparison = None
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = False
+        self.SHI_ATTACK_PACKAGE_ENABLED = False
+        self.SHI_ATTACK_PACKAGE_MIN_CONFIDENCE = 0.60
+        self.SHI_ATTACK_PACKAGE_EXHAUSTED_MAX_EXPECTED = 0.75
+        self.last_shi_attack_package_analysis: Optional[Dict[str, object]] = None
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = False
         self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = False
 

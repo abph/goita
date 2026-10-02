@@ -84,6 +84,7 @@ def test_japanese_game_log_covers_actions_results_and_effects():
 def test_japanese_game_log_explains_ai_reason_and_performance_fields():
     for expected in (
         'shi_signal: "し攻めに賛同する意思表示"',
+        'shi_attack_package: "し攻めパッケージ"',
         'kakari: "味方の攻めに合わせる判断"',
         'upside_finish: "確定上がりを基準に高得点を狙う"',
         'neural_primary: "学習した1222の判断を優先"',
@@ -94,6 +95,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'receive_enemy_big_piece_ally_signal: "相方へ2回目の攻め情報を伝えるため、飛・角を同じ駒で受ける"',
         'receive_prevent_enemy_immediate_finish: "パスすると敵の上がりが確定するため受ける"',
         'match(/^neural_tiebreak_current_gap_',
+        'match(/^shi_package_final_attack_enemy_map_',
+        '初期し配分は${distribution}が最有力。敵方の残りしは最有力${shiPackage[1]}枚',
         'pass_ally_guaranteed_win_no_self_finish: "相方の上がりが確定しているため、その攻めを受けずにパス"',
         'pass_ally_shi_preserve_third_attack: "自分の3回目の攻めに使うしを残すためパス"',
         'startsWith("pass_preserve_public_unstoppable_finish_piece_")',

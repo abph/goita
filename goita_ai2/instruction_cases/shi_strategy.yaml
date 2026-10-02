@@ -239,3 +239,31 @@ cases:
       state: covered
       tests:
         - tests/test_decision_module.py::test_three_shi_plan_does_not_spend_last_pair_acknowledging_ally
+
+  - id: SHI-013
+    status: confirmed
+    title: し攻め中は全席の初期配分と使用枚数から最後のしを判断する
+    classification: shi_attack_package
+    priority: critical
+    conditions:
+      - 自分が初期3し以上からし攻めを継続している
+      - 全10枚を満たす初期し配分の組み合わせ推定がある
+      - 自分の3回目の攻めで、しが1枚残っている
+      - 敵方2人の残りしが最有力の組み合わせで0枚
+      - 敵方の残りし期待値と推定信頼度も枯渇判断を支持する
+    required:
+      - 席ごとの初期し・使用済みし・現在しを一つの分析結果にまとめる
+      - 3回目は最後のしを使い切ってよい
+      - 一般的なリーチ回避より先に、敵方のし枯れを利用したし攻めを評価する
+      - しで攻めると決めた後に、残る2枚の形から伏せ駒を選ぶ
+    forbidden:
+      - 各席のし推定を独立に扱い、合計10枚との整合を失う
+      - 3回目にも、攻め後にしを1枚残す条件を適用する
+      - 実際の非公開手駒を参照する
+    reason: し攻めでは、全席の初期配分と公開された使用枚数を継続して数え、敵方のしが尽きた終盤に最後のしを通す
+    regression:
+      state: covered
+      tests:
+        - tests/test_shi_attack_package.py::test_final_shi_attack_uses_joint_distribution_when_enemy_team_is_exhausted
+        - tests/test_shi_attack_package.py::test_final_shi_attack_is_not_forced_when_joint_map_has_enemy_shi
+        - tests/test_shi_attack_package.py::test_shi_attack_package_is_isolated_to_experimental_ai2

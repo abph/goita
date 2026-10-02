@@ -140,6 +140,7 @@ class DecisionMixin:
             "conditional_tsume",
             "kakari",
             "shi_signal",
+            "shi_attack_package",
             "responded",
             "ally_shi_relay",
             "forced_king_third",
@@ -708,6 +709,7 @@ class DecisionMixin:
         self.last_generic_response_tactical_shadow = {}
         self.last_generic_response_human_shadow = {}
         self.last_generic_response_priority = {}
+        self.last_shi_attack_package_analysis = None
         self._time_search_kyosha_receiver_position = None
         if self.me is None:
             self.me = player
@@ -1435,6 +1437,7 @@ class DecisionMixin:
         self.last_attack_candidate_scores = []
         self.last_attack_intent_comparison = None
         self.last_ally_reach_comparison = None
+        self.last_shi_attack_package_analysis = None
 
         if self.me is None:
             self.me = player
@@ -1443,6 +1446,11 @@ class DecisionMixin:
 
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
+
+        # Keep one coherent shi-count picture available throughout a shi attack,
+        # even when an earlier proven rule ultimately chooses the action.
+        if bool(getattr(self, "SHI_ATTACK_PACKAGE_ENABLED", False)):
+            self._shi_attack_package_analysis(state, player)
 
         if tr is not None and tr.get("kg_plan_active"):
             kings_in_hand = state.hands[player].count("8") + state.hands[player].count("9")
@@ -1705,6 +1713,26 @@ class DecisionMixin:
                     self._set_decision_reason("score_fallback")
                     self._set_score_fallback_detail("attack_force_enemy_king")
                     return act
+
+        shi_package_choice = self._shi_attack_package_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if shi_package_choice is not None:
+            chosen, analysis = shi_package_choice
+            if tr is not None:
+                tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
+                tr["pending_weak_hand_shi_signal"] = False
+                if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
+                    tr["kg_plan_active"] = False
+            self._activate_attack_intent_from_action(state, player, chosen)
+            self._set_decision_reason("shi_attack_package")
+            self._set_score_fallback_detail(
+                self._shi_attack_package_detail(analysis)
+            )
+            return chosen
 
         reach_avoidance_tsume = self._reach_avoidance_conditional_tsume_action(
             state,
