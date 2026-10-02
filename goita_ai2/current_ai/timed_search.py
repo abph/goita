@@ -753,7 +753,7 @@ class TimedSearchMixin:
                 continue
             rng.shuffle(hidden_bag)
 
-            sampled = copy.deepcopy(state)
+            sampled = self._timed_search_clone_state(state)
             sampled.hands[player] = list(state.hands[player])
             sampled.face_down_hidden[player] = list(state.face_down_hidden[player])
             hidden_offset = 0
@@ -951,8 +951,31 @@ class TimedSearchMixin:
         self._timed_search_remember_prediction_states(cache_key, combined)
         return combined
 
+    @staticmethod
+    def _timed_search_clone_state(state):
+        """Copy a Goita position without recursively copying scalar fields.
+
+        Search creates tens of thousands of short-lived positions. A generic
+        ``deepcopy`` walks every container and scalar for every branch even
+        though only four small dictionaries contain mutable values. Keep the
+        copy boundary explicit so search stays isolated from the live game
+        while avoiding that recursive overhead.
+        """
+        cloned = copy.copy(state)
+        cloned.hands = {
+            seat: list(hand)
+            for seat, hand in state.hands.items()
+        }
+        cloned.face_down_hidden = {
+            seat: list(hidden)
+            for seat, hidden in state.face_down_hidden.items()
+        }
+        cloned.had_both_kings = dict(state.had_both_kings)
+        cloned.team_score = dict(state.team_score)
+        return cloned
+
     def _timed_search_apply(self, state, player: str, action: Action):
-        next_state = copy.deepcopy(state)
+        next_state = self._timed_search_clone_state(state)
         action_type, block, attack = action
         if action_type == "pass":
             next_state.apply_pass(player)
@@ -1014,12 +1037,16 @@ class TimedSearchMixin:
         if not can_be_received:
             score += 75.0
 
-        try:
-            after = self._timed_search_apply(state, actor, action)
-            if after.finished and after.winner == actor:
-                score += 10000.0
-        except Exception:
-            return -10000.0
+        # The action comes from ``legal_actions``. Finishing can therefore be
+        # detected from the number of consumed pieces without cloning and
+        # applying the state a second time solely for move ordering.
+        finishes_now = (
+            action_type == "attack" and len(hand) == 1
+        ) or (
+            action_type == "attack_after_block" and len(hand) == 2
+        )
+        if finishes_now:
+            score += 10000.0
         return score
 
     def _timed_search_ordered_actions(self, state, beam_width: int) -> List[Action]:
@@ -2067,6 +2094,8 @@ class TimedSearchMixin:
                 information_set = None
                 information_worlds = tuple()
         information_enabled = bool(information_set is not None and information_worlds)
+        information_tracker_cache: Dict[tuple, object] = {}
+        information_action_model_cache: Dict[tuple, object] = {}
         if information_enabled:
             self.last_information_set_search = {
                 "key": information_set.key.digest,
@@ -2252,6 +2281,8 @@ class TimedSearchMixin:
                             stats,
                             information_tracker,
                             cancel_event,
+                            information_tracker_cache,
+                            information_action_model_cache,
                         )
                         world_values = outcome.values_dict()
                         iteration_world_values[action] = world_values
@@ -2523,6 +2554,18 @@ class TimedSearchMixin:
                     break
 
         if run_context is not None:
+            run_context["tracker_cache_entries"] = len(
+                information_tracker_cache
+            )
+            run_context["tracker_cache_hits"] = int(
+                stats.get("tracker_cache_hits", 0)
+            )
+            run_context["action_model_cache_entries"] = len(
+                information_action_model_cache
+            )
+            run_context["action_model_cache_hits"] = int(
+                stats.get("action_model_cache_hits", 0)
+            )
             if active_narrowing_stop_reason:
                 run_context["stop_reason"] = active_narrowing_stop_reason
             elif completed_depth >= maximum_depth:

@@ -46,6 +46,50 @@ def test_rule_based_agent_uses_timed_search_mixin() -> None:
     assert issubclass(RuleBasedAgent, TimedSearchMixin)
 
 
+def test_lightweight_search_clone_matches_deepcopy_and_is_isolated() -> None:
+    state = _initial_state()
+    state.face_down_hidden["B"].append("1")
+    state.team_score["AC"] = 40
+    state.king_block_used = 1
+
+    cloned = TimedSearchMixin._timed_search_clone_state(state)
+
+    assert cloned.__dict__ == copy.deepcopy(state).__dict__
+    assert cloned.hands is not state.hands
+    assert cloned.face_down_hidden is not state.face_down_hidden
+    assert cloned.had_both_kings is not state.had_both_kings
+    assert cloned.team_score is not state.team_score
+    assert all(cloned.hands[seat] is not state.hands[seat] for seat in "ABCD")
+    assert all(
+        cloned.face_down_hidden[seat] is not state.face_down_hidden[seat]
+        for seat in "ABCD"
+    )
+
+    cloned.hands["A"].pop()
+    cloned.face_down_hidden["B"].append("2")
+    cloned.had_both_kings["A"] = not state.had_both_kings["A"]
+    cloned.team_score["AC"] += 10
+
+    assert state.hands["A"] == list("11123457")
+    assert state.face_down_hidden["B"] == ["1"]
+    assert state.team_score["AC"] == 40
+
+
+def test_lightweight_search_apply_matches_legacy_deepcopy_for_every_opening_action() -> None:
+    state = _initial_state()
+    agent = RuleBasedAgent()
+
+    for action in state.legal_actions("A"):
+        fast = agent._timed_search_apply(state, "A", action)
+        legacy = copy.deepcopy(state)
+        action_type, block, attack = action
+        if action_type == "attack_after_block":
+            legacy.apply_attack_after_block("A", block, attack)
+        else:  # pragma: no cover - the opening contains only block-and-attack moves.
+            raise AssertionError(action)
+        assert fast.__dict__ == legacy.__dict__
+
+
 def test_terminal_summary_separates_leaf_value_components() -> None:
     summary = TimedSearchMixin._timed_search_terminal_summary([
         (110000.0, 0.25),

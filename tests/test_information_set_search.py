@@ -196,7 +196,13 @@ def test_current_determinized_order_reproduces_strategy_fusion() -> None:
     assert first_candidates != second_candidates
 
 
-def _information_set_result(root_index: int, sample_order: tuple[int, ...]):
+def _information_set_result(
+    root_index: int,
+    sample_order: tuple[int, ...],
+    *,
+    run_context: dict | None = None,
+    max_depth: int = 3,
+):
     states = [
         GoitaState(
             hands={"A": list(FUSION_HAND), **copy.deepcopy(deal)},
@@ -211,8 +217,8 @@ def _information_set_result(root_index: int, sample_order: tuple[int, ...]):
     agent.TIME_SEARCH_PREDICTION_CACHE_ENABLED = False
     agent.TIME_SEARCH_ADAPTIVE_BUDGET_ENABLED = False
     agent.TIME_SEARCH_INFORMATION_SET_ENABLED = True
-    agent.TIME_SEARCH_MAX_SECONDS = 2.0
-    agent.TIME_SEARCH_MAX_DEPTH = 3
+    agent.TIME_SEARCH_MAX_SECONDS = 10.0 if max_depth > 3 else 2.0
+    agent.TIME_SEARCH_MAX_DEPTH = max_depth
     agent.TIME_SEARCH_MAX_NODES = 100_000
     agent._ensure_trackers(state)
     actions = state.legal_actions("A")
@@ -223,6 +229,7 @@ def _information_set_result(root_index: int, sample_order: tuple[int, ...]):
         actions,
         baseline,
         [states[index] for index in sample_order],
+        run_context=run_context,
     )
     assert result is not None
     return agent, result
@@ -251,6 +258,23 @@ def test_shared_policy_removes_sample_order_and_live_deal_dependence() -> None:
     assert round(first.value, 6) == round(reversed_result.value, 6)
     assert round(first.value, 6) == round(other_live.value, 6)
     assert first.policy_decisions == reversed_result.policy_decisions
+
+
+def test_iterative_deepening_reuses_public_information_calculations() -> None:
+    run_context = {}
+
+    _agent, result = _information_set_result(
+        0,
+        (0, 1),
+        run_context=run_context,
+        max_depth=5,
+    )
+
+    assert result.depth == 5
+    assert run_context["tracker_cache_entries"] > 0
+    assert run_context["tracker_cache_hits"] > 0
+    assert run_context["action_model_cache_entries"] > 0
+    assert run_context["action_model_cache_hits"] > 0
 
 
 def test_probability_and_confidence_control_world_value_aggregation() -> None:

@@ -303,6 +303,8 @@ class InformationSetSearchMixin:
         tracker: Optional[dict],
         public_history: Sequence[PublicAction] = (),
         cancel_event=None,
+        tracker_cache: Optional[dict] = None,
+        action_model_cache: Optional[dict] = None,
     ) -> InformationSetSearchOutcome:
         if cancel_event is not None and cancel_event.is_set():
             raise InformationSetSearchCancelled()
@@ -351,12 +353,24 @@ class InformationSetSearchMixin:
                 raise InformationSetSearchCancelled()
             actor = str(group[0].state.turn)
             key = decision_keys[digest]
-            branch_tracker = self._information_set_project_tracker(
-                tracker,
-                root_player,
-                public_history,
-                group[0].state,
-            )
+            world_indices = tuple(world.index for world in group)
+            tracker_key = (key.digest, world_indices)
+            branch_tracker = None
+            if tracker_cache is not None:
+                branch_tracker = tracker_cache.get(tracker_key)
+            if branch_tracker is None:
+                branch_tracker = self._information_set_project_tracker(
+                    tracker,
+                    root_player,
+                    public_history,
+                    group[0].state,
+                )
+                if tracker_cache is not None:
+                    tracker_cache[tracker_key] = branch_tracker
+            elif tracker_cache is not None:
+                stats["tracker_cache_hits"] = int(
+                    stats.get("tracker_cache_hits", 0)
+                ) + 1
             legal_sets = [set(world.state.legal_actions(actor)) for world in group]
             common_actions = set.intersection(*legal_sets) if legal_sets else set()
             if not common_actions:
@@ -373,14 +387,31 @@ class InformationSetSearchMixin:
             action_models = {}
             action_reasons = {}
             for action in common_actions:
-                model_score, reasons = self._information_set_group_action_model(
-                    root_state,
-                    group,
-                    root_player,
-                    actor,
-                    action,
-                    branch_tracker,
+                model_key = (tracker_key, action)
+                cached_model = (
+                    action_model_cache.get(model_key)
+                    if action_model_cache is not None
+                    else None
                 )
+                if cached_model is None:
+                    model_score, reasons = self._information_set_group_action_model(
+                        root_state,
+                        group,
+                        root_player,
+                        actor,
+                        action,
+                        branch_tracker,
+                    )
+                    if action_model_cache is not None:
+                        action_model_cache[model_key] = (
+                            float(model_score),
+                            dict(reasons),
+                        )
+                else:
+                    model_score, reasons = cached_model
+                    stats["action_model_cache_hits"] = int(
+                        stats.get("action_model_cache_hits", 0)
+                    ) + 1
                 action_models[action] = model_score
                 action_reasons[action] = reasons
 
@@ -449,6 +480,8 @@ class InformationSetSearchMixin:
                     tracker,
                     tuple(public_history) + (observed,),
                     cancel_event,
+                    tracker_cache,
+                    action_model_cache,
                 )
                 bounded_prior = max(-prior_cap, min(prior_cap, action_models[action]))
                 selection_value = child.value + (
@@ -516,6 +549,8 @@ class InformationSetSearchMixin:
         stats: Dict[str, int],
         tracker: Optional[dict],
         cancel_event=None,
+        tracker_cache: Optional[dict] = None,
+        action_model_cache: Optional[dict] = None,
     ) -> InformationSetSearchOutcome:
         child_worlds = tuple(
             InformationSetSearchWorld(
@@ -545,4 +580,6 @@ class InformationSetSearchMixin:
             tracker,
             (observed,),
             cancel_event,
+            tracker_cache,
+            action_model_cache,
         )
