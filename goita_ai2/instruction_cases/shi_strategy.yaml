@@ -215,3 +215,27 @@ cases:
         - tests/test_ally_shi_relay.py::test_ally_second_attack_shi_claim_creates_two_attempt_relay
         - tests/test_ally_shi_relay.py::test_intercepted_relay_keeps_second_shi_until_it_reaches_ally
         - tests/test_ally_shi_relay.py::test_relay_plan_is_not_created_when_next_enemy_is_in_reach
+
+  - id: SHI-012
+    status: confirmed
+    title: し攻め中は3回目用の最後の2しを応答だけで使い切らない
+    classification: preserve_third_shi_attack
+    priority: high
+    conditions:
+      - 自分からし攻めを開始している
+      - 自分の1回目の攻めでしを出している
+      - 手元のしが残り2枚
+      - 相方がしで攻めてきた
+      - しで受けてしを返すと、残りのしを使い切る
+    required: 相方への賛同だけで2枚を使い切らず、パスして3回目のし攻めを残す
+    exceptions:
+      - 受ければ自分または相方の上がりが確定する
+      - パスすると敵の上がりが確定する
+      - し以外を返す明確に有利な攻め筋がある
+    forbidden:
+      - し攻め中という理由だけで、最後の2枚を受けと返しに連続使用する
+    reason: しで受けてしを返すと2枚を同時に失い、3回目の攻めにしを使えなくなる
+    regression:
+      state: covered
+      tests:
+        - tests/test_decision_module.py::test_three_shi_plan_does_not_spend_last_pair_acknowledging_ally

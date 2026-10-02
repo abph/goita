@@ -2314,13 +2314,15 @@ class DecisionMixin:
                         )
                         return pass_action
 
-                # A four-shi opener still needs one shi for its own third
-                # attack. Do not spend the final pair merely to acknowledge
-                # an ally's shi. Proven finishes were considered above, and
-                # an already-sent approval keeps its more precise explanation.
+                # Once a self-led shi plan has used its first attack, the last
+                # two shi are the reserve for later attacks.  Do not spend
+                # both merely to receive and return an ally's shi; doing so
+                # makes a shi third attack impossible.  Proven finishes were
+                # considered above, and an already-sent approval keeps its
+                # more precise explanation.
                 if (
                     self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED
-                    and int(tr.get("my_init_count", Counter()).get("1", 0)) >= 4
+                    and int(tr.get("my_init_count", Counter()).get("1", 0)) >= 3
                     and int(tr.get("my_attack_count", 0)) == 1
                     and bool(tr.get("shi_attack_mode"))
                     and str(tr.get("shi_attack_mode_source") or "") == "self"
