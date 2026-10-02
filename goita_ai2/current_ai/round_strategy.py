@@ -7,6 +7,7 @@ included in the same public-information search.
 
 from __future__ import annotations
 
+import copy
 import time
 from collections import Counter
 from typing import Optional
@@ -40,6 +41,54 @@ class RoundStrategyMixin:
             "goal": goal,
             "opening_attacks": list(plan.get("attacks", ()))[:3],
             "status": "provisional",
+        }
+
+    def _kyosha_round_followup_rule(
+        self,
+        state,
+        after_receive,
+        player: str,
+        attacks,
+    ) -> Optional[dict]:
+        """Preview the established attack policy after receiving kyosha."""
+        tracker = self._track.get(id(state))
+        if tracker is None:
+            return None
+
+        preview = copy.deepcopy(self)
+        preview._track[id(after_receive)] = copy.deepcopy(tracker)
+        initial_hand = preview._my_initial_hands_by_state_id.get(id(state))
+        if initial_hand is not None:
+            preview._my_initial_hands_by_state_id[id(after_receive)] = list(initial_hand)
+        preview.on_public_action(
+            after_receive,
+            player,
+            ("receive", "2", None),
+        )
+        two_shi_first_attack_signal_risk = bool(
+            preview._two_shi_first_attack_signal_risk(
+                after_receive,
+                player,
+            )
+        )
+        action = preview._select_rule_based_action(
+            after_receive,
+            player,
+            list(attacks),
+        )
+        if action not in attacks:
+            return None
+        reason = str(preview.last_decision_reason or "")
+        detail = str(preview.last_score_fallback_detail or "")
+        return {
+            "action": action,
+            "reason": reason,
+            "detail": detail,
+            "authority": preview._rule_search_authority(reason, detail),
+            "two_shi_first_attack_signal_risk": bool(
+                action[2] != "1"
+                and two_shi_first_attack_signal_risk
+            ),
         }
 
     def _compare_kyosha_round_routes(self, state, player: str) -> Optional[dict]:
@@ -107,10 +156,39 @@ class RoundStrategyMixin:
             # An incomplete comparison cannot rank routes fairly.
             return None
 
-        best_receive = max(
+        search_best_receive = max(
             (route for route in values if len(route) == 2),
             key=lambda route: values[route],
         )
+        best_receive = search_best_receive
+        followup_rule = self._kyosha_round_followup_rule(
+            state,
+            after_receive,
+            player,
+            attacks,
+        )
+        followup_override_blocked = False
+        followup_value_gap = 0.0
+        if followup_rule is not None:
+            rule_route = (receive_action, followup_rule["action"])
+            if rule_route in values and rule_route != search_best_receive:
+                followup_value_gap = (
+                    values[search_best_receive] - values[rule_route]
+                )
+                authority = str(followup_rule.get("authority") or "ordinary")
+                two_shi_signal_risk = bool(
+                    followup_rule.get("two_shi_first_attack_signal_risk")
+                    and search_best_receive[1][2] == "1"
+                )
+                protect_followup = authority == "proven" or (
+                    authority == "strong"
+                    or two_shi_signal_risk
+                ) and followup_value_gap < float(
+                    self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN
+                )
+                if protect_followup:
+                    best_receive = rule_route
+                    followup_override_blocked = True
         pass_value = values[(pass_action,)]
         receive_value = values[best_receive]
         receiver_position = self._kyosha_pass_compare_receiver_position(
@@ -130,6 +208,30 @@ class RoundStrategyMixin:
                 str(route[1][2]): round(value, 2)
                 for route, value in values.items() if len(route) == 2
             },
+            "search_best_attack": str(search_best_receive[1][2]),
+            "followup_rule_action": (
+                list(followup_rule["action"])
+                if followup_rule is not None else None
+            ),
+            "followup_rule_reason": (
+                str(followup_rule.get("reason") or "")
+                if followup_rule is not None else ""
+            ),
+            "followup_rule_detail": (
+                str(followup_rule.get("detail") or "")
+                if followup_rule is not None else ""
+            ),
+            "followup_rule_authority": (
+                str(followup_rule.get("authority") or "ordinary")
+                if followup_rule is not None else "ordinary"
+            ),
+            "followup_two_shi_signal_risk": bool(
+                followup_rule
+                and followup_rule.get("two_shi_first_attack_signal_risk")
+                and search_best_receive[1][2] == "1"
+            ),
+            "followup_override_blocked": followup_override_blocked,
+            "followup_value_gap": round(followup_value_gap, 2),
             "depth": self.ROUND_ROUTE_DEPTH,
             "samples": len(worlds),
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),

@@ -6704,6 +6704,14 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return `最可能的初始“し”分配为${distribution}。对手最可能剩余${shiPackage[1]}枚（期望值${expected}枚），因此第三次进攻打出最后一枚“し”。`;
         return `初期し配分は${distribution}が最有力。敵方の残りしは最有力${shiPackage[1]}枚（期待値${expected}枚）のため、3回目の攻めで最後のしを出す`;
     }
+    const kyoshaTruthfulFollowup = String(detail || "").match(/^kyosha_round_route_depth_(\d+)_samples_(\d+)_pass_(-?[\d.]+)_receive_(-?[\d.]+)_receive_attack_([1-9])_followup_rule_kept_([1-9])_search_([1-9])_gap_([\d.]+)_two_shi_signal$/);
+    if(kyoshaTruthfulFollowup) {
+        const kept = gameLogCandidatePieceLabel(kyoshaTruthfulFollowup[6], language);
+        const searched = gameLogCandidatePieceLabel(kyoshaTruthfulFollowup[7], language);
+        if(language === "en") return `Compared passing with receiving the lance and its follow-up. Search preferred ${searched}, but kept the established ${kept} plan because opening with two shi would send a misleading signal (search gap ${kyoshaTruthfulFollowup[8]}).`;
+        if(language === "zh") return `比较了跳过与接香后的进攻路线。搜索偏向${searched}，但初始两枚“し”先出会传递错误信息，因此保留既定的${kept}进攻计划（搜索差${kyoshaTruthfulFollowup[8]}）。`;
+        return `香をパスする経路と受けた後の攻めを比較。探索は${searched}を評価したが、初期2しからの誤った合図を避け、明確な${kept}の攻め計画を維持（探索差${kyoshaTruthfulFollowup[8]}）`;
+    }
     const handoff = String(detail || "").match(/^pass_ally_reach_royal_([ABCD])_piece_([3-7])_chance_(\d+)_receive_(\d+)$/);
     if(handoff) {
         const piece = gameLogCandidatePieceLabel(handoff[2], language);

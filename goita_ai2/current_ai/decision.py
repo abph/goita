@@ -1007,13 +1007,24 @@ class DecisionMixin:
                 if isinstance(last_search, dict):
                     last_search["round_route"] = dict(round_route)
             self._set_decision_reason("time_search")
-            self._set_score_fallback_detail(
+            round_route_detail = (
                 f"kyosha_round_route_depth_{round_route['depth']}_"
                 f"samples_{round_route['samples']}_"
                 f"pass_{round_route['pass_value']}_"
                 f"receive_{round_route['receive_value']}_"
                 f"{'receive_attack_' + str(chosen_route[1][2]) if len(chosen_route) == 2 else 'pass'}"
             )
+            if (
+                len(chosen_route) == 2
+                and round_route.get("followup_override_blocked")
+                and round_route.get("followup_two_shi_signal_risk")
+            ):
+                round_route_detail += (
+                    f"_followup_rule_kept_{chosen_route[1][2]}_"
+                    f"search_{round_route['search_best_attack']}_"
+                    f"gap_{round_route['followup_value_gap']}_two_shi_signal"
+                )
+            self._set_score_fallback_detail(round_route_detail)
             self._remember_conditional_response_plan(
                 state, player, actions, baseline_action, chosen_response,
                 search_result, source="kyosha_round_route",

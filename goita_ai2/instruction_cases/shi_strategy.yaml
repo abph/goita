@@ -267,3 +267,32 @@ cases:
         - tests/test_shi_attack_package.py::test_final_shi_attack_uses_joint_distribution_when_enemy_team_is_exhausted
         - tests/test_shi_attack_package.py::test_final_shi_attack_is_not_forced_when_joint_map_has_enemy_shi
         - tests/test_shi_attack_package.py::test_shi_attack_package_is_isolated_to_experimental_ai2
+
+  - id: SHI-014
+    status: confirmed
+    title: 初期2しからの無目的なし攻めで相方へ誤った枚数情報を送らない
+    classification: truthful_shi_signal
+    priority: high
+    conditions:
+      - 初期2しで、自分の1回目の攻めを選ぶ
+      - 直前に受けた駒はしではない
+      - 2枚組など、通常戦略に明確な攻め計画がある
+      - 受けと攻めを一組で比較する専用探索がし攻めを高く評価する
+    required:
+      - 受けた後の通常戦略と、その判断の強さを専用探索でも確認する
+      - 小さな探索差では明確な攻め計画を上書きしない
+      - 探索がしを選んだ理由と、通常戦略を維持した理由を記録する
+    exceptions:
+      - 敵のしを受けて返す
+      - 相方のし攻めを引き継ぐ
+      - しの差し込みを行う
+      - 敵方のし枯れが十分に推定できる
+      - 確定上がりなど、探索差が明確な結果に基づく
+    forbidden:
+      - 初期2しから無目的にし攻めを始め、初期3し以上と誤解させる
+      - 受け専用探索だけで、通常AIの明確な攻め計画を無条件に上書きする
+    reason: 攻め駒は通過確率だけでなく、相方へ伝える初期枚数情報と攻め計画を含めて選ぶ
+    regression:
+      state: covered
+      tests:
+        - tests/test_kyosha_round_route_strategy.py::test_kyosha_route_keeps_truthful_pair_plan_over_two_shi_opening

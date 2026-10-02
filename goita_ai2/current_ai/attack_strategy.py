@@ -527,6 +527,35 @@ class AttackStrategyMixin:
             return False
         return True
 
+    def _two_shi_first_attack_signal_risk(self, state, player: str) -> bool:
+        """Detect an unprompted opening shi that falsely claims a larger reserve."""
+        tr = self._track.get(id(state))
+        if (
+            tr is None
+            or int(tr.get("my_attack_count", 0)) != 0
+            or int(tr.get("my_init_count", Counter()).get("1", 0)) != 2
+            or state.hands[player].count("1") <= 0
+        ):
+            return False
+
+        # Returning an enemy shi, joining an established ally plan, inserting
+        # shi, or exploiting a public exhaustion read all have a concrete
+        # purpose beyond claiming that this player started with three shi.
+        if str(tr.get("my_last_received_attack") or "") == "1":
+            return False
+        if (
+            tr.get("shi_attack_mode")
+            or tr.get("inherit_ally_shi_attack")
+            or str(tr.get("ally_shi_signal", "unknown"))
+            in ("returned_shi", "sashikomi")
+        ):
+            return False
+        if self._shi_exhaust_attack_bonus(state, player) > 0:
+            return False
+        if self._shi_sashikomi_attack_bonus(state, player) > 0:
+            return False
+        return True
+
     def _two_shi_second_attack_signal_penalty(
         self,
         state,

@@ -97,6 +97,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'match(/^neural_tiebreak_current_gap_',
         'match(/^shi_package_final_attack_enemy_map_',
         '初期し配分は${distribution}が最有力。敵方の残りしは最有力${shiPackage[1]}枚',
+        'match(/^kyosha_round_route_depth_',
+        '初期2しからの誤った合図を避け、明確な${kept}の攻め計画を維持',
         'pass_ally_guaranteed_win_no_self_finish: "相方の上がりが確定しているため、その攻めを受けずにパス"',
         'pass_ally_shi_preserve_third_attack: "自分の3回目の攻めに使うしを残すためパス"',
         'startsWith("pass_preserve_public_unstoppable_finish_piece_")',
