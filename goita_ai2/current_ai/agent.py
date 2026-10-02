@@ -128,6 +128,10 @@ class RuleBasedAgent(
         self.KAKARI_GOTAE_BONUS = 100.0
         self.ABSOLUTE_SAFE_BONUS = 1000.0
         self.TATEWARI_BONUS = 800.0
+        self.TRUTHFUL_FIRST_PAIR_SIGNAL_ENABLED = True
+        self.TRUTHFUL_FIRST_PAIR_SIGNAL_BONUS = 100.0
+        self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_SAFE_RESERVES = 2
+        self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_ENEMY_HAND = 4
         self.CONTINUOUS_ATTACK_BONUS = 500.0
         self.ATTACK_STRATEGY_BONUS = 120.0
         # 攻め順とは別に、攻めた目的を短く保持して再評価する。

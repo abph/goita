@@ -2746,6 +2746,18 @@ def _format_neural_shadow(agent: Any) -> str:
     if not isinstance(snapshot, dict) or not snapshot.get("available"):
         return ""
     recommended = _trace_action_label(tuple(snapshot.get("recommended_action", ())))
+    raw_global_recommended = snapshot.get("global_recommended_action")
+    global_recommended = (
+        _trace_action_label(tuple(raw_global_recommended))
+        if isinstance(raw_global_recommended, (list, tuple))
+        and len(raw_global_recommended) == 3
+        else ""
+    )
+    global_label = (
+        f" / 全体第1候補={global_recommended}"
+        if global_recommended and global_recommended != recommended
+        else ""
+    )
     rule_action = _trace_action_label(tuple(snapshot.get("rule_action", ())))
     match_label = "一致" if snapshot.get("match") else "不一致"
     margin = float(snapshot.get("margin") or 0.0)
@@ -2805,6 +2817,7 @@ def _format_neural_shadow(agent: Any) -> str:
         )
         return (
             f" [NEURAL-TIEBREAK:採用={selected} / ニューラル候補={recommended}"
+            f"{global_label}"
             f" / 現AI={rule_action}{difference_label} / {result}"
             f"{gap_label} / ニューラル差={margin:.3f} / {elapsed:.1f}ms]"
         )

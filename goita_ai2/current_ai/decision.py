@@ -153,6 +153,7 @@ class DecisionMixin:
         if (
             detail.startswith("attack_sequence_")
             or detail.startswith("attack_avoid_false_sequence_signal")
+            or detail.startswith("attack_truthful_first_pair_signal_")
             or detail.startswith("pass_ally_kyosha_continuation")
             or detail.startswith("pass_preserve_public_unstoppable_finish_piece_")
             or detail.startswith("pass_ally_reach_royal_")
@@ -426,6 +427,15 @@ class DecisionMixin:
 
             if self._single_middle_over_four_shi_signal_penalty(state, player, action_type, attack) > 0:
                 return "attack_avoid_single_middle_over_four_shi"
+
+            if self._truthful_first_pair_signal_adjustment(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            ) > 0:
+                return f"attack_truthful_first_pair_signal_{attack}"
 
             if self._singleton_first_attack_signal_penalty(
                 state,

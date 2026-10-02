@@ -225,6 +225,30 @@ def test_neural_tiebreak_log_explains_clear_current_ai_choice() -> None:
     assert "現AIの候補差が明確なため現AIを採用" in log
 
 
+def test_neural_tiebreak_log_distinguishes_global_first_choice() -> None:
+    class Agent:
+        last_neural_shadow = {
+            "available": True,
+            "mode": "tiebreak",
+            "recommended_action": ["attack", None, "7"],
+            "global_recommended_action": ["attack", None, "2"],
+            "selected_action": ["attack", None, "7"],
+            "rule_action": ["attack", None, "6"],
+            "match": False,
+            "applied": True,
+            "safety_locked": False,
+            "current_choice_status": "close",
+            "current_score_gap": 0.0,
+            "margin": 0.709,
+            "elapsed_ms": 5.0,
+        }
+
+    log = app_module._format_neural_shadow(Agent())
+
+    assert "ニューラル候補=飛で攻める" in log
+    assert "全体第1候補=香で攻める" in log
+
+
 if __name__ == "__main__":
     test_six_ai_profiles_are_available()
     test_profile_defaults_keep_development_only_surfaces_on_current_ai()

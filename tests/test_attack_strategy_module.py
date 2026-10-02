@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from goita_ai2.current_ai.attack_strategy import AttackStrategyMixin
 from goita_ai2.rule_based import RuleBasedAgent
 from goita_ai2.state import GoitaState
@@ -79,6 +81,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_singleton_first_attack_signal_penalty",
         "_attack_sequence_signal_has_concrete_purpose",
         "_false_attack_sequence_signal_penalty",
+        "_truthful_first_pair_signal_context",
+        "_truthful_first_pair_signal_adjustment",
         "_score_attack_phase",
     ):
         assert method_name in AttackStrategyMixin.__dict__
@@ -1097,3 +1101,94 @@ def test_second_attack_keeps_truthful_big_kyosha_continuation() -> None:
     chosen = agent.select_action(state, "B", state.legal_actions("B"))
 
     assert chosen == ("attack", None, "2")
+
+
+def _replay_truthful_first_pair_signal_review():
+    """Reproduce 2026-10-02 round 4, A turn 10."""
+    state = GoitaState(
+        hands={
+            "A": list("12128716"),
+            "B": list("15141443"),
+            "C": list("23615147"),
+            "D": list("35915132"),
+        },
+        dealer="D",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("A")
+    agent.TIME_LIMITED_SEARCH_ENABLED = False
+    agent.TIME_SEARCH_ENABLED = False
+    agent._ensure_trackers(state)
+    history = (
+        ("D", ("attack_after_block", "1", "5")),
+        ("A", ("pass", None, None)),
+        ("B", ("receive", "5", None)),
+        ("B", ("attack", None, "4")),
+        ("C", ("receive", "4", None)),
+        ("C", ("attack", None, "6")),
+        ("D", ("pass", None, None)),
+        ("A", ("pass", None, None)),
+        ("B", ("pass", None, None)),
+        ("C", ("attack_after_block", "1", "7")),
+        ("D", ("receive", "9", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("receive", "8", None)),
+    )
+    for action_player, action in history:
+        action_type, block, attack = action
+        if action_type == "pass":
+            state.apply_pass(action_player)
+        elif action_type == "receive":
+            state.apply_receive(action_player, block)
+        elif action_type == "attack":
+            state.apply_attack(action_player, attack)
+        else:
+            state.apply_attack_after_block(action_player, block, attack)
+        agent.on_public_action(state, action_player, action)
+    return state, agent
+
+
+def test_first_pair_signal_precedes_reserved_unstoppable_attacks() -> None:
+    state, agent = _replay_truthful_first_pair_signal_review()
+
+    context = agent._truthful_first_pair_signal_context(state, "A")
+    chosen = agent.select_action(state, "A", state.legal_actions("A"))
+
+    assert context is not None
+    assert context["actions"] == (("attack", None, "2"),)
+    assert context["safe_pieces"] == ("6", "7")
+    assert context["best_safe_finish"] == 40.0
+    assert chosen == ("attack", None, "2")
+    assert agent.last_decision_reason == "score_fallback"
+    assert agent.last_score_fallback_detail == "attack_truthful_first_pair_signal_2"
+    assert agent.last_rule_search_authority == "strong"
+
+
+def test_truthful_first_pair_signal_applies_to_each_signalling_piece() -> None:
+    for piece in ("2", "3", "4", "5"):
+        state, agent = _replay_truthful_first_pair_signal_review()
+        state.hands["A"] = ["1", piece, "1", piece, "7", "1", "6"]
+        tracker = agent._track[id(state)]
+        tracker["my_init_count"] = Counter(
+            ["1", piece, "1", piece, "8", "7", "1", "6"]
+        )
+        tracker.pop("truthful_first_pair_signal_context_cache", None)
+
+        context = agent._truthful_first_pair_signal_context(state, "A")
+
+        assert context is not None
+        assert ("attack", None, piece) in context["actions"]
+
+
+def test_first_pair_signal_waits_when_an_enemy_is_near_reach() -> None:
+    state, agent = _replay_truthful_first_pair_signal_review()
+    state.hands["D"] = state.hands["D"][:3]
+
+    assert agent._truthful_first_pair_signal_context(state, "A") is None
+    assert agent._truthful_first_pair_signal_adjustment(
+        state,
+        "A",
+        "attack",
+        None,
+        "2",
+    ) == 0.0

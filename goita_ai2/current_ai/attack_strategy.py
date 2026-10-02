@@ -1176,6 +1176,174 @@ class AttackStrategyMixin:
             return 10.0
         return 0.0
 
+    def _truthful_first_pair_signal_context(
+        self,
+        state,
+        player: str,
+    ) -> Optional[Dict[str, object]]:
+        """Find first-attack pair signals that preserve a safe attack route.
+
+        A first attack with kyosha, horse, silver, or gold tells the ally that
+        the attacker held at least two copies. When two publicly unstoppable
+        attacks remain available, spending one of those safe attacks first can
+        delay that information without improving the planned finish. This
+        comparison uses only the actor's hand, public counts, and public hand
+        sizes.
+        """
+        tr = self._track.get(id(state))
+        if (
+            not getattr(self, "TRUTHFUL_FIRST_PAIR_SIGNAL_ENABLED", True)
+            or tr is None
+            or state.phase != "attack"
+            or state.turn != player
+            or int(tr.get("my_attack_count", 0)) != 0
+        ):
+            return None
+
+        enemy_hand_sizes = tuple(
+            len(state.hands[seat])
+            for seat in ("A", "B", "C", "D")
+            if seat != player and not self._same_team(seat, player)
+        )
+        if not enemy_hand_sizes or min(enemy_hand_sizes) < int(
+            self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_ENEMY_HAND
+        ):
+            return None
+
+        hand = list(state.hands[player])
+        public_seen = tr.get("public_seen_counts", {})
+        cache_key = (
+            tuple(sorted(hand)),
+            tuple(
+                sorted(
+                    (str(piece), int(count))
+                    for piece, count in public_seen.items()
+                )
+            ),
+            tuple(enemy_hand_sizes),
+            state.attacker,
+            state.current_attack,
+        )
+        cached = tr.get("truthful_first_pair_signal_context_cache")
+        if isinstance(cached, dict) and cached.get("key") == cache_key:
+            return cached.get("value")
+
+        legal_attacks = tuple(
+            action
+            for action in state.legal_actions(player)
+            if action[0] in ("attack", "attack_after_block")
+            and action[2] is not None
+        )
+        safe_pieces = {
+            str(action[2])
+            for action in legal_attacks
+            if action[2] not in ("1", "8", "9")
+            and self._is_absolute_safe_for_tsume(
+                state,
+                player,
+                str(action[2]),
+                tr,
+            )
+        }
+        if sum(hand.count(piece) for piece in safe_pieces) < int(
+            self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_SAFE_RESERVES
+        ):
+            tr["truthful_first_pair_signal_context_cache"] = {
+                "key": cache_key,
+                "value": None,
+            }
+            return None
+
+        safe_finish_scores = []
+        for action in legal_attacks:
+            if action[2] not in safe_pieces:
+                continue
+            plan = self._future_attack_plan_for_action(state, player, action)
+            if plan is not None:
+                safe_finish_scores.append(
+                    float(plan.get("finish_score", -1.0))
+                )
+        if not safe_finish_scores:
+            return None
+        best_safe_finish = max(safe_finish_scores)
+
+        qualifying = []
+        route_details = {}
+        for action in legal_attacks:
+            action_type, block, attack = action
+            if attack not in ("2", "3", "4", "5"):
+                continue
+            if hand.count(attack) < 2 or block == attack:
+                continue
+            remaining = list(hand)
+            if block is not None:
+                remaining.remove(block)
+            remaining.remove(attack)
+            if attack not in remaining:
+                continue
+
+            plan = self._future_attack_plan_for_action(state, player, action)
+            if (
+                plan is None
+                or float(plan.get("finish_score", -1.0)) < best_safe_finish
+            ):
+                continue
+            future_attacks = tuple(
+                str(piece) for piece in plan.get("attacks", ())
+            )
+            if attack not in future_attacks:
+                continue
+            safe_future_count = sum(
+                1 for piece in future_attacks if piece in safe_pieces
+            )
+            if safe_future_count < int(
+                self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_SAFE_RESERVES
+            ):
+                continue
+            qualifying.append(action)
+            route_details[action] = {
+                "finish_score": float(plan.get("finish_score", -1.0)),
+                "future_attacks": future_attacks,
+                "safe_future_count": safe_future_count,
+            }
+
+        context = None
+        if qualifying:
+            context = {
+                "actions": tuple(qualifying),
+                "safe_pieces": tuple(sorted(safe_pieces)),
+                "best_safe_finish": best_safe_finish,
+                "routes": route_details,
+            }
+        tr["truthful_first_pair_signal_context_cache"] = {
+            "key": cache_key,
+            "value": context,
+        }
+        return context
+
+    def _truthful_first_pair_signal_adjustment(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        context = self._truthful_first_pair_signal_context(state, player)
+        if (
+            context is None
+            or (action_type, block, attack) not in context["actions"]
+        ):
+            return 0.0
+        # Give the signal route the value of the unstoppable attacks it keeps
+        # in reserve, then add the separate communication value.
+        reserve_credit = (
+            0.0
+            if attack in context["safe_pieces"]
+            else float(self.ABSOLUTE_SAFE_BONUS)
+        )
+        return reserve_credit + float(self.TRUTHFUL_FIRST_PAIR_SIGNAL_BONUS)
+
     def _attack_strategy_bonus(self, state, player: str, attack: str) -> float:
         tr = self._track.get(id(state))
         if tr is None:
@@ -1257,6 +1425,13 @@ class AttackStrategyMixin:
         score += self._ally_force_king_attack_bonus(state, player, action_type, attack)
         score += self._endgame_remaining_pair_adjustment(state, player, block, attack)
         score += self._future_attack_plan_adjustment(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
+        score += self._truthful_first_pair_signal_adjustment(
             state,
             player,
             action_type,

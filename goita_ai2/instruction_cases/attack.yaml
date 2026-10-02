@@ -275,3 +275,29 @@ cases:
       tests:
         - tests/test_attack_strategy_module.py::test_second_attack_avoids_false_big_kyosha_continuation_signal
         - tests/test_attack_strategy_module.py::test_second_attack_keeps_truthful_big_kyosha_continuation
+
+  - id: ATT-015
+    status: confirmed
+    title: 確実な攻めを残せるなら攻め1で二枚持ちを伝える
+    classification: truthful_first_pair_signal
+    priority: high
+    conditions:
+      - 自分の攻め1を選ぶ
+      - 香・馬・銀・金のいずれかを2枚以上持つ
+      - その駒を今出しても、同じ駒をもう1枚手元に残せる
+      - 公開情報上で確実に通る攻めを、その後に2枚以上残せる
+      - 二枚持ちの合図を先にしても、将来攻め計画の上がり点が下がらない
+      - 敵方がまだリーチ直前ではない
+    required:
+      - 二枚持ちの駒を攻め1に出し、相方へ継続可能性を伝える
+      - 公開情報上で確実に通る駒は、合図の後の攻めとして残す
+    forbidden:
+      - 確実に通る駒を先に使い、攻め3まで二枚持ちの情報を隠したままにする
+    reason: 確実な攻めの順番を後ろへ移しても上がり経路を保てるなら、攻め1で正しい手駒情報を渡す方が、相方が早く適切な戦略を作れる
+    regression:
+      state: covered
+      tests:
+        - tests/test_attack_strategy_module.py::test_first_pair_signal_precedes_reserved_unstoppable_attacks
+        - tests/test_attack_strategy_module.py::test_truthful_first_pair_signal_applies_to_each_signalling_piece
+        - tests/test_attack_strategy_module.py::test_first_pair_signal_waits_when_an_enemy_is_near_reach
+        - tests/test_neural_policy.py::test_truthful_first_pair_signal_agrees_with_global_neural_choice
