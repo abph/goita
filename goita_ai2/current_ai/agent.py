@@ -132,6 +132,10 @@ class RuleBasedAgent(
         self.TRUTHFUL_FIRST_PAIR_SIGNAL_BONUS = 100.0
         self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_SAFE_RESERVES = 2
         self.TRUTHFUL_FIRST_PAIR_SIGNAL_MIN_ENEMY_HAND = 4
+        self.ALLY_SHI_RELAY_ENABLED = True
+        self.ALLY_SHI_RELAY_BONUS = 320.0
+        self.ALLY_SHI_RELAY_MIN_SELF_SHI = 2
+        self.ALLY_SHI_RELAY_MIN_NEXT_ENEMY_HAND = 3
         self.CONTINUOUS_ATTACK_BONUS = 500.0
         self.ATTACK_STRATEGY_BONUS = 120.0
         # 攻め順とは別に、攻めた目的を短く保持して再評価する。

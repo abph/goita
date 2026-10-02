@@ -188,3 +188,30 @@ cases:
       state: covered
       tests:
         - tests/test_receive_strategy_module.py
+
+  - id: SHI-011
+    status: confirmed
+    title: 相方の3し主張へ二段階でしを届ける
+    classification: ally_shi_relay
+    priority: high
+    conditions:
+      - 相方が自分のしを受けている
+      - 相方が2枚目の攻めでしを出し、初期3しを主張している
+      - 相方がリーチで、しを1枚残している可能性が高い
+      - 自分にしが2枚以上残る
+      - 自分の次の敵がリーチしていない
+    required:
+      - 1枚目のしで相方への到達を試す
+      - 途中の敵が受けた場合は、その敵のしを消費させたと記録する
+      - 攻め目的を終了せず、残した2枚目のしを次の機会にもう一度出す
+    forbidden:
+      - 途中の敵に1枚目を受けられただけで、相方へのし届け計画を終了する
+      - 相方の実際の隠し手駒を参照して判断する
+      - 次の敵がリーチしているのに、し届けだけを理由として受けさせる
+    reason: 相方の公開手順は、しを1枚残して待っているという主張になる。2枚のしがあれば、1枚目で途中の敵のしを消費させ、2枚目を相方へ届けられる
+    regression:
+      state: covered
+      tests:
+        - tests/test_ally_shi_relay.py::test_ally_second_attack_shi_claim_creates_two_attempt_relay
+        - tests/test_ally_shi_relay.py::test_intercepted_relay_keeps_second_shi_until_it_reaches_ally
+        - tests/test_ally_shi_relay.py::test_relay_plan_is_not_created_when_next_enemy_is_in_reach

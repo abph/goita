@@ -1344,6 +1344,95 @@ class AttackStrategyMixin:
         )
         return reserve_credit + float(self.TRUTHFUL_FIRST_PAIR_SIGNAL_BONUS)
 
+    def _ally_shi_relay_context(
+        self,
+        state,
+        player: str,
+        actions=None,
+    ) -> Optional[Dict[str, object]]:
+        """Return a public-information plan for sending shi to a ready ally.
+
+        The partner's sequence, not their concealed hand, supplies the claim:
+        they received our shi and later used shi as their second attack.  With
+        the partner now on two cards and two shi in our own hand, the first shi
+        can either reach the partner or consume the intervening enemy's shi;
+        the reserved second shi can then repeat the delivery.
+        """
+        tracker = self._track.get(id(state))
+        if (
+            not bool(getattr(self, "ALLY_SHI_RELAY_ENABLED", True))
+            or tracker is None
+            or state.phase != "attack"
+            or state.turn != player
+            or int(tracker.get("my_attack_count", 0)) > 2
+        ):
+            return None
+        claim = tracker.get("ally_shi_reserve_claim")
+        ally = tracker.get("ally")
+        if (
+            not isinstance(claim, dict)
+            or claim.get("status") != "active"
+            or int(claim.get("likely_remaining_shi", 0)) < 1
+            or ally is None
+            or len(state.hands.get(ally, ())) != 2
+            or "1" not in tracker.get("ally_responded_to_my_attacks", set())
+        ):
+            return None
+        own_shi = state.hands[player].count("1")
+        if own_shi < int(getattr(self, "ALLY_SHI_RELAY_MIN_SELF_SHI", 2)):
+            return None
+        next_enemy = state.next_player(player)
+        if self._same_team(next_enemy, player) or len(
+            state.hands.get(next_enemy, ())
+        ) < int(getattr(self, "ALLY_SHI_RELAY_MIN_NEXT_ENEMY_HAND", 3)):
+            return None
+        legal = actions if actions is not None else state.legal_actions(player)
+        shi_actions = tuple(
+            action
+            for action in legal
+            if action[0] in ("attack", "attack_after_block")
+            and action[2] == "1"
+            and own_shi - 1 - int(action[1] == "1") >= 1
+        )
+        if not shi_actions:
+            return None
+        return {
+            "ally": str(ally),
+            "next_enemy": str(next_enemy),
+            "own_shi_before_attack": own_shi,
+            "reserved_retry_shi": min(
+                own_shi - 1 - int(action[1] == "1")
+                for action in shi_actions
+            ),
+            "ally_likely_remaining_shi": int(
+                claim.get("likely_remaining_shi", 0)
+            ),
+            "ally_initial_shi_claim": int(claim.get("initial_shi_claim", 3)),
+            "claim_source": str(claim.get("source", "public_sequence")),
+            "ally_preceding_attack_piece": str(
+                claim.get("preceding_attack_piece", "")
+            ),
+            "actions": shi_actions,
+        }
+
+    def _ally_shi_relay_adjustment(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        if attack != "1":
+            return 0.0
+        context = self._ally_shi_relay_context(state, player)
+        if (
+            context is None
+            or (action_type, block, attack) not in context["actions"]
+        ):
+            return 0.0
+        return float(getattr(self, "ALLY_SHI_RELAY_BONUS", 320.0))
+
     def _attack_strategy_bonus(self, state, player: str, attack: str) -> float:
         tr = self._track.get(id(state))
         if tr is None:
@@ -1432,6 +1521,13 @@ class AttackStrategyMixin:
             attack,
         )
         score += self._truthful_first_pair_signal_adjustment(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
+        score += self._ally_shi_relay_adjustment(
             state,
             player,
             action_type,

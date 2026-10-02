@@ -141,6 +141,7 @@ class DecisionMixin:
             "kakari",
             "shi_signal",
             "responded",
+            "ally_shi_relay",
             "forced_king_third",
             "king_order",
             "safe_nonking_third",
@@ -436,6 +437,15 @@ class DecisionMixin:
                 attack,
             ) > 0:
                 return f"attack_truthful_first_pair_signal_{attack}"
+
+            if self._ally_shi_relay_adjustment(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            ) > 0:
+                return "attack_ally_reach_shi_relay"
 
             if self._singleton_first_attack_signal_penalty(
                 state,
@@ -1513,7 +1523,20 @@ class DecisionMixin:
             if planned_attack in actions:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
                 self._set_decision_reason("inferred_endgame")
-                self._set_score_fallback_detail("inferred_endgame_followup_attack")
+                active_intent = tr.get("attack_intent")
+                if (
+                    isinstance(active_intent, dict)
+                    and active_intent.get("kind") == "relay_shi_to_ally"
+                    and active_intent.get("status") == "unresolved"
+                    and planned_attack[2] == "1"
+                ):
+                    self._set_score_fallback_detail(
+                        "inferred_endgame_followup_attack_ally_shi_relay_retry"
+                    )
+                else:
+                    self._set_score_fallback_detail(
+                        "inferred_endgame_followup_attack"
+                    )
                 return planned_attack
 
         if (
@@ -1758,7 +1781,42 @@ class DecisionMixin:
                     tr["kg_second"] = chosen[2]
                 if tr.get("kg_plan_active") and tr["my_attack_count"] >= 3:
                     tr["kg_plan_active"] = False
-            self._set_decision_reason("responded")
+            relay_context = self._ally_shi_relay_context(
+                state,
+                player,
+                actions,
+            )
+            active_relay = tr.get("attack_intent") if tr is not None else None
+            if (
+                chosen[2] == "1"
+                and isinstance(active_relay, dict)
+                and active_relay.get("kind") == "relay_shi_to_ally"
+                and active_relay.get("status") == "unresolved"
+            ):
+                self._set_decision_reason("attack_intent")
+                self._set_score_fallback_detail(
+                    "attack_intent_relay_shi_to_ally_intercepted_retry_1"
+                )
+                self._activate_attack_intent_from_action(state, player, chosen)
+            elif chosen[2] == "1" and relay_context is not None:
+                tr["last_ally_shi_relay_plan"] = dict(relay_context)
+                self._set_attack_intent_plan(
+                    state,
+                    player,
+                    kind="relay_shi_to_ally",
+                    attack_piece="1",
+                    source="ally_second_attack_shi_claim",
+                    target_team="ally",
+                    success_condition={"receive_piece": ["1"]},
+                    expires="ally_receive_or_shi_exhausted",
+                    evidence=dict(relay_context),
+                )
+                self._set_decision_reason("ally_shi_relay")
+                self._set_score_fallback_detail(
+                    "attack_ally_reach_shi_relay_claim3_two_attempts"
+                )
+            else:
+                self._set_decision_reason("responded")
             return chosen
 
         four_shi_return = self._four_shi_receive_return_action(

@@ -18,7 +18,9 @@ Action = Tuple[str, Optional[str], Optional[str]]
 class AttackIntentMixin:
     """攻めの目的のライフサイクルと再比較を担当します。"""
 
-    _ATTACK_INTENT_CONTINUABLE_KINDS = frozenset({"force_enemy_royal"})
+    _ATTACK_INTENT_CONTINUABLE_KINDS = frozenset(
+        {"force_enemy_royal", "relay_shi_to_ally"}
+    )
 
     def _set_attack_intent_plan(
         self,
@@ -213,6 +215,30 @@ class AttackIntentMixin:
             if self._intent_receive_succeeds(intent, player, block):
                 intent["status"] = "achieved"
                 intent["resolution_reason"] = "target_received"
+            elif (
+                str(intent.get("kind")) == "relay_shi_to_ally"
+                and player == self.me
+            ):
+                # Receiving a later attack is how we regain an opportunity to
+                # send the reserved shi. It does not resolve the relay plan.
+                return
+            elif (
+                str(intent.get("kind")) == "relay_shi_to_ally"
+                and str(block) == "1"
+                and player != self.me
+                and not self._same_team(player, self.me)
+            ):
+                # The first shi being intercepted is useful progress: the
+                # intervening enemy spent one shi, while our reserved shi can
+                # repeat the attempt on a later attack opportunity.
+                intent["status"] = "unresolved"
+                intent["unresolved_reason"] = "intervening_enemy_spent_shi"
+                intent["enemy_interception_count"] = int(
+                    intent.get("enemy_interception_count", 0)
+                ) + 1
+                intent["last_interceptor"] = str(player)
+                tracker["last_ally_shi_relay_plan"] = copy.deepcopy(intent)
+                return
             else:
                 intent["status"] = "blocked"
                 intent["resolution_reason"] = "non_target_receive"
@@ -229,6 +255,19 @@ class AttackIntentMixin:
                 and state.turn == self.me
                 and str(state.current_attack) == str(intent.get("attack_piece"))
             ):
+                if str(intent.get("kind")) == "relay_shi_to_ally" and any(
+                    response.get("player") != self.me
+                    and self._same_team(str(response.get("player")), self.me)
+                    and response.get("action") == "pass"
+                    for response in responses
+                ):
+                    intent["status"] = "blocked"
+                    intent["resolution_reason"] = "ally_passed_relay_shi"
+                    tracker.setdefault("attack_intent_history", []).append(
+                        copy.deepcopy(intent)
+                    )
+                    tracker["attack_intent"] = None
+                    return
                 intent["status"] = "unresolved"
                 intent["unresolved_reason"] = "all_responses_passed"
                 intent["response_pass_count"] = sum(

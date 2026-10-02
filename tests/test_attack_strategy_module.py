@@ -83,6 +83,8 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_false_attack_sequence_signal_penalty",
         "_truthful_first_pair_signal_context",
         "_truthful_first_pair_signal_adjustment",
+        "_ally_shi_relay_context",
+        "_ally_shi_relay_adjustment",
         "_score_attack_phase",
     ):
         assert method_name in AttackStrategyMixin.__dict__

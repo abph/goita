@@ -178,9 +178,12 @@ class BranchedAttackRuntimeMixin:
                     "unconfirmed_first_attack_piece"
                 ),
                 "ally_attacks": tr.get("ally_past_attacks", set()),
+                "ally_attack_history": tr.get("ally_attack_history", ()),
                 "enemy_attacks": tr.get("enemy_past_attacks", set()),
                 "shi_attack_mode": bool(tr.get("shi_attack_mode")),
                 "ally_shi_signal": tr.get("ally_shi_signal"),
+                "ally_shi_reserve_claim": tr.get("ally_shi_reserve_claim"),
+                "ally_shi_relay_plan": tr.get("last_ally_shi_relay_plan"),
                 "two_shi_second_signal_risk": bool(
                     self._two_shi_second_attack_signal_risk(state, player)
                 ),
@@ -214,6 +217,8 @@ class BranchedAttackRuntimeMixin:
                 "max_seconds": float(self.BRANCHED_ATTACK_MAX_SECONDS),
                 "risk": float(self.BRANCHED_ATTACK_GENERIC_MAX_FAILURE_RISK),
                 "width": float(self.BRANCHED_ATTACK_GENERIC_MIN_RECEIVE_WIDTH),
+                "ally_shi_relay_enabled": bool(self.ALLY_SHI_RELAY_ENABLED),
+                "ally_shi_relay_bonus": float(self.ALLY_SHI_RELAY_BONUS),
             },
         }
         return _digest_payload(payload)

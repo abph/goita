@@ -56,6 +56,7 @@ class TrackingMixin:
 
             my_past_attacks=set(),
             ally_past_attacks=set(),
+            ally_attack_history=[],
             enemy_past_attacks=set(),
             enemy_attack_counts={},
             hidden_block_counts={p: 0 for p in ("A", "B", "C", "D")},
@@ -80,6 +81,9 @@ class TrackingMixin:
             ally_passed_my_shi_count=0,
             enemy_passed_my_shi_count=0,
             ally_shi_signal="unknown",
+            ally_received_my_shi_count=0,
+            ally_shi_reserve_claim=None,
+            last_ally_shi_relay_plan=None,
             shi_attack_mode=False,
             shi_attack_mode_source=None,
             my_shi_approval_pending=False,
@@ -154,6 +158,33 @@ class TrackingMixin:
             state, self.me
         )
 
+    def _refresh_ally_shi_reserve_claim(self, state, tracker: dict) -> None:
+        """Update the ally's publicly claimed shi reserve.
+
+        Receiving our shi and then using shi as the ally's second attack is a
+        conventional claim of an initial three-shi hand. Hidden blocks are not
+        inspected; this records what the public sequence communicates rather
+        than the ally's real concealed hand.
+        """
+        claim = tracker.get("ally_shi_reserve_claim")
+        ally = tracker.get("ally")
+        if not isinstance(claim, dict) or ally is None:
+            return
+        model = tracker.get("public_hand_models", {}).get(ally, {})
+        attacks = model.get("attacks", {})
+        blocks = model.get("blocks", {})
+        public_spent = int(attacks.get("1", 0)) + int(blocks.get("1", 0))
+        initial_claim = int(claim.get("initial_shi_claim", 3))
+        likely_remaining = max(0, initial_claim - public_spent)
+        claim.update(
+            {
+                "public_shi_spent": public_spent,
+                "likely_remaining_shi": likely_remaining,
+                "ally_hand_size": len(state.hands.get(ally, ())),
+                "status": "active" if likely_remaining > 0 else "exhausted",
+            }
+        )
+
     def on_public_action(self, state, player: str, action: Action) -> None:
         if self.me is None:
             return
@@ -163,6 +194,7 @@ class TrackingMixin:
             return
 
         action_type, block, attack = action
+        previous_attack_context = dict(tr.get("active_attack_context") or {})
         update_attack_intent = getattr(
             self,
             "_update_attack_intent_from_public_action",
@@ -182,6 +214,17 @@ class TrackingMixin:
             )
 
         self._update_public_hand_model(state, tr, player, action_type, visible_block, attack)
+
+        if (
+            player == tr.get("ally")
+            and action_type == "receive"
+            and visible_block == "1"
+            and previous_attack_context.get("attacker") == self.me
+            and str(previous_attack_context.get("piece")) == "1"
+        ):
+            tr["ally_received_my_shi_count"] = int(
+                tr.get("ally_received_my_shi_count", 0)
+            ) + 1
 
         if action_type == "attack_after_block":
             hidden_counts = tr.setdefault("hidden_block_counts", {p: 0 for p in ("A", "B", "C", "D")})
@@ -343,6 +386,24 @@ class TrackingMixin:
                 if not tr["ally_past_attacks"]:
                     tr["ally_first_attack"] = attack
                 tr["ally_past_attacks"].add(attack)
+                ally_attack_history = tr.setdefault("ally_attack_history", [])
+                ally_attack_history.append(str(attack))
+                if (
+                    str(attack) == "1"
+                    and len(ally_attack_history) == 2
+                    and int(tr.get("ally_received_my_shi_count", 0)) > 0
+                    and "1" in tr.get("my_past_attacks", set())
+                ):
+                    tr["ally_shi_reserve_claim"] = {
+                        "source": "received_my_shi_then_second_attack_shi",
+                        "initial_shi_claim": 3,
+                        "claim_attack_number": 2,
+                        "preceding_attack_piece": ally_attack_history[0],
+                        "preceding_attack_was_big": (
+                            ally_attack_history[0] in ("6", "7")
+                        ),
+                        "confidence": "strategy_signal",
+                    }
                 tr["ally_last_attack"] = attack
                 tr["ally_attacked_since_my_last_attack"] = True
                 # An ally replaying one of my earlier attack pieces is a response
@@ -431,6 +492,13 @@ class TrackingMixin:
                 action_type,
                 attack,
             )
+
+        if player == tr.get("ally") and action_type in (
+            "receive",
+            "attack",
+            "attack_after_block",
+        ):
+            self._refresh_ally_shi_reserve_claim(state, tr)
 
         visible_evidence: List[str] = []
         if action_type == "receive" and visible_block is not None:
