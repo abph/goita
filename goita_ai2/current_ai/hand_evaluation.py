@@ -460,6 +460,8 @@ class HandEvaluationMixin:
         plan_info = tr.get("special_attack_plan")
         if not isinstance(plan_info, dict):
             return None
+        if bool(plan_info.get("cancelled")):
+            return None
         if (
             plan_info.get("label") == "dealer_three_shi_two_single_bigs_royal"
             and state.dealer != player
@@ -523,7 +525,106 @@ class HandEvaluationMixin:
         if not candidates:
             return None
         candidates.sort(key=lambda item: item[0], reverse=True)
-        return candidates[0][1]
+        planned_action = candidates[0][1]
+        action_type, block, attack = planned_action
+        reserve_risk = self._special_sequence_enemy_reserve_risk(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        )
+        if reserve_risk is not None:
+            replan = {
+                "reason": "enemy_first_attack_reserve",
+                "plan_label": str(plan_info.get("label", "special")),
+                "planned_attack": str(attack),
+                **reserve_risk,
+            }
+            tr["last_special_attack_sequence_replan"] = replan
+            plan_info["cancelled"] = True
+            plan_info["cancel_reason"] = "enemy_first_attack_reserve"
+            plan_info["cancel_evidence"] = dict(reserve_risk)
+            return None
+        return planned_action
+
+    def _special_sequence_enemy_reserve_risk(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> Optional[Dict[str, object]]:
+        """Find new public evidence that invalidates a fixed attack step.
+
+        A first attack advertises a possible repeat of that piece.  A fixed
+        sequence is therefore reconsidered when an opponent's signal remains
+        active and the current hand estimate still gives that opponent a
+        likely copy.  Proven finishes and attacks with a concrete team purpose
+        keep their priority.
+        """
+        if attack not in ("2", "3", "4", "5", "6", "7"):
+            return None
+        if self._attack_sequence_signal_has_concrete_purpose(
+            state,
+            player,
+            action_type,
+            block,
+            attack,
+        ):
+            return None
+
+        tr = self._track.get(id(state))
+        if tr is None:
+            return None
+
+        strongest: Optional[Dict[str, object]] = None
+        strongest_key = (-1, -1.0)
+        for enemy in ("A", "B", "C", "D"):
+            if enemy == player or self._same_team(enemy, player):
+                continue
+            model = tr.get("public_hand_models", {}).get(enemy, {})
+            if (
+                str(model.get("first_attack")) != attack
+                or not bool(model.get("inferred_attack_strategy_active"))
+                or bool(model.get("strategy_broken"))
+            ):
+                continue
+
+            remaining_min, remaining_max = self._estimate_remaining_range(
+                tr,
+                enemy,
+                attack,
+            )
+            if remaining_max <= 0:
+                continue
+            remaining_expected = self._estimate_remaining_expected(
+                tr,
+                enemy,
+                attack,
+            )
+            # A guaranteed remaining copy is sufficient.  For a probabilistic
+            # estimate, require strong evidence so a weak first-attack hint
+            # does not discard useful plans too readily.
+            if remaining_min <= 0 and remaining_expected < 0.75:
+                continue
+
+            key = (1 if remaining_min > 0 else 0, float(remaining_expected))
+            if key <= strongest_key:
+                continue
+            strongest_key = key
+            strongest = {
+                "enemy": enemy,
+                "piece": str(attack),
+                "remaining_min": int(remaining_min),
+                "remaining_max": int(remaining_max),
+                "remaining_expected": round(float(remaining_expected), 3),
+                "enemy_strategy": str(
+                    model.get("inferred_attack_strategy") or "first_attack_repeat"
+                ),
+            }
+        return strongest
 
     def _attack_shape_profiles(self, counts: Counter) -> List[Dict[str, object]]:
         profiles: List[Dict[str, object]] = []

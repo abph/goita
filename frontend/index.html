@@ -6757,6 +6757,14 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return `After comparing with the guaranteed ${match[1]}-point finish, pursue ${match[2]} points (chance: ${match[3]}%, estimated failure risk: ${match[4]}%)`;
         return `確定${match[1]}点の手と比較し、${match[2]}点を狙う（上振れ確率${match[3]}%、推定失敗率${match[4]}%）`;
     }
+    match = String(detail || "").match(/^attack_sequence_replanned_enemy_reserve_([ABCD])_([1-9])_to_([1-9])$/);
+    if(match) {
+        const planned = gameLogCandidatePieceLabel(match[2], language);
+        const selected = gameLogCandidatePieceLabel(match[3], language);
+        if(language === "en") return `Reconsider the planned ${planned} attack because opponent ${match[1]} likely kept another copy after opening with it; choose ${selected} instead.`;
+        if(language === "zh") return `对手${match[1]}首次以${planned}进攻后很可能仍保留同类棋子，因此重新评估原定的${planned}进攻，改用${selected}。`;
+        return `敵方${match[1]}は初手に出した${planned}をまだ残している可能性が高いため、予定していた${planned}の攻めを見直し、${selected}を選択`;
+    }
     if(String(detail || "").startsWith("attack_sequence_")) {
         return language === "zh" ? "按照手牌结构选择进攻顺序" : "手駒構成に合う攻め順を選択";
     }

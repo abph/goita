@@ -1457,6 +1457,11 @@ class DecisionMixin:
 
         self._ensure_trackers(state)
         tr = self._track.get(id(state))
+        if tr is not None:
+            # A fixed-sequence replan can be evaluated more than once while
+            # comparing attack intents.  Clear it once per decision rather
+            # than once per helper call so the final explanation survives.
+            tr.pop("last_special_attack_sequence_replan", None)
 
         # Keep one coherent shi-count picture available throughout a shi attack,
         # even when an earlier proven rule ultimately chooses the action.
@@ -2527,6 +2532,24 @@ class DecisionMixin:
                 ) <= 0
             ):
                 score_fallback_detail = "attack_avoid_enemy_used_piece"
+
+        replan = (
+            tr.get("last_special_attack_sequence_replan")
+            if tr is not None
+            else None
+        )
+        if (
+            isinstance(replan, dict)
+            and best_action[0] in ("attack", "attack_after_block")
+            and best_action[2] is not None
+            and str(best_action[2]) != str(replan.get("planned_attack"))
+        ):
+            replan["selected_attack"] = str(best_action[2])
+            score_fallback_detail = (
+                f"attack_sequence_replanned_enemy_reserve_"
+                f"{replan.get('enemy', 'unknown')}_"
+                f"{replan.get('planned_attack', 'unknown')}_to_{best_action[2]}"
+            )
 
         if tr is not None:
             if best_action[0] == "receive":

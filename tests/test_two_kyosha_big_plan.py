@@ -389,6 +389,61 @@ def test_two_kyosha_gold_pair_does_not_override_higher_attack_types() -> None:
     ) is None
 
 
+def test_fixed_sequence_replans_when_enemy_likely_keeps_opening_piece() -> None:
+    """Regression for 2026-10-02 round 1, D turn 6 review."""
+    state = GoitaState(
+        hands={
+            "A": list("11113478"),
+            "B": list("11135556"),
+            "C": list("12244579"),
+            "D": list("11223346"),
+        },
+        dealer="C",
+    )
+    agent = RuleBasedAgent()
+    agent.bind_player("D")
+    agent.TIME_LIMITED_SEARCH_ENABLED = False
+    agent.TIME_SEARCH_ENABLED = False
+    agent._ensure_trackers(state)
+
+    history = (
+        ("C", ("attack_after_block", "4", "2")),
+        ("D", ("receive", "2", None)),
+        ("D", ("attack", None, "3")),
+        ("A", ("pass", None, None)),
+        ("B", ("receive", "3", None)),
+        ("B", ("attack", None, "5")),
+        ("C", ("receive", "5", None)),
+        ("C", ("attack", None, "4")),
+        ("D", ("receive", "4", None)),
+    )
+    for action_player, action in history:
+        _apply_public_action(agent, state, action_player, action)
+
+    chosen = agent.select_action(state, "D", state.legal_actions("D"))
+    tr = agent._track[id(state)]
+
+    assert chosen == ("attack", None, "6")
+    assert tr["special_attack_plan"]["sequence"] == ["3", "2"]
+    assert tr["special_attack_plan"]["cancelled"] is True
+    assert tr["last_special_attack_sequence_replan"] == {
+        "reason": "enemy_first_attack_reserve",
+        "plan_label": "two_kyosha_middle_pair",
+        "planned_attack": "2",
+        "enemy": "C",
+        "piece": "2",
+        "remaining_min": 0,
+        "remaining_max": 1,
+        "remaining_expected": 0.91,
+        "enemy_strategy": "kyosha_repeat",
+        "selected_attack": "6",
+    }
+    assert agent.last_decision_reason == "score_fallback"
+    assert agent.last_score_fallback_detail == (
+        "attack_sequence_replanned_enemy_reserve_C_2_to_6"
+    )
+
+
 def test_plan_is_limited_to_the_requested_hand_shapes() -> None:
     agent = RuleBasedAgent()
     assert agent._two_kyosha_single_big_attack_plan(
