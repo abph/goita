@@ -301,3 +301,28 @@ cases:
         - tests/test_attack_strategy_module.py::test_truthful_first_pair_signal_applies_to_each_signalling_piece
         - tests/test_attack_strategy_module.py::test_first_pair_signal_waits_when_an_enemy_is_near_reach
         - tests/test_neural_policy.py::test_truthful_first_pair_signal_agrees_with_global_neural_choice
+
+  - id: ATT-016
+    status: confirmed
+    title: 相方のし主張後は余分なしを伏せて3つ目の大駒を残す
+    classification: spare_shi_block_for_third_attack
+    priority: high
+    conditions:
+      - 相方が最初の攻めにしを出し、複数しを主張している
+      - 敵方がし攻めを始めていない
+      - 自分がしを2枚持ち、1枚を伏せても1枚残せる
+      - 王か玉を残せる
+      - 同じ駒による2つ目の攻めを行う局面
+      - 単発の飛か角を3つ目の攻めとして残せる
+    required: しを1枚伏せ、現在の攻めを続けながら3つ目の大駒を残す
+    forbidden:
+      - 相方がしを出したという理由だけで、自分のしを2枚とも温存する
+      - 敵方がし攻めを始めているのに守備のしを減らす
+      - 最後のし、または唯一の受け幅を失う
+    reason: 相方が十分なしを主張し、敵方のし圧力がなければ、自分の2枚目のしより3つ目に使える大駒の方が攻めの継続価値が高い
+    regression:
+      state: covered
+      tests:
+        - tests/test_safe_thinking_strategy.py::test_safe_thinking_spends_spare_shi_and_keeps_rook_for_third_attack
+        - tests/test_safe_thinking_strategy.py::test_spare_shi_rule_stays_isolated_from_saved_current_ai
+        - tests/test_safe_thinking_strategy.py::test_spare_shi_rule_requires_no_enemy_shi_attack_pressure

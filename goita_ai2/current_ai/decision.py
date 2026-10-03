@@ -299,6 +299,14 @@ class DecisionMixin:
             )
             if conditional_finish_score is not None:
                 return f"attack_conditional_shi_royal_finish_{int(conditional_finish_score)}"
+            if self._ally_shi_spare_third_big_attack_adjustment(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            ) > 0:
+                return "block_spare_shi_keep_third_big_attack"
             scored = list(getattr(self, "last_attack_candidate_scores", ()))
             attack_scores = [
                 item

@@ -950,6 +950,68 @@ class AttackStrategyMixin:
             value += self.INFER_BLOCK_KEEP_BONUS
         return value
 
+    def _ally_shi_spare_third_big_attack_adjustment(
+        self,
+        state,
+        player: str,
+        action_type: str,
+        block: Optional[str],
+        attack: Optional[str],
+    ) -> float:
+        """Spend one of two shi when an ally claim makes the spare expendable.
+
+        A first shi attack claims a multi-shi hand.  If the opponents have not
+        started shi pressure, keeping both of our shi can needlessly consume a
+        singleton rook or bishop that supplies the third attack.  This rule is
+        deliberately narrow: it applies to the repeated second attack, keeps
+        one shi and a royal for defence, and only preserves a singleton big
+        piece for the next attack.
+        """
+        if (
+            not bool(
+                getattr(
+                    self,
+                    "ALLY_SHI_SPARE_THIRD_BIG_ATTACK_ENABLED",
+                    False,
+                )
+            )
+            or action_type != "attack_after_block"
+            or block != "1"
+            or attack not in ("3", "4", "5", "6", "7")
+        ):
+            return 0.0
+
+        tracker = self._track.get(id(state))
+        hand = list(state.hands[player])
+        if (
+            tracker is None
+            or hand.count("1") != 2
+            or int(tracker.get("my_attack_count", 0)) != 1
+            or str(tracker.get("my_last_attack") or "") != attack
+            or str(tracker.get("ally_first_attack") or "") != "1"
+            or "1" in tracker.get("enemy_past_attacks", set())
+            or self._enemy_shi_attack_threat_for_fuse(tracker, player)
+            or tracker.get("shi_attack_mode")
+            or tracker.get("inherit_ally_shi_attack")
+        ):
+            return 0.0
+
+        after_hand = list(hand)
+        after_hand.remove(block)
+        after_hand.remove(attack)
+        if after_hand.count("1") != 1 or not any(
+            piece in ("8", "9") for piece in after_hand
+        ):
+            return 0.0
+
+        preserves_single_big = any(
+            hand.count(piece) == 1 and piece in after_hand
+            for piece in ("6", "7")
+        )
+        if not preserves_single_big:
+            return 0.0
+        return float(self.ALLY_SHI_SPARE_THIRD_BIG_ATTACK_BONUS)
+
     def _enemy_shi_attack_threat_for_fuse(self, tr: Optional[dict], player: str) -> bool:
         if tr is None:
             return False
@@ -1676,6 +1738,13 @@ class AttackStrategyMixin:
             base_penalty = float(penalty_table.get(block, 0))
             score += self._shi_attack_hidden_block_adjustment(state, player, action_type, block, attack)
             score += self._piece_count_hidden_block_adjustment(state, player, block)
+            score += self._ally_shi_spare_third_big_attack_adjustment(
+                state,
+                player,
+                action_type,
+                block,
+                attack,
+            )
             score += self._fuse_strategy_hidden_block_adjustment(state, player, action_type, block, attack)
             score -= self._same_piece_pair_spend_penalty(state, player, action_type, block, attack)
 

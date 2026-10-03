@@ -113,6 +113,7 @@ class RuleBasedAgent(
         self.ALLY_REACH_HANDOFF_MIN_ADVANTAGE = 0.02
         self.last_ally_reach_comparison = None
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = False
+        self.ALLY_SHI_SPARE_THIRD_BIG_ATTACK_ENABLED = False
         self.SHI_ATTACK_PACKAGE_ENABLED = False
         self.SHI_ATTACK_PACKAGE_MIN_CONFIDENCE = 0.60
         self.SHI_ATTACK_PACKAGE_EXHAUSTED_MAX_EXPECTED = 0.75
@@ -185,6 +186,7 @@ class RuleBasedAgent(
         self.INFER_KAKARI_CLEAR_BONUS = 25.0
         self.INFER_BLOCK_KEEP_BONUS = 14.0
         self.INFER_ALLY_STRATEGY_KEEP_BONUS = 18.0
+        self.ALLY_SHI_SPARE_THIRD_BIG_ATTACK_BONUS = 80.0
         self.INFER_SHI_ATTACK_ALLY_BONUS = 25.0
         self.INFER_SHI_ATTACK_ENEMY_PENALTY = 14.0
         self.INFER_FORCE_KING_PRESSURE_BONUS = 18.0

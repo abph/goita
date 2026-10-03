@@ -90,6 +90,7 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'neural_primary: "学習した1222の判断を優先"',
         'neural_tiebreak: "現AIの僅差候補を学習結果で比較"',
         'attack_tatewari: "王を切らせる攻め"',
+        'block_spare_shi_keep_third_big_attack: "余分なしを1枚伏せ、3つ目の飛・角を温存"',
         'low_reentry_followup_attack: "再参加を確保する受けの後、公開情報から安全な攻めを継続"',
         'pass_enemy_big_piece_weak_followup: "飛・角を受けても有力な攻めが続かないためパス"',
         'receive_enemy_big_piece_ally_signal: "相方へ2回目の攻め情報を伝えるため、飛・角を同じ駒で受ける"',

@@ -75,6 +75,7 @@ def test_attack_strategy_methods_are_owned_by_mixin() -> None:
         "_inferred_enemy_team_shi_pressure",
         "_inferred_enemy_team_shi_attack_action",
         "_fuse_strategy_hidden_block_adjustment",
+        "_ally_shi_spare_third_big_attack_adjustment",
         "_enemy_used_attack_reuse_penalty",
         "_three_shi_enemy_receive_return_bonus",
         "_singleton_first_attack_has_concrete_purpose",

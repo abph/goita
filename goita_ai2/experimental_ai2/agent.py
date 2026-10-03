@@ -25,6 +25,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
     def __init__(self, name: str = "強化中AI2"):
         super().__init__(name=name)
         self.PRESERVE_SHI_FOR_THIRD_ATTACK_ENABLED = True
+        self.ALLY_SHI_SPARE_THIRD_BIG_ATTACK_ENABLED = True
         self.SHI_ATTACK_PACKAGE_ENABLED = True
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
         self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = True
