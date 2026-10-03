@@ -26,6 +26,7 @@
 #aiReviewReportDialog textarea { resize: vertical; }
 #aiReviewReportDialog input:disabled { background: #edf0e9; color: #7a8275; }
 #aiReviewReportDialog .ai-review-check { font-size: .9rem; font-weight: normal; display: flex; align-items: center; gap: 8px; }
+.ai-review-style-note { margin: 7px 0 2px; }
 #aiReviewUnknown { width: auto; }
 #aiReviewPosition { margin: 18px 0; overflow-wrap: anywhere; }
 #aiReviewPosition h3 { font-size: 1rem; }

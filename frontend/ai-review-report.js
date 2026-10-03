@@ -28,6 +28,12 @@
       <section id="aiReviewStep2" hidden>
         <p id="aiReviewSelectedLabel" class="ai-review-selected"></p>
         <form id="aiReviewForm">
+          <label for="aiReviewThinkingStyle">どちらの考え方を教えますか？</label>
+          <select id="aiReviewThinkingStyle">
+            <option value="safe" selected>安全思考</option>
+            <option value="risk">リスク思考</option>
+          </select>
+          <p class="ai-review-muted ai-review-style-note">安全思考は現在の強化対象です。リスク思考は別の戦術資料として蓄積し、現在のAI学習には混ぜません。</p>
           <label for="aiReviewPreferred">どう打つのがよいと思いますか？ <span>必須</span></label>
           <input id="aiReviewPreferred" maxlength="1000" required placeholder="例：金ではなく、しを攻める">
           <label class="ai-review-check"><input id="aiReviewUnknown" type="checkbox">推奨手はまだ分からない</label>
@@ -143,6 +149,7 @@
 
   function reviewData() {
     return {
+      thinking_style: $("aiReviewThinkingStyle").value,
       preferred_action: $("aiReviewUnknown").checked ? null : $("aiReviewPreferred").value.trim(),
       preferred_action_unknown: $("aiReviewUnknown").checked,
       reason: $("aiReviewReason").value.trim(),
@@ -154,15 +161,18 @@
 
   function summaryText() {
     const review = reviewData();
-    return `${selectedLabel()}\n\n推奨手：${review.preferred_action || "まだ分からない"}\n理由：${review.reason}\nその後の狙い：${review.continuation || "記入なし"}\n条件・例外・補足：${review.conditions_and_exceptions || "記入なし"}\n\n収録：初期配牌、棋譜、対象判断直前の局面、対局時のログ\n局面の取得日時：${snapshot.captured_at}`;
+    const styleLabel = review.thinking_style === "risk" ? "リスク思考" : "安全思考";
+    return `${selectedLabel()}\n\n思考の種類：${styleLabel}\n推奨手：${review.preferred_action || "まだ分からない"}\n理由：${review.reason}\nその後の狙い：${review.continuation || "記入なし"}\n条件・例外・補足：${review.conditions_and_exceptions || "記入なし"}\n\n収録：初期配牌、棋譜、対象判断直前の局面、対局時のログ\n局面の取得日時：${snapshot.captured_at}`;
   }
 
   function reportData() {
     const item = decision();
-    return {...snapshot, exported_at: new Date().toISOString(),
+    const review = reviewData();
+    return {...snapshot, schema_version: 2, exported_at: new Date().toISOString(),
+      thinking_style: review.thinking_style,
       target: {seat: item.seat, turn_number: item.turn_number, decision_log_index: item.log_index,
         turn_log_indices: selected.logIndices, action: item.action, label: selectedLabel()},
-      human_review: reviewData(), summary: summaryText()};
+      human_review: review, summary: summaryText()};
   }
 
   function showStep(value) {
@@ -233,6 +243,7 @@
         $("aiReviewTurns").appendChild(button);
       }
       $("aiReviewForm").reset();
+      $("aiReviewThinkingStyle").value = "safe";
       $("aiReviewPreferred").disabled = false; $("aiReviewPreferred").required = true;
       selectGroup(target);
       showStep(1);

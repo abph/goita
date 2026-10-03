@@ -6,14 +6,15 @@ ROOT = Path(__file__).parents[1]
 CASE_ROOT = ROOT / "goita_ai2" / "instruction_cases"
 
 EXPECTED_CASE_COUNTS = {
-    "attack.yaml": 12,
+    "attack.yaml": 15,
     "endgame.yaml": 11,
     "hand_inference.yaml": 8,
     "kyosha_strategy.yaml": 10,
-    "receive.yaml": 11,
+    "receive.yaml": 12,
     "reference.yaml": 5,
-    "regression_candidates.yaml": 13,
-    "shi_strategy.yaml": 10,
+    "regression_candidates.yaml": 15,
+    "risk_strategy.yaml": 1,
+    "shi_strategy.yaml": 14,
     "superseded.yaml": 7,
 }
 
@@ -33,12 +34,13 @@ def test_instruction_case_catalog_has_expected_files_and_unique_ids():
         assert len(ids) == expected_count, (filename, ids)
         all_ids.extend(ids)
 
-    assert len(all_ids) == 87
+    assert len(all_ids) == 98
     assert len(all_ids) == len(set(all_ids))
 
 
 def test_catalog_separates_confirmed_reference_and_superseded_cases():
     reference = (CASE_ROOT / "reference.yaml").read_text(encoding="utf-8")
+    risk = (CASE_ROOT / "risk_strategy.yaml").read_text(encoding="utf-8")
     superseded = (CASE_ROOT / "superseded.yaml").read_text(encoding="utf-8")
     confirmed_files = [
         "attack.yaml",
@@ -51,6 +53,8 @@ def test_catalog_separates_confirmed_reference_and_superseded_cases():
     ]
 
     assert reference.count("status: reference") == 5
+    assert risk.count("status: reference") == 1
+    assert "runtime_connected: false" in risk
     assert superseded.count("status: superseded") == 7
     for filename in confirmed_files:
         text = (CASE_ROOT / filename).read_text(encoding="utf-8")
@@ -63,9 +67,10 @@ def test_index_documents_catalog_counts_and_runtime_state():
     readme = (CASE_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "runtime_connected: false" in index
-    assert "confirmed_policies: 62" in index
-    assert "regression_candidates: 13" in index
-    assert "total_records: 87" in index
+    assert "confirmed_policies: 85" in index
+    assert "regression_candidates: 15" in index
+    assert "reference_cases: 6" in index
+    assert "total_records: 98" in index
     assert "AI本体から独立" in readme
     assert "superseded" in readme
 

@@ -114,6 +114,14 @@ def test_receive_attack_turn_defaults_to_followup_attack_for_review():
     assert 'if(decisions.length > 1) $("aiReviewDecision").value = String(decisions[decisions.length - 1].log_index);' in REPORT_JS
 
 
+def test_review_report_separates_safe_and_risk_thinking_styles():
+    assert '<option value="safe" selected>安全思考</option>' in REPORT_JS
+    assert '<option value="risk">リスク思考</option>' in REPORT_JS
+    assert 'thinking_style: $("aiReviewThinkingStyle").value' in REPORT_JS
+    assert 'thinking_style: review.thinking_style' in REPORT_JS
+    assert "schema_version: 2" in REPORT_JS
+
+
 if __name__ == "__main__":
     path = Path("results/ai_review_report/sample.json")
     path.parent.mkdir(parents=True, exist_ok=True)

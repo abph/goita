@@ -35,6 +35,28 @@ def _optional_records(path: Optional[Path]) -> list[Dict[str, Any]]:
     return _records(path)
 
 
+def _correction_thinking_style(record: Mapping[str, Any]) -> str:
+    """Return the review policy lane, keeping old corrections safety-first."""
+    style = record.get("thinking_style")
+    if style is None:
+        review = record.get("review")
+        if isinstance(review, Mapping):
+            style = review.get("thinking_style")
+    if style is None:
+        return "safe"
+    normalized = str(style).strip().lower()
+    if normalized not in {"safe", "risk"}:
+        raise ValueError(f"unknown correction thinking_style: {style!r}")
+    return normalized
+
+
+def _safe_corrections(
+    records: Sequence[Mapping[str, Any]],
+) -> list[Dict[str, Any]]:
+    """Keep risk-policy examples out of the current safety-policy model."""
+    return [copy.deepcopy(dict(record)) for record in records if _correction_thinking_style(record) == "safe"]
+
+
 def _selected_action(record: Mapping[str, Any]):
     legal = list(record["legal_actions"])
     return action_tuple(legal[int(record["selected_action_index"])])
@@ -140,7 +162,8 @@ def train_policy(
     validation = [item for item in records if item["split"] == "validation"]
     test = [item for item in records if item["split"] == "test"]
     target_train = [item for item in train if item.get("is_target_player")]
-    corrections = _optional_records(corrections_path)
+    correction_sources = _optional_records(corrections_path)
+    corrections = _safe_corrections(correction_sources)
     expanded_corrections = _expand_acceptable_actions(corrections)
     weighted_train = (
         train
@@ -193,7 +216,9 @@ def train_policy(
             "train_records": len(train),
             "weighted_train_records": len(weighted_train),
             "target_repeat": int(target_repeat),
+            "correction_source_records": len(correction_sources),
             "correction_records": len(corrections),
+            "risk_correction_records_excluded": len(correction_sources) - len(corrections),
             "correction_training_records": len(expanded_corrections),
             "correction_repeat": int(correction_repeat),
             "iterations": int(model.n_iter_),

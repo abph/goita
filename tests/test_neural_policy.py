@@ -11,12 +11,24 @@ from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBase
 from goita_ai2.instruction_case_audit import apply_action
 from goita_ai2.neural_policy import NeuralPolicyModel, encode_state, live_state_payload
 from goita_ai2.state import GoitaState
-from goita_ai2.train_neural_policy import _expand_acceptable_actions
+from goita_ai2.train_neural_policy import _expand_acceptable_actions, _safe_corrections
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "goita_ai2" / "experimental_ai2" / "data" / "neural_policy.json"
 CORRECTIONS_PATH = ROOT / "goita_ai2" / "experimental_ai2" / "data" / "review_corrections.jsonl"
+
+
+def test_current_neural_training_uses_only_safe_thinking_corrections() -> None:
+    legacy = {"decision_id": "legacy"}
+    safe = {"decision_id": "safe", "thinking_style": "safe"}
+    nested_safe = {"decision_id": "nested", "review": {"thinking_style": "safe"}}
+    risk = {"decision_id": "risk", "thinking_style": "risk"}
+    nested_risk = {"decision_id": "nested-risk", "review": {"thinking_style": "risk"}}
+
+    selected = _safe_corrections([legacy, safe, nested_safe, risk, nested_risk])
+
+    assert [item["decision_id"] for item in selected] == ["legacy", "safe", "nested"]
 
 
 def _hands() -> dict[str, list[str]]:

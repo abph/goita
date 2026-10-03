@@ -1,0 +1,36 @@
+schema_version: 1
+category: risk_strategy
+thinking_style: risk
+runtime_connected: false
+description: 高得点の可能性を優先する判断を、安全思考と混ぜずに蓄積する資料
+cases:
+  - id: RISK-001
+    status: reference
+    title: 自分の低得点上がりを残しながら相方の高得点上がりを待つ
+    source_report: goita_ai_review_20261003012646_round5_A_turn19.json
+    conditions:
+      - 自分には確定した低得点上がりがある
+      - 別の手を選んでも、自分が後から上がる退路を残せる
+      - 相方の公開した攻め順から、相方が同種駒を複数持つ根拠がある
+      - 相方が公開情報上の4枚目など、通りやすい上がり駒を持つ可能性がある
+      - 敵の即上がりを許す危険が許容範囲内である
+    safe_policy:
+      action: しを伏せて玉で攻める
+      guaranteed_score: 20
+      reason: 自分の20点上がりを確定させる
+    risk_policy:
+      action: 馬を伏せてしで攻める
+      fallback: 王で受けて、残したしで10点上がりを狙う
+      upside: 相方が受けて公開情報上の4枚目の銀を出し、30点以上で上がる機会を待つ
+    required_evidence:
+      - 相方が2つ目の攻めに香を出したため、初期2香の可能性を評価する
+      - 相方の残り駒と公開済み駒から、相方の上がり経路を評価する
+      - 自分の退路が本当に残るか、敵方の応答を含めて探索する
+    forbidden:
+      - 安全思考の補正データへ混ぜる
+      - 相方の実際の非公開手駒を参照する
+      - 退路や敵の即上がり危険を確認せず、高得点だけを理由に選ぶ
+    note: 現在の強化中AI2は安全思考を使うため、このケースでは安全策を維持する。リスク思考を有効化する将来段階で回帰候補にする。
+    regression:
+      state: deferred
+      reason: リスク思考の実行モデルをまだ有効化していない
