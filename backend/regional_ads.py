@@ -13,6 +13,7 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 
 
 REGIONS = ("北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄")
+SURFACES = ("public_room", "score_attack")
 PREFECTURE_REGIONS = {
     "北海道": "北海道",
     **{name + "県": "東北" for name in ("青森", "岩手", "宮城", "秋田", "山形", "福島")},
@@ -58,6 +59,7 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
         message = str(item.get("message") or "").strip()
         url = str(item.get("url") or "").strip()
         regions = item.get("regions")
+        surfaces = item.get("surfaces", ["public_room"])
         if not AD_ID_RE.fullmatch(ad_id) or ad_id in ids:
             raise HTTPException(400, "広告IDが正しくありません")
         if not title or len(title) > 40 or not message or len(message) > 200:
@@ -67,6 +69,12 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
                 or len(regions) != len(set(regions))
                 or any(region not in REGIONS for region in regions)):
             raise HTTPException(400, "対象地方が正しくありません")
+        if (not isinstance(surfaces, list)
+                or not surfaces
+                or any(not isinstance(surface, str) for surface in surfaces)
+                or len(surfaces) != len(set(surfaces))
+                or any(surface not in SURFACES for surface in surfaces)):
+            raise HTTPException(400, "広告の表示場所が正しくありません")
         if url:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > 2048:
@@ -78,6 +86,7 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
         result.append({
             "id": ad_id, "title": title, "message": message, "url": url,
             "regions": regions, "starts_at": start.isoformat(), "ends_at": end.isoformat(),
+            "surfaces": surfaces,
             "enabled": bool(item.get("enabled", False)),
         })
     for index, first in enumerate(result):
@@ -88,14 +97,30 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
             if not second["enabled"]:
                 continue
             second_targets = set(second["regions"]) or {"全国共通"}
-            if first_targets & second_targets and first["starts_at"] < second["ends_at"] and second["starts_at"] < first["ends_at"]:
-                raise HTTPException(400, "同じ期間・同じ地方に複数の広告は掲載できません")
+            if (first_targets & second_targets
+                    and set(first["surfaces"]) & set(second["surfaces"])
+                    and first["starts_at"] < second["ends_at"]
+                    and second["starts_at"] < first["ends_at"]):
+                raise HTTPException(400, "同じ期間・同じ地方・同じ表示場所に複数の広告は掲載できません")
     return result
 
 
-def select_ad(ads: list[dict[str, Any]], region: str, *, now: datetime | None = None) -> dict[str, Any] | None:
+def select_ad(
+    ads: list[dict[str, Any]],
+    region: str,
+    *,
+    surface: str = "public_room",
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    if surface not in SURFACES:
+        return None
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
-    active = [ad for ad in ads if ad["enabled"] and ad["starts_at"] <= current < ad["ends_at"]]
+    active = [
+        ad for ad in ads
+        if ad["enabled"]
+        and surface in ad.get("surfaces", ["public_room"])
+        and ad["starts_at"] <= current < ad["ends_at"]
+    ]
     regional = next((ad for ad in active if region and region in ad["regions"]), None)
     common = next((ad for ad in active if not ad["regions"]), None)
     return regional or common

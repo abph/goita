@@ -31,6 +31,7 @@ def test_debug_trace_starts_from_selected_round_and_reuses_trace_action(debug_tr
     game = debug_trace = game_app.GAMES[game_app.DEBUG_GID]
     assert game["trace_mode"] is True
     assert game["trace_analysis_enabled"] is True
+    assert game["ai_profile"] == "experimental_ai2"
     assert game["trace_original_round"] == 3
     assert game["human_seats"] == {"A": "owner"}
     assert game["ai_seats"] == ["B", "C", "D"]

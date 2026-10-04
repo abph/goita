@@ -1,15 +1,16 @@
 (() => {
   "use strict";
-  let lastRoom = "";
+  let lastContext = "";
   let lastFetch = 0;
   let requestNumber = 0;
+  const surfaces = new Set(["public_room", "score_attack"]);
   const element = id => document.getElementById(id);
 
   function hide() { if (element("regionalAd")) element("regionalAd").hidden = true; }
 
-  function recordMetric(adId, event, useBeacon = false) {
+  function recordMetric(adId, event, surface, useBeacon = false) {
     if (!adId) return;
-    const body = JSON.stringify({ad_id:adId, event});
+    const body = JSON.stringify({ad_id:adId, event, surface});
     if (useBeacon && navigator.sendBeacon) {
       navigator.sendBeacon(
         "/api/regional-ad/metric",
@@ -26,20 +27,23 @@
     }).catch(() => {});
   }
 
-  async function sync(isPublicRoom, roomId) {
-    if (!isPublicRoom) { requestNumber++; lastRoom = ""; hide(); return; }
+  async function sync(surface, roomId, exposureId = "") {
+    if (!surfaces.has(surface)) { requestNumber++; lastContext = ""; hide(); return; }
     if (!element("regionalAd")) return;
+    const context = `${surface}:${roomId}:${exposureId || "room"}`;
     const now = Date.now();
-    if (lastRoom === roomId && now - lastFetch < 60000) return;
-    lastRoom = roomId;
+    if (lastContext === context && now - lastFetch < 60000) return;
+    const contextChanged = lastContext !== context;
+    lastContext = context;
     lastFetch = now;
-    hide();
+    if (contextChanged) hide();
     const current = ++requestNumber;
     try {
-      const response = await fetch("/api/regional-ad", {credentials:"same-origin", cache:"no-store"});
+      const response = await fetch(`/api/regional-ad?surface=${encodeURIComponent(surface)}`, {credentials:"same-origin", cache:"no-store"});
       if (!response.ok) throw new Error("regional ad unavailable");
       const data = await response.json();
-      if (current !== requestNumber || lastRoom !== roomId || !data.ad) return;
+      if (current !== requestNumber || lastContext !== context) return;
+      if (!data.ad) { hide(); return; }
       const ad = data.ad;
       if (sessionStorage.getItem(`goitaRegionalAdDismissed:${ad.id}`)) return;
       element("regionalAdTitle").textContent = ad.title;
@@ -48,8 +52,13 @@
       if (ad.url) link.href = ad.url;
       else link.removeAttribute("href");
       element("regionalAd").dataset.adId = ad.id;
+      element("regionalAd").dataset.surface = surface;
       element("regionalAd").hidden = false;
-      recordMetric(ad.id, "impression");
+      const impressionKey = `goitaRegionalAdImpression:${ad.id}:${context}`;
+      if (surface !== "score_attack" || !sessionStorage.getItem(impressionKey)) {
+        if (surface === "score_attack") sessionStorage.setItem(impressionKey, "1");
+        recordMetric(ad.id, "impression", surface);
+      }
       window.goitaI18n?.refresh?.();
     } catch (_error) { if (current === requestNumber) hide(); }
   }
@@ -64,7 +73,7 @@
       const ad = element("regionalAd");
       const link = element("regionalAdLink");
       if (ad?.dataset.adId && link?.hasAttribute("href")) {
-        recordMetric(ad.dataset.adId, "click", true);
+        recordMetric(ad.dataset.adId, "click", ad.dataset.surface || "public_room", true);
       }
     });
   });

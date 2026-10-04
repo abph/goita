@@ -15,8 +15,8 @@ def test_ai_metrics_export_contains_only_anonymous_ai_aggregates() -> None:
     }
     assert payload["format"] == "sorou-goita-ai-metrics"
     assert payload["schema_version"] == 1
-    assert payload["versions"]["ai_profile"] == "current"
-    assert payload["versions"]["ai_profile_label"] == "強化中AI"
+    assert payload["versions"]["ai_profile"] == "intermediate_middle3"
+    assert payload["versions"]["ai_profile_label"] == "中級者（中3）"
     assert payload["privacy"] == {
         "player_names_included": False,
         "hands_included": False,

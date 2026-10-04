@@ -19,6 +19,7 @@ def _run() -> None:
     assert debug_room["password"] == "goita-debug"
     assert debug_room["admin_password"] == "goita-debug"
     assert debug_room["ai_seats"] == ["B", "C", "D"]
+    assert debug_room["ai_profile"] == "experimental_ai2"
     assert debug_room["show_legal_actions"] is True
     assert debug_room["show_log"] is True
     assert debug_room["hidden_from_lobby"] is True
@@ -34,6 +35,7 @@ def _run() -> None:
     assert verified["ok"] is True
     assert verified["show_legal_actions"] is True
     assert verified["show_log"] is True
+    assert verified["ai_profile"] == "experimental_ai2"
 
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert 'params.get("password")' in html

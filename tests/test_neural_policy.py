@@ -8,6 +8,7 @@ from pathlib import Path
 
 from goita_ai2.current_ai.agent import RuleBasedAgent as CurrentRuleBasedAgent
 from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
+from goita_ai2.intermediate_middle3 import RuleBasedAgent as IntermediateMiddle3RuleBasedAgent
 from goita_ai2.instruction_case_audit import apply_action
 from goita_ai2.neural_policy import NeuralPolicyModel, encode_state, live_state_payload
 from goita_ai2.state import GoitaState
@@ -40,7 +41,7 @@ def _hands() -> dict[str, list[str]]:
     }
 
 
-def _three_kyosha_continuation():
+def _three_kyosha_continuation(agent_class=ExperimentalAI2RuleBasedAgent):
     hands = {
         "A": list("31251163"),
         "B": list("71242652"),
@@ -68,7 +69,7 @@ def _three_kyosha_continuation():
         ("A", ("pass", None, None)),
     ]
     state = GoitaState(copy.deepcopy(hands), dealer="D")
-    agent = ExperimentalAI2RuleBasedAgent()
+    agent = agent_class()
     agent.bind_player("B")
     for actor, action in history:
         assert action in state.legal_actions(actor)
@@ -77,7 +78,7 @@ def _three_kyosha_continuation():
     return state, agent
 
 
-def _last_kyosha_finish_route():
+def _last_kyosha_finish_route(agent_class=ExperimentalAI2RuleBasedAgent):
     hands = {
         "A": list("43716223"),
         "B": list("11755434"),
@@ -105,7 +106,7 @@ def _last_kyosha_finish_route():
         ("D", ("pass", None, None)),
     ]
     state = GoitaState(copy.deepcopy(hands), dealer="D")
-    agent = ExperimentalAI2RuleBasedAgent()
+    agent = agent_class()
     agent.bind_player("A")
     for actor, action in history:
         assert action in state.legal_actions(actor)
@@ -114,7 +115,7 @@ def _last_kyosha_finish_route():
     return state, agent
 
 
-def _enemy_immediate_finish_receive():
+def _enemy_immediate_finish_receive(agent_class=ExperimentalAI2RuleBasedAgent):
     hands = {
         "A": list("11224457"),
         "B": list("11112259"),
@@ -144,7 +145,7 @@ def _enemy_immediate_finish_receive():
         ("A", ("pass", None, None)),
     ]
     state = GoitaState(copy.deepcopy(hands), dealer="A")
-    agent = ExperimentalAI2RuleBasedAgent()
+    agent = agent_class()
     agent.bind_player("B")
     for actor, action in history:
         assert action in state.legal_actions(actor)
@@ -441,6 +442,38 @@ def test_reported_enemy_immediate_finish_forces_receive_over_neural_pass() -> No
     assert agent.last_neural_shadow["safety_locked"] is True
     assert agent.last_neural_shadow["prevent_enemy_immediate_finish"] is True
     assert agent.last_neural_shadow["current_choice_status"] == "rule_locked"
+
+
+def test_intermediate_middle3_snapshot_keeps_reviewed_safety_decisions() -> None:
+    continuation_state, continuation_agent = _three_kyosha_continuation(
+        IntermediateMiddle3RuleBasedAgent
+    )
+    continuation = continuation_agent.select_action(
+        continuation_state,
+        "B",
+        continuation_state.legal_actions("B"),
+    )
+    assert continuation[0] == "attack_after_block"
+    assert continuation[2] == "2"
+    assert continuation[1] != "2"
+
+    finish_state, finish_agent = _last_kyosha_finish_route(
+        IntermediateMiddle3RuleBasedAgent
+    )
+    assert finish_agent.select_action(
+        finish_state,
+        "A",
+        finish_state.legal_actions("A"),
+    ) == ("pass", None, None)
+
+    defense_state, defense_agent = _enemy_immediate_finish_receive(
+        IntermediateMiddle3RuleBasedAgent
+    )
+    assert defense_agent.select_action(
+        defense_state,
+        "B",
+        defense_state.legal_actions("B"),
+    ) == ("receive", "9", None)
 
 
 def test_enemy_immediate_finish_guard_corrects_an_accidental_current_ai_pass(

@@ -481,11 +481,11 @@
       <section id="regionalAdsView" class="view">
         <section class="panel">
           <h2 class="section-heading">地域別広告</h2>
-          <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方の広告は1件に限ります。</p>
-          <p class="muted">実績欄では、広告ごとの表示回数・クリック回数・クリック率と、地方別・直近30日の日別内訳を確認できます。</p>
+          <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方・同じ表示場所の広告は1件に限ります。</p>
+          <p class="muted">実績欄では、広告ごとの表示回数・クリック回数・クリック率と、表示場所別・地方別・直近30日の日別内訳を確認できます。</p>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
-          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
         </section>
         <section class="panel">
           <h3 class="subheading">広告の編集</h3>
@@ -494,6 +494,7 @@
             <div class="field"><label for="regionalAdMessage">本文</label><textarea id="regionalAdMessage" maxlength="200" required></textarea></div>
             <div class="field"><label for="regionalAdUrl">リンク先URL（任意）</label><input id="regionalAdUrl" type="url" maxlength="2048" placeholder="https://example.com/"></div>
             <fieldset><legend>対象地方（未選択なら全国共通）</legend><div id="regionalAdTargets" class="regional-ad-targets"></div></fieldset>
+            <fieldset><legend>表示場所</legend><div id="regionalAdSurfaces" class="regional-ad-targets"><label><input type="checkbox" value="public_room"> 公開部屋</label><label><input type="checkbox" value="score_attack"> スコアアタック</label></div></fieldset>
             <div class="form-grid">
               <div class="field"><label for="regionalAdStartsAt">掲載開始（日本時間）</label><input id="regionalAdStartsAt" type="datetime-local" required></div>
               <div class="field"><label for="regionalAdEndsAt">掲載終了（日本時間）</label><input id="regionalAdEndsAt" type="datetime-local" required></div>
@@ -504,8 +505,11 @@
         </section>
         <section class="panel">
           <h3 class="subheading">地域別プレビュー</h3>
-          <p class="muted">保存済みの広告を、日本時間の現在の掲載状況で確認します。</p>
-          <div class="field"><label for="regionalAdPreviewRegion">表示する地域</label><select id="regionalAdPreviewRegion"><option value="">地域不明・全国共通</option></select></div>
+          <p class="muted">保存済みの広告を、地域と表示場所を選んで確認します。</p>
+          <div class="form-grid">
+            <div class="field"><label for="regionalAdPreviewRegion">表示する地域</label><select id="regionalAdPreviewRegion"><option value="">地域不明・全国共通</option></select></div>
+            <div class="field"><label for="regionalAdPreviewSurface">表示場所</label><select id="regionalAdPreviewSurface"><option value="public_room">公開部屋</option><option value="score_attack">スコアアタック</option></select></div>
+          </div>
           <div id="regionalAdPreview" class="regional-ad-preview" aria-live="polite">地域を選ぶと表示内容を確認できます。</div>
         </section>
       </section>
@@ -714,6 +718,7 @@
     let regionalAdMetrics = {};
     let editingRegionalAdId = "";
     const regionalAdRegions = ["北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄"];
+    const regionalAdSurfaceLabels = {public_room:"公開部屋", score_attack:"スコアアタック"};
     const regionalAdField = id => document.getElementById(`regionalAd${id}`);
     function regionalAdDateInput(value) {
       const date = new Date(value || "");
@@ -731,17 +736,22 @@
       regionalAdField("EndsAt").value = regionalAdDateInput(ad?.ends_at || new Date(start.valueOf() + 7 * 86400000).toISOString());
       regionalAdField("Enabled").checked = ad?.enabled ?? false;
       document.querySelectorAll('#regionalAdTargets input').forEach(input => { input.checked = !!ad?.regions?.includes(input.value); });
+      const surfaces = ad?.surfaces || (ad ? ["public_room"] : ["public_room", "score_attack"]);
+      document.querySelectorAll('#regionalAdSurfaces input').forEach(input => { input.checked = surfaces.includes(input.value); });
     }
     function renderRegionalAds() {
       const now = Date.now();
       document.getElementById("regionalAdRows").innerHTML = regionalAds.map(ad => {
         const state = !ad.enabled ? "停止中" : now < Date.parse(ad.starts_at) ? "開始前" : now >= Date.parse(ad.ends_at) ? "終了" : "掲載中";
         const metrics = regionalAdMetrics[ad.id] || {impressions:0, clicks:0, click_rate:0, regions:[], daily:[]};
+        const surfaceLines = (metrics.surfaces || []).map(item => `${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}：表示 ${Number(item.impressions || 0).toLocaleString()}回／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "表示場所別の実績はありません。";
         const regionLines = (metrics.regions || []).map(item => `${escapeHtml(item.region)}：表示 ${Number(item.impressions || 0).toLocaleString()}回／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "地方別の実績はありません。";
         const dailyLines = (metrics.daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || "直近30日の実績はありません。";
-        const metricCell = `<div class="regional-ad-metrics"><strong>表示 ${Number(metrics.impressions || 0).toLocaleString()}回</strong><span>クリック ${Number(metrics.clicks || 0).toLocaleString()}回／CTR ${Number(metrics.click_rate || 0).toFixed(1)}%</span><details><summary>地方別・直近30日</summary><div class="regional-ad-metrics-list">${regionLines}<hr>${dailyLines}</div></details></div>`;
-        return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
-      }).join("") || '<tr><td colspan="6">広告はまだありません。</td></tr>';
+        const surfaceDailyLines = (metrics.surface_daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || dailyLines;
+        const metricCell = `<div class="regional-ad-metrics"><strong>表示 ${Number(metrics.impressions || 0).toLocaleString()}回</strong><span>クリック ${Number(metrics.clicks || 0).toLocaleString()}回／CTR ${Number(metrics.click_rate || 0).toFixed(1)}%</span><details><summary>表示場所別・地方別・直近30日</summary><div class="regional-ad-metrics-list">${surfaceLines}<hr>${regionLines}<hr>${surfaceDailyLines}</div></details></div>`;
+        const surfaces = ad.surfaces || ["public_room"];
+        return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
+      }).join("") || '<tr><td colspan="7">広告はまだありません。</td></tr>';
     }
     async function loadRegionalAds() {
       const status = document.getElementById("regionalAdStatus");
@@ -757,9 +767,10 @@
     }
     async function previewRegionalAd() {
       const region = document.getElementById("regionalAdPreviewRegion").value;
+      const surface = document.getElementById("regionalAdPreviewSurface").value;
       const target = document.getElementById("regionalAdPreview");
       try {
-        const data = await api(`/admin/api/regional-ads/preview?region=${encodeURIComponent(region)}`);
+        const data = await api(`/admin/api/regional-ads/preview?region=${encodeURIComponent(region)}&surface=${encodeURIComponent(surface)}`);
         target.replaceChildren();
         if (!data.ad) { target.textContent = "この地域に現在表示される広告はありません。"; return; }
         const title = document.createElement("strong"); title.textContent = data.ad.title;
@@ -2181,6 +2192,7 @@
     document.getElementById("regionalAdCancel").addEventListener("click", () => resetRegionalAdForm());
     document.getElementById("regionalAdRefresh").addEventListener("click", loadRegionalAds);
     document.getElementById("regionalAdPreviewRegion").addEventListener("change", previewRegionalAd);
+    document.getElementById("regionalAdPreviewSurface").addEventListener("change", previewRegionalAd);
     document.getElementById("regionalAdRows").addEventListener("click", async event => {
       const button = event.target.closest("button[data-id]");
       if (!button) return;
@@ -2204,8 +2216,10 @@
         id: editingRegionalAdId || crypto.randomUUID().replaceAll("-", ""),
         title:regionalAdField("Title").value.trim(), message:regionalAdField("Message").value.trim(),
         url:regionalAdField("Url").value.trim(), regions:[...document.querySelectorAll('#regionalAdTargets input:checked')].map(input => input.value),
+        surfaces:[...document.querySelectorAll('#regionalAdSurfaces input:checked')].map(input => input.value),
         starts_at:start, ends_at:end, enabled:regionalAdField("Enabled").checked,
       };
+      if (!ad.surfaces.length) { status.textContent = "表示場所を1つ以上選んでください。"; return; }
       const ads = editingRegionalAdId ? regionalAds.map(item => item.id === ad.id ? ad : item) : [...regionalAds, ad];
       status.textContent = "保存しています...";
       try {

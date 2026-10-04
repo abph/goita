@@ -5984,7 +5984,8 @@
           <select id="setAiProfile" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
             <option value="current">強化中AI</option>
             <option value="experimental_ai2">強化中AI2</option>
-            <option value="intermediate_middle2" selected>中級者（中2）</option>
+            <option value="intermediate_middle3" selected>中級者（中3）</option>
+            <option value="intermediate_middle2">中級者（中2）</option>
             <option value="intermediate_middle">中級者（中）</option>
             <option value="intermediate_lower">中級者（下）</option>
             <option value="beginner_upper">初級者（上）</option>
@@ -6411,7 +6412,7 @@
 <script src="/static/i18n.js?v=20260928d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
-<script src="/static/regionalAds.js?v=20260926a"></script>
+<script src="/static/regionalAds.js?v=20261004a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260906c").catch((error) => {
@@ -8678,6 +8679,16 @@ function isDebugRoomRequested() {
     return params.get("room") === DEBUG_GID;
 }
 
+function vrcSoloRoomRequestFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const roomId = String(params.get("room") || "").trim().toLowerCase();
+    if (!/^vrc-solo-[a-z0-9][a-z0-9-]{0,31}$/.test(roomId)) return null;
+    return {
+        roomId,
+        roomName: `AI Solo Goita Table (${roomId.slice("vrc-solo-".length)})`,
+    };
+}
+
 const DIRECT_ACCESS_PRIVATE_ROOMS = new Map([
     ["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
     ["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
@@ -8920,6 +8931,7 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 
 async function returnToLobby() {
     sessionStorage.removeItem("goitaScoreRoomOpen");
+    window.goitaRegionalAds?.sync?.("", "", "");
     closeDebugTrace(); closeTraceResult(); closeTraceHistory();
     closePracticeScenePicker();
     document.body.classList.remove("personal-score-room");
@@ -9538,6 +9550,8 @@ function populateAiProfileSelect(profiles, selected) {
     if (!sel) return;
     const fallback = {
         current: "強化中AI",
+        experimental_ai2: "強化中AI2",
+        intermediate_middle3: "中級者（中3）",
         intermediate_middle2: "中級者（中2）",
         intermediate_middle: "中級者（中）",
         intermediate_lower: "中級者（下）",
@@ -9551,8 +9565,8 @@ function populateAiProfileSelect(profiles, selected) {
         opt.textContent = uiText(label);
         sel.appendChild(opt);
     });
-    sel.value = selected || "intermediate_middle2";
-    if (!sel.value) sel.value = "intermediate_middle2";
+    sel.value = selected || "intermediate_middle3";
+    if (!sel.value) sel.value = "intermediate_middle3";
 }
 
 function renderAdminSeatManagement(seats = []) {
@@ -11437,7 +11451,7 @@ async function saveRoomManagement() {
     const newName = document.getElementById("setRoomName").value;
     const isUpdatePass = document.getElementById("checkUpdatePass").checked;
     const newPass = document.getElementById("setRoomPass").value;
-    const aiProfile = document.getElementById("setAiProfile")?.value || "intermediate_middle2";
+    const aiProfile = document.getElementById("setAiProfile")?.value || "intermediate_middle3";
     const showLegalActions = document.getElementById("checkShowLegalActions")?.checked === true;
     const showLog = document.getElementById("checkShowLog")?.checked === true;
     const requestBody = {
@@ -15906,7 +15920,13 @@ async function refreshFromState(confirmedState = null){
   syncMemberKifuControls();
   trackAnalyticsGameState(state);
   window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null, state.public_room_ad || null);
-  window.goitaRegionalAds?.sync?.(isMainRoomId(gid), gid);
+  const regionalAdSurface = isMainRoomId(gid)
+    ? "public_room"
+    : (isPersonalScoreRoom(gid) && state.trace_mode ? "score_attack" : "");
+  const regionalAdExposure = regionalAdSurface === "score_attack"
+    ? String(state.trace_attempt_id || "active")
+    : gid;
+  window.goitaRegionalAds?.sync?.(regionalAdSurface, gid, regionalAdExposure);
   if(await maybeAutoRevealOwnAndAiHands(state)){
     window.setTimeout(() => refresh(), 0);
     return;
@@ -16362,6 +16382,12 @@ window.addEventListener("load", async ()=>{
       return;
     }
     openDebugRoomAccess();
+    return;
+  }
+
+  const vrcSoloRoom = vrcSoloRoomRequestFromUrl();
+  if (vrcSoloRoom) {
+    await enterRoom(vrcSoloRoom.roomId, vrcSoloRoom.roomName);
     return;
   }
 

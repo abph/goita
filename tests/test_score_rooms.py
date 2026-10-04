@@ -63,6 +63,7 @@ def test_entry_reconnect_before_first_attempt_and_owner_access(trace_client):
     assert state["owned_human_seats"] == ["A"]
     assert state["ai_seats"] == ["B", "C", "D"]
     assert state["is_score_attack_room"]
+    assert state["ai_profile"] == "intermediate_middle3"
     listing = client.get("/games/list").json()
     assert room not in str(listing)
     other = TestClient(game_app.app, headers={"X-Goita-Member": "1"})
@@ -85,6 +86,7 @@ def test_fixed_conditions_and_end_to_end_result_retry_reset(trace_client):
     client = trace_client
     room = enter(client)
     attempt = begin(client, room)
+    assert game_app.GAMES[room]["ai_profile"] == "intermediate_middle3"
     for endpoint in ["claim?seat=B", "release?seat=A", "set_ai?seat=B", "reveal_hand?target=B", "toggle_reveal_hands",
                      "reset", "reset_config", "start", "auto_step?player=A", "turn_time_limit", "deal_mode",
                      "trace_start", "trace_same_start", "update_settings", "verify_admin"]:

@@ -47,17 +47,40 @@ def test_regional_ad_takes_priority_and_unknown_location_uses_common_ad() -> Non
     assert select_ad(ads, "関東", now=datetime(2026, 9, 24, tzinfo=timezone.utc)) is None
 
 
+def test_regional_ads_can_target_public_rooms_and_score_attack_separately() -> None:
+    ads = normalize_ads([
+        ad("public-ad", ["関東"], surfaces=["public_room"]),
+        ad("score-ad", ["関東"], surfaces=["score_attack"]),
+    ])
+    assert select_ad(ads, "関東", surface="public_room", now=NOW)["id"] == "public-ad"
+    assert select_ad(ads, "関東", surface="score_attack", now=NOW)["id"] == "score-ad"
+    assert select_ad(ads, "関東", surface="unknown", now=NOW) is None
+
+
+def test_existing_regional_ads_default_to_public_rooms() -> None:
+    normalized = normalize_ads([ad("public-ad", [])])
+    assert normalized[0]["surfaces"] == ["public_room"]
+    assert select_ad(normalized, "", surface="score_attack", now=NOW) is None
+
+
 def test_overlapping_enabled_ads_in_same_region_are_rejected() -> None:
     with pytest.raises(HTTPException) as error:
         normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東", "関西"])])
     assert error.value.status_code == 400
     normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東"], enabled=False)])
     normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東"], starts_at="2026-09-23T00:00:00+00:00", ends_at="2026-09-24T00:00:00+00:00")])
+    normalize_ads([
+        ad("first-ad", ["関東"], surfaces=["public_room"]),
+        ad("second-ad", ["関東"], surfaces=["score_attack"]),
+    ])
 
 
 def test_invalid_region_payload_is_rejected_cleanly() -> None:
     with pytest.raises(HTTPException) as error:
         normalize_ads([ad("broken-ad", [["関東"]])])
+    assert error.value.status_code == 400
+    with pytest.raises(HTTPException) as error:
+        normalize_ads([ad("broken-ad", ["関東"], surfaces=["score_attack", "unknown"])])
     assert error.value.status_code == 400
 
 
@@ -91,7 +114,7 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     monkeypatch.setattr(
         app_module,
         "REGIONAL_AD_SETTINGS",
-        normalize_ads([ad("kanto-ad", ["関東"], **period)]),
+        normalize_ads([ad("kanto-ad", ["関東"], surfaces=["public_room", "score_attack"], **period)]),
     )
     monkeypatch.setattr(app_module, "ANALYTICS_STORE", store)
     monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
@@ -104,11 +127,11 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     })
 
     assert app_module.record_regional_ad_metric(
-        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="impression"),
+        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="impression", surface="score_attack"),
         request,
     ) == {"ok": True}
     assert app_module.record_regional_ad_metric(
-        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="click"),
+        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="click", surface="score_attack"),
         request,
     ) == {"ok": True}
     payload = app_module.admin_regional_ads(request)
@@ -116,6 +139,12 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     assert payload["metrics"]["kanto-ad"]["impressions"] == 1
     assert payload["metrics"]["kanto-ad"]["clicks"] == 1
     assert payload["metrics"]["kanto-ad"]["click_rate"] == 100.0
+    assert payload["metrics"]["kanto-ad"]["surfaces"] == [{
+        "surface": "score_attack",
+        "impressions": 1,
+        "clicks": 1,
+        "click_rate": 100.0,
+    }]
 
     with pytest.raises(HTTPException) as error:
         app_module.record_regional_ad_metric(
@@ -128,12 +157,16 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
 def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     script = (ROOT / "frontend" / "regionalAds.js").read_text(encoding="utf-8")
     admin = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
-    assert 'recordMetric(ad.id, "impression")' in script
-    assert 'recordMetric(ad.dataset.adId, "click", true)' in script
+    index = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'recordMetric(ad.id, "impression", surface)' in script
+    assert 'ad.dataset.surface || "public_room"' in script
     assert '"/api/regional-ad/metric"' in script
-    assert "表示回数・クリック回数・クリック率" in admin
+    assert "表示場所別・地方別・直近30日" in admin
+    assert 'value="score_attack"' in admin
     assert "CTR" in admin
     assert "regionalAdMetrics" in admin
+    assert 'state.trace_attempt_id || "active"' in index
+    assert '"score_attack"' in index
 
 
 def test_admin_save_failure_restores_previous_ads(tmp_path, monkeypatch) -> None:

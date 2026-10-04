@@ -295,6 +295,9 @@ def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path:
     assert store.record_regional_ad_metric("short", "関東", "click") is False
     assert store.record_regional_ad_metric("kanto-ad", "北陸", "click") is False
     assert store.record_regional_ad_metric("kanto-ad", "関東", "close") is False
+    assert store.record_regional_ad_metric(
+        "kanto-ad", "関東", "click", surface="unknown"
+    ) is False
 
     metrics = store.regional_ad_metrics(
         ["kanto-ad", "unused-ad"], recent_days=30, now=after_midnight_jst
@@ -328,4 +331,33 @@ def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path:
         "impressions",
         "clicks",
         "updated_at",
+    }
+
+
+def test_regional_ad_metrics_include_display_surface_breakdown(tmp_path: Path) -> None:
+    store = AnalyticsStore(tmp_path / "analytics.sqlite3")
+    now = datetime(2026, 10, 4, 3, 0, tzinfo=timezone.utc)
+
+    assert store.record_regional_ad_metric(
+        "surface-ad", "関東", "impression", surface="public_room", now=now
+    ) is True
+    assert store.record_regional_ad_metric(
+        "surface-ad", "関東", "impression", surface="score_attack", now=now
+    ) is True
+    assert store.record_regional_ad_metric(
+        "surface-ad", "関東", "click", surface="score_attack", now=now
+    ) is True
+
+    metrics = store.regional_ad_metrics(["surface-ad"], now=now)["surface-ad"]
+    assert metrics["impressions"] == 2
+    assert metrics["clicks"] == 1
+    assert {item["surface"]: item for item in metrics["surfaces"]} == {
+        "public_room": {
+            "surface": "public_room", "impressions": 1,
+            "clicks": 0, "click_rate": 0.0,
+        },
+        "score_attack": {
+            "surface": "score_attack", "impressions": 1,
+            "clicks": 1, "click_rate": 100.0,
+        },
     }

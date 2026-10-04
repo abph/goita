@@ -24,6 +24,7 @@ ANALYTICS_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
 REGIONAL_AD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 REGIONAL_AD_EVENTS = frozenset({"impression", "click"})
+REGIONAL_AD_SURFACES = frozenset({"public_room", "score_attack"})
 REGIONAL_AD_REGIONS = frozenset({
     "北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄", "不明",
 })
@@ -231,6 +232,18 @@ class AnalyticsStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_regional_ad_metrics_ad_date
                     ON regional_ad_daily_metrics(ad_id, metric_date DESC);
+                    CREATE TABLE IF NOT EXISTS regional_ad_surface_daily_metrics (
+                        metric_date TEXT NOT NULL,
+                        ad_id TEXT NOT NULL,
+                        region TEXT NOT NULL,
+                        surface TEXT NOT NULL,
+                        impressions INTEGER NOT NULL DEFAULT 0,
+                        clicks INTEGER NOT NULL DEFAULT 0,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (metric_date, ad_id, region, surface)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_regional_ad_surface_metrics_ad_date
+                    ON regional_ad_surface_daily_metrics(ad_id, metric_date DESC);
                     """
                 )
                 session_columns = {
@@ -369,6 +382,7 @@ class AnalyticsStore:
         region: str,
         event_name: str,
         *,
+        surface: str = "public_room",
         now: Optional[datetime] = None,
     ) -> bool:
         """Increment one privacy-limited regional advertisement aggregate."""
@@ -376,10 +390,12 @@ class AnalyticsStore:
         clean_ad_id = _clean_text(ad_id, 64)
         clean_region = _clean_text(region, 16) or "不明"
         clean_event = _clean_text(event_name, 16)
+        clean_surface = _clean_text(surface, 24)
         if (
             not REGIONAL_AD_ID_RE.fullmatch(clean_ad_id)
             or clean_region not in REGIONAL_AD_REGIONS
             or clean_event not in REGIONAL_AD_EVENTS
+            or clean_surface not in REGIONAL_AD_SURFACES
         ):
             return False
 
@@ -407,6 +423,27 @@ class AnalyticsStore:
                     metric_date,
                     clean_ad_id,
                     clean_region,
+                    impressions,
+                    clicks,
+                    updated_at,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO regional_ad_surface_daily_metrics (
+                    metric_date, ad_id, region, surface,
+                    impressions, clicks, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(metric_date, ad_id, region, surface) DO UPDATE SET
+                    impressions = impressions + excluded.impressions,
+                    clicks = clicks + excluded.clicks,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    metric_date,
+                    clean_ad_id,
+                    clean_region,
+                    clean_surface,
                     impressions,
                     clicks,
                     updated_at,
@@ -455,6 +492,16 @@ class AnalyticsStore:
         query += " ORDER BY metric_date DESC, region"
         with closing(self._connect()) as connection:
             rows = connection.execute(query, parameters).fetchall()
+            surface_query = (
+                "SELECT metric_date, ad_id, region, surface, impressions, clicks "
+                "FROM regional_ad_surface_daily_metrics"
+            )
+            if requested_ids:
+                surface_query += " WHERE ad_id IN ({})".format(
+                    ",".join("?" for _ in requested_ids)
+                )
+            surface_query += " ORDER BY metric_date DESC, surface, region"
+            surface_rows = connection.execute(surface_query, parameters).fetchall()
 
         result: dict[str, dict[str, Any]] = {
             ad_id: {
@@ -463,6 +510,8 @@ class AnalyticsStore:
                 "click_rate": 0.0,
                 "regions": {},
                 "daily": [],
+                "surfaces": {},
+                "surface_daily": [],
             }
             for ad_id in requested_ids
         }
@@ -474,6 +523,8 @@ class AnalyticsStore:
                 "click_rate": 0.0,
                 "regions": {},
                 "daily": [],
+                "surfaces": {},
+                "surface_daily": [],
             })
             impressions = int(row["impressions"])
             clicks = int(row["clicks"])
@@ -490,6 +541,35 @@ class AnalyticsStore:
                 metrics["daily"].append({
                     "date": str(row["metric_date"]),
                     "region": region,
+                    "impressions": impressions,
+                    "clicks": clicks,
+                })
+
+        for row in surface_rows:
+            ad_id = str(row["ad_id"])
+            metrics = result.setdefault(ad_id, {
+                "impressions": 0,
+                "clicks": 0,
+                "click_rate": 0.0,
+                "regions": {},
+                "daily": [],
+                "surfaces": {},
+                "surface_daily": [],
+            })
+            impressions = int(row["impressions"])
+            clicks = int(row["clicks"])
+            surface = str(row["surface"])
+            surface_metrics = metrics["surfaces"].setdefault(
+                surface,
+                {"surface": surface, "impressions": 0, "clicks": 0},
+            )
+            surface_metrics["impressions"] += impressions
+            surface_metrics["clicks"] += clicks
+            if str(row["metric_date"]) >= cutoff:
+                metrics["surface_daily"].append({
+                    "date": str(row["metric_date"]),
+                    "region": str(row["region"]),
+                    "surface": surface,
                     "impressions": impressions,
                     "clicks": clicks,
                 })
@@ -512,6 +592,17 @@ class AnalyticsStore:
                 key=lambda item: (-item["impressions"], -item["clicks"], item["region"])
             )
             metrics["regions"] = regions
+            surfaces = list(metrics["surfaces"].values())
+            for item in surfaces:
+                item["click_rate"] = round(
+                    (item["clicks"] / item["impressions"] * 100.0)
+                    if item["impressions"] else 0.0,
+                    1,
+                )
+            surfaces.sort(
+                key=lambda item: (-item["impressions"], -item["clicks"], item["surface"])
+            )
+            metrics["surfaces"] = surfaces
         return result
 
     def delete_visitor(self, analytics_id: str) -> bool:

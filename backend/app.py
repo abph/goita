@@ -35,6 +35,7 @@ from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperR
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle2 import RuleBasedAgent as IntermediateMiddle2RuleBasedAgent
+from goita_ai2.rule_based_intermediate_middle3 import RuleBasedAgent as IntermediateMiddle3RuleBasedAgent
 from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
 from goita_ai2.simulate import _notify_public
 from goita_ai2.utils import create_random_hands
@@ -79,7 +80,13 @@ from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.survey_store import SurveyStore, resolve_survey_path
 from backend.survey_api import create_survey_router
 from backend.analytics_geo import infer_country_code, infer_prefecture
-from backend.regional_ads import REGIONS as REGIONAL_AD_REGIONS, infer_region, normalize_ads as normalize_regional_ads, select_ad as select_regional_ad
+from backend.regional_ads import (
+    REGIONS as REGIONAL_AD_REGIONS,
+    SURFACES as REGIONAL_AD_SURFACES,
+    infer_region,
+    normalize_ads as normalize_regional_ads,
+    select_ad as select_regional_ad,
+)
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
@@ -269,10 +276,11 @@ TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 DEAL_MODE_OPTIONS = frozenset({"normal", "balanced", "frequent", "frequent_200"})
 VOICE_SIGNAL_MAX_CHARS = 64_000
 VOICE_SIGNAL_TYPES = frozenset({"offer", "answer", "ice"})
-DEFAULT_AI_PROFILE = "intermediate_middle2"
+DEFAULT_AI_PROFILE = "intermediate_middle3"
 AI_PROFILES: Dict[str, Dict[str, Any]] = {
     "current": {"label": "強化中AI", "class": RuleBasedAgent},
     "experimental_ai2": {"label": "強化中AI2", "class": ExperimentalAI2RuleBasedAgent},
+    "intermediate_middle3": {"label": "中級者（中3）", "class": IntermediateMiddle3RuleBasedAgent},
     "intermediate_middle2": {"label": "中級者（中2）", "class": IntermediateMiddle2RuleBasedAgent},
     "intermediate_middle": {"label": "中級者（中）", "class": IntermediateMiddleRuleBasedAgent},
     "intermediate_lower": {"label": "中級者（下）", "class": IntermediateLowerRuleBasedAgent},
@@ -2528,6 +2536,7 @@ class AnalyticsDeleteRequest(BaseModel):
 class RegionalAdMetricRequest(BaseModel):
     ad_id: str = Field(min_length=8, max_length=64)
     event: Literal["impression", "click"]
+    surface: Literal["public_room", "score_attack"] = "public_room"
 
 
 @app.post("/analytics/event")
@@ -3749,7 +3758,7 @@ def setup_debug_room() -> None:
     if DEBUG_GID in GAMES:
         return
 
-    room = _create_game_obj(dealer="A", ai_profile="current")
+    room = _create_game_obj(dealer="A", ai_profile="experimental_ai2")
     room["password"] = debug_password
     room["admin_password"] = debug_password
     room["owner_name"] = "デバッグルーム"
@@ -4072,6 +4081,10 @@ def _load_persisted_room_management_settings() -> None:
         settings = stored_rooms.get(game_id)
         if game is not None and settings is not None:
             _apply_room_management_settings(game_id, game, settings)
+    debug_game = GAMES.get(DEBUG_GID)
+    if debug_game is not None:
+        debug_game["ai_profile"] = "experimental_ai2"
+        debug_game["agents"] = _create_agents("experimental_ai2")
 
 
 def _save_persisted_room_management_settings() -> bool:
@@ -5294,6 +5307,7 @@ def _apply_agent_turn(
     current_ai = _normalize_ai_profile(game.get("ai_profile")) in {
         "current",
         "experimental_ai2",
+        "intermediate_middle3",
     }
     if hasattr(agent, "GENERIC_RESPONSE_NARROWING_ENABLED"):
         agent.GENERIC_RESPONSE_NARROWING_ENABLED = bool(
@@ -5386,6 +5400,407 @@ def _apply_agent_turn(
 
     _handle_round_finish(game, state, agent_action, effects)
     return {"status": "ok", "player": player}
+
+
+# =========================================================
+# VRChat AI Solo Goita bridge
+# =========================================================
+
+VRC_SOLO_ROOM_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+VRC_SOLO_CLIENT_PREFIX = "vrc-solo:"
+VRC_SOLO_MAX_AI_ACTIONS = 64
+
+
+def _vrc_solo_ids(room_id: str) -> Tuple[str, str]:
+    normalized = str(room_id or "").strip().lower()
+    if not VRC_SOLO_ROOM_RE.fullmatch(normalized):
+        raise ValueError("invalid_room")
+    return f"vrc-solo-{normalized}", f"{VRC_SOLO_CLIENT_PREFIX}{normalized}"
+
+
+def _vrc_solo_response(body: str) -> PlainTextResponse:
+    return PlainTextResponse(
+        body,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _vrc_solo_error(code: str, message: str = "") -> PlainTextResponse:
+    safe_code = re.sub(r"[^a-z0-9_-]", "", str(code or "error").lower()) or "error"
+    safe_message = str(message or "").replace("|", "/").replace("\r", " ").replace("\n", " ")
+    return _vrc_solo_response(f"E1|code={safe_code}|message={safe_message}")
+
+
+def _create_vrc_solo_game(
+    room_id: str,
+    previous: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    game_id, client_id = _vrc_solo_ids(room_id)
+    next_dealer = random.choice(list(ALL_SEATS))
+    if previous is not None and not previous.get("match_finished"):
+        winner = getattr(previous.get("state"), "winner", None)
+        if winner in ALL_SEATS:
+            next_dealer = winner
+    game = _create_game_obj(
+        dealer=next_dealer,
+        ai_profile="current",
+    )
+    if previous is not None and not previous.get("match_finished"):
+        _preserve_match_progress(game, previous)
+    game["human_seats"] = {"A": client_id}
+    game["ai_seats"] = ["B", "C", "D"]
+    game["player_names"] = {
+        "A": "VRChat Player",
+        "B": "そろうAI B",
+        "C": "そろうAI C",
+        "D": "そろうAI D",
+    }
+    game["owner_name"] = f"AI Solo Goita Table ({room_id})"
+    game["hidden_from_lobby"] = True
+    game["is_started"] = True
+    game["show_log"] = False
+    game["log"] = [f"VRC solo game start. dealer={game['dealer']}"]
+    game["vrc_solo_room"] = room_id
+    game["vrc_pending"] = None
+    game["vrc_last_request"] = None
+    game["action_state_nonce"] = secrets.token_hex(24)
+    GAMES[game_id] = game
+    return game_id, game
+
+
+def _vrc_solo_game(room_id: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+    game_id, _client_id = _vrc_solo_ids(room_id)
+    game = GAMES.get(game_id)
+    if not isinstance(game, dict) or game.get("vrc_solo_room") != room_id:
+        return game_id, None
+    return game_id, game
+
+
+def _vrc_solo_apply_action(
+    game: Dict[str, Any],
+    player: str,
+    action: Tuple[str, Optional[str], Optional[str]],
+) -> None:
+    state: GoitaState = game["state"]
+    if state.finished or state.turn != player or action not in state.legal_actions(player):
+        raise ValueError("illegal_action")
+
+    agents: Dict[str, RuleBasedAgent] = game["agents"]
+    board = game.setdefault("board", _new_board_snapshot())
+    effects = _check_effects(state, player, action, board, game.get("dealer", "A"))
+    before_fd = len(state.face_down_hidden[player])
+    _apply_action(state, player, action)
+    hidden_receive = _is_hidden_receive_by_state_delta(state, player, action[0], before_fd)
+    if _visible_receive_for_score_effect(action, effects):
+        hidden_receive = False
+    _update_board_snapshot(board, player, action, hidden_receive=hidden_receive)
+    _record_public_action(game, player, action)
+
+    log_str = _format_action(player, action) + (" (hidden)" if hidden_receive else "")
+    for effect in effects:
+        log_str += f" [EFFECT:{effect}]"
+    game.setdefault("log", []).append(log_str)
+    game.setdefault("kifu_moves", []).append(_action_to_kifu_row(player, action))
+    _notify_public(agents, state, player, action)
+    _notify_public(game.get("beginner_support_agents", {}), state, player, action)
+    _schedule_ai_background_search(game, action)
+    _handle_round_finish(game, state, action, effects)
+
+
+async def _vrc_solo_run_ai(game: Dict[str, Any]) -> None:
+    state: GoitaState = game["state"]
+    ai_seats = _ai_seat_set(game)
+    applied = 0
+    while not state.finished and state.turn in ai_seats:
+        result = await asyncio.to_thread(_apply_agent_turn, game, state.turn)
+        if result.get("status") != "ok":
+            raise RuntimeError(str(result.get("status") or "ai_error"))
+        applied += 1
+        if applied >= VRC_SOLO_MAX_AI_ACTIONS:
+            raise RuntimeError("ai_action_limit")
+
+
+def _vrc_solo_digits(values: Any, length: int) -> str:
+    items = list(values) if isinstance(values, (list, tuple)) else []
+    encoded = []
+    for index in range(length):
+        value = items[index] if index < len(items) else None
+        piece = str(value) if value is not None else "0"
+        encoded.append(piece if piece in PIECE_POINTS else "0")
+    return "".join(encoded)
+
+
+def _vrc_solo_hand_value(state: GoitaState, seat: str, reveal: bool) -> str:
+    hand = list(state.hands.get(seat, []))
+    return "".join(str(piece) for piece in hand) if reveal else f"#{len(hand)}"
+
+
+def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
+    state: GoitaState = game["state"]
+    board = game.get("board") or _new_board_snapshot()
+    board_digits = []
+    hidden_bits = []
+    for seat in ALL_SEATS:
+        seat_board = board.get(seat, {}) if isinstance(board, dict) else {}
+        board_digits.append(_vrc_solo_digits(seat_board.get("receive"), 4))
+        board_digits.append(_vrc_solo_digits(seat_board.get("attack"), 4))
+        receive_hidden = seat_board.get("receive_hidden", [])
+        hidden_bits.extend(
+            "1" if index < len(receive_hidden) and receive_hidden[index] else "0"
+            for index in range(4)
+        )
+
+    legal = state.legal_actions("A") if not state.finished and state.turn == "A" else []
+    legal_receive = sorted({str(action[1]) for action in legal if action[0] == "receive" and action[1]})
+    legal_block = sorted({str(action[1]) for action in legal if action[0] == "attack_after_block" and action[1]})
+    legal_attack = sorted({str(action[2]) for action in legal if action[0] in {"attack", "attack_after_block"} and action[2]})
+    block_pairs = ["0"] * 81
+    receive_pairs = ["0"] * 81
+    for action in legal:
+        if action[0] == "attack_after_block" and action[1] and action[2]:
+            index = (int(action[1]) - 1) * 9 + int(action[2]) - 1
+            block_pairs[index] = "1"
+        if action[0] != "receive" or not action[1]:
+            continue
+        shadow = copy.deepcopy(state)
+        try:
+            _apply_action(shadow, "A", action)
+        except ValueError:
+            continue
+        for followup in shadow.legal_actions("A"):
+            if followup[0] != "attack" or not followup[2]:
+                continue
+            index = (int(action[1]) - 1) * 9 + int(followup[2]) - 1
+            receive_pairs[index] = "1"
+    last_action = game.get("last_public_action") or {}
+    last_type = str(last_action.get("type") or "")
+    last_code = "P" if last_type == "pass" else "M" if last_type else "-"
+    reveal_all = bool(state.finished)
+    score = game.get("total_team_score") or {"AC": 0, "BD": 0}
+
+    fields = [
+        "G1",
+        f"v={int(game.get('update_version', 0))}",
+        f"turn={state.turn if state.turn in ALL_SEATS else '-'}",
+        f"phase={state.phase or '-'}",
+        f"attacker={state.attacker if state.attacker in ALL_SEATS else '-'}",
+        f"current={state.current_attack or '0'}",
+        f"dealer={game.get('dealer', 'A')}",
+        f"finished={1 if state.finished else 0}",
+        f"winner={state.winner if state.winner in ALL_SEATS else '-'}",
+        f"match={1 if game.get('match_finished') else 0}",
+        f"matchwinner={game.get('match_winner') or '-'}",
+        f"roundscore={int(game.get('last_round_score', 0))}",
+        f"scoreac={int(score.get('AC', 0))}",
+        f"scorebd={int(score.get('BD', 0))}",
+        f"ha={_vrc_solo_hand_value(state, 'A', True)}",
+        f"hb={_vrc_solo_hand_value(state, 'B', reveal_all)}",
+        f"hc={_vrc_solo_hand_value(state, 'C', reveal_all)}",
+        f"hd={_vrc_solo_hand_value(state, 'D', reveal_all)}",
+        f"board={''.join(board_digits)}",
+        f"hidden={''.join(hidden_bits)}",
+        f"lr={''.join(legal_receive)}",
+        f"lb={''.join(legal_block)}",
+        f"la={''.join(legal_attack)}",
+        f"bp={''.join(block_pairs)}",
+        f"rp={''.join(receive_pairs)}",
+        f"pass={1 if any(action[0] == 'pass' for action in legal) else 0}",
+        f"last={last_action.get('player', '-')}{last_code}",
+    ]
+    return "|".join(fields)
+
+
+def _vrc_solo_piece(piece: int) -> Optional[str]:
+    value = str(piece)
+    return value if value in PIECE_POINTS else None
+
+
+def _vrc_solo_pending_response(kind: str, piece: str) -> PlainTextResponse:
+    return _vrc_solo_response(f"R1|kind={kind}|piece={piece}")
+
+
+def _vrc_solo_recent_response(game: Dict[str, Any], command: str, seconds: float = 4.0) -> Optional[str]:
+    recent = game.get("vrc_last_request")
+    if not isinstance(recent, dict) or recent.get("command") != command:
+        return None
+    if time.monotonic() - float(recent.get("at", 0.0)) > seconds:
+        return None
+    return str(recent.get("response") or "")
+
+
+def _vrc_solo_remember_response(game: Dict[str, Any], command: str, response: str) -> None:
+    game["vrc_last_request"] = {
+        "command": command,
+        "at": time.monotonic(),
+        "response": response,
+    }
+
+
+@app.get("/vrc/solo/{room_id}/start", response_class=PlainTextResponse)
+async def vrc_solo_start(room_id: str):
+    try:
+        game_id, _client_id = _vrc_solo_ids(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room", "Room IDs use lowercase letters, numbers, and hyphens.")
+    async with _game_turn_lock(game_id):
+        _existing_id, existing = _vrc_solo_game(room_id)
+        if existing is not None:
+            cached = _vrc_solo_recent_response(existing, "start", 10.0)
+            if cached:
+                return _vrc_solo_response(cached)
+            existing_state = existing.get("state")
+            if existing.get("is_started") and existing_state is not None and not existing_state.finished:
+                response = _vrc_solo_snapshot(existing)
+                _vrc_solo_remember_response(existing, "start", response)
+                return _vrc_solo_response(response)
+        game_id, game = _create_vrc_solo_game(room_id, previous=existing)
+        try:
+            await _vrc_solo_run_ai(game)
+        except RuntimeError as error:
+            return _vrc_solo_error("ai_error", str(error))
+        await manager.broadcast_update(game_id)
+        response = _vrc_solo_snapshot(game)
+        _vrc_solo_remember_response(game, "start", response)
+        return _vrc_solo_response(response)
+
+
+@app.get("/vrc/solo/{room_id}/state", response_class=PlainTextResponse)
+async def vrc_solo_state(room_id: str):
+    try:
+        _game_id, game = _vrc_solo_game(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    if game is None:
+        return _vrc_solo_error("not_started", "Press START on the table.")
+    return _vrc_solo_response(_vrc_solo_snapshot(game))
+
+
+async def _vrc_solo_select(room_id: str, kind: str, piece: int) -> PlainTextResponse:
+    value = _vrc_solo_piece(piece)
+    if value is None:
+        return _vrc_solo_error("invalid_piece")
+    try:
+        game_id, game = _vrc_solo_game(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    if game is None:
+        return _vrc_solo_error("not_started")
+    async with _game_turn_lock(game_id):
+        state: GoitaState = game["state"]
+        if state.finished or state.turn != "A":
+            return _vrc_solo_error("not_your_turn")
+        legal = state.legal_actions("A")
+        if kind == "block":
+            valid = any(action[0] == "attack_after_block" and action[1] == value for action in legal)
+        else:
+            valid = any(action[0] == "receive" and action[1] == value for action in legal)
+        if not valid:
+            return _vrc_solo_error("illegal_selection")
+        game["vrc_pending"] = {
+            "kind": kind,
+            "piece": value,
+            "at": time.monotonic(),
+            "action_token": _action_state_token(game, state),
+        }
+        return _vrc_solo_pending_response(kind, value)
+
+
+@app.get("/vrc/solo/{room_id}/block/{piece}", response_class=PlainTextResponse)
+async def vrc_solo_block(room_id: str, piece: int):
+    return await _vrc_solo_select(room_id, "block", piece)
+
+
+@app.get("/vrc/solo/{room_id}/receive/{piece}", response_class=PlainTextResponse)
+async def vrc_solo_receive(room_id: str, piece: int):
+    return await _vrc_solo_select(room_id, "receive", piece)
+
+
+@app.get("/vrc/solo/{room_id}/attack/{piece}", response_class=PlainTextResponse)
+async def vrc_solo_attack(room_id: str, piece: int):
+    attack = _vrc_solo_piece(piece)
+    if attack is None:
+        return _vrc_solo_error("invalid_piece")
+    try:
+        game_id, game = _vrc_solo_game(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    if game is None:
+        return _vrc_solo_error("not_started")
+    command = f"attack:{attack}"
+    async with _game_turn_lock(game_id):
+        cached = _vrc_solo_recent_response(game, command)
+        if cached:
+            return _vrc_solo_response(cached)
+        pending = game.get("vrc_pending")
+        state: GoitaState = game["state"]
+        if not isinstance(pending, dict):
+            return _vrc_solo_error("missing_selection")
+        if pending.get("action_token") != _action_state_token(game, state):
+            game["vrc_pending"] = None
+            return _vrc_solo_error("stale_selection")
+        selected = str(pending.get("piece") or "")
+        kind = str(pending.get("kind") or "")
+        actions: List[Tuple[str, Optional[str], Optional[str]]]
+        if kind == "block":
+            actions = [("attack_after_block", selected, attack)]
+        elif kind == "receive":
+            actions = [("receive", selected, None), ("attack", None, attack)]
+        else:
+            return _vrc_solo_error("invalid_selection")
+
+        shadow = copy.deepcopy(state)
+        try:
+            for action in actions:
+                if action not in shadow.legal_actions("A"):
+                    raise ValueError("illegal_action")
+                _apply_action(shadow, "A", action)
+        except ValueError:
+            return _vrc_solo_error("illegal_pair")
+
+        game["vrc_pending"] = None
+        try:
+            for action in actions:
+                _vrc_solo_apply_action(game, "A", action)
+            await _vrc_solo_run_ai(game)
+        except (ValueError, RuntimeError) as error:
+            return _vrc_solo_error("action_failed", str(error))
+        await manager.broadcast_update(game_id)
+        response = _vrc_solo_snapshot(game)
+        _vrc_solo_remember_response(game, command, response)
+        return _vrc_solo_response(response)
+
+
+@app.get("/vrc/solo/{room_id}/pass", response_class=PlainTextResponse)
+async def vrc_solo_pass(room_id: str):
+    try:
+        game_id, game = _vrc_solo_game(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    if game is None:
+        return _vrc_solo_error("not_started")
+    async with _game_turn_lock(game_id):
+        cached = _vrc_solo_recent_response(game, "pass")
+        if cached:
+            return _vrc_solo_response(cached)
+        state: GoitaState = game["state"]
+        action = ("pass", None, None)
+        if state.finished or state.turn != "A" or action not in state.legal_actions("A"):
+            return _vrc_solo_error("illegal_pass")
+        game["vrc_pending"] = None
+        try:
+            _vrc_solo_apply_action(game, "A", action)
+            await _vrc_solo_run_ai(game)
+        except (ValueError, RuntimeError) as error:
+            return _vrc_solo_error("action_failed", str(error))
+        await manager.broadcast_update(game_id)
+        response = _vrc_solo_snapshot(game)
+        _vrc_solo_remember_response(game, "pass", response)
+        return _vrc_solo_response(response)
 
 
 @app.get("/games/list")
@@ -5498,12 +5913,22 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             if not person.get("name_is_default") and person.get("name") != "＊＊＊＊":
                 try:
                     connection = next(iter(connections))
-                    member_token = connection.cookies.get(MEMBER_COOKIE, "")
-                    if member_token not in reward_title_cache:
-                        reward_title_cache[member_token] = MEMBER_STORE.active_score_title_for_token(member_token)
-                    title = reward_title_cache[member_token]
-                    if title:
-                        person["score_title"] = title
+                    cookies = getattr(connection, "cookies", {})
+                    member_token = (
+                        cookies.get(MEMBER_COOKIE, "")
+                        if hasattr(cookies, "get")
+                        else ""
+                    )
+                    if member_token:
+                        if member_token not in reward_title_cache:
+                            reward_title_cache[member_token] = (
+                                MEMBER_STORE.active_score_title_for_token(
+                                    member_token
+                                )
+                            )
+                        title = reward_title_cache[member_token]
+                        if title:
+                            person["score_title"] = title
                 except (MemberError, StopIteration):
                     pass
             if previous is None or priority > previous[0]:
@@ -5902,9 +6327,11 @@ def admin_settings(request: Request):
 
 
 @app.get("/api/regional-ad")
-def public_regional_ad(request: Request):
+def public_regional_ad(request: Request, surface: str = "public_room"):
+    if surface not in REGIONAL_AD_SURFACES:
+        raise HTTPException(400, "広告の表示場所が正しくありません")
     region = infer_region(request.headers)
-    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
+    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region, surface=surface)
     ad = ({key: selected[key] for key in ("id", "title", "message", "url")}
           if selected else None)
     return JSONResponse({"ad": ad}, headers={"Cache-Control": "no-store"})
@@ -5913,7 +6340,11 @@ def public_regional_ad(request: Request):
 @app.post("/api/regional-ad/metric")
 def record_regional_ad_metric(req: RegionalAdMetricRequest, request: Request):
     region = infer_region(request.headers)
-    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
+    selected = select_regional_ad(
+        REGIONAL_AD_SETTINGS,
+        region,
+        surface=req.surface,
+    )
     if selected is None or selected["id"] != req.ad_id:
         raise HTTPException(400, "現在表示中の地域別広告ではありません")
     if req.event == "click" and not selected.get("url"):
@@ -5922,6 +6353,7 @@ def record_regional_ad_metric(req: RegionalAdMetricRequest, request: Request):
         req.ad_id,
         region or "不明",
         req.event,
+        surface=req.surface,
     ):
         raise HTTPException(400, "地域別広告の実績を記録できませんでした")
     return {"ok": True}
@@ -5932,6 +6364,7 @@ def _regional_ad_admin_payload() -> Dict[str, Any]:
     return {
         "ads": ads,
         "regions": REGIONAL_AD_REGIONS,
+        "surfaces": REGIONAL_AD_SURFACES,
         "metrics": ANALYTICS_STORE.regional_ad_metrics(
             [str(ad.get("id", "")) for ad in ads],
             recent_days=30,
@@ -5959,12 +6392,22 @@ def admin_update_regional_ads(request: Request, payload: Dict[str, Any] = Body(.
 
 
 @app.get("/admin/api/regional-ads/preview")
-def admin_regional_ads_preview(request: Request, region: str = ""):
+def admin_regional_ads_preview(
+    request: Request,
+    region: str = "",
+    surface: str = "public_room",
+):
     _require_site_admin(request)
     if region and region not in REGIONAL_AD_REGIONS:
         raise HTTPException(400, "対象地方が正しくありません")
-    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region)
-    return {"region": region, "ad": copy.deepcopy(selected)}
+    if surface not in REGIONAL_AD_SURFACES:
+        raise HTTPException(400, "広告の表示場所が正しくありません")
+    selected = select_regional_ad(
+        REGIONAL_AD_SETTINGS,
+        region,
+        surface=surface,
+    )
+    return {"region": region, "surface": surface, "ad": copy.deepcopy(selected)}
 
 
 @app.get("/admin/api/ai-metrics/export")
@@ -6877,8 +7320,12 @@ async def _start_debug_trace_payload(
     trace_game["trace_client_id"] = client_id
     trace_game["debug_auto_next_round"] = False
     trace_game["debug_auto_new_game"] = False
-    trace_game["ai_profile"] = "current"
-    trace_game["agents"] = _create_agents("current")
+    trace_profile = (
+        "intermediate_middle3" if is_score_room(game_id)
+        else "experimental_ai2"
+    )
+    trace_game["ai_profile"] = trace_profile
+    trace_game["agents"] = _create_agents(trace_profile)
     trace_game["debug_dictionary_narrowing"] = False
     trace_game["trace_moves"] = _expand_trace_moves(payload)
     trace_game["trace_move_index"] = 0
@@ -6986,7 +7433,7 @@ async def enter_score_room(body: ScoreRoomEntry, request: Request, response: Res
                         if is_score_room(key) and value.get("score_owner") == owner), None)
         if game_id is None:
             game_id = "score-" + secrets.token_urlsafe(18)
-            game = _create_game_obj(dealer="A", ai_profile="intermediate_middle2")
+            game = _create_game_obj(dealer="A", ai_profile="intermediate_middle3")
             game.update(score_owner=owner, score_last_active=time.monotonic(),
                         hidden_from_lobby=True, owner_name="スコアアタック",
                         human_seats={"A": body.client_id}, ai_seats=["B", "C", "D"])

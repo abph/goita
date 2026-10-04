@@ -8,17 +8,19 @@ from goita_ai2.rule_based_beginner_upper import RuleBasedAgent as BeginnerUpperR
 from goita_ai2.rule_based_intermediate_lower import RuleBasedAgent as IntermediateLowerRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle import RuleBasedAgent as IntermediateMiddleRuleBasedAgent
 from goita_ai2.rule_based_intermediate_middle2 import RuleBasedAgent as IntermediateMiddle2RuleBasedAgent
+from goita_ai2.rule_based_intermediate_middle3 import RuleBasedAgent as IntermediateMiddle3RuleBasedAgent
 from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBasedAgent
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_six_ai_profiles_are_available() -> None:
-    assert app_module.DEFAULT_AI_PROFILE == "intermediate_middle2"
+def test_seven_ai_profiles_are_available() -> None:
+    assert app_module.DEFAULT_AI_PROFILE == "intermediate_middle3"
     assert set(app_module.AI_PROFILES) == {
         "current",
         "experimental_ai2",
+        "intermediate_middle3",
         "intermediate_middle2",
         "intermediate_middle",
         "intermediate_lower",
@@ -26,21 +28,23 @@ def test_six_ai_profiles_are_available() -> None:
     }
     assert app_module.AI_PROFILES["current"]["class"] is CurrentRuleBasedAgent
     assert app_module.AI_PROFILES["experimental_ai2"]["class"] is ExperimentalAI2RuleBasedAgent
+    assert app_module.AI_PROFILES["intermediate_middle3"]["class"] is IntermediateMiddle3RuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_middle2"]["class"] is IntermediateMiddle2RuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_middle"]["class"] is IntermediateMiddleRuleBasedAgent
     assert app_module.AI_PROFILES["intermediate_lower"]["class"] is IntermediateLowerRuleBasedAgent
     assert app_module.AI_PROFILES["beginner_upper"]["class"] is BeginnerUpperRuleBasedAgent
 
 
-def test_profile_defaults_keep_development_only_surfaces_on_current_ai() -> None:
-    assert app_module._normalize_ai_profile(None) == "intermediate_middle2"
-    assert app_module._normalize_ai_profile("unknown-profile") == "intermediate_middle2"
-    assert app_module._create_game_obj(dealer="A")["ai_profile"] == "intermediate_middle2"
+def test_profile_defaults_use_middle3_and_keep_development_surfaces_on_ai2() -> None:
+    assert app_module._normalize_ai_profile(None) == "intermediate_middle3"
+    assert app_module._normalize_ai_profile("unknown-profile") == "intermediate_middle3"
+    assert app_module._create_game_obj(dealer="A")["ai_profile"] == "intermediate_middle3"
 
     backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
-    assert '_create_game_obj(dealer="A", ai_profile="current")' in backend
-    assert 'trace_game["ai_profile"] = "current"' in backend
-    assert '_create_game_obj(dealer="A", ai_profile="intermediate_middle2")' in backend
+    assert '_create_game_obj(dealer="A", ai_profile="experimental_ai2")' in backend
+    assert 'else "experimental_ai2"' in backend
+    assert '"intermediate_middle3" if is_score_room(game_id)' in backend
+    assert 'ai_profile="intermediate_middle2"' in backend
 
 
 def test_intermediate_lower_profile_creates_frozen_agents() -> None:
@@ -69,23 +73,65 @@ def test_intermediate_middle2_profile_is_a_frozen_current_ai_snapshot() -> None:
     assert all("goita_ai2.current_ai" not in path.read_text(encoding="utf-8") for path in package_files)
 
 
+def test_intermediate_middle3_is_a_fully_isolated_ai2_snapshot() -> None:
+    agents = app_module._create_agents("intermediate_middle3")
+    assert set(agents) == {"A", "B", "C", "D"}
+    assert all(isinstance(agent, IntermediateMiddle3RuleBasedAgent) for agent in agents.values())
+    assert all(not isinstance(agent, CurrentRuleBasedAgent) for agent in agents.values())
+    assert all(not isinstance(agent, ExperimentalAI2RuleBasedAgent) for agent in agents.values())
+    assert all(agent.__class__.__module__ == "goita_ai2.intermediate_middle3.agent" for agent in agents.values())
+    package = ROOT / "goita_ai2" / "intermediate_middle3"
+    package_files = package.glob("*.py")
+    for path in package_files:
+        source = path.read_text(encoding="utf-8")
+        assert "goita_ai2.current_ai" not in source
+        assert "goita_ai2.experimental_ai2" not in source
+    assert (package / "data" / "neural_policy.json").is_file()
+    assert (package / "data" / "human-response-patterns.json").is_file()
+    model = agents["A"]._neural_model()
+    assert model is not None
+    assert model.__class__.__module__ == "goita_ai2.intermediate_middle3.neural_policy"
+    persistence = (package / "persistence.py").read_text(encoding="utf-8")
+    assert "background_search_value_intermediate_middle3.json" in persistence
+    assert "GOITA_AI_INTERMEDIATE_MIDDLE3_ADAPTIVE_VALUE_PATH" in persistence
+    response_store = (package / "generic_response_store.py").read_text(
+        encoding="utf-8"
+    )
+    assert "generic-response-patterns-intermediate-middle3.json" in response_store
+    assert (
+        "GOITA_AI_INTERMEDIATE_MIDDLE3_GENERIC_RESPONSE_PATTERN_PATH"
+        in response_store
+    )
+
+
 def test_settings_fallback_contains_all_profiles() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     zh = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
     en = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
     assert '<option value="current">強化中AI</option>' in html
     assert '<option value="experimental_ai2">強化中AI2</option>' in html
-    assert '<option value="intermediate_middle2" selected>中級者（中2）</option>' in html
+    assert '<option value="intermediate_middle3" selected>中級者（中3）</option>' in html
+    assert '<option value="intermediate_middle2">中級者（中2）</option>' in html
     assert '<option value="intermediate_middle">中級者（中）</option>' in html
     assert '<option value="intermediate_lower">中級者（下）</option>' in html
     assert '<option value="beginner_upper">初級者（上）</option>' in html
     assert "opt.textContent = uiText(label)" in html
     assert '"中級者（中）": "中级（中阶）"' in zh
     assert '"中級者（中2）": "中级（中阶2）"' in zh
+    assert '"中級者（中3）": "中级（中阶3）"' in zh
     assert '"強化中AI2": "强化中AI2"' in zh
     assert '"中級者（中）": "Intermediate (Middle)"' in en
     assert '"中級者（中2）": "Intermediate (Middle 2)"' in en
+    assert '"中級者（中3）": "Intermediate (Middle 3)"' in en
     assert '"強化中AI2": "AI in Development 2"' in en
+
+
+def test_private_room_management_includes_middle3_choice() -> None:
+    app_module.setup_supporter_rooms()
+    payload = app_module._room_management_payload(app_module.PRIVATE_A_GID)
+
+    assert payload["ai_profiles"]["intermediate_middle3"] == "中級者（中3）"
+    assert payload["ai_profile"] in payload["ai_profiles"]
 
 
 def test_neural_primary_log_distinguishes_selected_and_rule_actions() -> None:
@@ -250,10 +296,12 @@ def test_neural_tiebreak_log_distinguishes_global_first_choice() -> None:
 
 
 if __name__ == "__main__":
-    test_six_ai_profiles_are_available()
-    test_profile_defaults_keep_development_only_surfaces_on_current_ai()
+    test_seven_ai_profiles_are_available()
+    test_profile_defaults_use_middle3_and_keep_development_surfaces_on_ai2()
     test_intermediate_lower_profile_creates_frozen_agents()
     test_intermediate_middle_profile_is_isolated_from_current_ai()
     test_intermediate_middle2_profile_is_a_frozen_current_ai_snapshot()
+    test_intermediate_middle3_is_a_fully_isolated_ai2_snapshot()
     test_settings_fallback_contains_all_profiles()
+    test_private_room_management_includes_middle3_choice()
     print("AI_PROFILES_TEST_OK")
