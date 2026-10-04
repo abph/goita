@@ -4,9 +4,9 @@ runtime_connected: false
 summary:
   confirmed_policies: 86
   regression_candidates: 15
-  reference_cases: 6
+  reference_cases: 7
   superseded_cases: 7
-  total_records: 99
+  total_records: 100
 status_order:
   - confirmed
   - reference

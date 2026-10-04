@@ -13,7 +13,7 @@ EXPECTED_CASE_COUNTS = {
     "receive.yaml": 12,
     "reference.yaml": 5,
     "regression_candidates.yaml": 15,
-    "risk_strategy.yaml": 1,
+    "risk_strategy.yaml": 2,
     "shi_strategy.yaml": 14,
     "superseded.yaml": 7,
 }
@@ -34,7 +34,7 @@ def test_instruction_case_catalog_has_expected_files_and_unique_ids():
         assert len(ids) == expected_count, (filename, ids)
         all_ids.extend(ids)
 
-    assert len(all_ids) == 99
+    assert len(all_ids) == 100
     assert len(all_ids) == len(set(all_ids))
 
 
@@ -53,7 +53,7 @@ def test_catalog_separates_confirmed_reference_and_superseded_cases():
     ]
 
     assert reference.count("status: reference") == 5
-    assert risk.count("status: reference") == 1
+    assert risk.count("status: reference") == 2
     assert "runtime_connected: false" in risk
     assert superseded.count("status: superseded") == 7
     for filename in confirmed_files:
@@ -69,8 +69,8 @@ def test_index_documents_catalog_counts_and_runtime_state():
     assert "runtime_connected: false" in index
     assert "confirmed_policies: 86" in index
     assert "regression_candidates: 15" in index
-    assert "reference_cases: 6" in index
-    assert "total_records: 99" in index
+    assert "reference_cases: 7" in index
+    assert "total_records: 100" in index
     assert "AI本体から独立" in readme
     assert "superseded" in readme
 
