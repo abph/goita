@@ -3476,23 +3476,49 @@
       border-color: #a94132;
       color: #9a2c20;
     }
-    .shared-kifu-modal-content { max-width: 720px; }
-    .shared-kifu-scroll {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-      overscroll-behavior: contain;
-      padding-right: 4px;
+    .shared-kifu-stage {
+      display: none;
+      position: relative;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto;
     }
-    .shared-kifu-byline { margin: -4px 0 6px; color: #74695f; font-size: 12px; }
-    .shared-kifu-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 7px;
-      margin-top: 8px;
+    body.shared-kifu-board-active #board,
+    body.shared-kifu-board-active #board3d,
+    body.shared-kifu-board-active #boardPixel { display: none !important; }
+    body.shared-kifu-board-active #sharedKifuStage { display: block; }
+    body.shared-kifu-board-active #handsArea { display: none; }
+    body.shared-kifu-board-active .board-wrap {
+      padding: 12px;
+      border: 4px solid #8b5a2b;
+      border-radius: 6px;
+      background: #d1ab75;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.3);
     }
-    .shared-kifu-actions button { min-width: 0; font-weight: 800; }
-    .shared-kifu-stop { border-color: #c78888 !important; color: #a62424 !important; }
+    .shared-kifu-stage .research-kifu-board-wrap {
+      margin: 0 auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      overflow: visible;
+    }
+    .shared-kifu-stage .research-kifu-board {
+      --research-cell: var(--cell);
+      --research-gap: var(--gap);
+    }
+    .shared-kifu-stage-close { z-index: 12; display: grid; }
+    .shared-kifu-stop {
+      display: block;
+      width: fit-content;
+      margin: 8px auto 0;
+      padding: 5px 10px;
+      border: 1px solid #c78888;
+      border-radius: 7px;
+      background: rgba(255, 253, 245, 0.94);
+      color: #a62424;
+      font-weight: 800;
+    }
+    .shared-kifu-stop[hidden] { display: none; }
     .shared-kifu-open-button {
       padding: 6px 10px;
       border: 1px solid #9d754e;
@@ -3678,6 +3704,7 @@
       .research-kifu-board { --research-gap: 3px; --research-cell: min(36px, calc((100vw - 96px) / 8)); }
       .research-kifu-piece span { font-size: clamp(14px, 2.8vw, 21px); }
       .research-kifu-move-number { min-width: 14px; height: 14px; font-size: 8px; }
+      body.shared-kifu-board-active .board-wrap { padding: 8px; }
     }
     .lobby-admin-modal-content {
       position: relative;
@@ -5327,6 +5354,13 @@
             <div id="boardPixel" class="board-pixel" aria-hidden="true">
               <canvas id="boardPixelCanvas" width="320" height="320" aria-label="ピクセル盤面"></canvas>
             </div>
+            <div id="sharedKifuStage" class="shared-kifu-stage" aria-hidden="true">
+              <button class="practice-exit-button shared-kifu-stage-close" type="button" onclick="closeSharedKifuViewer()" aria-label="共有棋譜を閉じる" title="元の盤面を見る">×</button>
+              <div class="research-kifu-board-wrap">
+                <div id="sharedKifuBoard" class="research-kifu-board" aria-label="共有された棋譜の最終盤面"></div>
+              </div>
+              <button id="sharedKifuStopButton" class="shared-kifu-stop" type="button" onclick="stopSharedKifuSharing()" hidden>共有を終了</button>
+            </div>
           </div>
           <div id="handsArea" class="hands-area"></div>
         </div>
@@ -6129,25 +6163,6 @@
       </div>
       <button type="button" onclick="closeSettings()">閉じる</button>
     </div>
-  </div>
-</div>
-
-<div id="sharedKifuModal" class="modal-overlay" onclick="if(event.target===this) closeSharedKifuViewer()">
-  <div class="modal-content settings-modal-content shared-kifu-modal-content" role="dialog" aria-modal="true" aria-labelledby="sharedKifuTitle">
-    <button class="settings-modal-close" type="button" onclick="closeSharedKifuViewer()" aria-label="共有棋譜を閉じる" title="閉じる">×</button>
-    <h3 id="sharedKifuTitle">共有された棋譜</h3>
-    <p id="sharedKifuByline" class="shared-kifu-byline"></p>
-    <div class="shared-kifu-scroll">
-      <div class="research-kifu-board-wrap">
-        <div id="sharedKifuBoard" class="research-kifu-board" aria-label="共有された棋譜の盤面"></div>
-      </div>
-      <div class="shared-kifu-actions">
-        <button id="sharedKifuReplayButton" class="research-kifu-replay-button" type="button" onclick="toggleSharedKifuReplay()">棋譜再生</button>
-        <button id="sharedKifuStopButton" class="shared-kifu-stop" type="button" onclick="stopSharedKifuSharing()" hidden>共有を終了</button>
-      </div>
-      <div id="sharedKifuStatus" class="settings-status" aria-live="polite"></div>
-    </div>
-    <div class="settings-footer"><button type="button" onclick="closeSharedKifuViewer()">閉じる</button></div>
   </div>
 </div>
 
@@ -7732,8 +7747,6 @@ let selectedResearchKifuIds = new Set();
 let researchKifuReplayToken = 0;
 let researchKifuReplayRunning = false;
 let sharedKifu = null;
-let sharedKifuReplayToken = 0;
-let sharedKifuReplayRunning = false;
 let dismissedSharedKifuToken = "";
 let sharedKifuCanStop = false;
 const RESEARCH_KIFU_TAG_OPTIONS = Object.freeze([
@@ -7903,12 +7916,19 @@ function setBoardViewControl(mode) {
 function applyBoardViewMode() {
     const boardViewsEnabled = supportsAlternateBoardViews(gid);
     const boardViewMode = effectiveBoardViewMode(gid);
+    const sharedKifuBoardActive = document.body.classList.contains(
+        "shared-kifu-board-active"
+    );
     const requested3d = boardViewsEnabled && THREE_D_BOARD_MODES.has(boardViewMode);
     const requestedMeetingRoom = requested3d && boardViewMode === "meeting-room";
     const requestedPixel = boardViewsEnabled && PIXEL_BOARD_MODES.has(boardViewMode);
     const pixelTheme = boardViewMode === "pixel-mono" ? "mono" : "color";
-    const use3d = requested3d && window.goitaBoard3D?.isAvailable?.() === true;
-    const usePixel = requestedPixel && window.goitaBoardPixel?.isAvailable?.() === true;
+    const use3d = !sharedKifuBoardActive
+        && requested3d
+        && window.goitaBoard3D?.isAvailable?.() === true;
+    const usePixel = !sharedKifuBoardActive
+        && requestedPixel
+        && window.goitaBoardPixel?.isAvailable?.() === true;
     const board3d = document.getElementById("board3d");
     const boardPixel = document.getElementById("boardPixel");
 
@@ -8933,6 +8953,7 @@ async function returnToLobby() {
     sessionStorage.removeItem("goitaScoreRoomOpen");
     window.goitaRegionalAds?.sync?.("", "", "");
     closeDebugTrace(); closeTraceResult(); closeTraceHistory();
+    closeSharedKifuViewer({forget: true});
     closePracticeScenePicker();
     document.body.classList.remove("personal-score-room");
     document.body.classList.remove("tutorial-room");
@@ -10710,7 +10731,9 @@ function buildResearchKifuFinalState(payload, rowsOverride = null) {
     let attackSequenceNumber = 0;
     const rows = Array.isArray(rowsOverride)
         ? rowsOverride
-        : (Array.isArray(payload.game) ? payload.game : []);
+        : (Array.isArray(payload.game) && payload.game.length
+            ? payload.game
+            : (Array.isArray(payload.moves) ? payload.moves : []));
 
     rows.forEach((row, rowIndex) => {
         const seat = RESEARCH_KIFU_SEATS[Number(row?.[0])];
@@ -11073,93 +11096,32 @@ async function shareSelectedResearchKifu() {
     }
 }
 
-function updateSharedKifuReplayControls(label = "棋譜再生") {
-    const button = document.getElementById("sharedKifuReplayButton");
-    if (!button) return;
-    button.textContent = uiText(label);
-    button.classList.toggle("is-playing", sharedKifuReplayRunning);
-}
-
-function stopSharedKifuReplay({restoreFinal = true, clearStatus = false} = {}) {
-    sharedKifuReplayToken += 1;
-    sharedKifuReplayRunning = false;
-    updateSharedKifuReplayControls("棋譜再生");
-    if (restoreFinal && sharedKifu?.payload) {
-        renderResearchKifuBoard(sharedKifu.payload, {
-            container: document.getElementById("sharedKifuBoard"),
-        });
-    }
-    if (clearStatus) document.getElementById("sharedKifuStatus").textContent = "";
-}
-
 function openSharedKifuViewer() {
     if (!sharedKifu?.payload) return;
-    stopSharedKifuReplay({restoreFinal: false, clearStatus: true});
     dismissedSharedKifuToken = "";
-    const title = String(sharedKifu.title || "").trim();
-    document.getElementById("sharedKifuTitle").textContent = title || uiText("共有された棋譜");
-    const sharedBy = String(sharedKifu.shared_by || sharedKifu.shared_by_seat || "");
-    document.getElementById("sharedKifuByline").textContent = sharedBy
-        ? `${sharedBy}${uiText("さんが共有しました。")}`
-        : uiText("棋譜が共有されました。");
     renderResearchKifuBoard(sharedKifu.payload, {
         container: document.getElementById("sharedKifuBoard"),
     });
     document.getElementById("sharedKifuStopButton").hidden = !sharedKifuCanStop;
-    document.getElementById("sharedKifuModal").style.display = "flex";
+    document.getElementById("sharedKifuStage")?.setAttribute("aria-hidden", "false");
+    document.body.classList.add("shared-kifu-board-active");
+    const openButton = document.getElementById("sharedKifuOpenButton");
+    if (openButton) openButton.hidden = true;
+    applyBoardViewMode();
 }
 
 function closeSharedKifuViewer({forget = false} = {}) {
-    stopSharedKifuReplay({restoreFinal: false, clearStatus: true});
     if (!forget && sharedKifu?.token) dismissedSharedKifuToken = sharedKifu.token;
-    document.getElementById("sharedKifuModal").style.display = "none";
+    document.body.classList.remove("shared-kifu-board-active");
+    document.getElementById("sharedKifuStage")?.setAttribute("aria-hidden", "true");
     if (forget) {
         sharedKifu = null;
         sharedKifuCanStop = false;
         dismissedSharedKifuToken = "";
     }
-}
-
-async function toggleSharedKifuReplay() {
-    if (sharedKifuReplayRunning) {
-        stopSharedKifuReplay({restoreFinal: true, clearStatus: true});
-        return;
-    }
-    const payload = sharedKifu?.payload;
-    const status = document.getElementById("sharedKifuStatus");
-    const frames = payload ? researchKifuReplayFrames(payload) : [];
-    if (!frames.length) {
-        if (status) status.textContent = uiText("再生できる手順がありません。");
-        return;
-    }
-    const token = ++sharedKifuReplayToken;
-    sharedKifuReplayRunning = true;
-    updateSharedKifuReplayControls("停止");
-    renderResearchKifuBoard(payload, {
-        container: document.getElementById("sharedKifuBoard"),
-        rows: [],
-        finished: false,
-    });
-    if (status) status.textContent = uiText("棋譜を再生しています。");
-    await new Promise(resolve => setTimeout(resolve, 620));
-    for (const frame of frames) {
-        if (token !== sharedKifuReplayToken || !sharedKifuReplayRunning) return;
-        renderResearchKifuBoard(payload, {
-            container: document.getElementById("sharedKifuBoard"),
-            rows: frame.rows,
-            finished: false,
-            latestAction: frame.latestAction,
-        });
-        if (status) status.textContent = frame.label;
-        await new Promise(resolve => setTimeout(resolve, frame.delay));
-    }
-    if (token !== sharedKifuReplayToken || !sharedKifuReplayRunning) return;
-    sharedKifuReplayRunning = false;
-    renderResearchKifuBoard(payload, {
-        container: document.getElementById("sharedKifuBoard"),
-    });
-    updateSharedKifuReplayControls("もう一度再生");
-    if (status) status.textContent = uiText("再生が終了しました。");
+    const openButton = document.getElementById("sharedKifuOpenButton");
+    if (openButton) openButton.hidden = !sharedKifu;
+    applyBoardViewMode();
 }
 
 function syncSharedKifuViewer(state) {
@@ -11173,18 +11135,24 @@ function syncSharedKifuViewer(state) {
     const changed = incoming.token !== sharedKifu?.token;
     sharedKifu = incoming;
     sharedKifuCanStop = state.shared_kifu_can_stop === true;
-    if (openButton) openButton.hidden = false;
     const stopButton = document.getElementById("sharedKifuStopButton");
     if (stopButton) stopButton.hidden = !sharedKifuCanStop;
     if (changed && incoming.token !== dismissedSharedKifuToken) {
         openSharedKifuViewer();
+        return;
+    }
+    const isOpen = document.body.classList.contains("shared-kifu-board-active");
+    if (openButton) openButton.hidden = isOpen;
+    if (isOpen) {
+        renderResearchKifuBoard(sharedKifu.payload, {
+            container: document.getElementById("sharedKifuBoard"),
+        });
     }
 }
 
 async function stopSharedKifuSharing() {
     if (!sharedKifu || !sharedKifuCanStop || isSpectator()) return;
     const button = document.getElementById("sharedKifuStopButton");
-    const status = document.getElementById("sharedKifuStatus");
     if (button) button.disabled = true;
     try {
         const response = await fetch(`${API}/games/${gid}/shared_kifu/stop`, {
@@ -11196,7 +11164,7 @@ async function stopSharedKifuSharing() {
         if (!response.ok) throw new Error(data?.detail || "共有を終了できませんでした。");
         closeSharedKifuViewer({forget: true});
     } catch (error) {
-        if (status) status.textContent = uiText(error?.message || "共有を終了できませんでした。");
+        setHint(uiText(error?.message || "共有を終了できませんでした。"));
     } finally {
         if (button) button.disabled = false;
     }
@@ -14516,6 +14484,10 @@ async function refreshMeetingPublicTables(force = false) {
 }
 
 function renderBoard3D(state) {
+  if(document.body.classList.contains("shared-kifu-board-active")) {
+    window.goitaBoard3D?.setVisible?.(false);
+    return;
+  }
   const boardViewMode = effectiveBoardViewMode(gid);
   if(!supportsAlternateBoardViews(gid) || !THREE_D_BOARD_MODES.has(boardViewMode)) return;
   if(window.goitaBoard3D?.isAvailable?.() !== true) return;
@@ -14526,6 +14498,10 @@ function renderBoard3D(state) {
 }
 
 function renderBoardPixel(state) {
+  if(document.body.classList.contains("shared-kifu-board-active")) {
+    window.goitaBoardPixel?.setVisible?.(false);
+    return;
+  }
   const boardViewMode = effectiveBoardViewMode(gid);
   if(!supportsAlternateBoardViews(gid) || !PIXEL_BOARD_MODES.has(boardViewMode)) return;
   if(window.goitaBoardPixel?.isAvailable?.() !== true) return;

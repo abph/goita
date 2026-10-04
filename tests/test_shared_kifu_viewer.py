@@ -183,14 +183,24 @@ def test_sharer_or_host_can_end_sharing_and_start_clears_it(monkeypatch) -> None
     asyncio.run(scenario())
 
 
-def test_shared_kifu_viewer_ui_reuses_board_and_replay() -> None:
+def test_shared_kifu_viewer_replaces_live_board_with_numbered_final_board() -> None:
     html = (Path(__file__).resolve().parents[1] / "frontend" / "index.html").read_text(encoding="utf-8")
 
     assert 'id="researchKifuShareButton"' in html
     assert 'onclick="shareSelectedResearchKifu()"' in html
-    assert 'id="sharedKifuModal"' in html
+    assert 'id="sharedKifuStage" class="shared-kifu-stage"' in html
     assert 'id="sharedKifuBoard" class="research-kifu-board"' in html
+    assert 'id="sharedKifuModal"' not in html
+    assert 'id="sharedKifuReplayButton"' not in html
+    assert "shared-kifu-board-active" in html
+    assert "body.shared-kifu-board-active #handsArea { display: none; }" in html
+    assert html.index('id="sharedKifuStage"') < html.index('id="handsArea"')
     assert "function syncSharedKifuViewer(state)" in html
-    assert "researchKifuReplayFrames(payload)" in html
+    assert "attackSequenceNumber += 1" in html
+    assert "research-kifu-move-number seat-${slot.seat}" in html
+    assert ".research-kifu-move-number.seat-A { top: 0;" in html
+    assert ".research-kifu-move-number.seat-B { top: 50%; left: 0;" in html
+    assert ".research-kifu-move-number.seat-C { bottom: 0;" in html
+    assert ".research-kifu-move-number.seat-D { top: 50%; right: 0;" in html
     assert "/shared_kifu/stop" in html
     assert "state?.shared_kifu" in html
