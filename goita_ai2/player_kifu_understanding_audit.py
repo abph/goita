@@ -53,6 +53,22 @@ REVIEW_FIELDS = (
     "purpose",
     "ai_explanation_close",
     "note",
+    "benchmark_reason",
+    "benchmark_learning_point",
+    "benchmark_thinking_style",
+    "benchmark_registered_at",
+)
+BENCHMARK_REASON_CATEGORIES = (
+    "受ける・パスする",
+    "攻め順・伏せ駒",
+    "しの枚数推定",
+    "し攻め・しの差し込み",
+    "相方との連携",
+    "王か玉の使い方",
+    "確定上がり",
+    "高得点を狙う",
+    "相方への情報",
+    "その他",
 )
 
 
@@ -66,17 +82,52 @@ def _resolve_ai_profile(profile: str):
         ) from error
 
 
-def _empty_review() -> Dict[str, str]:
-    return {field: "" for field in REVIEW_FIELDS}
+def _empty_review() -> Dict[str, Any]:
+    review: Dict[str, Any] = {field: "" for field in REVIEW_FIELDS}
+    review.update({
+        "benchmark_action_ratings": {},
+        "benchmark_reason_categories": [],
+        "benchmark_completed": False,
+    })
+    return review
 
 
-def _normalized_review(value: object) -> Dict[str, str]:
+def _normalized_review(value: object) -> Dict[str, Any]:
     source = dict(value or {}) if isinstance(value, Mapping) else {}
-    return {field: str(source.get(field, "") or "") for field in REVIEW_FIELDS}
+    review = _empty_review()
+    for field in REVIEW_FIELDS:
+        review[field] = str(source.get(field, "") or "")
+    raw_ratings = source.get("benchmark_action_ratings", {})
+    if isinstance(raw_ratings, Mapping):
+        review["benchmark_action_ratings"] = {
+            str(key): str(rating)
+            for key, rating in raw_ratings.items()
+            if str(rating) in {"best", "acceptable", "avoid", "hold"}
+        }
+    raw_categories = source.get("benchmark_reason_categories", [])
+    if isinstance(raw_categories, Sequence) and not isinstance(
+        raw_categories, (str, bytes)
+    ):
+        review["benchmark_reason_categories"] = [
+            str(category)
+            for category in raw_categories
+            if str(category) in BENCHMARK_REASON_CATEGORIES
+        ]
+    review["benchmark_completed"] = bool(
+        source.get("benchmark_completed", False)
+    )
+    return review
 
 
-def _has_review(value: Mapping[str, str]) -> bool:
-    return any(item.strip() for item in value.values())
+def _has_review(value: Mapping[str, object]) -> bool:
+    for item in value.values():
+        if isinstance(item, str) and item.strip():
+            return True
+        if isinstance(item, (Mapping, list, tuple, set)) and item:
+            return True
+        if item is True:
+            return True
+    return False
 
 
 def _player_seats(archive: Mapping[str, object], player_name: str) -> Dict[str, str]:
@@ -259,6 +310,53 @@ def _route(root: Action, followup: Optional[Action]) -> List[List[Optional[str]]
     return route
 
 
+def _legal_decision_routes(
+    state,
+    player: str,
+    actions: Sequence[Action],
+    scores: Sequence[Mapping[str, object]],
+) -> List[Dict[str, Any]]:
+    """Expand a receive into every legal immediate attack for review.
+
+    A human reviews the response and its attack as one decision.  The AI's
+    root score still belongs to the response, so it is repeated on each legal
+    follow-up route only as reference information.
+    """
+    score_by_action = {
+        tuple(item.get("action", ())): item.get("score")
+        for item in scores
+        if isinstance(item.get("action"), Sequence)
+    }
+    routes: List[Dict[str, Any]] = []
+    seen = set()
+    for raw_action in actions:
+        action: Action = tuple(raw_action)  # type: ignore[assignment]
+        expanded = [[list(action)]]
+        if action[0] == "receive":
+            child = copy.deepcopy(state)
+            try:
+                _apply_action(child, player, action)
+                followups = [
+                    tuple(item)
+                    for item in child.legal_actions(player)
+                    if item[0] in ("attack", "attack_after_block")
+                ]
+            except Exception:
+                followups = []
+            if followups:
+                expanded = [[list(action), list(followup)] for followup in followups]
+        for route in expanded:
+            key = json.dumps(route, ensure_ascii=False, separators=(",", ":"))
+            if key in seen:
+                continue
+            seen.add(key)
+            routes.append({
+                "route": route,
+                "root_score": score_by_action.get(action),
+            })
+    return routes
+
+
 def _explain_ai_reason(reason: str, detail: str) -> str:
     """Turn internal reason codes into a short review-facing explanation."""
     if reason == "win_now":
@@ -344,6 +442,12 @@ def evaluate_unit(
     player = str(case["player"])
     legal = list(state.legal_actions(player))
     scores = _action_score_snapshot(agent, state, player, legal)
+    candidate_routes = _legal_decision_routes(
+        state,
+        player,
+        legal,
+        scores,
+    )
     started = time.perf_counter()
     ai_root: Action = agent.select_action(state, player, legal)
     ai_reason = str(agent.last_decision_reason or "")
@@ -407,6 +511,7 @@ def evaluate_unit(
             if followup_reason or followup_detail else ""
         ),
         "candidate_scores": scores,
+        "candidate_routes": candidate_routes,
         "search": search,
         "neural_shadow": root_neural_shadow,
         "followup_neural_shadow": followup_neural_shadow,
@@ -441,7 +546,7 @@ def build_report(
     ratings = Counter(item["provisional_rating"] for item in results)
     strata = Counter(item["stratum"] for item in results)
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "purpose": "private_player_ai_understanding_review",
         "private": True,
@@ -579,17 +684,21 @@ def _json_for_script(payload: object) -> str:
 def render_review_html(report: Mapping[str, object]) -> str:
     data = _json_for_script(report)
     ratings = _json_for_script(RATINGS)
+    benchmark_reason_categories = _json_for_script(
+        BENCHMARK_REASON_CATEGORIES
+    )
     template = """<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>1222 棋譜・AI理解度確認</title><style>
 body{font-family:system-ui,sans-serif;margin:0;background:#f5f2ea;color:#29261f}header{position:sticky;top:0;background:#fff;padding:16px 5%;border-bottom:1px solid #d8d1c2;z-index:2}main{max-width:1100px;margin:auto;padding:20px}button,select,input,textarea{font:inherit}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.case{background:#fff;border:1px solid #d8d1c2;border-radius:12px;padding:18px;margin:16px 0}.case.reviewed{border-color:#4d8469}.meta{color:#6c6558;font-size:.9rem}.routes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.route{background:#f8f7f3;padding:12px;border-radius:8px}.same{color:#17643d;font-weight:700}.different{color:#9b3b31;font-weight:700}.history{max-height:180px;overflow:auto;font-size:.88rem;background:#f8f7f3;padding:8px;border-radius:8px}.review{border-top:1px dashed #bcb4a6;margin-top:14px;padding-top:14px}.rating{display:flex;gap:10px;flex-wrap:wrap}label{display:inline-flex;gap:5px;align-items:center}textarea{width:100%;min-height:70px;box-sizing:border-box;margin-top:8px}.row{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}.summary{font-weight:700}
 .case.ai-changed{border-left:5px solid #c56818}.ai-change-notice{margin:10px 0;padding:9px 11px;border-radius:7px;background:#fff0d9;color:#7a3f0d;font-weight:800}.previous-ai,.previous-review{margin:8px 0;padding:10px 12px;border-radius:7px;background:#f3f0ea;color:#554d42;font-size:.9rem;line-height:1.65}.previous-review{border:1px dashed #9b8972}.previous-review-note{white-space:pre-wrap}
 .complete-review-button{display:block;margin:14px 0 0 auto;padding:9px 14px;border:1px solid #4d8469;border-radius:7px;background:#edf6ef;color:#24563d;font-weight:800;cursor:pointer}.complete-review-button:disabled{border-color:#aaa;background:#eee;color:#777;cursor:default}
+.benchmark-review{margin-top:16px;border:2px solid #8b7452;border-radius:10px;background:#fcfaf5}.benchmark-review[open]{padding-bottom:14px}.benchmark-review>summary{padding:13px 15px;cursor:pointer;font-weight:900}.benchmark-review[open]>summary{border-bottom:1px solid #ddd2c1}.benchmark-body{padding:0 15px}.benchmark-help{color:#625b50;font-size:.9rem;line-height:1.65}.benchmark-routes{display:grid;gap:7px;margin:12px 0}.benchmark-route{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:10px;align-items:center;padding:9px 10px;border:1px solid #ddd2c1;border-radius:8px;background:#fff}.benchmark-route-label{line-height:1.55}.benchmark-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;background:#ece7dc;color:#5d5142;font-size:.72rem;font-weight:800}.benchmark-score{color:#746b5f;font-size:.78rem}.benchmark-fields{display:grid;gap:12px;margin-top:14px}.benchmark-fields fieldset{margin:0;padding:10px 12px;border:1px solid #d8d1c2;border-radius:8px}.benchmark-fields legend{padding:0 5px;font-weight:800}.benchmark-category-list{display:flex;gap:8px 14px;flex-wrap:wrap}.benchmark-textarea{min-height:86px}.benchmark-complete{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px}.benchmark-status{color:#17643d;font-weight:800}.benchmark-register{padding:9px 14px;border:1px solid #7a5d32;border-radius:7px;background:#f4ead8;color:#513914;font-weight:900;cursor:pointer}.benchmark-register.is-complete{border-color:#4d8469;background:#edf6ef;color:#24563d}.benchmark-badge{display:inline-block;margin-left:8px;color:#17643d;font-size:.82rem}
 .board-title{text-align:center;font-weight:800;margin:14px 0 6px}.board-note{text-align:center;color:#6c6558;font-size:.78rem;margin:5px 0 12px}.review-board-wrap{width:fit-content;max-width:100%;margin:0 auto;padding:8px;overflow:hidden;border:3px solid #8b5a2b;background:#d1ab75}.review-board{--cell:min(39px,calc((100vw - 112px)/8));--gap:5px;display:grid;grid-template-columns:repeat(8,var(--cell));grid-template-rows:repeat(8,var(--cell));gap:var(--gap);width:fit-content;container-type:inline-size;user-select:none}.board-cell{position:relative;display:flex;min-width:0;align-items:center;justify-content:center;border:1px dashed rgba(139,90,43,.38)}.board-piece{display:flex;width:80%;height:94%;align-items:center;justify-content:center;background:linear-gradient(135deg,#fceeb5,#e6c875);clip-path:polygon(50% 0%,94% 16%,98% 100%,2% 100%,6% 16%);filter:drop-shadow(1px 2px 2px rgba(0,0,0,.28))}.board-piece span{color:#1f2b9c;font-family:"Yu Kyokasho","游教科書体","YuKyokasho","Hiragino Mincho ProN",serif;font-size:clamp(12px,2.5vw,20px);font-weight:900;line-height:1;transform:translateY(3px)}.board-piece.team-b span{color:#b62020}.board-piece.seat-A{transform:rotate(0)}.board-piece.seat-B{transform:rotate(-90deg)}.board-piece.seat-C{transform:rotate(180deg)}.board-piece.seat-D{transform:rotate(90deg)}.board-piece.is-hand{opacity:.42;filter:none}.board-piece.is-unknown{opacity:.3;filter:none;background:repeating-linear-gradient(45deg,#8c6a43,#8c6a43 4px,#b68a56 4px,#b68a56 8px)}.board-piece.is-face-down{opacity:.48;filter:none}.board-piece.is-current{background:linear-gradient(135deg,#f7e1a0,#f1c40f);outline:3px solid #b74a18;outline-offset:-2px;opacity:1;z-index:3}.board-piece.is-current span{color:#a40000}.move-number{position:absolute;z-index:5;display:grid;min-width:17px;height:17px;place-items:center;padding:0 1px;border:1px solid rgba(17,24,39,.55);border-radius:50%;background:#fff;color:#111827;font-size:10px;font-weight:900;line-height:1}.move-number.seat-A{top:0;left:50%;transform:translate(-50%,-52%)}.move-number.seat-B{top:50%;left:0;transform:translate(-52%,-50%) rotate(-90deg)}.move-number.seat-C{bottom:0;left:50%;transform:translate(-50%,52%) rotate(180deg)}.move-number.seat-D{top:50%;right:0;transform:translate(52%,-50%) rotate(90deg)}.seat-label{z-index:2;display:flex;align-items:center;justify-content:center;border:2px solid #8b5a2b;background:#f4efdf;color:#b00000;font-size:clamp(14px,2.8vw,21px);font-weight:900}.seat-label.is-turn{background:#edf6ef;outline:2px solid #176b57;outline-offset:-4px}.seat-content{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:calc(25cqw - 8px);gap:1px;line-height:1.2}.seat-badge{background:#176b57;color:#fff;border-radius:3px;padding:1px 3px;font-size:9px}.seat-label.seat-A .seat-content{transform:rotate(0)}.seat-label.seat-B .seat-content{transform:rotate(-90deg)}.seat-label.seat-C .seat-content{transform:rotate(180deg)}.seat-label.seat-D .seat-content{transform:rotate(90deg)}.center-info{grid-column:4/6;grid-row:4/6;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;border:2px dashed #8b5a2b;background:rgba(244,239,223,.94);color:#2b2b2b;font-size:clamp(9px,2vw,13px);font-weight:900;line-height:1.35;text-align:center}.center-info strong{display:block}
-@media(max-width:650px){.routes{grid-template-columns:1fr}header{position:static}.case{padding:12px}.review-board-wrap{padding:5px;border-width:2px}.review-board{--gap:3px;--cell:min(36px,calc((100vw - 80px)/8))}.board-piece span{font-size:clamp(14px,2.8vw,21px)}.move-number{min-width:14px;height:14px;font-size:8px}}
+@media(max-width:650px){.routes{grid-template-columns:1fr}header{position:static}.case{padding:12px}.review-board-wrap{padding:5px;border-width:2px}.review-board{--gap:3px;--cell:min(36px,calc((100vw - 80px)/8))}.board-piece span{font-size:clamp(14px,2.8vw,21px)}.move-number{min-width:14px;height:14px;font-size:8px}.benchmark-route{grid-template-columns:1fr}.benchmark-route select{width:100%}.benchmark-body{padding:0 10px}}
 </style></head><body><header><h1>1222 棋譜・AI理解度確認</h1><div class="toolbar"><select id="filter"><option value="all">すべて</option><option value="different">不一致のみ</option><option value="unreviewed">未確認のみ</option></select><button id="export">確認結果を出力</button><span id="progress"></span></div></header><main><p>5し以上の局と合法手が1つだけの場面は除外しています。AIの分類は暫定です。特に不一致場面を確認してください。</p><div id="summary" class="summary"></div><div id="cases"></div></main>
 <script>
-const report=__REPORT_DATA__;const ratings=__RATINGS_DATA__;const aiLabel=report.ai_label||'強化中AI';const key='goita-1222-understanding-v1';const saved=JSON.parse(localStorage.getItem(key)||'{}');const piece={'1':'し','2':'香','3':'馬','4':'銀','5':'金','6':'角','7':'飛','8':'玉','9':'王'};
+const report=__REPORT_DATA__;const ratings=__RATINGS_DATA__;const benchmarkReasonCategories=__BENCHMARK_REASON_CATEGORIES__;const aiLabel=report.ai_label||'強化中AI';const key='goita-1222-understanding-v1';const saved=JSON.parse(localStorage.getItem(key)||'{}');const piece={'1':'し','2':'香','3':'馬','4':'銀','5':'金','6':'角','7':'飛','8':'玉','9':'王'};
 const seats=['A','B','C','D'];
 const slots={A:{receive:[[3,7],[4,7],[5,7],[6,7]],attack:[[3,8],[4,8],[5,8],[6,8]]},B:{receive:[[7,6],[7,5],[7,4],[7,3]],attack:[[8,6],[8,5],[8,4],[8,3]]},C:{receive:[[6,2],[5,2],[4,2],[3,2]],attack:[[6,1],[5,1],[4,1],[3,1]]},D:{receive:[[2,3],[2,4],[2,5],[2,6]],attack:[[1,3],[1,4],[1,5],[1,6]]}};
 const labels={A:{column:'4 / 6',row:'6'},B:{column:'6',row:'4 / 6'},C:{column:'4 / 6',row:'3'},D:{column:'3',row:'4 / 6'}};
@@ -598,6 +707,13 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 function action(a){if(!a)return'';if(a[0]==='pass')return'パス';if(a[0]==='receive')return `${piece[a[1]]}で受ける`;if(a[0]==='attack')return `${piece[a[2]]}で攻める`;return `${a[1]?piece[a[1]]:'伏せ駒'}を伏せる → ${piece[a[2]]}で攻める`;}
 function route(r){return r.map(action).join(' → ');}function current(c){return Object.assign({},c.review,saved[c.id]||{});}
 function store(id,field,value){saved[id]=Object.assign({},saved[id]||{},{[field]:value});localStorage.setItem(key,JSON.stringify(saved));render();}
+function routeKey(value){return JSON.stringify(value||[]);}
+function benchmarkRoutes(c){const found=new Map();const add=(value,extra={})=>{if(!Array.isArray(value)||!value.length)return;const key=routeKey(value);const old=found.get(key)||{route:value,root_score:null,tags:[]};if(extra.root_score!==undefined&&extra.root_score!==null)old.root_score=extra.root_score;if(extra.tag&&!old.tags.includes(extra.tag))old.tags.push(extra.tag);found.set(key,old);};for(const item of c.candidate_routes||[])add(item.route||item,{root_score:item.root_score});add(c.recorded_route,{tag:'1222の棋譜'});add(c.ai_route,{tag:aiLabel});for(const item of c.candidate_scores||[])add([item.action],{root_score:item.score});return [...found.values()];}
+function storeBenchmark(id,field,value){saved[id]=Object.assign({},saved[id]||{},{[field]:value,benchmark_completed:false,benchmark_registered_at:''});localStorage.setItem(key,JSON.stringify(saved));render();}
+function storeRouteRating(id,key,value){const c=report.cases.find(item=>item.id===id);if(!c)return;const rv=current(c);const map=Object.assign({},rv.benchmark_action_ratings||{});if(value)map[key]=value;else delete map[key];storeBenchmark(id,'benchmark_action_ratings',map);}
+function toggleBenchmarkCategory(id,category,checked){const c=report.cases.find(item=>item.id===id);if(!c)return;const values=new Set(current(c).benchmark_reason_categories||[]);if(checked)values.add(category);else values.delete(category);storeBenchmark(id,'benchmark_reason_categories',[...values]);}
+function completeBenchmark(id){const c=report.cases.find(item=>item.id===id);if(!c)return;const rv=current(c);const values=Object.values(rv.benchmark_action_ratings||{});if(!values.includes('best')){alert('最善手を1つ以上選んでください。');return;}if(!(rv.benchmark_reason_categories||[]).length){alert('判断理由の分類を1つ以上選んでください。');return;}if(!String(rv.benchmark_thinking_style||'')){alert('判断の考え方を選んでください。');return;}if(!String(rv.benchmark_reason||'').trim()){alert('判断理由を入力してください。');return;}saved[id]=Object.assign({},saved[id]||{},{benchmark_completed:true,benchmark_registered_at:new Date().toISOString()});localStorage.setItem(key,JSON.stringify(saved));render();}
+function benchmarkMarkup(c,rv){const candidates=benchmarkRoutes(c);const actionRatings=rv.benchmark_action_ratings||{};const categories=new Set(rv.benchmark_reason_categories||[]);const hasInput=Object.keys(actionRatings).length||categories.size||rv.benchmark_reason||rv.benchmark_learning_point||rv.benchmark_thinking_style;const candidateHtml=candidates.map((item,index)=>{const key=routeKey(item.route);const selected=actionRatings[key]||'';const tags=(item.tags||[]).map(tag=>`<span class="benchmark-tag">${esc(tag)}</span>`).join('');const score=item.root_score===null||item.root_score===undefined?'':`<div class="benchmark-score">現AIの基礎評価 ${esc(item.root_score)}</div>`;return `<div class="benchmark-route"><div class="benchmark-route-label"><b>${esc(route(item.route))}</b>${tags}${score}</div><select data-benchmark-route="${index}" aria-label="この候補の評価"><option value="">未分類</option><option value="best" ${selected==='best'?'selected':''}>最善</option><option value="acceptable" ${selected==='acceptable'?'selected':''}>許容できる</option><option value="avoid" ${selected==='avoid'?'selected':''}>避けたい</option><option value="hold" ${selected==='hold'?'selected':''}>判断保留</option></select></div>`;}).join('');const categoryHtml=benchmarkReasonCategories.map(category=>`<label><input type="checkbox" data-benchmark-category="${esc(category)}" ${categories.has(category)?'checked':''}>${esc(category)}</label>`).join('');const styleOptions=[['','選択'],['safe','安全思考'],['risk','リスク思考'],['common','どちらでも共通'],['undecided','判断保留']].map(([value,label])=>`<option value="${value}" ${rv.benchmark_thinking_style===value?'selected':''}>${label}</option>`).join('');return `<details class="benchmark-review" ${hasInput&&!rv.benchmark_completed?'open':''}><summary>AI判断ベンチマーク用の局面評価${rv.benchmark_completed?'<span class="benchmark-badge">登録済み</span>':''}</summary><div class="benchmark-body"><p class="benchmark-help">この局面をAI強化用の問題として残す場合に入力します。受けた直後の攻めは、受けと一つの判断として表示しています。</p><div class="benchmark-routes">${candidateHtml||'<p>分類できる合法手がありません。</p>'}</div><div class="benchmark-fields"><fieldset><legend>判断理由の分類</legend><div class="benchmark-category-list">${categoryHtml}</div></fieldset><label>判断の考え方 <select data-benchmark-field="benchmark_thinking_style">${styleOptions}</select></label><label>この判断にした理由<textarea class="benchmark-textarea" data-benchmark-field="benchmark_reason" placeholder="盤面から分かる情報を使って、判断の流れを入力します。">${esc(rv.benchmark_reason||'')}</textarea></label><label>AIに覚えてほしいこと（任意）<textarea class="benchmark-textarea" data-benchmark-field="benchmark_learning_point" placeholder="同じ種類の局面全般に使える考え方を入力します。">${esc(rv.benchmark_learning_point||'')}</textarea></label></div><div class="benchmark-complete">${rv.benchmark_completed?'<span class="benchmark-status">ベンチマークに登録済み</span>':''}<button type="button" class="benchmark-register ${rv.benchmark_completed?'is-complete':''}" data-complete-benchmark>${rv.benchmark_completed?'登録内容を確認・更新':'この局面をベンチマークに登録'}</button></div></div></details>`;}
 function boardState(c){
   const board=Object.fromEntries(seats.map(s=>[s,{receive:[],attack:[]}]));const used=Object.fromEntries(seats.map(s=>[s,0]));let attackNo=0;let currentKey='';
   for(const item of c.position.public_history||[]){const s=item.player;const a=item.action||[];if(!board[s])continue;
@@ -614,13 +730,20 @@ function renderBoard(container,c){container.replaceChildren();const state=boardS
       const cell=document.createElement('div');cell.className='board-cell';cell.style.gridColumn=String(column);cell.style.gridRow=String(row);const slot=slotMap.get(key);if(slot){const item=state.board[slot.seat][slot.kind][slot.index];if(item){const itemKey=`${slot.seat}:${slot.kind}:${slot.index}`;cell.appendChild(makePiece(item.piece,slot.seat,{faceDown:item.faceDown,current:itemKey===state.currentKey&&Boolean(c.position.current_attack)}));if(slot.kind==='attack'){const n=document.createElement('span');n.className=`move-number seat-${slot.seat}`;n.textContent=String(item.number);cell.appendChild(n);}}else if(concealed.has(key)){const hidden=concealed.get(key);cell.appendChild(makePiece(hidden.value,hidden.seat,{hand:!hidden.unknown,unknown:hidden.unknown}));}}container.appendChild(cell);}}
   const center=document.createElement('div');center.className='center-info';const title=document.createElement('strong');title.textContent='判断直前';const turn=document.createElement('span');turn.textContent=`${c.seat}の手番`;const attack=document.createElement('span');attack.textContent=`場の攻め ${c.position.current_attack?(piece[c.position.current_attack]||c.position.current_attack):'なし'}`;center.append(title,turn,attack);container.appendChild(center);
 }
-function render(){const filter=document.getElementById('filter').value;let shown=0,done=0;const root=document.getElementById('cases');root.innerHTML='';for(const c of report.cases){const rv=current(c);if(rv.final_rating)done++;const same=JSON.stringify(c.recorded_route)===JSON.stringify(c.ai_route);if(filter==='different'&&same)continue;if(filter==='unreviewed'&&rv.final_rating)continue;shown++;const el=document.createElement('section');el.className='case '+(rv.final_rating?'reviewed':'');const hist=c.position.public_history.map(x=>`${x.player}：${action(x.action)}`).join('<br>');const cand=(c.candidate_scores||[]).map(x=>`${x.rank}位：${action(x.action)}（評価 ${x.score}）`).join('<br>');const attack=c.position.current_attack?piece[c.position.current_attack]:'なし';el.innerHTML=`<div class="meta">${esc(c.stratum)}／${esc(c.seat)}席／場の攻め ${attack}／手駒 ${c.position.hand.map(x=>piece[x]).join(' ')}</div><div class="board-title">判断直前の盤面</div><div class="review-board-wrap"><div class="review-board" data-board aria-label="判断直前の盤面"></div></div><div class="board-note">薄い駒は1222の手駒、模様だけの駒は他家の非公開手駒です。黄色の駒が現在の攻めです。</div><div class="routes"><div class="route"><b>1222の棋譜</b><br>${esc(route(c.recorded_route))}</div><div class="route"><b>${esc(aiLabel)}</b><br>${esc(route(c.ai_route))}<br><span class="${same?'same':'different'}">${same?'手順一致':'手順不一致'}</span></div></div><p><b>AIの暫定分類：</b>${esc(c.provisional_rating)}（${esc(c.provisional_rating_reason)}）</p><p><b>AIの説明：</b>${esc(c.ai_explanation||'')}${c.ai_followup_explanation?'<br>'+esc(c.ai_followup_explanation):''}</p><details><summary>内部の判断記録</summary>${esc(c.ai_reason)}／${esc(c.ai_detail)}${c.ai_followup_reason?'<br>'+esc(c.ai_followup_reason)+'／'+esc(c.ai_followup_detail):''}</details><details><summary>AIの候補評価</summary><div class="history">${cand||'候補別の評価はありません'}</div></details><details><summary>ここまでの公開履歴</summary><div class="history">${hist||'初手'}</div></details><div class="review"><b>最終的な理解度</b><div class="rating">${ratings.map(x=>`<label><input type="radio" name="r-${c.id}" value="${x}" ${rv.final_rating===x?'checked':''}>${x}</label>`).join('')}</div><div class="row"><label>棋譜の手 <select data-field="recorded_move_quality"><option value="">選択</option>${['良い手','迷う手','ミスだった','判断できない'].map(x=>`<option ${rv.recorded_move_quality===x?'selected':''}>${x}</option>`).join('')}</select></label><label>主な目的 <select data-field="purpose"><option value="">選択</option>${['自分の上がり','敵方に王・玉を使わせる','相方の上がりを助ける','し攻め・連続攻め','受け駒・攻め駒の温存','相方への情報','その他','覚えていない'].map(x=>`<option ${rv.purpose===x?'selected':''}>${x}</option>`).join('')}</select></label><label>AIの説明 <select data-field="ai_explanation_close"><option value="">選択</option>${['近い','一部近い','違う','判断できない'].map(x=>`<option ${rv.ai_explanation_close===x?'selected':''}>${x}</option>`).join('')}</select></label></div><textarea placeholder="考えていたこと（任意）">${esc(rv.note||'')}</textarea></div>`;renderBoard(el.querySelector('[data-board]'),c);el.querySelectorAll('input[type=radio]').forEach(x=>x.onchange=()=>store(c.id,'final_rating',x.value));el.querySelectorAll('select[data-field]').forEach(x=>x.onchange=()=>store(c.id,x.dataset.field,x.value));el.querySelector('textarea').onchange=e=>store(c.id,'note',e.target.value);root.appendChild(el);}document.getElementById('progress').textContent=`確認済み ${done} / ${report.cases.length}`;document.getElementById('summary').textContent=`表示 ${shown}件`;}
-document.getElementById('filter').onchange=render;document.getElementById('export').onclick=()=>{const out=structuredClone(report);for(const c of out.cases)c.review=current(c);const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='1222_ai_understanding_review_answered.json';a.click();URL.revokeObjectURL(a.href);};render();
+function render(){const filter=document.getElementById('filter').value;let shown=0,done=0;const root=document.getElementById('cases');root.innerHTML='';for(const c of report.cases){const rv=current(c);if(rv.final_rating)done++;const same=JSON.stringify(c.recorded_route)===JSON.stringify(c.ai_route);if(filter==='different'&&same)continue;if(filter==='unreviewed'&&rv.final_rating)continue;shown++;const el=document.createElement('section');el.className='case '+(rv.final_rating?'reviewed':'');const hist=c.position.public_history.map(x=>`${x.player}：${action(x.action)}`).join('<br>');const cand=(c.candidate_scores||[]).map(x=>`${x.rank}位：${action(x.action)}（評価 ${x.score}）`).join('<br>');const attack=c.position.current_attack?piece[c.position.current_attack]:'なし';el.innerHTML=`<div class="meta">${esc(c.stratum)}／${esc(c.seat)}席／場の攻め ${attack}／手駒 ${c.position.hand.map(x=>piece[x]).join(' ')}</div><div class="board-title">判断直前の盤面</div><div class="review-board-wrap"><div class="review-board" data-board aria-label="判断直前の盤面"></div></div><div class="board-note">薄い駒は1222の手駒、模様だけの駒は他家の非公開手駒です。黄色の駒が現在の攻めです。</div><div class="routes"><div class="route"><b>1222の棋譜</b><br>${esc(route(c.recorded_route))}</div><div class="route"><b>${esc(aiLabel)}</b><br>${esc(route(c.ai_route))}<br><span class="${same?'same':'different'}">${same?'手順一致':'手順不一致'}</span></div></div><p><b>AIの暫定分類：</b>${esc(c.provisional_rating)}（${esc(c.provisional_rating_reason)}）</p><p><b>AIの説明：</b>${esc(c.ai_explanation||'')}${c.ai_followup_explanation?'<br>'+esc(c.ai_followup_explanation):''}</p><details><summary>内部の判断記録</summary>${esc(c.ai_reason)}／${esc(c.ai_detail)}${c.ai_followup_reason?'<br>'+esc(c.ai_followup_reason)+'／'+esc(c.ai_followup_detail):''}</details><details><summary>AIの候補評価</summary><div class="history">${cand||'候補別の評価はありません'}</div></details><details><summary>ここまでの公開履歴</summary><div class="history">${hist||'初手'}</div></details><div class="review"><b>最終的な理解度</b><div class="rating">${ratings.map(x=>`<label><input type="radio" name="r-${c.id}" value="${x}" ${rv.final_rating===x?'checked':''}>${x}</label>`).join('')}</div><div class="row"><label>棋譜の手 <select data-field="recorded_move_quality"><option value="">選択</option>${['良い手','迷う手','ミスだった','判断できない'].map(x=>`<option ${rv.recorded_move_quality===x?'selected':''}>${x}</option>`).join('')}</select></label><label>主な目的 <select data-field="purpose"><option value="">選択</option>${['自分の上がり','敵方に王・玉を使わせる','相方の上がりを助ける','し攻め・連続攻め','受け駒・攻め駒の温存','相方への情報','その他','覚えていない'].map(x=>`<option ${rv.purpose===x?'selected':''}>${x}</option>`).join('')}</select></label><label>AIの説明 <select data-field="ai_explanation_close"><option value="">選択</option>${['近い','一部近い','違う','判断できない'].map(x=>`<option ${rv.ai_explanation_close===x?'selected':''}>${x}</option>`).join('')}</select></label></div><textarea placeholder="考えていたこと（任意）">${esc(rv.note||'')}</textarea><button class="complete-review-button" type="button" data-complete-review ${completed?'disabled':''}>${completed?'確認済み':'この場面の確認を完了'}</button>${benchmarkMarkup(c,rv)}</div>`;renderBoard(el.querySelector('[data-board]'),c);el.querySelectorAll('input[type=radio]').forEach(x=>x.onchange=()=>store(c.id,'final_rating',x.value));el.querySelectorAll('select[data-field]').forEach(x=>x.onchange=()=>store(c.id,x.dataset.field,x.value));el.querySelector('textarea').onchange=e=>store(c.id,'note',e.target.value);root.appendChild(el);}document.getElementById('progress').textContent=`確認済み ${done} / ${report.cases.length}`;document.getElementById('summary').textContent=`表示 ${shown}件`;}
+document.getElementById('filter').onchange=render;document.getElementById('export').onclick=()=>{const out=structuredClone(report);for(const c of out.cases)c.review=current(c);const registered=out.cases.filter(c=>Boolean(c.review?.benchmark_completed));const actionRatings={best:0,acceptable:0,avoid:0,hold:0};for(const c of registered)for(const value of Object.values(c.review?.benchmark_action_ratings||{}))if(value in actionRatings)actionRatings[value]++;out.benchmark_summary={schema_version:1,registered_cases:registered.length,action_ratings:actionRatings};const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='1222_ai_understanding_review_answered.json';a.click();URL.revokeObjectURL(a.href);};render();
 </script></body></html>"""
-    page = template.replace("__REPORT_DATA__", data).replace("__RATINGS_DATA__", ratings)
+    page = (
+        template.replace("__REPORT_DATA__", data)
+        .replace("__RATINGS_DATA__", ratings)
+        .replace(
+            "__BENCHMARK_REASON_CATEGORIES__",
+            benchmark_reason_categories,
+        )
+    )
     page = page.replace(
         '<option value="unreviewed">未確認のみ</option>',
-        '<option value="changed">AI判断更新のみ</option><option value="recheck">再確認のみ</option><option value="unreviewed">未確認のみ</option>',
+        '<option value="changed">AI判断更新のみ</option><option value="recheck">再確認のみ</option><option value="unreviewed">未確認のみ</option><option value="benchmark">ベンチマーク登録済み</option>',
         1,
     )
     page = page.replace(
@@ -635,12 +758,12 @@ document.getElementById('filter').onchange=render;document.getElementById('expor
     )
     page = page.replace(
         "function render(){const filter=document.getElementById('filter').value;let shown=0,done=0;",
-        "function render(){const filter=document.getElementById('filter').value;let shown=0,done=0,changedCount=0,recheckCount=0;",
+        "function render(){const filter=document.getElementById('filter').value;let shown=0,done=0,changedCount=0,recheckCount=0,benchmarkCount=0;",
         1,
     )
     page = page.replace(
         "const same=JSON.stringify(c.recorded_route)===JSON.stringify(c.ai_route);if(filter==='different'&&same)continue;if(filter==='unreviewed'&&rv.final_rating)continue;shown++;",
-        "const same=JSON.stringify(c.recorded_route)===JSON.stringify(c.ai_route);const comparison=c.comparison||{};const changed=Boolean(comparison.decision_changed);const completed=Boolean(c.review?.final_rating)||Boolean(saved[c.id]?.review_completed_after_update);const needsRecheck=Boolean(comparison.needs_recheck)&&!completed;if(completed)done++;if(changed)changedCount++;if(needsRecheck)recheckCount++;if(filter==='different'&&same)continue;if(filter==='changed'&&!changed)continue;if(filter==='recheck'&&!needsRecheck)continue;if(filter==='unreviewed'&&completed)continue;shown++;",
+        "const same=JSON.stringify(c.recorded_route)===JSON.stringify(c.ai_route);const comparison=c.comparison||{};const changed=Boolean(comparison.decision_changed);const completed=Boolean(c.review?.final_rating)||Boolean(saved[c.id]?.review_completed_after_update);const benchmarkCompleted=Boolean(rv.benchmark_completed);const needsRecheck=Boolean(comparison.needs_recheck)&&!completed;if(completed)done++;if(benchmarkCompleted)benchmarkCount++;if(changed)changedCount++;if(needsRecheck)recheckCount++;if(filter==='different'&&same)continue;if(filter==='changed'&&!changed)continue;if(filter==='recheck'&&!needsRecheck)continue;if(filter==='unreviewed'&&completed)continue;if(filter==='benchmark'&&!benchmarkCompleted)continue;shown++;",
         1,
     )
     page = page.replace(
@@ -670,12 +793,12 @@ document.getElementById('filter').onchange=render;document.getElementById('expor
     )
     page = page.replace(
         "el.querySelector('textarea').onchange=e=>store(c.id,'note',e.target.value);root.appendChild(el);",
-        "el.querySelector('textarea').onchange=e=>store(c.id,'note',e.target.value);el.querySelector('[data-complete-review]').onclick=()=>completeReview(c.id);root.appendChild(el);",
+        "el.querySelector('.review>textarea').onchange=e=>store(c.id,'note',e.target.value);el.querySelector('[data-complete-review]').onclick=()=>completeReview(c.id);const benchmarkCandidates=benchmarkRoutes(c);el.querySelectorAll('[data-benchmark-route]').forEach(x=>x.onchange=()=>{const item=benchmarkCandidates[Number(x.dataset.benchmarkRoute)];if(item)storeRouteRating(c.id,routeKey(item.route),x.value);});el.querySelectorAll('[data-benchmark-category]').forEach(x=>x.onchange=()=>toggleBenchmarkCategory(c.id,x.dataset.benchmarkCategory,x.checked));el.querySelectorAll('[data-benchmark-field]').forEach(x=>x.onchange=()=>storeBenchmark(c.id,x.dataset.benchmarkField,x.value));el.querySelector('[data-complete-benchmark]').onclick=()=>completeBenchmark(c.id);root.appendChild(el);",
         1,
     )
     page = page.replace(
         "document.getElementById('progress').textContent=`確認済み ${done} / ${report.cases.length}`;document.getElementById('summary').textContent=`表示 ${shown}件`;}",
-        "document.getElementById('progress').textContent=`確認済み ${done} / ${report.cases.length}　再確認 ${recheckCount}`;document.getElementById('summary').textContent=`対象 ${aiLabel}／表示 ${shown}件／AI判断更新 ${changedCount}件`;}",
+        "document.getElementById('progress').textContent=`確認済み ${done} / ${report.cases.length}　ベンチマーク登録 ${benchmarkCount}件　再確認 ${recheckCount}`;document.getElementById('summary').textContent=`対象 ${aiLabel}／表示 ${shown}件／AI判断更新 ${changedCount}件`;}",
         1,
     )
     page = page.replace(

@@ -104,6 +104,12 @@ from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
 from backend.retire_room_kifu import retire_room_kifu
 from backend.ai_review_report import build_review_snapshot, log_turn_numbers
+from backend.ai_benchmark_store import (
+    AIBenchmarkStore,
+    MAX_REPORT_BYTES as MAX_AI_BENCHMARK_REPORT_BYTES,
+    ai_benchmark_path,
+    parse_report as parse_ai_benchmark_report,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -4761,6 +4767,97 @@ def private_archive_preset(request: Request, match_id: str, round_index: int):
     if round_obj is None:
         raise HTTPException(404, "指定した棋譜・局が見つかりません。")
     return {"match_id": match["id"], "round": {"hand": round_obj.get("hand", {})}}
+
+
+def _ai_benchmark_store() -> AIBenchmarkStore:
+    return AIBenchmarkStore(ai_benchmark_path(BASE_DIR))
+
+
+@private_archive_router.get("/admin/api/ai-benchmark/status")
+def ai_benchmark_status(request: Request):
+    _require_site_admin(request)
+    try:
+        return _ai_benchmark_store().status()
+    except (ValueError, OSError, sqlite3.Error) as error:
+        raise HTTPException(503, str(error)) from error
+
+
+@private_archive_router.put("/admin/api/ai-benchmark/import")
+async def ai_benchmark_import(request: Request):
+    _require_site_admin(request)
+    raw = bytearray()
+    async for chunk in request.stream():
+        if len(raw) + len(chunk) > MAX_AI_BENCHMARK_REPORT_BYTES:
+            raise HTTPException(413, "確認結果のJSONは25MB以下にしてください。")
+        raw.extend(chunk)
+    try:
+        report = parse_ai_benchmark_report(bytes(raw))
+        source_name = Path(
+            urllib.parse.unquote(request.headers.get("X-Goita-Filename", ""))
+        ).name
+        return _ai_benchmark_store().import_report(report, source_name)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(
+            503,
+            "AI判断ベンチマークを保存できません。保存先の設定を確認してください。",
+        ) from error
+
+
+@private_archive_router.get("/admin/api/ai-benchmark/export")
+def ai_benchmark_export(request: Request):
+    _require_site_admin(request)
+    try:
+        return _ai_benchmark_store().export_report()
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(503, "AI判断ベンチマークを読み込めません。") from error
+
+
+@private_archive_router.get("/admin/api/ai-benchmark")
+def ai_benchmark_list(
+    request: Request,
+    filter: str = "unreviewed",
+    limit: int = 50,
+    offset: int = 0,
+):
+    _require_site_admin(request)
+    if limit < 1 or limit > 200 or offset < 0:
+        raise HTTPException(400, "ページ指定が正しくありません。")
+    try:
+        return _ai_benchmark_store().list(filter, limit, offset)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(503, "AI判断ベンチマークを読み込めません。") from error
+
+
+@private_archive_router.get("/admin/api/ai-benchmark/{case_id}")
+def ai_benchmark_detail(case_id: str, request: Request):
+    _require_site_admin(request)
+    try:
+        case = _ai_benchmark_store().get(case_id)
+    except (ValueError, OSError, sqlite3.Error) as error:
+        raise HTTPException(503, "AI判断ベンチマークを読み込めません。") from error
+    if case is None:
+        raise HTTPException(404, "指定した局面が見つかりません。")
+    return case
+
+
+@private_archive_router.put("/admin/api/ai-benchmark/{case_id}/review")
+def ai_benchmark_review(case_id: str, request: Request, body: Dict[str, Any] = Body(...)):
+    _require_site_admin(request)
+    try:
+        case = _ai_benchmark_store().update_review(case_id, body)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(503, "局面評価を保存できません。") from error
+    if case is None:
+        raise HTTPException(404, "指定した局面が見つかりません。")
+    return {"ok": True, "case": case}
 
 
 app.include_router(private_archive_router)

@@ -32,6 +32,15 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert "/admin/api/score-attack/audit?" in admin
     assert 'data-tab="analytics"' in admin
     assert 'data-tab="aiMetrics"' in admin
+    assert 'data-tab="aiBenchmark"' in admin
+    assert 'id="aiBenchmarkView"' in admin
+    assert 'id="aiBenchmarkImportForm"' in admin
+    assert 'id="aiBenchmarkDialog"' in admin
+    assert 'id="aiBenchmarkBoard"' in admin
+    assert 'id="aiBenchmarkFilter"' in admin
+    assert 'id="aiBenchmarkExport"' in admin
+    assert "function renderAiBenchmarkBoard" in admin
+    assert '"/admin/api/ai-benchmark/export"' in admin
     assert 'data-tab="members"' in admin
     assert 'id="memberCreateForm"' in admin
     assert 'id="aiMetricsView"' in admin
@@ -145,6 +154,8 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert '"ai_generic_response_patterns"' in backend
     assert "checkpoint_generic_response_patterns" in backend
     assert '@app.get("/admin/api/ai-metrics/export")' in backend
+    assert '@private_archive_router.put("/admin/api/ai-benchmark/import")' in backend
+    assert '@private_archive_router.put("/admin/api/ai-benchmark/{case_id}/review")' in backend
     assert '"passwords_included": False' in backend
 
 

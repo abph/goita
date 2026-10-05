@@ -5,6 +5,7 @@ import json
 from goita_ai2.player_kifu_understanding_audit import (
     DEFAULT_AI_PROFILE,
     _explain_ai_reason,
+    _normalized_review,
     _provisional_rating,
     _resolve_ai_profile,
     build_player_decision_units,
@@ -118,6 +119,38 @@ def test_review_html_has_filters_and_export() -> None:
     assert "判断直前の盤面" in page
     assert "renderBoard" in page
     assert "棋譜再生" not in page
+    assert "AI判断ベンチマーク用の局面評価" in page
+    assert "最善手を1つ以上選んでください。" in page
+    assert "許容できる" in page
+    assert "避けたい" in page
+    assert "判断保留" in page
+    assert "benchmark_action_ratings" in page
+    assert "benchmark_summary" in page
+    assert "ベンチマーク登録済み" in page
+
+
+def test_benchmark_review_fields_survive_answer_merge() -> None:
+    route_key = '[["pass",null,null]]'
+    review = _normalized_review({
+        "final_rating": "理解できる",
+        "benchmark_action_ratings": {
+            route_key: "best",
+            "invalid": "not-a-rating",
+        },
+        "benchmark_reason_categories": [
+            "受ける・パスする",
+            "存在しない分類",
+        ],
+        "benchmark_thinking_style": "safe",
+        "benchmark_reason": "受けた後の攻めが弱いためパスする。",
+        "benchmark_learning_point": "受けと次の攻めを一緒に比較する。",
+        "benchmark_completed": True,
+    })
+
+    assert review["benchmark_action_ratings"] == {route_key: "best"}
+    assert review["benchmark_reason_categories"] == ["受ける・パスする"]
+    assert review["benchmark_thinking_style"] == "safe"
+    assert review["benchmark_completed"] is True
 
 
 def test_previous_reviews_are_carried_or_marked_for_recheck() -> None:

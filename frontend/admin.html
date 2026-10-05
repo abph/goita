@@ -214,6 +214,7 @@
     .score-audit-piece.seat-D { transform: rotate(90deg); }
     .score-audit-piece.is-hidden, .score-audit-piece.is-face-down { opacity: .42; filter: none; }
     .score-audit-piece.is-hidden { background: #f6f2e8; }
+    .score-audit-piece.is-unknown { opacity:.3; filter:none; background:repeating-linear-gradient(45deg,#8c6a43,#8c6a43 4px,#b68a56 4px,#b68a56 8px); }
     .score-audit-piece.is-final-attack { background: linear-gradient(135deg, #f7e1a0, #f1c40f); outline: 3px solid #b74a18; outline-offset: -2px; opacity: 1; z-index: 3; }
     .score-audit-piece.is-final-attack span { color: #a40000; }
     .survey-response-list { display:grid; gap:9px; margin-top:14px; }
@@ -251,6 +252,22 @@
     .score-audit-move-number.seat-D { top: 50%; right: 0; transform: translate(52%, -50%) rotate(90deg); }
     .score-audit-center-score { grid-column: 4 / 6; grid-row: 4 / 6; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px; border: 2px dashed #8b5a2b; background: rgb(244 239 223 / 94%); color: #2b2b2b; font-size: clamp(9px, 2vw, 13px); font-weight: 900; line-height: 1.35; text-align: center; }
     .score-audit-center-score strong { display: block; }
+    .ai-benchmark-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .ai-benchmark-toolbar select { width:auto; }
+    .ai-benchmark-import { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin-top:14px; }
+    .ai-benchmark-import .field { flex:1 1 320px; margin:0; }
+    .ai-benchmark-table { min-width:900px; }
+    .ai-benchmark-routes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:14px 0; }
+    .ai-benchmark-route { padding:11px; border:1px solid var(--line); background:var(--surface); border-radius:5px; }
+    .ai-benchmark-route strong { display:block; margin-bottom:5px; }
+    .ai-benchmark-candidate { display:grid; grid-template-columns:minmax(0,1fr) 170px; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line); }
+    .ai-benchmark-candidate:first-child { border-top:0; }
+    .ai-benchmark-categories { display:flex; flex-wrap:wrap; gap:8px 16px; }
+    .ai-benchmark-categories label { display:flex; align-items:center; gap:5px; }
+    .ai-benchmark-categories input { width:auto; }
+    .ai-benchmark-check { display:flex; align-items:center; gap:7px; margin-top:12px; font-weight:700; }
+    .ai-benchmark-check input { width:auto; }
+    .ai-benchmark-board-note { margin:-4px 0 12px; text-align:center; font-size:12px; color:var(--muted); }
     @media (max-width: 900px) { .score-audit-board-wrap { padding: 5px; border-width: 2px; } .score-audit-board { --audit-gap: 3px; --audit-cell: min(36px, calc((100vw - 96px) / 8)); } .score-audit-piece span { font-size: clamp(14px, 2.8vw, 21px); } .score-audit-move-number { min-width: 14px; height: 14px; font-size: 8px; } }
     [hidden] { display: none !important; }
     @media (max-width: 900px) {
@@ -262,6 +279,8 @@
       .room-options { grid-template-columns: 1fr; }
       .member-admin-create, .member-admin-row, .member-reward-grid { grid-template-columns: 1fr; }
       .score-audit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ai-benchmark-routes { grid-template-columns:1fr; }
+      .ai-benchmark-candidate { grid-template-columns:1fr; }
       .survey-aggregate { grid-template-columns:1fr; }
       .survey-response-body { grid-template-columns:1fr; }
       .topbar { flex-wrap: wrap; gap: 8px; }
@@ -302,6 +321,7 @@
         <button class="tab" type="button" data-tab="analytics">利用状況</button>
         <button class="tab" type="button" data-tab="survey">アンケート</button>
         <button class="tab" type="button" data-tab="aiMetrics">AI計測</button>
+        <button class="tab" type="button" data-tab="aiBenchmark">AI判断ベンチマーク</button>
         <button class="tab" type="button" data-tab="members">会員管理</button>
       </nav>
 
@@ -478,6 +498,43 @@
         </section>
       </section>
 
+      <section id="aiBenchmarkView" class="view">
+        <section class="panel">
+          <div class="ai-benchmark-toolbar">
+            <h2 class="section-heading" style="margin:0; margin-right:auto">棋譜・AI理解度確認</h2>
+            <label for="aiBenchmarkFilter">表示</label>
+            <select id="aiBenchmarkFilter">
+              <option value="unreviewed" selected>未確認</option>
+              <option value="different">手順不一致</option>
+              <option value="needs_recheck">再確認</option>
+              <option value="benchmark">ベンチマーク登録済み</option>
+              <option value="avoid">避けたい手あり</option>
+              <option value="all">すべて</option>
+            </select>
+            <button id="aiBenchmarkRefresh" class="button" type="button">更新</button>
+            <button id="aiBenchmarkExport" class="button" type="button">確認結果を書き出す</button>
+          </div>
+          <p class="muted">確認用JSONを一度登録すると、局面評価をサーバーに保存できます。同じ局面を再登録した場合、JSONに回答がなければ管理画面の回答を維持します。</p>
+          <form id="aiBenchmarkImportForm" class="ai-benchmark-import">
+            <div class="field"><label for="aiBenchmarkFile">確認用JSON</label><input id="aiBenchmarkFile" type="file" accept="application/json,.json" required></div>
+            <button id="aiBenchmarkImport" class="button primary" type="submit">JSONを登録</button>
+          </form>
+          <div id="aiBenchmarkStatus" class="status" role="status" aria-live="polite"></div>
+          <div id="aiBenchmarkSummary" class="score-audit-summary"></div>
+          <div class="table-scroll">
+            <table class="ai-benchmark-table">
+              <thead><tr><th>局面</th><th>席</th><th>棋譜の手</th><th>AIの手</th><th>状態</th><th>操作</th></tr></thead>
+              <tbody id="aiBenchmarkRows"></tbody>
+            </table>
+          </div>
+          <div class="score-audit-pagination" aria-label="AI判断ベンチマークのページ移動">
+            <button id="aiBenchmarkPrevious" class="button" type="button" disabled>前の50件</button>
+            <span id="aiBenchmarkPageStatus" class="score-audit-page-status status" role="status" aria-live="polite">0件</span>
+            <button id="aiBenchmarkNext" class="button" type="button" disabled>次の50件</button>
+          </div>
+        </section>
+      </section>
+
       <section id="regionalAdsView" class="view">
         <section class="panel">
           <h2 class="section-heading">地域別広告</h2>
@@ -637,6 +694,16 @@
     </div>
   </dialog>
 
+  <dialog id="aiBenchmarkDialog" class="score-audit-dialog">
+    <div class="score-audit-dialog-inner">
+      <div class="score-audit-dialog-header">
+        <h2>局面評価</h2>
+        <button id="aiBenchmarkDialogClose" class="button" type="button">閉じる</button>
+      </div>
+      <div id="aiBenchmarkDialogBody"></div>
+    </div>
+  </dialog>
+
   <script>
     const EVENT_LABELS = {
       site_visit: "サイトを訪問",
@@ -781,6 +848,186 @@
           target.append(link);
         }
       } catch (error) { target.textContent = error.message; }
+    }
+
+    const AI_BENCHMARK_PAGE_SIZE = 50;
+    const AI_BENCHMARK_PIECES = {"1":"し","2":"香","3":"馬","4":"銀","5":"金","6":"角","7":"飛","8":"玉","9":"王"};
+    const AI_BENCHMARK_CATEGORIES = ["受ける・パスする","攻め順・伏せ駒","しの枚数推定","し攻め・しの差し込み","相方との連携","王か玉の使い方","確定上がり","高得点を狙う","相方への情報","その他"];
+    let aiBenchmarkOffset = 0;
+    let aiBenchmarkDetail = null;
+    let aiBenchmarkCandidates = [];
+
+    function aiBenchmarkAction(action) {
+      if (!Array.isArray(action)) return "";
+      if (action[0] === "pass") return "パス";
+      if (action[0] === "receive") return `${AI_BENCHMARK_PIECES[action[1]] || action[1]}で受ける`;
+      if (action[0] === "attack") return `${AI_BENCHMARK_PIECES[action[2]] || action[2]}で攻める`;
+      return `${action[1] ? (AI_BENCHMARK_PIECES[action[1]] || action[1]) : "伏せ駒"}を伏せる → ${AI_BENCHMARK_PIECES[action[2]] || action[2]}で攻める`;
+    }
+    function aiBenchmarkRoute(route) { return (route || []).map(aiBenchmarkAction).join(" → ") || "-"; }
+    function aiBenchmarkRouteKey(route) { return JSON.stringify(route || []); }
+    function aiBenchmarkOption(value, label, current) { return `<option value="${escapeHtml(value)}" ${current === value ? "selected" : ""}>${escapeHtml(label)}</option>`; }
+
+    function renderAiBenchmarkSummary(summary = {}) {
+      const labels = [["total","全局面"],["unreviewed","未確認"],["different","手順不一致"],["needs_recheck","再確認"],["benchmark","登録済み"],["avoid","避けたい手あり"]];
+      document.getElementById("aiBenchmarkSummary").innerHTML = labels.map(([key,label]) => `<span class="score-audit-chip">${label} ${Number(summary[key] || 0)}件</span>`).join("");
+    }
+
+    async function loadAiBenchmark({resetPage = false} = {}) {
+      if (resetPage) aiBenchmarkOffset = 0;
+      const filter = document.getElementById("aiBenchmarkFilter").value;
+      const status = document.getElementById("aiBenchmarkStatus");
+      status.textContent = "読み込んでいます...";
+      try {
+        const data = await api(`/admin/api/ai-benchmark?filter=${encodeURIComponent(filter)}&limit=${AI_BENCHMARK_PAGE_SIZE}&offset=${aiBenchmarkOffset}`);
+        if (!data.registered) {
+          document.getElementById("aiBenchmarkRows").innerHTML = '<tr><td colspan="6" class="muted">確認用JSONを登録してください。</td></tr>';
+          renderAiBenchmarkSummary();
+          status.textContent = "AI判断ベンチマークは未登録です。";
+          return;
+        }
+        const items = data.items || [];
+        document.getElementById("aiBenchmarkRows").innerHTML = items.map(item => {
+          const state = item.benchmark_completed ? "ベンチマーク登録済み" : item.needs_recheck ? "再確認" : item.final_rating ? item.final_rating : item.review_completed_after_update ? "確認済み" : "未確認";
+          return `<tr><td>${escapeHtml(item.stratum || "-")}<br><span class="muted">${escapeHtml(item.id)}</span></td><td>${escapeHtml(item.seat || "-")}</td><td>${escapeHtml(aiBenchmarkRoute(item.recorded_route))}</td><td>${escapeHtml(aiBenchmarkRoute(item.ai_route))}</td><td>${escapeHtml(state)}</td><td><button class="button ai-benchmark-detail" data-id="${escapeHtml(item.id)}" type="button">局面を見る</button></td></tr>`;
+        }).join("") || '<tr><td colspan="6" class="muted">条件に合う局面はありません。</td></tr>';
+        renderAiBenchmarkSummary(data.summary || {});
+        const first = data.total ? aiBenchmarkOffset + 1 : 0;
+        const last = aiBenchmarkOffset + items.length;
+        document.getElementById("aiBenchmarkPageStatus").textContent = `${first}〜${last} / ${Number(data.total || 0)}件`;
+        document.getElementById("aiBenchmarkPrevious").disabled = aiBenchmarkOffset <= 0;
+        document.getElementById("aiBenchmarkNext").disabled = last >= Number(data.total || 0);
+        status.textContent = `${data.source_name || "登録データ"}・${Number(data.case_count || 0)}局面`;
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    }
+
+    function aiBenchmarkCandidateRoutes(caseData) {
+      const found = new Map();
+      const add = (route, score = null, tag = "") => {
+        if (!Array.isArray(route) || !route.length) return;
+        const key = aiBenchmarkRouteKey(route);
+        const item = found.get(key) || {route, root_score:null, tags:[]};
+        if (score !== null && score !== undefined) item.root_score = score;
+        if (tag && !item.tags.includes(tag)) item.tags.push(tag);
+        found.set(key, item);
+      };
+      for (const item of caseData.candidate_routes || []) add(item.route || item, item.root_score);
+      add(caseData.recorded_route, null, "1222の棋譜");
+      add(caseData.ai_route, null, caseData.ai_label || "AI");
+      for (const item of caseData.candidate_scores || []) add([item.action], item.score);
+      return [...found.values()];
+    }
+
+    function renderAiBenchmarkBoard(caseData) {
+      const container = document.getElementById("aiBenchmarkBoard");
+      if (!container) return;
+      container.replaceChildren();
+      const seats = ["A","B","C","D"];
+      const board = Object.fromEntries(seats.map(seat => [seat, {receive:[], attack:[]}]))
+      const used = Object.fromEntries(seats.map(seat => [seat, 0]));
+      let attackNumber = 0;
+      let currentKey = "";
+      for (const item of caseData.position?.public_history || []) {
+        const seat = item.player;
+        const action = item.action || [];
+        if (!board[seat]) continue;
+        if (action[0] === "receive") { board[seat].receive.push({piece:action[1], faceDown:false}); used[seat] += 1; }
+        else if (action[0] === "attack") { attackNumber += 1; board[seat].attack.push({piece:action[2], number:attackNumber}); used[seat] += 1; currentKey = `${seat}:attack:${board[seat].attack.length - 1}`; }
+        else if (action[0] === "attack_after_block") { board[seat].receive.push({piece:action[1] || "", faceDown:true}); used[seat] += 1; attackNumber += 1; board[seat].attack.push({piece:action[2], number:attackNumber}); used[seat] += 1; currentKey = `${seat}:attack:${board[seat].attack.length - 1}`; }
+      }
+      const slotMap = new Map();
+      const concealed = new Map();
+      for (const seat of seats) {
+        for (const kind of ["receive","attack"]) SCORE_AUDIT_SLOTS[seat][kind].forEach((pos,index) => slotMap.set(`${pos[0]},${pos[1]}`, {seat,kind,index}));
+        const open = [];
+        for (const kind of ["receive","attack"]) SCORE_AUDIT_SLOTS[seat][kind].forEach((pos,index) => { if (!board[seat][kind][index]) open.push(pos); });
+        const values = seat === caseData.seat ? [...(caseData.position?.hand || [])] : Array(Math.max(0, 8 - used[seat])).fill(null);
+        open.forEach((pos,index) => { if (index < values.length) concealed.set(`${pos[0]},${pos[1]}`, {seat,value:values[index],unknown:seat !== caseData.seat}); });
+      }
+      const makePiece = (value, seat, options = {}) => {
+        const piece = document.createElement("div");
+        piece.className = `score-audit-piece seat-${seat} ${seat === "B" || seat === "D" ? "team-b" : "team-a"}`;
+        if (options.hand) piece.classList.add("is-hidden");
+        if (options.unknown) piece.classList.add("is-unknown");
+        if (options.faceDown) piece.classList.add("is-face-down");
+        if (options.current) piece.classList.add("is-final-attack");
+        const span = document.createElement("span"); span.textContent = options.unknown ? "" : (AI_BENCHMARK_PIECES[value] || ""); piece.appendChild(span); return piece;
+      };
+      for (let row = 1; row <= 8; row += 1) for (let column = 1; column <= 8; column += 1) {
+        const key = `${column},${row}`;
+        if (SCORE_AUDIT_SKIPPED_CELLS.has(key)) continue;
+        const labelSeat = seats.find(seat => SCORE_AUDIT_LABELS[seat].column.startsWith(String(column)) && SCORE_AUDIT_LABELS[seat].row.startsWith(String(row)));
+        if (labelSeat) {
+          const label = document.createElement("div"); label.className = `score-audit-seat-label seat-${labelSeat}`; label.style.gridColumn = SCORE_AUDIT_LABELS[labelSeat].column; label.style.gridRow = SCORE_AUDIT_LABELS[labelSeat].row;
+          const content = document.createElement("div"); content.className = "score-audit-seat-content"; content.textContent = labelSeat + (labelSeat === caseData.seat ? " 1222" : ""); label.appendChild(content); container.appendChild(label); continue;
+        }
+        const cell = document.createElement("div"); cell.className = "score-audit-cell"; cell.style.gridColumn = String(column); cell.style.gridRow = String(row);
+        const slot = slotMap.get(key);
+        if (slot) {
+          const item = board[slot.seat][slot.kind][slot.index];
+          if (item) {
+            const itemKey = `${slot.seat}:${slot.kind}:${slot.index}`;
+            cell.appendChild(makePiece(item.piece, slot.seat, {faceDown:item.faceDown, current:itemKey === currentKey && Boolean(caseData.position?.current_attack)}));
+            if (slot.kind === "attack") { const number = document.createElement("span"); number.className = `score-audit-move-number seat-${slot.seat}`; number.textContent = String(item.number); cell.appendChild(number); }
+          } else if (concealed.has(key)) { const hidden = concealed.get(key); cell.appendChild(makePiece(hidden.value, hidden.seat, {hand:!hidden.unknown, unknown:hidden.unknown})); }
+        }
+        container.appendChild(cell);
+      }
+      const center = document.createElement("div"); center.className = "score-audit-center-score"; center.innerHTML = `<strong>判断直前</strong><span>${escapeHtml(caseData.seat)}の手番</span><span>場の攻め ${escapeHtml(AI_BENCHMARK_PIECES[caseData.position?.current_attack] || "なし")}</span>`; container.appendChild(center);
+    }
+
+    async function openAiBenchmarkDetail(caseId) {
+      const dialog = document.getElementById("aiBenchmarkDialog");
+      const body = document.getElementById("aiBenchmarkDialogBody");
+      body.innerHTML = '<p class="muted">局面を読み込んでいます...</p>';
+      dialog.showModal();
+      try {
+        const item = await api(`/admin/api/ai-benchmark/${encodeURIComponent(caseId)}`);
+        aiBenchmarkDetail = item;
+        aiBenchmarkCandidates = aiBenchmarkCandidateRoutes(item);
+        const review = item.review || {};
+        const ratings = review.benchmark_action_ratings || {};
+        const categories = new Set(review.benchmark_reason_categories || []);
+        const same = aiBenchmarkRouteKey(item.recorded_route) === aiBenchmarkRouteKey(item.ai_route);
+        const ratingOptions = ["","理解できる","少し理解できる","なんともいえない","あまり理解できない","理解できない"].map(value => aiBenchmarkOption(value, value || "選択", review.final_rating || "")).join("");
+        const qualityOptions = ["","良い手","迷う手","ミスだった","判断できない"].map(value => aiBenchmarkOption(value, value || "選択", review.recorded_move_quality || "")).join("");
+        const purposeOptions = ["","自分の上がり","敵方に王・玉を使わせる","相方の上がりを助ける","し攻め・連続攻め","受け駒・攻め駒の温存","相方への情報","その他","覚えていない"].map(value => aiBenchmarkOption(value, value || "選択", review.purpose || "")).join("");
+        const explanationOptions = ["","近い","一部近い","違う","判断できない"].map(value => aiBenchmarkOption(value, value || "選択", review.ai_explanation_close || "")).join("");
+        const candidateHtml = aiBenchmarkCandidates.map((candidate,index) => `<div class="ai-benchmark-candidate"><div><strong>${escapeHtml(aiBenchmarkRoute(candidate.route))}</strong> ${(candidate.tags || []).map(tag => `<span class="score-audit-chip">${escapeHtml(tag)}</span>`).join(" ")}${candidate.root_score === null || candidate.root_score === undefined ? "" : `<div class="muted">現AIの基礎評価 ${escapeHtml(candidate.root_score)}</div>`}</div><select class="ai-benchmark-candidate-rating" data-index="${index}">${[["","未分類"],["best","最善"],["acceptable","許容できる"],["avoid","避けたい"],["hold","判断保留"]].map(([value,label]) => aiBenchmarkOption(value,label,ratings[aiBenchmarkRouteKey(candidate.route)] || "")).join("")}</select></div>`).join("");
+        body.innerHTML = `<div class="score-audit-meta"><div><span class="muted">局面</span><strong>${escapeHtml(item.stratum || "-")} / ${escapeHtml(item.seat || "-")}席</strong></div><div><span class="muted">暫定分類</span><strong>${escapeHtml(item.provisional_rating || "-")}</strong></div></div>${item.comparison?.needs_recheck ? '<p class="status">AI判断の更新後に再確認が必要な局面です。</p>' : ""}<div class="score-audit-board-wrap"><div id="aiBenchmarkBoard" class="score-audit-board" aria-label="判断直前の盤面"></div></div><p class="ai-benchmark-board-note">薄い駒は1222の手駒、模様の駒は他家の非公開手駒、黄色は現在の攻めです。</p><div class="ai-benchmark-routes"><div class="ai-benchmark-route"><strong>1222の棋譜</strong>${escapeHtml(aiBenchmarkRoute(item.recorded_route))}</div><div class="ai-benchmark-route"><strong>${escapeHtml(item.ai_label || "AI")}</strong>${escapeHtml(aiBenchmarkRoute(item.ai_route))}<br><span class="${same ? "score-audit-status eligible" : "score-audit-status review"}">${same ? "手順一致" : "手順不一致"}</span></div></div><p><strong>AIの説明：</strong>${escapeHtml(item.ai_explanation || "-")}${item.ai_followup_explanation ? `<br>${escapeHtml(item.ai_followup_explanation)}` : ""}</p><h3 class="subheading">理解度の確認</h3><div class="form-grid"><div class="field"><label for="aiBenchmarkFinalRating">最終的な理解度</label><select id="aiBenchmarkFinalRating">${ratingOptions}</select></div><div class="field"><label for="aiBenchmarkMoveQuality">棋譜の手</label><select id="aiBenchmarkMoveQuality">${qualityOptions}</select></div><div class="field"><label for="aiBenchmarkPurpose">主な目的</label><select id="aiBenchmarkPurpose">${purposeOptions}</select></div><div class="field"><label for="aiBenchmarkExplanationClose">AIの説明</label><select id="aiBenchmarkExplanationClose">${explanationOptions}</select></div></div><div class="field"><label for="aiBenchmarkNote">考えていたこと（任意）</label><textarea id="aiBenchmarkNote" maxlength="4000">${escapeHtml(review.note || "")}</textarea></div>${item.comparison?.needs_recheck ? `<label class="ai-benchmark-check"><input id="aiBenchmarkRecheckComplete" type="checkbox" ${review.review_completed_after_update ? "checked" : ""}>この局面の再確認を完了する</label>` : ""}<h3 class="subheading">AI判断ベンチマーク用の局面評価</h3><p class="muted">受けた直後の攻めは、受けと一つの判断として評価します。</p><div>${candidateHtml || '<p class="muted">評価できる候補がありません。</p>'}</div><fieldset><legend>判断理由の分類</legend><div class="ai-benchmark-categories">${AI_BENCHMARK_CATEGORIES.map(category => `<label><input class="ai-benchmark-category" type="checkbox" value="${escapeHtml(category)}" ${categories.has(category) ? "checked" : ""}>${escapeHtml(category)}</label>`).join("")}</div></fieldset><div class="field"><label for="aiBenchmarkThinkingStyle">判断の考え方</label><select id="aiBenchmarkThinkingStyle">${[["","選択"],["safe","安全思考"],["risk","リスク思考"],["common","どちらでも共通"],["undecided","判断保留"]].map(([value,label]) => aiBenchmarkOption(value,label,review.benchmark_thinking_style || "")).join("")}</select></div><div class="field"><label for="aiBenchmarkReason">この判断にした理由</label><textarea id="aiBenchmarkReason" maxlength="4000">${escapeHtml(review.benchmark_reason || "")}</textarea></div><div class="field"><label for="aiBenchmarkLearning">AIに覚えてほしいこと（任意）</label><textarea id="aiBenchmarkLearning" maxlength="4000">${escapeHtml(review.benchmark_learning_point || "")}</textarea></div><label class="ai-benchmark-check"><input id="aiBenchmarkCompleted" type="checkbox" ${review.benchmark_completed ? "checked" : ""}>AI判断ベンチマークに登録する</label><div class="score-audit-dialog-actions"><span id="aiBenchmarkSaveStatus" class="status" aria-live="polite"></span><button id="aiBenchmarkSave" class="button primary" type="button">保存</button></div>`;
+        renderAiBenchmarkBoard(item);
+      } catch (error) { body.innerHTML = `<p class="status">${escapeHtml(error.message)}</p>`; }
+    }
+
+    async function saveAiBenchmarkReview() {
+      if (!aiBenchmarkDetail) return;
+      const ratings = {};
+      document.querySelectorAll(".ai-benchmark-candidate-rating").forEach(select => { const candidate = aiBenchmarkCandidates[Number(select.dataset.index)]; if (candidate && select.value) ratings[aiBenchmarkRouteKey(candidate.route)] = select.value; });
+      const body = {
+        final_rating: document.getElementById("aiBenchmarkFinalRating").value,
+        recorded_move_quality: document.getElementById("aiBenchmarkMoveQuality").value,
+        purpose: document.getElementById("aiBenchmarkPurpose").value,
+        ai_explanation_close: document.getElementById("aiBenchmarkExplanationClose").value,
+        note: document.getElementById("aiBenchmarkNote").value,
+        review_completed_after_update: document.getElementById("aiBenchmarkRecheckComplete")?.checked || false,
+        benchmark_action_ratings: ratings,
+        benchmark_reason_categories: [...document.querySelectorAll(".ai-benchmark-category:checked")].map(input => input.value),
+        benchmark_thinking_style: document.getElementById("aiBenchmarkThinkingStyle").value,
+        benchmark_reason: document.getElementById("aiBenchmarkReason").value,
+        benchmark_learning_point: document.getElementById("aiBenchmarkLearning").value,
+        benchmark_completed: document.getElementById("aiBenchmarkCompleted").checked,
+        benchmark_registered_at: aiBenchmarkDetail.review?.benchmark_registered_at || "",
+      };
+      const status = document.getElementById("aiBenchmarkSaveStatus");
+      status.textContent = "保存しています...";
+      try {
+        const data = await api(`/admin/api/ai-benchmark/${encodeURIComponent(aiBenchmarkDetail.id)}/review`, {method:"PUT", body:JSON.stringify(body)});
+        aiBenchmarkDetail = data.case;
+        status.textContent = "保存しました。";
+        await loadAiBenchmark();
+      } catch (error) { status.textContent = error.message; }
     }
 
     function showAuthenticated(payload) {
@@ -2238,6 +2485,7 @@
       if (name === "survey") loadSurvey();
       if (name === "scoreAudit") loadScoreAudit();
       if (name === "aiMetrics") loadResponseMetrics();
+      if (name === "aiBenchmark") loadAiBenchmark();
       if (name === "members") window.goitaMemberAdmin?.load();
       else window.goitaMemberAdmin?.hideCredential();
     }));
@@ -2268,6 +2516,46 @@
     });
     document.getElementById("scoreAuditDialog").addEventListener("close", () => {
       scoreAuditDetailItem = null;
+    });
+    document.getElementById("aiBenchmarkRefresh").addEventListener("click", () => loadAiBenchmark());
+    document.getElementById("aiBenchmarkFilter").addEventListener("change", () => loadAiBenchmark({resetPage:true}));
+    document.getElementById("aiBenchmarkPrevious").addEventListener("click", () => { aiBenchmarkOffset = Math.max(0, aiBenchmarkOffset - AI_BENCHMARK_PAGE_SIZE); loadAiBenchmark(); });
+    document.getElementById("aiBenchmarkNext").addEventListener("click", () => { aiBenchmarkOffset += AI_BENCHMARK_PAGE_SIZE; loadAiBenchmark(); });
+    document.getElementById("aiBenchmarkRows").addEventListener("click", event => {
+      const button = event.target.closest(".ai-benchmark-detail");
+      if (button) openAiBenchmarkDetail(button.dataset.id);
+    });
+    document.getElementById("aiBenchmarkDialogClose").addEventListener("click", () => document.getElementById("aiBenchmarkDialog").close());
+    document.getElementById("aiBenchmarkDialog").addEventListener("close", () => { aiBenchmarkDetail = null; aiBenchmarkCandidates = []; });
+    document.getElementById("aiBenchmarkDialogBody").addEventListener("click", event => { if (event.target.closest("#aiBenchmarkSave")) saveAiBenchmarkReview(); });
+    document.getElementById("aiBenchmarkImportForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const file = document.getElementById("aiBenchmarkFile").files[0];
+      if (!file) return;
+      const status = document.getElementById("aiBenchmarkStatus");
+      const button = document.getElementById("aiBenchmarkImport");
+      button.disabled = true;
+      status.textContent = "JSONを登録しています...";
+      try {
+        const data = await api("/admin/api/ai-benchmark/import", {method:"PUT", headers:{"X-Goita-Filename":encodeURIComponent(file.name)}, body:await file.text()});
+        status.textContent = `${Number(data.case_count || 0)}局面を登録しました。`;
+        event.target.reset();
+        await loadAiBenchmark({resetPage:true});
+      } catch (error) { status.textContent = error.message; }
+      finally { button.disabled = false; }
+    });
+    document.getElementById("aiBenchmarkExport").addEventListener("click", async () => {
+      const status = document.getElementById("aiBenchmarkStatus");
+      try {
+        const data = await api("/admin/api/ai-benchmark/export");
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "ai_benchmark_review_answered.json";
+        link.click();
+        URL.revokeObjectURL(link.href);
+        status.textContent = "確認結果を書き出しました。";
+      } catch (error) { status.textContent = error.message; }
     });
     document.getElementById("logoutButton").addEventListener("click", async () => {
       await api("/admin/api/logout", {method: "POST"}).catch(() => {});
