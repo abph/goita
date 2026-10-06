@@ -64,3 +64,5 @@ def test_analytics_cannot_block_lobby_initialization() -> None:
     assert "normalizeSiteLanguage" not in html
     assert "SITE_LANGUAGE_KEY" not in html
     assert 'console.warn("利用状況の記録をスキップしました:", error)' in html
+    assert 'referrer_url: attribution.referrer_url || ""' in html
+    assert "流入元URLの検索条件とページ内位置は保存しません。" in html

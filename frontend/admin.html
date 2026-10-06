@@ -144,6 +144,7 @@
     .analytics-toolbar select, .analytics-toolbar input { width: auto; }
     .analytics-custom-range { display: flex; align-items: center; gap: 6px; }
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
+    .referrer-url { overflow-wrap: anywhere; word-break: break-all; }
     table { width: 100%; border-collapse: collapse; }
     .table-scroll { max-width: 100%; overflow-x: auto; }
     .tactical-mismatch-table { min-width: 1040px; }
@@ -652,10 +653,10 @@
         <div id="metricGrid" class="metric-grid"></div>
         <div class="analytics-grid">
           <section class="panel">
-            <h2 class="section-heading">流入元</h2>
+            <h2 class="section-heading">流入元URL</h2>
             <table>
-              <thead><tr><th>流入元</th><th>利用者</th><th>訪問</th></tr></thead>
-              <tbody id="sourceRows"></tbody>
+              <thead><tr><th>URL</th><th>利用者</th><th>訪問</th></tr></thead>
+              <tbody id="referrerRows"></tbody>
             </table>
             <h2 class="subheading">地域（推定）</h2>
             <table>
@@ -2241,8 +2242,8 @@
       document.getElementById("metricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
       `).join("");
-      document.getElementById("sourceRows").innerHTML = (data.sources || []).map(source => `
-        <tr><td>${escapeHtml(source.source_name)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
+      document.getElementById("referrerRows").innerHTML = (data.referrer_urls || []).map(source => `
+        <tr><td class="referrer-url">${escapeHtml(source.referrer_url === "direct" ? "直接・不明" : source.referrer_url)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
       `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
       document.getElementById("regionRows").innerHTML = (data.regions || []).map(region => `
         <tr><td>${escapeHtml(region.prefecture)}</td><td>${region.visitors}</td><td>${region.sessions}</td></tr>
@@ -2268,7 +2269,7 @@
         return `<details class="session">
           <summary>${formatDate(session.started_at)} / ${escapeHtml(session.analytics_id.slice(0, 8))}… / ${formatDuration(duration)}</summary>
           <div class="session-events">
-            <div class="muted">${escapeHtml(session.source || "direct")}${session.campaign ? ` / ${escapeHtml(session.campaign)}` : ""} / ${escapeHtml(session.device)} / ${escapeHtml(session.language)}</div>
+            <div class="muted referrer-url">流入元：${escapeHtml(session.referrer_url || "直接・不明")} / ${escapeHtml(session.device)} / ${escapeHtml(session.language)}</div>
             ${events || '<p class="muted">表示できる行動はありません。</p>'}
           </div>
         </details>`;

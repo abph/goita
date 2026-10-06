@@ -15,6 +15,7 @@ from contextlib import closing
 from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from backend.analytics_geo import normalize_country_code, normalize_prefecture
 
@@ -134,6 +135,28 @@ def _clean_text(value: Any, max_length: int) -> str:
     return str(value or "").strip().replace("\r", " ").replace("\n", " ")[:max_length]
 
 
+def _clean_referrer_url(value: Any) -> str:
+    """Keep an HTTP(S) origin and path while dropping credentials, query and fragment."""
+
+    raw = _clean_text(value, 2048)
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname or ""
+        if scheme not in {"http", "https"} or not hostname:
+            return ""
+        host = f"[{hostname}]" if ":" in hostname else hostname
+        port = parsed.port
+        if port is not None:
+            host = f"{host}:{port}"
+        path = parsed.path or "/"
+        return urlunsplit((scheme, host, path, "", ""))[:500]
+    except (TypeError, ValueError):
+        return ""
+
+
 def _safe_properties(properties: Any) -> dict[str, Any]:
     if not isinstance(properties, dict):
         return {}
@@ -195,6 +218,7 @@ class AnalyticsStore:
                         source TEXT NOT NULL DEFAULT '',
                         medium TEXT NOT NULL DEFAULT '',
                         campaign TEXT NOT NULL DEFAULT '',
+                        referrer_url TEXT NOT NULL DEFAULT '',
                         device TEXT NOT NULL DEFAULT 'unknown',
                         language TEXT NOT NULL DEFAULT 'other',
                         prefecture TEXT NOT NULL DEFAULT '不明',
@@ -264,6 +288,11 @@ class AnalyticsStore:
                         "UPDATE analytics_sessions SET country_code = 'JP' "
                         "WHERE prefecture NOT IN ('', '不明', '国外')"
                     )
+                if "referrer_url" not in session_columns:
+                    connection.execute(
+                        "ALTER TABLE analytics_sessions "
+                        "ADD COLUMN referrer_url TEXT NOT NULL DEFAULT ''"
+                    )
                 connection.commit()
             self._schema_ready = True
 
@@ -292,6 +321,7 @@ class AnalyticsStore:
         source = _clean_text(payload.get("source"), 80)
         medium = _clean_text(payload.get("medium"), 80)
         campaign = _clean_text(payload.get("campaign"), 80)
+        referrer_url = _clean_referrer_url(payload.get("referrer_url"))
         prefecture = normalize_prefecture(payload.get("prefecture"))
         country_code = normalize_country_code(payload.get("country_code"))
         properties = _safe_properties(payload.get("properties"))
@@ -318,8 +348,8 @@ class AnalyticsStore:
                 INSERT INTO analytics_sessions (
                     session_id, analytics_id, started_at, last_seen,
                     source, medium, campaign, device, language, prefecture,
-                    country_code, event_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    country_code, referrer_url, event_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(session_id) DO UPDATE SET
                     last_seen = excluded.last_seen,
                     prefecture = CASE
@@ -345,6 +375,7 @@ class AnalyticsStore:
                     language,
                     prefecture,
                     country_code,
+                    referrer_url,
                 ),
             )
             if event_name != "heartbeat":
@@ -742,6 +773,19 @@ class AnalyticsStore:
                 """,
                 (since, until),
             ).fetchall()
+            referrer_rows = connection.execute(
+                """
+                SELECT CASE WHEN referrer_url = '' THEN 'direct' ELSE referrer_url END AS referrer_url,
+                       COUNT(DISTINCT analytics_id) AS visitors,
+                       COUNT(*) AS sessions
+                FROM analytics_sessions
+                WHERE started_at >= ? AND started_at < ?
+                GROUP BY CASE WHEN referrer_url = '' THEN 'direct' ELSE referrer_url END
+                ORDER BY visitors DESC, sessions DESC
+                LIMIT 50
+                """,
+                (since, until),
+            ).fetchall()
             region_rows = connection.execute(
                 """
                 SELECT CASE WHEN prefecture = '' THEN '不明' ELSE prefecture END AS prefecture,
@@ -772,7 +816,7 @@ class AnalyticsStore:
             recent_sessions = connection.execute(
                 """
                 SELECT session_id, analytics_id, started_at, last_seen, ended_at,
-                       source, campaign, device, language, event_count
+                       source, campaign, referrer_url, device, language, event_count
                 FROM analytics_sessions
                 WHERE started_at >= ? AND started_at < ?
                 ORDER BY last_seen DESC
@@ -811,6 +855,7 @@ class AnalyticsStore:
                     "ended_at": str(row["ended_at"] or ""),
                     "source": str(row["source"] or "direct"),
                     "campaign": str(row["campaign"] or ""),
+                    "referrer_url": str(row["referrer_url"] or ""),
                     "device": str(row["device"]),
                     "language": str(row["language"]),
                     "event_count": int(row["event_count"]),
@@ -841,6 +886,7 @@ class AnalyticsStore:
             "room_entries": room_entries,
             "event_counts": event_counts,
             "sources": [dict(row) for row in source_rows],
+            "referrer_urls": [dict(row) for row in referrer_rows],
             "regions": [dict(row) for row in region_rows],
             "countries": [dict(row) for row in country_rows],
             "recent_sessions": recent,

@@ -16,6 +16,7 @@ def _event(**overrides):
         "event": "site_visit",
         "room_type": "lobby",
         "source": "direct",
+        "referrer_url": "",
         "device": "desktop",
         "language": "ja",
         "properties": {},
@@ -75,6 +76,23 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
         "ai_count": 2,
         "pair_practice": True,
     }
+
+
+def test_analytics_store_groups_sanitized_referrer_urls(tmp_path: Path) -> None:
+    store = AnalyticsStore(tmp_path / "analytics.sqlite3")
+    assert store.record_event(_event(
+        referrer_url="https://vrcgoita.com/goita/rules/?member=secret#section",
+    )) is True
+
+    snapshot = store.snapshot(days=30)
+    assert snapshot["referrer_urls"] == [{
+        "referrer_url": "https://vrcgoita.com/goita/rules/",
+        "visitors": 1,
+        "sessions": 1,
+    }]
+    assert snapshot["recent_sessions"][0]["referrer_url"] == (
+        "https://vrcgoita.com/goita/rules/"
+    )
 
 
 def test_analytics_opt_out_deletes_browser_history(tmp_path: Path) -> None:
@@ -273,6 +291,7 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
         }
     assert "prefecture" in columns
     assert "country_code" in columns
+    assert "referrer_url" in columns
 
 
 def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path: Path) -> None:

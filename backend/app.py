@@ -2530,6 +2530,7 @@ class AnalyticsEventRequest(BaseModel):
     source: str = Field(default="", max_length=80)
     medium: str = Field(default="", max_length=80)
     campaign: str = Field(default="", max_length=80)
+    referrer_url: str = Field(default="", max_length=500)
     device: str = Field(default="unknown", max_length=16)
     language: str = Field(default="other", max_length=8)
     properties: Dict[str, Any] = Field(default_factory=dict)
