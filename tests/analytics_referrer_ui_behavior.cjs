@@ -12,8 +12,8 @@ const values = new Map();
 const context = vm.createContext({
   URL,
   URLSearchParams,
-  location: {search: ''},
-  document: {referrer: 'https://vrcgoita.com/goita/rules/?member=secret#chapter'},
+  location: {search: '?from=https%3A%2F%2Fvrcgoita.com%2Fai%2F%3Fmember%3Dsecret%23chapter'},
+  document: {referrer: ''},
   sessionStorage: {
     getItem: key => values.has(key) ? values.get(key) : null,
     setItem: (key, value) => values.set(key, value),
@@ -24,12 +24,14 @@ const context = vm.createContext({
 vm.runInContext(html.slice(start, end), context);
 const attribution = context.analyticsAttribution();
 assert.equal(attribution.source, 'vrcgoita.com');
-assert.equal(attribution.referrer_url, 'https://vrcgoita.com/goita/rules/');
+assert.equal(attribution.referrer_url, 'https://vrcgoita.com/ai/');
 
+values.clear();
+context.location.search = '';
 context.document.referrer = 'https://example.com/another-page';
 assert.equal(
   context.analyticsAttribution().referrer_url,
-  'https://vrcgoita.com/goita/rules/',
+  'https://example.com/another-page',
 );
 
 console.log('Analytics referrer: path capture, sensitive-part removal and session first-touch passed');

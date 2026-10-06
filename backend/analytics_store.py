@@ -219,6 +219,7 @@ class AnalyticsStore:
                         medium TEXT NOT NULL DEFAULT '',
                         campaign TEXT NOT NULL DEFAULT '',
                         referrer_url TEXT NOT NULL DEFAULT '',
+                        referrer_recorded INTEGER NOT NULL DEFAULT 0,
                         device TEXT NOT NULL DEFAULT 'unknown',
                         language TEXT NOT NULL DEFAULT 'other',
                         prefecture TEXT NOT NULL DEFAULT '不明',
@@ -293,6 +294,15 @@ class AnalyticsStore:
                         "ALTER TABLE analytics_sessions "
                         "ADD COLUMN referrer_url TEXT NOT NULL DEFAULT ''"
                     )
+                if "referrer_recorded" not in session_columns:
+                    connection.execute(
+                        "ALTER TABLE analytics_sessions "
+                        "ADD COLUMN referrer_recorded INTEGER NOT NULL DEFAULT 0"
+                    )
+                    connection.execute(
+                        "UPDATE analytics_sessions SET referrer_recorded = 1 "
+                        "WHERE referrer_url != ''"
+                    )
                 connection.commit()
             self._schema_ready = True
 
@@ -348,8 +358,8 @@ class AnalyticsStore:
                 INSERT INTO analytics_sessions (
                     session_id, analytics_id, started_at, last_seen,
                     source, medium, campaign, device, language, prefecture,
-                    country_code, referrer_url, event_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    country_code, referrer_url, referrer_recorded, event_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
                 ON CONFLICT(session_id) DO UPDATE SET
                     last_seen = excluded.last_seen,
                     prefecture = CASE
@@ -775,12 +785,20 @@ class AnalyticsStore:
             ).fetchall()
             referrer_rows = connection.execute(
                 """
-                SELECT CASE WHEN referrer_url = '' THEN 'direct' ELSE referrer_url END AS referrer_url,
+                SELECT CASE
+                           WHEN referrer_recorded = 0 THEN 'not_recorded'
+                           WHEN referrer_url = '' THEN 'direct'
+                           ELSE referrer_url
+                       END AS referrer_url,
                        COUNT(DISTINCT analytics_id) AS visitors,
                        COUNT(*) AS sessions
                 FROM analytics_sessions
                 WHERE started_at >= ? AND started_at < ?
-                GROUP BY CASE WHEN referrer_url = '' THEN 'direct' ELSE referrer_url END
+                GROUP BY CASE
+                             WHEN referrer_recorded = 0 THEN 'not_recorded'
+                             WHEN referrer_url = '' THEN 'direct'
+                             ELSE referrer_url
+                         END
                 ORDER BY visitors DESC, sessions DESC
                 LIMIT 50
                 """,
@@ -816,7 +834,8 @@ class AnalyticsStore:
             recent_sessions = connection.execute(
                 """
                 SELECT session_id, analytics_id, started_at, last_seen, ended_at,
-                       source, campaign, referrer_url, device, language, event_count
+                       source, campaign, referrer_url, referrer_recorded,
+                       device, language, event_count
                 FROM analytics_sessions
                 WHERE started_at >= ? AND started_at < ?
                 ORDER BY last_seen DESC
@@ -856,6 +875,7 @@ class AnalyticsStore:
                     "source": str(row["source"] or "direct"),
                     "campaign": str(row["campaign"] or ""),
                     "referrer_url": str(row["referrer_url"] or ""),
+                    "referrer_recorded": bool(row["referrer_recorded"]),
                     "device": str(row["device"]),
                     "language": str(row["language"]),
                     "event_count": int(row["event_count"]),

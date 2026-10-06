@@ -11,6 +11,7 @@ function openKifuFiles() {
   const canSave = !!activeRoomId && latestState?.finished === true;
   kifuFileElement('kifuFileSave').disabled = !canSave;
   kifuFileElement('kifuFileSaveAnonymous').disabled = !canSave;
+  kifuFileElement('kifuBoardImageButton').disabled = !boardImageSourceAvailable();
   kifuFileElement('kifuFilesModal').style.display = 'flex';
   kifuFileElement('kifuFilesModal').querySelector('.settings-modal-close').focus();
 }
@@ -66,6 +67,7 @@ async function readKifuFile(input) {
       select.append(option);
     });
     kifuFileElement('kifuFileViewer').hidden = false;
+    kifuFileElement('kifuBoardImageButton').disabled = false;
     selectKifuFileRound();
     status.textContent = `${file.name} ／ ${data.rounds.length}局`;
   } catch (error) {
@@ -149,6 +151,176 @@ function openDebugTrace() {
 
 function closeDebugTrace() {
   document.getElementById('debugTraceModal').style.display = 'none';
+}
+
+function boardImageSourceAvailable() {
+  const loadedViewer = kifuFileElement('kifuFileViewer');
+  if (loadedViewer && !loadedViewer.hidden && kifuFileElement('kifuFileBoard')?.childElementCount) return true;
+  if (document.body.classList.contains('shared-kifu-board-active') && kifuFileElement('sharedKifuBoard')?.childElementCount) return true;
+  return !!activeRoomId && !!latestState && kifuFileElement('board')?.childElementCount > 0;
+}
+
+function cloneBoardImageElement(element) {
+  const clone = element.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.querySelectorAll('[id]').forEach(item => item.removeAttribute('id'));
+  clone.querySelectorAll('.name-thinking-spinner,.turn-countdown,.beginner-support-note').forEach(item => item.remove());
+  clone.querySelectorAll('[aria-live]').forEach(item => item.removeAttribute('aria-live'));
+  return clone;
+}
+
+function researchBoardImageSource(boardId) {
+  const board = kifuFileElement(boardId);
+  if (!board?.childElementCount) return null;
+  const source = document.createElement('div');
+  source.className = 'research-kifu-board-wrap';
+  source.style.cssText = 'width:max-content;max-width:none;margin:0;padding:10px;background:#d1ab75;';
+  const clone = cloneBoardImageElement(board);
+  clone.style.setProperty('--research-cell', '56px');
+  clone.style.setProperty('--research-gap', '5px');
+  source.append(clone);
+  return source;
+}
+
+function liveBoardImageSource() {
+  const board = kifuFileElement('board');
+  if (!board?.childElementCount || !activeRoomId || !latestState) return null;
+  const source = document.createElement('div');
+  source.style.cssText = [
+    'display:flex', 'flex-direction:column', 'gap:14px', 'width:max-content',
+    'max-width:none', 'padding:16px', 'background:#f4efdf', '--cell:64px', '--gap:6px',
+  ].join(';');
+  const boardWrap = document.createElement('div');
+  boardWrap.className = 'board-wrap';
+  boardWrap.style.cssText = 'width:max-content;max-width:none;margin:0;';
+  boardWrap.append(cloneBoardImageElement(board));
+  source.append(boardWrap);
+  const hands = kifuFileElement('handsArea');
+  if (hands?.childElementCount) {
+    const handsClone = cloneBoardImageElement(hands);
+    handsClone.style.cssText = 'display:flex;width:100%;max-width:none;margin:0;';
+    source.append(handsClone);
+  }
+  return source;
+}
+
+function currentBoardImageSource() {
+  const viewer = kifuFileElement('kifuFileViewer');
+  if (viewer && !viewer.hidden) {
+    const loaded = researchBoardImageSource('kifuFileBoard');
+    if (loaded) return loaded;
+  }
+  if (document.body.classList.contains('shared-kifu-board-active')) {
+    const shared = researchBoardImageSource('sharedKifuBoard');
+    if (shared) return shared;
+  }
+  return liveBoardImageSource();
+}
+
+function inlineBoardImageStyles(source, target) {
+  if (!(source instanceof Element) || !(target instanceof Element)) return;
+  const computed = getComputedStyle(source);
+  for (let index = 0; index < computed.length; index += 1) {
+    const property = computed[index];
+    target.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+  }
+  target.style.setProperty('animation', 'none', 'important');
+  target.style.setProperty('transition', 'none', 'important');
+  const sourceChildren = Array.from(source.children);
+  const targetChildren = Array.from(target.children);
+  sourceChildren.forEach((child, index) => inlineBoardImageStyles(child, targetChildren[index]));
+}
+
+function boardImageTimestamp() {
+  const now = new Date();
+  const two = value => String(value).padStart(2, '0');
+  return `${now.getFullYear()}${two(now.getMonth() + 1)}${two(now.getDate())}_${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
+}
+
+function canvasToJpegBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('JPEG conversion failed')), 'image/jpeg', 0.92);
+  });
+}
+
+async function saveBoardImageSource(source, filename) {
+  if (!source) throw new Error('表示できる盤面がありません。');
+  if (document.fonts?.ready) await document.fonts.ready;
+  const staging = document.createElement('div');
+  staging.setAttribute('aria-hidden', 'true');
+  staging.style.cssText = 'position:fixed;left:-100000px;top:0;z-index:-1;width:max-content;max-width:none;pointer-events:none;';
+  staging.append(source);
+
+  const viewClasses = ['board-view-3d', 'board-view-pixel', 'board-view-pixel-mono'];
+  const removedClasses = viewClasses.filter(className => document.body.classList.contains(className));
+  removedClasses.forEach(className => document.body.classList.remove(className));
+  document.body.append(staging);
+  let width;
+  let height;
+  let markup;
+  try {
+    const rect = source.getBoundingClientRect();
+    width = Math.max(1, Math.ceil(source.scrollWidth || rect.width));
+    height = Math.max(1, Math.ceil(source.scrollHeight || rect.height));
+    const snapshot = source.cloneNode(true);
+    inlineBoardImageStyles(source, snapshot);
+    snapshot.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    markup = new XMLSerializer().serializeToString(snapshot);
+  } finally {
+    staging.remove();
+    removedClasses.forEach(className => document.body.classList.add(className));
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="100%" height="100%">${markup}</foreignObject></svg>`;
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const image = new Image();
+  image.decoding = 'async';
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Board rendering failed'));
+    image.src = svgUrl;
+  });
+  const scale = Math.min(2, 2400 / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#f4efdf';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const jpeg = await canvasToJpegBlob(canvas);
+  const jpegUrl = URL.createObjectURL(jpeg);
+  const link = document.createElement('a');
+  link.href = jpegUrl;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(jpegUrl), 1000);
+}
+
+async function runBoardImageDownload(button, source, statusId) {
+  const status = kifuFileElement(statusId);
+  const originalDisabled = button?.disabled === true;
+  if (button) button.disabled = true;
+  if (status) status.textContent = uiText('盤面画像を作成しています。');
+  try {
+    await saveBoardImageSource(source, `sorou_goita_board_${boardImageTimestamp()}.jpg`);
+    if (status) status.textContent = uiText('盤面画像を保存しました。');
+  } catch (error) {
+    console.error('Board image export failed:', error);
+    if (status) status.textContent = uiText(error?.message === '表示できる盤面がありません。' ? error.message : '盤面画像を保存できませんでした。');
+  } finally {
+    if (button) button.disabled = originalDisabled;
+  }
+}
+
+function downloadCurrentBoardImage(button) {
+  return runBoardImageDownload(button, currentBoardImageSource(), 'kifuFileStatus');
+}
+
+function downloadResearchKifuBoardImage(button) {
+  return runBoardImageDownload(button, researchBoardImageSource('researchKifuBoard'), 'researchKifuDetailStatus');
 }
 
 function openScoreAttackHowTo() {

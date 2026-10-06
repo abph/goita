@@ -58,6 +58,11 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
     assert snapshot["host_game_starts"] == 1
     assert snapshot["pair_practice_games"] == 1
     assert snapshot["room_entries"]["score_attack"] == 1
+    assert snapshot["referrer_urls"] == [{
+        "referrer_url": "direct",
+        "visitors": 1,
+        "sessions": 1,
+    }]
     assert snapshot["regions"] == [{
         "prefecture": "埼玉県",
         "visitors": 1,
@@ -93,6 +98,7 @@ def test_analytics_store_groups_sanitized_referrer_urls(tmp_path: Path) -> None:
     assert snapshot["recent_sessions"][0]["referrer_url"] == (
         "https://vrcgoita.com/goita/rules/"
     )
+    assert snapshot["recent_sessions"][0]["referrer_recorded"] is True
 
 
 def test_analytics_opt_out_deletes_browser_history(tmp_path: Path) -> None:
@@ -263,6 +269,7 @@ def test_custom_range_filters_aggregates_and_recent_sessions(tmp_path: Path) -> 
 
 def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> None:
     database = tmp_path / "analytics.sqlite3"
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with sqlite3.connect(database) as connection:
         connection.execute(
             """
@@ -281,6 +288,15 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
             )
             """
         )
+        connection.execute(
+            """
+            INSERT INTO analytics_sessions (
+                session_id, analytics_id, started_at, last_seen, source,
+                medium, campaign, device, language, event_count
+            ) VALUES (?, ?, ?, ?, '', '', '', 'desktop', 'ja', 1)
+            """,
+            ("session_legacy_123456789", "visitor_legacy_123456789", now, now),
+        )
 
     store = AnalyticsStore(database)
     store._ensure_schema()
@@ -292,6 +308,14 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
     assert "prefecture" in columns
     assert "country_code" in columns
     assert "referrer_url" in columns
+    assert "referrer_recorded" in columns
+
+    snapshot = store.snapshot(days=30)
+    assert snapshot["referrer_urls"] == [{
+        "referrer_url": "not_recorded",
+        "visitors": 1,
+        "sessions": 1,
+    }]
 
 
 def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path: Path) -> None:

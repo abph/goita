@@ -2243,7 +2243,7 @@
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
       `).join("");
       document.getElementById("referrerRows").innerHTML = (data.referrer_urls || []).map(source => `
-        <tr><td class="referrer-url">${escapeHtml(source.referrer_url === "direct" ? "直接・不明" : source.referrer_url)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
+        <tr><td class="referrer-url">${escapeHtml(source.referrer_url === "not_recorded" ? "記録開始前" : source.referrer_url === "direct" ? "直接・不明" : source.referrer_url)}</td><td>${source.visitors}</td><td>${source.sessions}</td></tr>
       `).join("") || '<tr><td colspan="3" class="muted">まだ記録がありません。</td></tr>';
       document.getElementById("regionRows").innerHTML = (data.regions || []).map(region => `
         <tr><td>${escapeHtml(region.prefecture)}</td><td>${region.visitors}</td><td>${region.sessions}</td></tr>
@@ -2269,7 +2269,7 @@
         return `<details class="session">
           <summary>${formatDate(session.started_at)} / ${escapeHtml(session.analytics_id.slice(0, 8))}… / ${formatDuration(duration)}</summary>
           <div class="session-events">
-            <div class="muted referrer-url">流入元：${escapeHtml(session.referrer_url || "直接・不明")} / ${escapeHtml(session.device)} / ${escapeHtml(session.language)}</div>
+            <div class="muted referrer-url">流入元：${escapeHtml(session.referrer_recorded ? (session.referrer_url || "直接・不明") : "記録開始前")} / ${escapeHtml(session.device)} / ${escapeHtml(session.language)}</div>
             ${events || '<p class="muted">表示できる行動はありません。</p>'}
           </div>
         </details>`;

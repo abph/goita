@@ -262,6 +262,9 @@ def test_settings_popup_contains_the_research_library_workflow():
     assert 'class="research-kifu-play-actions"' in HTML
     assert 'id="researchKifuReplayButton"' in HTML
     assert ">棋譜再生</button>" in HTML
+    assert 'id="researchKifuImageButton"' in HTML
+    assert ">この盤面を画像で保存</button>" in HTML
+    assert "downloadResearchKifuBoardImage(this)" in HTML
     assert "toggleResearchKifuReplay()" in HTML
     assert "researchKifuReplayFrames(payload)" in HTML
     assert "researchKifuFaceDownLabel(seat, receive)" in HTML
