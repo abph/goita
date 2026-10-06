@@ -326,3 +326,32 @@ cases:
         - tests/test_safe_thinking_strategy.py::test_safe_thinking_spends_spare_shi_and_keeps_rook_for_third_attack
         - tests/test_safe_thinking_strategy.py::test_spare_shi_rule_stays_isolated_from_saved_current_ai
         - tests/test_safe_thinking_strategy.py::test_spare_shi_rule_requires_no_enemy_shi_attack_pressure
+
+  - id: ATT-017
+    status: confirmed
+    title: 強い初期手駒では伏せ駒ごとの確定得点を比較する
+    classification: strong_opening_continuation_proof
+    priority: high
+    scope: 強化中AI2
+    conditions:
+      - 初期手駒の絶対ランクがSS・S・Aのいずれか
+      - 攻め1の伏せ駒と攻め駒を選ぶ局面
+      - 同じ攻め駒に対して複数の伏せ駒候補がある
+    required:
+      - 現在の攻め計画が選んだ攻め駒を維持する
+      - 各伏せ駒について、一巡と受け返しを含む分岐後の上がりを調べる
+      - 最低得点、期待得点、最高得点の順で安全な候補を選ぶ
+      - 確定経路が見つからない場合は、従来の攻め計画へ戻す
+    forbidden:
+      - 安い駒を伏せるという局所評価だけで、確定得点を下げる
+      - 相対ランクだけを発動条件にする
+      - 絶対ランクB以下へ無条件に適用する
+    reason: 強い手駒では受け駒を1枚残す違いが、確定上がりの有無や最低得点を大きく変える。初手の伏せ駒を局全体の上がり経路で評価する
+    regression:
+      state: covered
+      tests:
+        - tests/test_strong_opening_continuation.py::test_absolute_a_opening_protects_guaranteed_score_across_receive_branches
+        - tests/test_strong_opening_continuation.py::test_saved_current_ai_keeps_its_existing_opening_choice
+        - tests/test_strong_opening_continuation.py::test_opening_continuation_proof_is_not_used_below_absolute_a
+        - tests/test_strong_opening_continuation.py::test_strong_opening_keeps_the_second_kyosha_after_all_pass
+        - tests/test_strong_opening_continuation.py::test_strong_opening_can_receive_shi_after_kyosha_is_received

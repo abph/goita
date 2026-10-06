@@ -2266,10 +2266,21 @@ class DecisionMixin:
             chosen, plan = shallow_eight_card
             if tr is not None:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-            self._set_decision_reason("score_fallback")
-            self._set_score_fallback_detail(
-                f"attack_shallow_eight_card_plan_{int(float(plan['finish_score']))}"
-            )
+            continuation_proof = plan.get("opening_continuation_proof")
+            if isinstance(continuation_proof, dict):
+                self._set_decision_reason("tsume")
+                self._set_score_fallback_detail(
+                    f"high_score_opening_continuation_"
+                    f"abs{continuation_proof.get('absolute_rank', 'A')}_"
+                    f"safe_{int(float(continuation_proof['minimum_score']))}_"
+                    f"expected_{int(round(float(continuation_proof['expected_score'])))}_"
+                    f"max_{int(float(continuation_proof['maximum_score']))}"
+                )
+            else:
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail(
+                    f"attack_shallow_eight_card_plan_{int(float(plan['finish_score']))}"
+                )
             return chosen
 
         attack_actions = [(t, b, a) for (t, b, a) in actions if t in ("attack", "attack_after_block") and a is not None]
