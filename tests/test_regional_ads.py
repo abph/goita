@@ -166,6 +166,7 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert "CTR" in admin
     assert "regionalAdMetrics" in admin
     assert ".regional-ad strong { display:block; font-size:13px; }" in index
+    assert ".regional-ad p { margin:4px 0 0; font-size:14px;" in index
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index
 
