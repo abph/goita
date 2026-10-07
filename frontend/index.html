@@ -8085,15 +8085,27 @@ function analyticsIdentifier(storage, key, prefix) {
 }
 
 function analyticsAttribution() {
-    try {
-        const stored = JSON.parse(sessionStorage.getItem(ANALYTICS_SOURCE_KEY) || "null");
-        if (stored) return stored;
-    } catch (_error) {}
     const params = new URLSearchParams(location.search);
     let source = String(params.get("utm_source") || "").slice(0, 80);
     const medium = String(params.get("utm_medium") || "").slice(0, 80);
     const campaign = String(params.get("utm_campaign") || "").slice(0, 80);
-    if (!source && document.referrer) {
+    if (source) {
+        if (["vrcgoita", "vrcgoita.com", "www.vrcgoita.com"].includes(source.toLowerCase())) {
+            source = "vrcgoita";
+        }
+        const result = {source, medium, campaign};
+        if (!analyticsAttribution.explicitSourceApplied) {
+            sessionStorage.removeItem(ANALYTICS_SESSION_KEY);
+            analyticsAttribution.explicitSourceApplied = true;
+        }
+        sessionStorage.setItem(ANALYTICS_SOURCE_KEY, JSON.stringify(result));
+        return result;
+    }
+    try {
+        const stored = JSON.parse(sessionStorage.getItem(ANALYTICS_SOURCE_KEY) || "null");
+        if (stored) return stored;
+    } catch (_error) {}
+    if (document.referrer) {
         try { source = new URL(document.referrer).hostname.slice(0, 80); } catch (_error) {}
     }
     if (["vrcgoita", "vrcgoita.com", "www.vrcgoita.com"].includes(source.toLowerCase())) {
