@@ -91,6 +91,59 @@ class RoundStrategyMixin:
             ),
         }
 
+    def _kyosha_round_early_royal_proofs(
+        self,
+        state,
+        after_receive,
+        player: str,
+        attacks,
+    ) -> dict:
+        """Classify early royal follow-ups by public forced-win proof.
+
+        An unreceivable royal can look artificially strong at a short search
+        horizon because it guarantees another turn while hiding the cost of
+        the card that must be blocked on that turn.  During the first two
+        attacks, keep a royal follow-up only when it proves the finish.  The
+        guard does not apply when no non-royal continuation exists.
+        """
+        tracker = self._track.get(id(state))
+        if (
+            tracker is None
+            or int(tracker.get("my_attack_count", 0)) >= 2
+            or not any(action[2] not in ("8", "9") for action in attacks)
+        ):
+            return {}
+
+        royal_attacks = [
+            action for action in attacks if action[2] in ("8", "9")
+        ]
+        if not royal_attacks:
+            return {}
+
+        preview = copy.deepcopy(self)
+        preview._track[id(after_receive)] = copy.deepcopy(tracker)
+        initial_hand = preview._my_initial_hands_by_state_id.get(id(state))
+        if initial_hand is not None:
+            preview._my_initial_hands_by_state_id[id(after_receive)] = list(
+                initial_hand
+            )
+        preview.on_public_action(
+            after_receive,
+            player,
+            ("receive", "2", None),
+        )
+
+        statuses = {}
+        for action in royal_attacks:
+            result = preview._forced_win_result_after_attack_action(
+                after_receive,
+                player,
+                action,
+            )
+            status = getattr(result.status, "value", result.status)
+            statuses[str(action[2])] = str(status)
+        return statuses
+
     def _compare_kyosha_round_routes(self, state, player: str) -> Optional[dict]:
         """Compare pass with receive plus every legal attack in shared worlds."""
         tracker = self._track.get(id(state))
@@ -156,8 +209,29 @@ class RoundStrategyMixin:
             # An incomplete comparison cannot rank routes fairly.
             return None
 
-        search_best_receive = max(
+        raw_search_best_receive = max(
             (route for route in values if len(route) == 2),
+            key=lambda route: values[route],
+        )
+        early_royal_proofs = self._kyosha_round_early_royal_proofs(
+            state,
+            after_receive,
+            player,
+            attacks,
+        )
+        blocked_early_royals = tuple(sorted(
+            piece
+            for piece, status in early_royal_proofs.items()
+            if status != "proven"
+        ))
+        eligible_receive_routes = [
+            route
+            for route in values
+            if len(route) == 2
+            and str(route[1][2]) not in blocked_early_royals
+        ]
+        search_best_receive = max(
+            eligible_receive_routes or [raw_search_best_receive],
             key=lambda route: values[route],
         )
         best_receive = search_best_receive
@@ -168,6 +242,7 @@ class RoundStrategyMixin:
             attacks,
         )
         followup_override_blocked = False
+        royal_preservation_followup_kept = False
         followup_value_gap = 0.0
         if followup_rule is not None:
             rule_route = (receive_action, followup_rule["action"])
@@ -180,15 +255,27 @@ class RoundStrategyMixin:
                     followup_rule.get("two_shi_first_attack_signal_risk")
                     and search_best_receive[1][2] == "1"
                 )
-                protect_followup = authority == "proven" or (
-                    authority == "strong"
-                    or two_shi_signal_risk
-                ) and followup_value_gap < float(
-                    self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN
+                preserve_non_royal_followup = bool(
+                    blocked_early_royals
+                    and rule_route[1][2] not in ("8", "9")
+                    and followup_value_gap <= float(self.ROUND_ROUTE_MIN_MARGIN)
+                )
+                protect_followup = (
+                    authority == "proven"
+                    or (
+                        (authority == "strong" or two_shi_signal_risk)
+                        and followup_value_gap < float(
+                            self.TIME_SEARCH_STRONG_RULE_OVERRIDE_MARGIN
+                        )
+                    )
+                    or preserve_non_royal_followup
                 )
                 if protect_followup:
                     best_receive = rule_route
                     followup_override_blocked = True
+                    royal_preservation_followup_kept = (
+                        preserve_non_royal_followup
+                    )
         pass_value = values[(pass_action,)]
         receive_value = values[best_receive]
         receiver_position = self._kyosha_pass_compare_receiver_position(
@@ -209,6 +296,10 @@ class RoundStrategyMixin:
                 for route, value in values.items() if len(route) == 2
             },
             "search_best_attack": str(search_best_receive[1][2]),
+            "best_receive_attack": str(best_receive[1][2]),
+            "raw_search_best_attack": str(raw_search_best_receive[1][2]),
+            "early_royal_proof_statuses": dict(early_royal_proofs),
+            "blocked_early_royal_attacks": list(blocked_early_royals),
             "followup_rule_action": (
                 list(followup_rule["action"])
                 if followup_rule is not None else None
@@ -231,6 +322,9 @@ class RoundStrategyMixin:
                 and search_best_receive[1][2] == "1"
             ),
             "followup_override_blocked": followup_override_blocked,
+            "royal_preservation_followup_kept": (
+                royal_preservation_followup_kept
+            ),
             "followup_value_gap": round(followup_value_gap, 2),
             "depth": self.ROUND_ROUTE_DEPTH,
             "samples": len(worlds),

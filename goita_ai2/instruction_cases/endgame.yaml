@@ -158,12 +158,22 @@ cases:
     title: 王玉は高得点上がりへの橋として残す
     classification: royal_bridge
     priority: high
+    source_reports:
+      - goita_ai_review_20261007015126_round1_C_turn4.json
     conditions:
       - 王玉を攻めまたは伏せに使う候補がある
       - 別駒で攻めをつなげられる
-    required: 王玉を受け幅と最後の高得点上がりに残すルートを比較する
+    required:
+      - 王玉を受け幅と最後の高得点上がりに残すルートを比較する
+      - 1つ目・2つ目の攻めで王玉を出す場合は、公開情報から上がりが確定するか検証する
+      - 確定しない王玉攻めを除いた後は、通常の攻め計画とパスを改めて比較する
+    exceptions:
+      - 王玉を出すことで即上がりまたは確定上がりになる
+      - 王玉以外に合法な攻め駒がない
+      - 3つ目以降の攻めで、既存の王玉フィニッシュ戦略が成立する
     forbidden:
       - 早い段階で王玉を伏せる
+      - 短い探索で一巡することだけを理由に、確定していない王玉攻めを選ぶ
       - 王玉を3つ目に出して、低い駒で上がる
     reason: 王玉は広い受けと50点以上の上がりを同時に作る
     regression:
@@ -171,6 +181,7 @@ cases:
       tests:
         - tests/test_attack_plan_templates.py::test_royal_preservation_template_never_hides_the_royal_early
         - tests/test_endgame_module.py::test_third_attack_uses_royal_bridge_for_thirty_point_finish
+        - tests/test_kyosha_round_route_strategy.py::test_kyosha_route_preserves_unproven_early_royals_and_uses_hisha
 
   - id: END-010
     status: confirmed
@@ -205,4 +216,3 @@ cases:
     regression:
       state: partial
       note: 確定上がり高得点探索へ反映済み。代表棋譜を追加予定
-

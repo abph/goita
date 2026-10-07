@@ -999,7 +999,11 @@ class DecisionMixin:
                 if len(chosen_route) == 2:
                     piece = str(chosen_route[1][2])
                     tracker["pending_kyosha_receive_attack_piece"] = piece
-                    tracker["pending_kyosha_receive_source"] = "round_route"
+                    tracker["pending_kyosha_receive_source"] = (
+                        "round_route_royal_preservation"
+                        if round_route.get("royal_preservation_followup_kept")
+                        else "round_route"
+                    )
                     self._set_attack_intent_plan(
                         state, player, kind="preserve_followup",
                         attack_piece=piece, source="kyosha_round_route",
@@ -1022,6 +1026,18 @@ class DecisionMixin:
                 f"receive_{round_route['receive_value']}_"
                 f"{'receive_attack_' + str(chosen_route[1][2]) if len(chosen_route) == 2 else 'pass'}"
             )
+            blocked_royals = "_".join(
+                str(piece)
+                for piece in round_route.get(
+                    "blocked_early_royal_attacks", ()
+                )
+            )
+            if blocked_royals:
+                round_route_detail += (
+                    f"_royal_routes_blocked_unproven_{blocked_royals}_"
+                    f"best_receive_attack_"
+                    f"{round_route['best_receive_attack']}"
+                )
             if (
                 len(chosen_route) == 2
                 and round_route.get("followup_override_blocked")
@@ -1031,6 +1047,16 @@ class DecisionMixin:
                     f"_followup_rule_kept_{chosen_route[1][2]}_"
                     f"search_{round_route['search_best_attack']}_"
                     f"gap_{round_route['followup_value_gap']}_two_shi_signal"
+                )
+            elif (
+                len(chosen_route) == 2
+                and round_route.get("royal_preservation_followup_kept")
+            ):
+                round_route_detail += (
+                    f"_royal_preserved_unproven_followup_rule_kept_"
+                    f"{chosen_route[1][2]}_search_"
+                    f"{round_route['search_best_attack']}_"
+                    f"gap_{round_route['followup_value_gap']}"
                 )
             self._set_score_fallback_detail(round_route_detail)
             self._remember_conditional_response_plan(
@@ -1632,7 +1658,7 @@ class DecisionMixin:
             )
             if planned_attack is not None:
                 tr["my_attack_count"] = int(tr.get("my_attack_count", 0)) + 1
-                if planned_source == "round_route":
+                if planned_source.startswith("round_route"):
                     future = self._future_attack_plan_for_action(
                         state, player, planned_attack
                     ) or {}
@@ -1654,9 +1680,16 @@ class DecisionMixin:
                     except (TypeError, ValueError):
                         pass
                 self._set_decision_reason("time_search")
-                self._set_score_fallback_detail(
-                    f"{'kyosha_round_route_followup' if planned_source == 'round_route' else 'kyosha_receive_followup'}_{planned_piece}"
-                )
+                if planned_source == "round_route_royal_preservation":
+                    detail = (
+                        "kyosha_round_route_followup_"
+                        f"{planned_piece}_royal_preserved_unproven"
+                    )
+                elif planned_source == "round_route":
+                    detail = f"kyosha_round_route_followup_{planned_piece}"
+                else:
+                    detail = f"kyosha_receive_followup_{planned_piece}"
+                self._set_score_fallback_detail(detail)
                 return planned_attack
 
         if tr is not None and tr.get("pending_shi_insertion_attack_piece") is not None:
