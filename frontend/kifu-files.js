@@ -164,6 +164,7 @@ function cloneBoardImageElement(element) {
   const clone = element.cloneNode(true);
   clone.removeAttribute('id');
   clone.querySelectorAll('[id]').forEach(item => item.removeAttribute('id'));
+  clone.querySelectorAll('.is-replay-new').forEach(item => item.classList.remove('is-replay-new'));
   clone.querySelectorAll('.name-thinking-spinner,.turn-countdown,.beginner-support-note').forEach(item => item.remove());
   clone.querySelectorAll('[aria-live]').forEach(item => item.removeAttribute('aria-live'));
   return clone;
