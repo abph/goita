@@ -5936,11 +5936,13 @@
             <select id="dealModeSelect" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;" onchange="saveDealModeSetting()">
               <option value="normal" selected>通常配牌</option>
               <option value="balanced">均衡配牌（S・A・Xなし）</option>
+              <option value="balanced_wardna">均衡配碑（wardna式）</option>
               <option value="frequent">高頻度配牌（上位100）</option>
               <option value="frequent_200">実戦練習配牌（上位200）</option>
             </select>
           </div>
           <div class="small">4人全員の手駒を、選んだ範囲の分類に限定します。手札指定がある局は、手札指定を優先します。</div>
+          <div class="small">wardna式は、親が敵方に受けられない攻めを3回続けられる配牌も除外します。</div>
           <div id="dealModeStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </details>
@@ -9945,7 +9947,7 @@ function syncDealModeControls() {
         ?? latestState?.deal_mode
         ?? "normal"
     );
-    select.value = ["balanced", "frequent", "frequent_200"].includes(configured)
+    select.value = ["balanced", "balanced_wardna", "frequent", "frequent_200"].includes(configured)
         ? configured
         : "normal";
     select.disabled = !isCurrentClientHost() || !supportsDealMode;
@@ -9957,6 +9959,7 @@ function syncActiveDealModeBadge() {
     const mode = String(latestState?.deal_mode || "normal");
     const labels = {
         balanced: "均衡配牌（S・A・Xなし）",
+        balanced_wardna: "均衡配碑（wardna式）",
         frequent: "高頻度配牌（上位100）",
         frequent_200: "実戦練習配牌（上位200）",
     };
@@ -10047,7 +10050,7 @@ async function saveDealModeSetting() {
     const status = document.getElementById("dealModeStatus");
     if (!select || !status) return;
 
-    const mode = ["balanced", "frequent", "frequent_200"].includes(select.value)
+    const mode = ["balanced", "balanced_wardna", "frequent", "frequent_200"].includes(select.value)
         ? select.value
         : "normal";
     dealModeSaving = true;
