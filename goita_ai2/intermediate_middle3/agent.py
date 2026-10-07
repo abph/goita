@@ -1,4 +1,4 @@
-"""中級者（中3）: 2026年10月5日時点の強化中AI2を固定保存した安定版。"""
+"""中級者（中3）: 2026年10月7日時点の強化中AI2固定版。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from goita_ai2.intermediate_middle3.base_agent import RuleBasedAgent as FrozenRuleBasedAgent
+from goita_ai2.intermediate_middle3.endgame import ForcedWinStatus
 from goita_ai2.intermediate_middle3.neural_policy import NeuralPolicyModel, live_state_payload
 
 
@@ -29,6 +30,12 @@ class RuleBasedAgent(FrozenRuleBasedAgent):
         self.SHI_ATTACK_PACKAGE_ENABLED = True
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
         self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = True
+        # Strong opening hands have enough value to protect that the hidden
+        # piece must be judged by the whole continuation, not only by its
+        # immediate piece value.  This behavior is included in the frozen
+        # Intermediate (Middle 3) profile.
+        self.STRONG_OPENING_CONTINUATION_PROOF_ENABLED = True
+        self.STRONG_OPENING_CONTINUATION_ABSOLUTE_RANKS = ("SS", "S", "A")
         # Retained for diagnostics and compatibility with older snapshots.
         self.NEURAL_PRIMARY_ENABLED = False
         self.NEURAL_TIEBREAK_ENABLED = True
@@ -38,6 +45,169 @@ class RuleBasedAgent(FrozenRuleBasedAgent):
         self.NEURAL_TIEBREAK_CURRENT_RELATIVE_GAP = 0.05
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
+
+    def _eight_card_shallow_plan_action(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        *,
+        has_non_king_attack_option: bool,
+    ) -> Optional[Tuple[Action, Dict[str, object]]]:
+        """Protect a strong opening's guaranteed score when choosing a block.
+
+        The established planner first chooses the attack purpose.  For an
+        absolute A-or-better hand, compare every legal hidden piece paired with
+        that same attack by the existing exact branch solver.  This includes
+        both a full lap of passes and branches where another player receives
+        the opening attack and returns a different piece.
+        """
+        baseline = super()._eight_card_shallow_plan_action(
+            state,
+            player,
+            actions,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if (
+            baseline is None
+            or not bool(self.STRONG_OPENING_CONTINUATION_PROOF_ENABLED)
+        ):
+            return baseline
+
+        axes = self._initial_hand_axes_for_state(state, player)
+        absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+        if absolute_rank not in self.STRONG_OPENING_CONTINUATION_ABSOLUTE_RANKS:
+            return baseline
+
+        baseline_action, baseline_plan = baseline
+        baseline_attack = baseline_action[2]
+        if baseline_attack is None:
+            return baseline
+
+        same_attack_actions = [
+            action
+            for action in actions
+            if action[0] == "attack_after_block"
+            and action[1] is not None
+            and action[2] == baseline_attack
+        ]
+        if len(same_attack_actions) < 2:
+            return baseline
+
+        # The public exact solver normally begins at six cards.  An opening
+        # block plus attack leaves exactly six, so permit this root only while
+        # comparing these gated eight-card openings.
+        had_instance_limit = "EXACT_FORCED_WIN_MAX_HAND" in self.__dict__
+        previous_limit = getattr(self, "EXACT_FORCED_WIN_MAX_HAND", 6)
+        self.EXACT_FORCED_WIN_MAX_HAND = max(8, int(previous_limit))
+        proven = []
+        try:
+            for action in same_attack_actions:
+                result = self._forced_win_result_after_attack_action(
+                    state,
+                    player,
+                    action,
+                )
+                if (
+                    result.status != ForcedWinStatus.PROVEN
+                    or result.minimum_score is None
+                ):
+                    continue
+                minimum = float(result.minimum_score)
+                expected = (
+                    minimum
+                    if result.expected_score is None
+                    else float(result.expected_score)
+                )
+                maximum = (
+                    expected
+                    if result.maximum_score is None
+                    else float(result.maximum_score)
+                )
+                proven.append((minimum, expected, maximum, action))
+        finally:
+            if had_instance_limit:
+                self.EXACT_FORCED_WIN_MAX_HAND = previous_limit
+            else:
+                self.__dict__.pop("EXACT_FORCED_WIN_MAX_HAND", None)
+
+        if not proven:
+            return baseline
+
+        # Safe-thinking priority: guaranteed score, then expected score, then
+        # the best reachable score.  Exact ties retain the established shallow
+        # plan so this rule changes only what the proof can distinguish.
+        baseline_index = {
+            action: 1 if action == baseline_action else 0
+            for action in same_attack_actions
+        }
+        minimum, expected, maximum, chosen = max(
+            proven,
+            key=lambda item: (
+                item[0],
+                item[1],
+                item[2],
+                baseline_index.get(item[3], 0),
+            ),
+        )
+
+        proof_rows = []
+        for candidate_minimum, candidate_expected, candidate_maximum, action in proven:
+            proof_rows.append({
+                "action": list(action),
+                "score": candidate_minimum,
+                "minimum_score": round(candidate_minimum, 3),
+                "expected_score": round(candidate_expected, 3),
+                "maximum_score": round(candidate_maximum, 3),
+                "candidate_role": "opening_continuation_proof",
+            })
+        proof_rows.sort(
+            key=lambda row: (
+                float(row["minimum_score"]),
+                float(row["expected_score"]),
+                float(row["maximum_score"]),
+            ),
+            reverse=True,
+        )
+        self.last_attack_candidate_scores = proof_rows
+
+        future = self._future_attack_plan_for_action(state, player, chosen)
+        if future is not None and len(future.get("steps", [])) == 3:
+            steps = [(chosen[1], chosen[2])] + list(future["steps"])
+            selected_plan = {
+                "source_hand": sorted(str(piece) for piece in state.hands[player]),
+                "steps": steps,
+                "attacks": [step_attack for _block, step_attack in steps],
+                "final_pair": steps[-1],
+                "finish_score": float(future.get("finish_score", minimum)),
+                "receive_width_after_opening": self._planned_receive_width(
+                    list(future.get("remaining_hand", []))
+                ),
+                "projected_score": float(expected),
+                "inference_revision": int(
+                    self._track.get(id(state), {}).get("piece_inference_revision", 0)
+                ),
+            }
+        else:
+            selected_plan = dict(baseline_plan)
+            selected_plan["steps"] = [
+                (chosen[1], chosen[2]),
+                *list(selected_plan.get("steps", []))[1:],
+            ]
+
+        selected_plan["opening_continuation_proof"] = {
+            "absolute_rank": absolute_rank,
+            "attack": baseline_attack,
+            "minimum_score": round(minimum, 3),
+            "expected_score": round(expected, 3),
+            "maximum_score": round(maximum, 3),
+            "compared_blocks": len(same_attack_actions),
+            "proven_blocks": len(proven),
+        }
+        tracker = self._track.get(id(state))
+        if tracker is not None:
+            tracker["shallow_eight_card_plan"] = selected_plan
+        return chosen, selected_plan
 
     @classmethod
     def _neural_model(cls) -> Optional[NeuralPolicyModel]:

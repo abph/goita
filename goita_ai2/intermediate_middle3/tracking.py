@@ -57,6 +57,10 @@ class TrackingMixin:
             my_past_attacks=set(),
             ally_past_attacks=set(),
             ally_attack_history=[],
+            # Public claims made by the ally's signalling-piece attacks.
+            # These are strategic inferences, not hard card-count bounds.
+            ally_pair_attack_claims={},
+            ally_pair_attack_claim_history=[],
             enemy_past_attacks=set(),
             enemy_attack_counts={},
             hidden_block_counts={p: 0 for p in ("A", "B", "C", "D")},
@@ -157,6 +161,59 @@ class TrackingMixin:
         self._track[sid]["round_strategy"] = self._initial_round_strategy(
             state, self.me
         )
+
+    def _record_ally_pair_attack_claim(
+        self,
+        tr: dict,
+        *,
+        attack: str,
+        attack_number: int,
+        action_type: str,
+    ) -> None:
+        """Record what an ally's signalling-piece attack publicly claims.
+
+        An opening kyosha/horse/silver/gold attack conventionally claims that
+        another copy remains.  A later attack can carry the same meaning, but
+        competing attack plans make it conditional.  Keep that distinction for
+        future risk-thinking evaluation without turning the claim into a hard
+        minimum in ordinary hand inference.
+        """
+        if attack not in ("2", "3", "4", "5"):
+            return
+
+        claims = tr.setdefault("ally_pair_attack_claims", {})
+        previous = claims.get(attack)
+        observed_attacks = sum(
+            1
+            for piece in tr.get("ally_attack_history", [])
+            if str(piece) == attack
+        )
+        claimed_current_min = max(0, 2 - observed_attacks)
+        claim = {
+            "piece": attack,
+            "attack_number": int(attack_number),
+            "action_type": str(action_type),
+            "claimed_initial_min": 2,
+            "claimed_current_min": claimed_current_min,
+            "observed_attacks": observed_attacks,
+            "confidence": "strong" if attack_number == 1 else "conditional",
+            "source": (
+                "ally_first_signalling_piece_attack"
+                if attack_number == 1
+                else "ally_later_signalling_piece_attack"
+            ),
+            "is_hard_count_bound": False,
+        }
+        if isinstance(previous, dict):
+            claim["previous_claim"] = {
+                "attack_number": int(previous.get("attack_number", 0)),
+                "claimed_current_min": int(
+                    previous.get("claimed_current_min", 0)
+                ),
+                "confidence": str(previous.get("confidence", "conditional")),
+            }
+        claims[attack] = claim
+        tr.setdefault("ally_pair_attack_claim_history", []).append(dict(claim))
 
     def _refresh_ally_shi_reserve_claim(self, state, tracker: dict) -> None:
         """Update the ally's publicly claimed shi reserve.
@@ -388,6 +445,12 @@ class TrackingMixin:
                 tr["ally_past_attacks"].add(attack)
                 ally_attack_history = tr.setdefault("ally_attack_history", [])
                 ally_attack_history.append(str(attack))
+                self._record_ally_pair_attack_claim(
+                    tr,
+                    attack=str(attack),
+                    attack_number=len(ally_attack_history),
+                    action_type=action_type,
+                )
                 if (
                     str(attack) == "1"
                     and len(ally_attack_history) == 2
