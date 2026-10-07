@@ -38,9 +38,8 @@ the configured room background path, and changed room-admin passwords as
 salted PBKDF2 hashes. It never stores room-admin passwords in plaintext, and
 does not contain hands, scores, occupied seats, or other live match state.
 
-The analytics database stores anonymous browser/session IDs, referrer origins
-and paths without query strings or fragments, and an allow-listed set of product
-events. Its schema has no fields for player names, chat, kifu,
+The analytics database stores anonymous browser/session IDs and an allow-listed
+set of product events. Its schema has no fields for player names, chat, kifu,
 hands, seats, partners, opponents, room IDs, or raw IP addresses. Users can
 disable analytics in personal settings; doing so deletes the history associated
 with that browser's analytics ID.

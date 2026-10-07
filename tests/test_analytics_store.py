@@ -16,7 +16,6 @@ def _event(**overrides):
         "event": "site_visit",
         "room_type": "lobby",
         "source": "direct",
-        "referrer_url": "",
         "device": "desktop",
         "language": "ja",
         "properties": {},
@@ -58,8 +57,8 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
     assert snapshot["host_game_starts"] == 1
     assert snapshot["pair_practice_games"] == 1
     assert snapshot["room_entries"]["score_attack"] == 1
-    assert snapshot["referrer_urls"] == [{
-        "referrer_url": "direct",
+    assert snapshot["sources"] == [{
+        "source_name": "direct",
         "visitors": 1,
         "sessions": 1,
     }]
@@ -83,22 +82,19 @@ def test_analytics_store_records_only_allowed_product_properties(tmp_path: Path)
     }
 
 
-def test_analytics_store_groups_sanitized_referrer_urls(tmp_path: Path) -> None:
+def test_analytics_store_canonicalizes_vrcgoita_source(tmp_path: Path) -> None:
     store = AnalyticsStore(tmp_path / "analytics.sqlite3")
     assert store.record_event(_event(
-        referrer_url="https://vrcgoita.com/goita/rules/?member=secret#section",
+        source="vrcgoita.com",
     )) is True
 
     snapshot = store.snapshot(days=30)
-    assert snapshot["referrer_urls"] == [{
-        "referrer_url": "https://vrcgoita.com/goita/rules/",
+    assert snapshot["sources"] == [{
+        "source_name": "vrcgoita",
         "visitors": 1,
         "sessions": 1,
     }]
-    assert snapshot["recent_sessions"][0]["referrer_url"] == (
-        "https://vrcgoita.com/goita/rules/"
-    )
-    assert snapshot["recent_sessions"][0]["referrer_recorded"] is True
+    assert snapshot["recent_sessions"][0]["source"] == "vrcgoita"
 
 
 def test_analytics_opt_out_deletes_browser_history(tmp_path: Path) -> None:
@@ -307,12 +303,10 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
         }
     assert "prefecture" in columns
     assert "country_code" in columns
-    assert "referrer_url" in columns
-    assert "referrer_recorded" in columns
 
     snapshot = store.snapshot(days=30)
-    assert snapshot["referrer_urls"] == [{
-        "referrer_url": "not_recorded",
+    assert snapshot["sources"] == [{
+        "source_name": "direct",
         "visitors": 1,
         "sessions": 1,
     }]

@@ -12,7 +12,7 @@ const values = new Map();
 const context = vm.createContext({
   URL,
   URLSearchParams,
-  location: {search: '?from=https%3A%2F%2Fvrcgoita.com%2Fai%2F%3Fmember%3Dsecret%23chapter'},
+  location: {search: '?utm_source=vrcgoita'},
   document: {referrer: ''},
   sessionStorage: {
     getItem: key => values.has(key) ? values.get(key) : null,
@@ -22,16 +22,21 @@ const context = vm.createContext({
 });
 
 vm.runInContext(html.slice(start, end), context);
-const attribution = context.analyticsAttribution();
-assert.equal(attribution.source, 'vrcgoita.com');
-assert.equal(attribution.referrer_url, 'https://vrcgoita.com/ai/');
+let attribution = context.analyticsAttribution();
+assert.equal(attribution.source, 'vrcgoita');
+assert.equal(Object.hasOwn(attribution, 'referrer_url'), false);
 
 values.clear();
 context.location.search = '';
-context.document.referrer = 'https://example.com/another-page';
-assert.equal(
-  context.analyticsAttribution().referrer_url,
-  'https://example.com/another-page',
-);
+context.document.referrer = 'https://vrcgoita.com/ai/?member=secret#chapter';
+attribution = context.analyticsAttribution();
+assert.equal(attribution.source, 'vrcgoita');
+assert.equal(Object.hasOwn(attribution, 'referrer_url'), false);
 
-console.log('Analytics referrer: path capture, sensitive-part removal and session first-touch passed');
+values.clear();
+context.document.referrer = 'https://example.com/another-page?secret=yes';
+attribution = context.analyticsAttribution();
+assert.equal(attribution.source, 'example.com');
+assert.equal(Object.hasOwn(attribution, 'referrer_url'), false);
+
+console.log('Analytics source: coarse attribution and VRCとごいた canonicalization passed');
