@@ -5473,6 +5473,7 @@
           <button onclick="practiceReplayAction('start')" id="btnPracticeReplay" style="display:none; font-weight:900;">もう一度練習する</button>
           <button onclick="openPracticeScenePicker()" id="btnPracticeScene" style="display:none; font-weight:900;">場面を指定して練習する</button>
 
+          <button id="shuffleSeatsBtn" onclick="shuffleSeats()" style="display:none; font-weight:900;">席をシャッフル</button>
           <button id="startGameBtn" onclick="startGame()" style="display:none; font-weight:900; color:#b00000; border:2px solid #b00000; background:#fffafa;">▶ 開始</button>
         </div>
 
@@ -6503,8 +6504,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261007a"></script>
 <script src="/static/trace-results.js?v=20260917e"></script>
-<script src="/static/i18n-en.js?v=20260928d"></script>
-<script src="/static/i18n.js?v=20260928d"></script>
+<script src="/static/i18n-en.js?v=20260928e"></script>
+<script src="/static/i18n.js?v=20260928e"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261004a"></script>
@@ -8456,6 +8457,7 @@ let fixedHandMemory = {};
 let setupApplyTimer = null;
 let kifuPresetLoading = false;
 let startRequestInFlight = false;
+let shuffleSeatsRequestInFlight = false;
 let nextRoundRequestInFlight = false;
 let practiceReplayRequestInFlight = false;
 let autoRevealHandsInFlight = false;
@@ -12092,10 +12094,13 @@ function markFixedHandSlotUsed(state, seat, slotIndex, piece, hidden = false){
 }
 
 function startGame() {
+    if (shuffleSeatsRequestInFlight) return;
     isGameStarted = true;
     startRequestInFlight = true;
     const btn = document.getElementById("startGameBtn");
     if(btn) btn.style.display = "none";
+    const shuffleButton = document.getElementById("shuffleSeatsBtn");
+    if(shuffleButton) shuffleButton.style.display = "none";
     if(setupApplyTimer){
       clearTimeout(setupApplyTimer);
       setupApplyTimer = null;
@@ -12115,6 +12120,31 @@ function startGame() {
         await refresh();
       }
     })();
+}
+
+async function shuffleSeats() {
+    if (shuffleSeatsRequestInFlight || startRequestInFlight || !latestState || mySeat !== "A") return;
+    shuffleSeatsRequestInFlight = true;
+    const button = document.getElementById("shuffleSeatsBtn");
+    const startButton = document.getElementById("startGameBtn");
+    if (button) button.disabled = true;
+    if (startButton) startButton.disabled = true;
+    setHint(uiText("席をシャッフルしています..."));
+    try {
+        const query = new URLSearchParams({requester: mySeat, client_id: clientId});
+        const response = await fetch(`${API}/games/${gid}/shuffle_seats?${query.toString()}`, {
+            method: "POST",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.detail || "席をシャッフルできませんでした。");
+    } catch (error) {
+        setHint(uiText(error?.message || "席をシャッフルできませんでした。"));
+    } finally {
+        shuffleSeatsRequestInFlight = false;
+        if (button) button.disabled = false;
+        if (startButton) startButton.disabled = false;
+        if (latestState) await refresh();
+    }
 }
 
 function getWinnerPoints(state){
@@ -16036,7 +16066,14 @@ async function refreshFromState(confirmedState = null){
     lastSeat = mySeat;
   }
   const seatOwnershipLost = ownershipSupported && !isSpectator() && !ownedHumanSeats.includes(mySeat);
-  if(seatOwnershipLost){
+  const movedSeat = seatOwnershipLost && ownedHumanSeats.length === 1 ? ownedHumanSeats[0] : "";
+  if(movedSeat){
+    pending = null;
+    setAutoPlayEnabled(false);
+    await voiceChatController?.leave?.();
+    mySeat = movedSeat;
+    lastSeat = movedSeat;
+  }else if(seatOwnershipLost){
     pending = null;
     setAutoPlayEnabled(false);
     await voiceChatController?.leave?.();
@@ -16166,6 +16203,24 @@ async function refreshFromState(confirmedState = null){
   }
   
   const startGameBtn = document.getElementById("startGameBtn");
+  const shuffleSeatsBtn = document.getElementById("shuffleSeatsBtn");
+  const humanSeatCount = Array.isArray(state.human_seats) ? state.human_seats.length : 0;
+  const canShuffleSeats = (
+      isHost
+      && !state.is_started
+      && !state.finished
+      && Number(state.round_count || 1) === 1
+      && !stateHasTotalScore(state)
+      && humanSeatCount >= 2
+      && humanSeatCount <= 4
+      && !state.tutorial_mode
+      && !isPersonalScoreRoom()
+      && !startRequestInFlight
+  );
+  if (shuffleSeatsBtn) {
+      shuffleSeatsBtn.style.display = canShuffleSeats ? "inline-block" : "none";
+      shuffleSeatsBtn.disabled = shuffleSeatsRequestInFlight;
+  }
   if (startGameBtn) {
       startGameBtn.style.display = (!state.is_started && isHost && !startRequestInFlight) ? "inline-block" : "none";
       startGameBtn.textContent = isPersonalScoreRoom() ? "スコアアタックを開く" : "▶ 開始";

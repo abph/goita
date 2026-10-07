@@ -5,6 +5,10 @@
  */
 (() => {
   const exact = Object.freeze({
+    "席をシャッフル": "Shuffle Seats",
+    "席をシャッフルしています...": "Shuffling seats...",
+    "席をシャッフルできませんでした。": "Could not shuffle the seats.",
+    "Aが席をシャッフルしました。": "A shuffled the seats.",
     "プレイヤー名": "Player Name",
     "名前の設定": "Set Name",
     "名前の変更": "Change Name",

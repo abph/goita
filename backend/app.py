@@ -1492,6 +1492,85 @@ def _store_ai_seats(game: Dict[str, Any], seats: Set[str]) -> None:
     game["ai_seats"] = sorted(s for s in seats if s in ALL_SEATS)
 
 
+def _shuffle_waiting_room_seats(game: Dict[str, Any]) -> Dict[str, str]:
+    """Keep A fixed and rearrange B/C/D so A's partner changes."""
+    human_seats = game.get("human_seats", {})
+    if not isinstance(human_seats, dict) or not human_seats.get("A"):
+        raise HTTPException(status_code=409, detail="A席のホストが着席していません。")
+    valid_human_seats = {
+        seat: str(owner)
+        for seat, owner in human_seats.items()
+        if seat in ALL_SEATS and owner
+    }
+    if not 2 <= len(valid_human_seats) <= 4:
+        raise HTTPException(status_code=409, detail="人間が2〜4人着席しているときに利用できます。")
+
+    ai_seats = _ai_seat_set(game)
+    player_names = game.setdefault("player_names", {seat: "" for seat in ALL_SEATS})
+    player_tags = game.setdefault("player_tags", {seat: "" for seat in ALL_SEATS})
+    movable_seats = ["B", "C", "D"]
+    occupants: Dict[str, Dict[str, str]] = {}
+    for seat in movable_seats:
+        if seat in valid_human_seats:
+            occupants[seat] = {
+                "kind": "human",
+                "client_id": valid_human_seats[seat],
+                "name": str(player_names.get(seat, "")),
+                "tag": str(player_tags.get(seat, "")),
+            }
+        elif seat in ai_seats:
+            occupants[seat] = {"kind": "ai"}
+        else:
+            occupants[seat] = {"kind": "empty"}
+
+    human_sources = [seat for seat in movable_seats if occupants[seat]["kind"] == "human"]
+    if occupants["C"]["kind"] == "human":
+        partner_sources = [seat for seat in human_sources if seat != "C"]
+        if not partner_sources:
+            partner_sources = [seat for seat in movable_seats if occupants[seat]["kind"] != "human"]
+    else:
+        partner_sources = list(human_sources)
+    if not partner_sources:
+        raise HTTPException(status_code=409, detail="現在の席では組み合わせを変更できません。")
+
+    partner_source = random.choice(partner_sources)
+    remaining_sources = [seat for seat in movable_seats if seat != partner_source]
+    random.shuffle(remaining_sources)
+    source_by_destination = {
+        "B": remaining_sources[0],
+        "C": partner_source,
+        "D": remaining_sources[1],
+    }
+
+    next_human_seats = {"A": valid_human_seats["A"]}
+    next_ai_seats = set(ai_seats) - set(movable_seats)
+    next_ai_seats.discard("A")
+    for destination, source in source_by_destination.items():
+        occupant = occupants[source]
+        player_names[destination] = ""
+        player_tags[destination] = ""
+        if occupant["kind"] == "human":
+            next_human_seats[destination] = occupant["client_id"]
+            player_names[destination] = occupant.get("name", "")
+            player_tags[destination] = occupant.get("tag", "")
+        elif occupant["kind"] == "ai":
+            next_ai_seats.add(destination)
+
+    game["human_seats"] = next_human_seats
+    _store_ai_seats(game, next_ai_seats)
+    shared_kifu = game.get("shared_kifu")
+    if isinstance(shared_kifu, dict) and shared_kifu.get("owner_client_id"):
+        shared_kifu["shared_by_seat"] = next(
+            (
+                seat
+                for seat, owner in next_human_seats.items()
+                if owner == shared_kifu.get("owner_client_id")
+            ),
+            "",
+        )
+    return source_by_destination
+
+
 def _revealed_hand_seat_set(game: Dict[str, Any]) -> Set[str]:
     return _seat_set(game.get("revealed_hand_seats", []))
 
@@ -6763,6 +6842,57 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
 
     await manager.broadcast_update(game_id)
     return {"ok": True}
+
+
+@app.post("/games/{game_id}/shuffle_seats")
+async def shuffle_waiting_room_seats(
+    game_id: str,
+    requester: str = "W",
+    client_id: str = "",
+):
+    if requester != "A":
+        raise HTTPException(status_code=403, detail="A席のホストだけが席をシャッフルできます。")
+    if is_score_room(game_id):
+        raise HTTPException(status_code=403, detail="スコアアタックでは利用できません。")
+    if _is_main_game_id(game_id):
+        _ensure_main_game(game_id)
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="部屋が見つかりません。")
+    _require_human_seat_owner(game, "A", client_id)
+    if game.get("tutorial_mode"):
+        raise HTTPException(status_code=403, detail="チュートリアルでは利用できません。")
+    scores = game.get("total_team_score", {})
+    first_round_waiting = (
+        not game.get("is_started")
+        and int(game.get("round_count", 1) or 1) == 1
+        and not bool(game.get("match_finished"))
+        and int(scores.get("AC", 0) or 0) == 0
+        and int(scores.get("BD", 0) or 0) == 0
+    )
+    if not first_round_waiting:
+        raise HTTPException(status_code=409, detail="ゲームを開始する前だけ利用できます。")
+
+    source_by_destination = _shuffle_waiting_room_seats(game)
+    chat_messages = game.setdefault("chat_messages", [])
+    chat_messages.append({
+        "seat": "notice",
+        "sender": "連絡",
+        "message": "Aが席をシャッフルしました。",
+        "ts": _next_chat_timestamp(),
+        "notice_importance": "important",
+    })
+    if len(chat_messages) > 100:
+        del chat_messages[:-100]
+
+    await manager.broadcast_update(game_id)
+    await manager.broadcast_update("lobby")
+    return {
+        "ok": True,
+        "human_seats": sorted(_human_seat_set(game)),
+        "ai_seats": sorted(_ai_seat_set(game)),
+        "seat_sources": source_by_destination,
+    }
 
 
 @app.post("/games/{game_id}/turn_time_limit")
