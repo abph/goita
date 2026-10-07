@@ -32,6 +32,18 @@ def test_lobby_intro_has_smaller_mobile_typography():
     assert ".lobby-purpose-option { min-height: 60px;" in HTML
 
 
+def test_lobby_welcome_name_row_is_compact_and_layout_stable():
+    assert 'class="lobby-welcome-row"' in HTML
+    assert 'id="lobbyWelcomeMessage"' in HTML
+    assert 'id="lobbyWelcomeNameButton"' in HTML
+    assert 'onclick="openLobbyNameModal()"' in HTML
+    assert ".lobby-welcome-row {\n        min-height: 30px;" in HTML
+    assert ".lobby-welcome-row { min-height: 28px;" in HTML
+    assert "text-overflow: ellipsis;" in HTML
+    assert '<div id="lobbyNameModal" class="modal-overlay"' in HTML
+    assert 'onsubmit="saveLobbyName(event)"' in HTML
+
+
 def test_lobby_feature_guide_has_play_and_study_steps():
     assert 'id="lobbyPurposeHome"' in HTML
     assert 'id="lobbyPurposeBeginner"' in HTML

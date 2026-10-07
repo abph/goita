@@ -290,6 +290,15 @@ def test_research_kifu_tags_are_translated() -> None:
         assert source in english
 
 
+def test_lobby_name_prompt_is_translated() -> None:
+    chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
+    english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
+
+    for source in ["プレイヤー名", "名前の設定", "名前の変更", "名前の設定を閉じる", "設定する", "キャンセル"]:
+        assert source in chinese
+        assert source in english
+
+
 def test_score_attack_ui_is_translated() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")

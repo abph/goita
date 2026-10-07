@@ -5,6 +5,12 @@
  */
 (() => {
   const exact = Object.freeze({
+    "プレイヤー名": "Player Name",
+    "名前の設定": "Set Name",
+    "名前の変更": "Change Name",
+    "名前の設定を閉じる": "Close name settings",
+    "設定する": "Save",
+    "キャンセル": "Cancel",
     "スコアアタック称号": "Score Attack Title",
     "受賞履歴": "Award History",
     "デイリー1位": "Daily First Places",

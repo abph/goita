@@ -30,6 +30,19 @@ def test_lobby_exposes_shared_personal_settings() -> None:
     assert '.settings-disclosure[open] > summary .when-open' in html
 
 
+def test_lobby_name_prompt_reuses_personal_player_name() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="lobbyWelcomeMessage"' in html
+    assert 'id="lobbyNameInput"' in html
+    assert "function renderLobbyWelcomeName()" in html
+    assert "function saveLobbyName(event)" in html
+    assert "personalSettings = {...personalSettings, playerName};" in html
+    assert 'localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));' in html
+    assert 'if (lobbyNameInput) lobbyNameInput.value = playerName;' in html
+    assert 'if (previousPlayerName !== playerName && currentWsGid) connectWS(currentWsGid);' in html
+
+
 def test_lobby_language_switcher_is_inside_personal_settings() -> None:
     html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     toolbar_start = html.index('<div class="lobby-toolbar">')

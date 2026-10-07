@@ -955,6 +955,42 @@
         font-size: 15px;
         letter-spacing: 0.12em;
     }
+    .lobby-welcome-row {
+        min-height: 30px;
+        margin: 8px 0 0;
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: #5f4935;
+        line-height: 1.2;
+    }
+    .lobby-welcome-message {
+        min-width: 0;
+        max-width: min(420px, calc(100% - 96px));
+        margin: 0;
+        overflow: hidden;
+        font-size: 13px;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .lobby-welcome-name-button {
+        flex: 0 0 auto;
+        min-height: 28px;
+        padding: 2px 3px;
+        border: 0;
+        background: transparent;
+        color: #6d461f;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+    .lobby-welcome-name-button:hover,
+    .lobby-welcome-name-button:focus-visible { color: #a2521c; }
     .lobby-feature-row {
         display: grid;
         grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
@@ -1099,6 +1135,9 @@
         .lobby-brand-lockup { column-gap: 7px; }
         .lobby-brand-certification { font-size: 9px; }
         .lobby-brand-subtitle { font-size: 11px; }
+        .lobby-welcome-row { min-height: 28px; margin-top: 6px; gap: 7px; padding: 0 4px; }
+        .lobby-welcome-message { max-width: calc(100% - 86px); font-size: 11px; }
+        .lobby-welcome-name-button { min-height: 26px; font-size: 11px; }
         .lobby-toolbar .lobby-menu-label { display: none; }
         .lobby-toolbar .header-menu-trigger {
             width: 36px;
@@ -1451,7 +1490,7 @@
     }
     .regional-ad { box-sizing:border-box; max-width:560px; margin:16px auto 0; padding:12px 40px 12px 16px; border:1px solid #a87b4d; border-radius:8px; background:#fffaf0; color:#3d2b1d; position:relative; line-height:1.6; }
     .regional-ad[hidden] { display:none !important; }
-    .regional-ad strong { display:block; font-size:15px; }
+    .regional-ad strong { display:block; font-size:13px; }
     .regional-ad p { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
     .regional-ad-content { display:block; color:inherit; text-decoration:none; }
     .regional-ad-content[href] { cursor:pointer; }
@@ -2930,6 +2969,25 @@
       width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
     .modal-content h3 { margin-top: 0; color: #8b5a2b; border-bottom: 2px solid #8b5a2b; padding-bottom: 8px; font-size: 20px;}
+    .lobby-name-modal-content {
+      position: relative;
+      width: min(88vw, 360px);
+      max-width: 360px;
+      box-sizing: border-box;
+    }
+    .lobby-name-modal-content > h3 { padding-right: 36px; }
+    .lobby-name-modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .lobby-name-modal-actions button {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-weight: 800;
+    }
+    .lobby-name-modal-save { background: #8b5a2b; color: #fff; }
     .hand-reveal-confirm-content {
       width: min(88vw, 360px);
       max-width: 360px;
@@ -5038,6 +5096,10 @@
          </div>
        </div>
      </div>
+     <div class="lobby-welcome-row" aria-label="プレイヤー名">
+       <p id="lobbyWelcomeMessage" class="lobby-welcome-message" data-i18n-ignore>ようこそ、ゲストさん</p>
+       <button id="lobbyWelcomeNameButton" class="lobby-welcome-name-button" type="button" onclick="openLobbyNameModal()">名前の設定</button>
+     </div>
   </div>
 
   <div class="lobby-feature-row">
@@ -5531,6 +5593,22 @@
       <button type="button" onclick="closeSiteInfo()">閉じる</button>
     </div>
   </div>
+</div>
+
+<div id="lobbyNameModal" class="modal-overlay" onclick="closeLobbyNameModal(event)">
+  <form class="modal-content lobby-name-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbyNameModalTitle" onclick="event.stopPropagation()" onsubmit="saveLobbyName(event)">
+    <button class="settings-modal-close" type="button" onclick="closeLobbyNameModal()" aria-label="名前の設定を閉じる" title="閉じる">×</button>
+    <h3 id="lobbyNameModalTitle">名前の設定</h3>
+    <div class="settings-row">
+      <label for="lobbyNameInput">名前（最大9文字）</label>
+      <input type="text" id="lobbyNameInput" maxlength="9" autocomplete="nickname" placeholder="名前を入力">
+    </div>
+    <div id="lobbyNameStatus" class="settings-status" aria-live="polite"></div>
+    <div class="lobby-name-modal-actions">
+      <button type="button" onclick="closeLobbyNameModal()">キャンセル</button>
+      <button class="lobby-name-modal-save" type="submit">設定する</button>
+    </div>
+  </form>
 </div>
 
 <div id="lobbySettingsModal" class="modal-overlay" onclick="closeLobbySettings(event)">
@@ -7994,6 +8072,65 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyPersonalSettingsStatus").textContent = "";
 }
 
+function renderLobbyWelcomeName() {
+    const message = document.getElementById("lobbyWelcomeMessage");
+    const button = document.getElementById("lobbyWelcomeNameButton");
+    if (!message || !button) return;
+    const playerName = sanitizeName(personalSettings.playerName || "");
+    const language = currentUiLanguage();
+    const displayName = playerName || ({ja: "ゲスト", zh: "访客", en: "Guest"}[language] || "ゲスト");
+    message.textContent = language === "zh"
+        ? `欢迎，${displayName}`
+        : language === "en"
+            ? `Welcome, ${displayName}`
+            : `ようこそ、${displayName}さん`;
+    button.textContent = uiText(playerName ? "名前の変更" : "名前の設定");
+}
+
+function openLobbyNameModal() {
+    const modal = document.getElementById("lobbyNameModal");
+    const input = document.getElementById("lobbyNameInput");
+    if (!modal || !input) return;
+    document.getElementById("lobbyNameModalTitle").textContent = uiText(
+        personalSettings.playerName ? "名前の変更" : "名前の設定"
+    );
+    document.getElementById("lobbyNameStatus").textContent = "";
+    input.value = personalSettings.playerName || "";
+    modal.style.display = "flex";
+    window.setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 0);
+}
+
+function closeLobbyNameModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const modal = document.getElementById("lobbyNameModal");
+    if (modal) modal.style.display = "none";
+    document.getElementById("lobbyWelcomeNameButton")?.focus();
+}
+
+function saveLobbyName(event) {
+    event?.preventDefault();
+    const input = document.getElementById("lobbyNameInput");
+    const status = document.getElementById("lobbyNameStatus");
+    const previousPlayerName = personalSettings.playerName || "";
+    const playerName = sanitizeName(input?.value || "");
+    personalSettings = {...personalSettings, playerName};
+    try {
+        localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
+        const lobbyNameInput = document.getElementById("lobbyPersonalPlayerName");
+        const roomNameInput = document.getElementById("personalPlayerName");
+        if (lobbyNameInput) lobbyNameInput.value = playerName;
+        if (roomNameInput) roomNameInput.value = playerName;
+        renderLobbyWelcomeName();
+        if (previousPlayerName !== playerName && currentWsGid) connectWS(currentWsGid);
+        closeLobbyNameModal();
+    } catch (_error) {
+        if (status) status.textContent = uiText("保存できませんでした。");
+    }
+}
+
 function saveLobbyPersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
     const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
@@ -8038,9 +8175,11 @@ function saveLobbyPersonalSettings() {
     }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
+    renderLobbyWelcomeName();
 }
 
 applyPersonalSettingsAppearance();
+renderLobbyWelcomeName();
 
 const CLIENT_ID_KEY = "goita_client_id";
 let clientId = "";
@@ -10144,6 +10283,7 @@ async function savePersonalSettings() {
     }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
+    renderLobbyWelcomeName();
 }
 
 async function unlockRoomManagement(passwordOverride = "", fromRememberedSession = false) {
@@ -16292,6 +16432,7 @@ window.addEventListener("goita-voice-chat-ready", () => {
 });
 
 window.addEventListener("goita-language-change", () => {
+  renderLobbyWelcomeName();
   initializeChatStampPickers();
   initializeResearchKifuTagControls();
   renderResearchKifuList();
