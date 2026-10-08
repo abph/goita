@@ -64,12 +64,17 @@ def test_discord_community_is_available_from_lobby_and_menus() -> None:
     chinese = (ROOT / "frontend" / "i18n.js").read_text(encoding="utf-8")
     english = (ROOT / "frontend" / "i18n-en.js").read_text(encoding="utf-8")
 
-    assert 'class="lobby-discord-card"' not in html
-    assert html.count('onclick="openSiteInfo(\'discord\')"') == 3
+    assert 'class="lobby-discord-card"' in html
+    assert html.count('onclick="openSiteInfo(\'discord\')"') == 2
+    assert 'onclick="openDiscordCommunity()"' in html
+    assert html.index('id="lobbyRoomsSection"') < html.index('class="lobby-discord-card"') < html.index('class="lobby-footer"')
     footer_links = html.split('class="lobby-footer-links lobby-footer-links-primary"', 1)[1].split("</nav>", 1)[0]
-    assert footer_links.index(">Discord</button>") < footer_links.index(">支援について</button>")
+    assert ">Discord</button>" not in footer_links
     assert 'href: "https://discord.gg/JvNE7VfDXQ"' in html
     for source in [
+        "Discordで対局相手を探す",
+        "対局募集、質問、感想・改善要望などに利用できます。",
+        "Discordに参加する",
         "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
         "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
         "Discordサーバーに参加する",
@@ -77,6 +82,8 @@ def test_discord_community_is_available_from_lobby_and_menus() -> None:
         assert source in html
         assert f'"{source}"' in chinese
         assert f'"{source}"' in english
+    assert 'trackAnalytics("discord_info_opened", {}, "lobby")' in html
+    assert 'trackAnalytics("discord_invite_clicked", {}, analyticsRoomType())' in html
 
 
 def test_dynamic_ui_and_ai_help_follow_selected_language() -> None:

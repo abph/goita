@@ -368,3 +368,61 @@ def test_statistics_access_and_expired_entitlement(library):
     assert client.post("/api/member/kifu/statistics", headers={"Origin": "https://evil.example"}).status_code == 403
     members.logout(token)
     assert client.post("/api/member/kifu/statistics").status_code == 401
+
+
+def test_analysis_is_on_demand_owner_scoped_and_groups_saved_rounds(library):
+    store, members, token, other, client, game = library
+    records = []
+    for index in range(12):
+        is_dealer = index < 6
+        won = index in (0, 1, 2, 3, 6, 7)
+        winner = ("A" if index != 3 else "C") if won else "B"
+        records.append({
+            "title": f"round-{index}",
+            "memo": "",
+            "tags": ["し攻め"] if index < 6 else [],
+            "payload": {
+                "my_seat": "A",
+                "dealer": "A" if is_dealer else "B",
+                "winner": winner,
+                "gained_score": 20,
+                "hand": {"p0": "ししし馬銀金飛王"},
+            },
+        })
+    store.save_many(token, records)
+    store.save(other, title="other", memo="", tags=["し攻め"], payload={
+        "my_seat": "A", "dealer": "A", "winner": "A", "gained_score": 100,
+        "hand": {"p0": "ししし馬銀金飛王"},
+    })
+
+    with members._db() as db:
+        before = [tuple(row) for row in db.execute("SELECT * FROM member_kifu ORDER BY id")]
+    response = client.post("/api/member/kifu/analysis")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    analysis = response.json()["analysis"]
+    assert analysis["total"] == analysis["counted"] == 12
+    assert analysis["sample_level"] == "trend"
+    assert analysis["overall"] == dict(
+        counted=12, wins=6, losses=6, points_for=120, points_against=120,
+        point_difference=0, self_finishes=5, partner_finishes=1, win_rate=50.0,
+    )
+    assert analysis["dealer"]["win_rate"] == 66.7
+    assert analysis["non_dealer"]["win_rate"] == 33.3
+    assert analysis["recent"] == analysis["overall"]
+    assert analysis["hand_features"][0]["label"] == "3し"
+    assert analysis["hand_features"][0]["counted"] == 12
+    assert analysis["tags"][0]["label"] == "し攻め"
+    assert analysis["tags"][0]["counted"] == 6
+    assert store.analysis(other)["counted"] == 1
+    with members._db() as db:
+        assert [tuple(row) for row in db.execute("SELECT * FROM member_kifu ORDER BY id")] == before
+
+
+def test_analysis_access_and_expired_entitlement(library):
+    store, members, token, other, client, game = library
+    members.update("alice", enabled=True, paid_enabled=True, paid_until="2020-01-01")
+    assert client.post("/api/member/kifu/analysis").status_code == 200
+    assert client.post("/api/member/kifu/analysis", headers={"Origin": "https://evil.example"}).status_code == 403
+    members.logout(token)
+    assert client.post("/api/member/kifu/analysis").status_code == 401

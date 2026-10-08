@@ -1294,6 +1294,48 @@
     }
     .lobby-footer-link:hover { color: #a2521c; }
     .lobby-footer-copy { font-size: 12px; }
+    .lobby-discord-card {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        max-width: 860px;
+        margin: -8px auto 24px;
+        padding: 12px 14px 12px 16px;
+        border: 1px solid rgba(88, 101, 242, 0.35);
+        border-radius: 9px;
+        background: rgba(247, 248, 255, 0.9);
+        color: #3d3f58;
+        box-shadow: 0 3px 9px rgba(57, 62, 123, 0.07);
+    }
+    .lobby-discord-card-copy { min-width: 0; }
+    .lobby-discord-card h2 {
+        margin: 0 0 3px;
+        color: #3e426d;
+        font-size: 14px;
+        line-height: 1.4;
+    }
+    .lobby-discord-card p {
+        margin: 0;
+        color: #5c5f72;
+        font-size: 11px;
+        line-height: 1.55;
+    }
+    .lobby-discord-card button {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 6px 13px;
+        border: 1px solid #5865f2;
+        border-radius: 6px;
+        background: #5865f2;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .lobby-discord-card button:hover,
+    .lobby-discord-card button:focus-visible { background: #4752c4; }
     .site-info-modal-content {
         position: relative;
         max-height: min(560px, calc(100vh - 32px));
@@ -1336,6 +1378,14 @@
             row-gap: 4px;
         }
         .lobby-footer-link { font-size: 11px; }
+        .lobby-discord-card {
+            gap: 9px;
+            margin: -8px 0 18px;
+            padding: 10px;
+        }
+        .lobby-discord-card h2 { font-size: 12px; }
+        .lobby-discord-card p { font-size: 9px; }
+        .lobby-discord-card button { padding: 5px 9px; font-size: 10px; }
     }
 
     .linked-kifu-notice {
@@ -5068,7 +5118,7 @@
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
   <link rel="stylesheet" href="/static/ai-review-report.css?v=20261003a" />
   <script defer src="/static/ai-review-report.js?v=20261003a"></script>
-  <link rel="stylesheet" href="/static/member.css?v=20260911c" />
+  <link rel="stylesheet" href="/static/member.css?v=20261008a" />
   <script defer src="/static/member-room.js?v=20260906b"></script>
   <script defer src="/static/member.js?v=20260918a"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
@@ -5256,11 +5306,18 @@
     </div>
   </section>
 
+  <section class="lobby-discord-card" aria-labelledby="lobbyDiscordTitle">
+    <div class="lobby-discord-card-copy">
+      <h2 id="lobbyDiscordTitle">Discordで対局相手を探す</h2>
+      <p>対局募集、質問、感想・改善要望などに利用できます。</p>
+    </div>
+    <button type="button" onclick="openDiscordCommunity()">Discordに参加する</button>
+  </section>
+
   <footer class="lobby-footer">
     <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
       <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('discord')">Discord</button>
       <button class="lobby-footer-link" type="button" onclick="openSiteInfo('support')">支援について</button>
     </nav>
     <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
@@ -6192,6 +6249,12 @@
             <h4 id="researchKifuStatisticsTitle">統計</h4>
             <button class="research-kifu-import-button" id="researchKifuStatisticsButton" type="button" onclick="createResearchKifuStatistics()">統計を作る</button>
             <div id="researchKifuStatistics" aria-live="polite" hidden></div>
+          </section>
+          <section class="research-kifu-analysis-section" aria-labelledby="researchKifuAnalysisTitle">
+            <h4 id="researchKifuAnalysisTitle">分析</h4>
+            <p class="research-kifu-analysis-description">保存棋譜から、親・子、最近の成績、手駒やタグごとの傾向を調べます。分析結果は外部サービスへ送信されません。</p>
+            <button class="research-kifu-import-button" id="researchKifuAnalysisButton" type="button" onclick="createResearchKifuAnalysis()">分析する</button>
+            <div id="researchKifuAnalysis" aria-live="polite" hidden></div>
           </section>
         </div>
         <div id="researchKifuDetailView" class="research-kifu-detail" style="display:none;">
@@ -7775,6 +7838,11 @@ function openSiteInfo(infoKey) {
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = info.link.label;
+        if (infoKey === "discord") {
+            link.addEventListener("click", () => {
+                trackAnalytics("discord_invite_clicked", {}, analyticsRoomType());
+            });
+        }
         paragraph.append(info.link.prefix, link, info.link.suffix);
         if (info.link.afterParagraphs) contents.push(paragraph);
         else contents.unshift(paragraph);
@@ -7808,6 +7876,11 @@ function openSiteInfo(infoKey) {
     }
     body.replaceChildren(...contents);
     document.getElementById("siteInfoModal").style.display = "flex";
+}
+
+function openDiscordCommunity() {
+    trackAnalytics("discord_info_opened", {}, "lobby");
+    openSiteInfo("discord");
 }
 
 function closeSiteInfo(event) {
@@ -10337,12 +10410,21 @@ async function unlockRoomManagement(passwordOverride = "", fromRememberedSession
 
 let memberKifuRevision = 0;
 let researchKifuStatisticsRevision = 0;
+let researchKifuAnalysisRevision = 0;
+function invalidateResearchKifuAnalysis() {
+    researchKifuAnalysisRevision++;
+    const result = document.getElementById("researchKifuAnalysis");
+    result.replaceChildren();
+    result.hidden = true;
+    document.getElementById("researchKifuAnalysisButton").disabled = false;
+}
 function invalidateResearchKifuStatistics() {
     researchKifuStatisticsRevision++;
     const result = document.getElementById("researchKifuStatistics");
     result.replaceChildren();
     result.hidden = true;
     document.getElementById("researchKifuStatisticsButton").disabled = false;
+    invalidateResearchKifuAnalysis();
 }
 async function createResearchKifuStatistics() {
     const revision = ++researchKifuStatisticsRevision;
@@ -10380,6 +10462,155 @@ async function createResearchKifuStatistics() {
         if (revision === researchKifuStatisticsRevision) result.textContent = uiText(error?.message || "集計できませんでした。");
     } finally {
         if (revision === researchKifuStatisticsRevision) button.disabled = false;
+    }
+}
+function researchKifuAnalysisText(source, values = {}) {
+    let text = uiText(source);
+    for (const [key, value] of Object.entries(values)) {
+        text = text.replaceAll(`{${key}}`, String(value));
+    }
+    return text;
+}
+function appendResearchKifuAnalysisTable(container, title, rows) {
+    const visibleRows = rows.filter(row => Number(row?.counted || 0) > 0);
+    if (!visibleRows.length) return;
+    const wrap = document.createElement("div");
+    wrap.className = "research-kifu-analysis-table-wrap";
+    const heading = document.createElement("h5");
+    heading.textContent = uiText(title);
+    const table = document.createElement("table");
+    table.className = "research-kifu-analysis-table";
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const label of ["項目", "局数", "勝率", "得失点差"]) {
+        const cell = document.createElement("th");
+        cell.scope = "col";
+        cell.textContent = uiText(label);
+        headRow.appendChild(cell);
+    }
+    head.appendChild(headRow);
+    const body = document.createElement("tbody");
+    for (const row of visibleRows) {
+        const tr = document.createElement("tr");
+        const values = [
+            uiText(row.label),
+            row.counted,
+            row.win_rate === null ? "-" : `${Number(row.win_rate).toFixed(1)}%`,
+            Number(row.point_difference || 0),
+        ];
+        for (const value of values) {
+            const cell = document.createElement("td");
+            cell.textContent = String(value);
+            tr.appendChild(cell);
+        }
+        body.appendChild(tr);
+    }
+    table.append(head, body);
+    wrap.append(heading, table);
+    container.appendChild(wrap);
+}
+async function createResearchKifuAnalysis() {
+    const revision = ++researchKifuAnalysisRevision;
+    const result = document.getElementById("researchKifuAnalysis");
+    const button = document.getElementById("researchKifuAnalysisButton");
+    button.disabled = true;
+    result.hidden = false;
+    result.textContent = uiText("分析しています...");
+    try {
+        const data = await researchKifuApi("/analysis");
+        if (revision !== researchKifuAnalysisRevision) return;
+        const analysis = data.analysis;
+        result.replaceChildren();
+
+        const note = document.createElement("p");
+        note.className = "research-kifu-analysis-note";
+        const counted = Number(analysis.counted || 0);
+        if (counted === 0) {
+            note.textContent = uiText("分析対象がありません。棋譜で自分の席を設定してください。");
+        } else if (analysis.sample_level === "insufficient") {
+            note.textContent = researchKifuAnalysisText("分析対象は{count}局です。まだ棋譜が少ないため、結果は参考としてご覧ください。", {count: counted});
+        } else if (analysis.sample_level === "reference") {
+            note.textContent = researchKifuAnalysisText("分析対象は{count}局です。傾向が見え始めていますが、結果は参考としてご覧ください。", {count: counted});
+        } else {
+            note.textContent = researchKifuAnalysisText("分析対象は{count}局です。保存棋譜から見える傾向を表示します。", {count: counted});
+        }
+        result.appendChild(note);
+        if (!counted) return;
+
+        const insights = document.createElement("ul");
+        insights.className = "research-kifu-analysis-insights";
+        const addInsight = (source, values) => {
+            const item = document.createElement("li");
+            item.textContent = researchKifuAnalysisText(source, values);
+            insights.appendChild(item);
+        };
+        const dealer = analysis.dealer || {};
+        const nonDealer = analysis.non_dealer || {};
+        if (Number(dealer.counted || 0) >= 3 && Number(nonDealer.counted || 0) >= 3) {
+            addInsight("親の勝率は{dealerRate}%（{dealerCount}局）、親ではないときは{nonDealerRate}%（{nonDealerCount}局）です。", {
+                dealerRate: Number(dealer.win_rate).toFixed(1), dealerCount: dealer.counted,
+                nonDealerRate: Number(nonDealer.win_rate).toFixed(1), nonDealerCount: nonDealer.counted,
+            });
+        }
+        const overall = analysis.overall || {};
+        const recent = analysis.recent || {};
+        if (counted > 20 && Number(recent.counted || 0) >= 5) {
+            const difference = Number(recent.win_rate) - Number(overall.win_rate);
+            const values = {recentRate: Number(recent.win_rate).toFixed(1), difference: Math.abs(difference).toFixed(1)};
+            addInsight(
+                difference >= 5
+                    ? "直近20局の勝率は{recentRate}%で、全期間より{difference}ポイント高くなっています。"
+                    : difference <= -5
+                        ? "直近20局の勝率は{recentRate}%で、全期間より{difference}ポイント低くなっています。"
+                        : "直近20局の勝率は{recentRate}%で、全期間と大きな差はありません。",
+                values,
+            );
+        }
+        const handFeatures = Array.isArray(analysis.hand_features) ? analysis.hand_features : [];
+        if (handFeatures.length) {
+            const strongest = handFeatures[0];
+            addInsight("手駒別で最も勝率が高いのは「{label}」で、{count}局中{rate}%です。", {
+                label: uiText(strongest.label), count: strongest.counted, rate: Number(strongest.win_rate).toFixed(1),
+            });
+            if (handFeatures.length >= 2) {
+                const weakest = handFeatures[handFeatures.length - 1];
+                addInsight("手駒別で最も勝率が低いのは「{label}」で、{count}局中{rate}%です。", {
+                    label: uiText(weakest.label), count: weakest.counted, rate: Number(weakest.win_rate).toFixed(1),
+                });
+            }
+        }
+        if (Number(overall.wins || 0) > 0) {
+            addInsight("勝った{wins}局のうち、自分の上がりは{self}局、相方の上がりは{partner}局です。", {
+                wins: overall.wins, self: overall.self_finishes, partner: overall.partner_finishes,
+            });
+        }
+        if (insights.childElementCount) result.appendChild(insights);
+
+        appendResearchKifuAnalysisTable(result, "親・子別", [
+            {label: "親", ...dealer},
+            {label: "親ではない", ...nonDealer},
+        ]);
+        if (counted > 20) {
+            appendResearchKifuAnalysisTable(result, "最近の成績", [
+                {label: "全期間", ...overall},
+                {label: "直近20局", ...recent},
+            ]);
+        }
+        appendResearchKifuAnalysisTable(result, "手駒別", handFeatures);
+        appendResearchKifuAnalysisTable(result, "タグ別", Array.isArray(analysis.tags) ? analysis.tags : []);
+
+        if (handFeatures.length || (Array.isArray(analysis.tags) && analysis.tags.length)) {
+            const footnote = document.createElement("p");
+            footnote.className = "research-kifu-analysis-footnote";
+            footnote.textContent = researchKifuAnalysisText("手駒別・タグ別は、該当する棋譜が{count}局以上ある項目を表示します。複数の項目に同じ棋譜が含まれる場合があります。", {
+                count: analysis.minimum_group_size || 3,
+            });
+            result.appendChild(footnote);
+        }
+    } catch (error) {
+        if (revision === researchKifuAnalysisRevision) result.textContent = uiText(error?.message || "分析できませんでした。");
+    } finally {
+        if (revision === researchKifuAnalysisRevision) button.disabled = false;
     }
 }
 function researchKifuSeatLabel(record) {

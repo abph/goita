@@ -14,7 +14,16 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
     assert 'src="/static/member.js?v=20260918a"' in html
-    assert 'href="/static/member.css?v=20260911c"' in html
+    assert 'href="/static/member.css?v=20261008a"' in html
+
+
+def test_member_library_offers_private_on_demand_analysis():
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'id="researchKifuAnalysisButton"' in html
+    assert 'onclick="createResearchKifuAnalysis()"' in html
+    assert 'researchKifuApi("/analysis")' in html
+    assert "親・子、最近の成績、手駒やタグごとの傾向" in html
+    assert "分析結果は外部サービスへ送信されません。" in html
 
 
 def test_member_ui_never_uses_browser_credential_storage():

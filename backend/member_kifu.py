@@ -101,6 +101,127 @@ class MemberKifuStore:
         result["point_difference"] = result["points_for"] - result["points_against"]
         return result
 
+    @staticmethod
+    def _analysis_summary(rounds):
+        summary = dict(
+            counted=len(rounds),
+            wins=0,
+            losses=0,
+            points_for=0,
+            points_against=0,
+            point_difference=0,
+            self_finishes=0,
+            partner_finishes=0,
+            win_rate=None,
+        )
+        for item in rounds:
+            if item["won"]:
+                summary["wins"] += 1
+                summary["points_for"] += item["points"]
+                if item["self_finish"]:
+                    summary["self_finishes"] += 1
+                else:
+                    summary["partner_finishes"] += 1
+            else:
+                summary["losses"] += 1
+                summary["points_against"] += item["points"]
+        if summary["counted"]:
+            summary["win_rate"] = round(
+                100 * summary["wins"] / summary["counted"],
+                1,
+            )
+        summary["point_difference"] = (
+            summary["points_for"] - summary["points_against"]
+        )
+        return summary
+
+    @classmethod
+    def _analysis_groups(cls, rounds, field, minimum=3):
+        grouped = {}
+        for item in rounds:
+            for label in item[field]:
+                grouped.setdefault(label, []).append(item)
+        results = []
+        for label, items in grouped.items():
+            if len(items) < minimum:
+                continue
+            results.append({"label": label, **cls._analysis_summary(items)})
+        return sorted(
+            results,
+            key=lambda item: (
+                -float(item["win_rate"] or 0),
+                -int(item["point_difference"]),
+                -int(item["counted"]),
+                str(item["label"]),
+            ),
+        )
+
+    def analysis(self, token):
+        """Return an owner-only, deterministic analysis of saved rounds."""
+        with self.members._db() as db:
+            owner = self._owner(db, token)
+            rows = db.execute(
+                "SELECT payload_json, tags_json FROM member_kifu "
+                "WHERE member_id = ? ORDER BY created_at DESC, id DESC",
+                (owner,),
+            ).fetchall()
+
+        rounds = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+                stored_tags = json.loads(row["tags_json"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            seat = payload.get("my_seat", "")
+            winner = payload.get("winner")
+            points = payload.get("gained_score")
+            if (
+                seat not in ("A", "B", "C", "D")
+                or winner not in ("A", "B", "C", "D")
+                or type(points) is not int
+                or points <= 0
+            ):
+                continue
+            dealer = payload.get("dealer")
+            won = (seat in "AC") == (winner in "AC")
+            rounds.append({
+                "seat": seat,
+                "dealer": dealer if dealer in ("A", "B", "C", "D") else "",
+                "won": won,
+                "points": points,
+                "self_finish": won and seat == winner,
+                "hand_features": automatic_hand_tags(payload, seat),
+                "tags": normalize_research_kifu_tags(
+                    stored_tags if isinstance(stored_tags, list) else []
+                ),
+            })
+
+        counted = len(rounds)
+        dealer_rounds = [item for item in rounds if item["dealer"] == item["seat"]]
+        non_dealer_rounds = [
+            item
+            for item in rounds
+            if item["dealer"] and item["dealer"] != item["seat"]
+        ]
+        return {
+            "total": len(rows),
+            "counted": counted,
+            "sample_level": (
+                "insufficient" if counted < 5
+                else "reference" if counted < 10
+                else "trend"
+            ),
+            "minimum_group_size": 3,
+            "overall": self._analysis_summary(rounds),
+            "recent": self._analysis_summary(rounds[:20]),
+            "dealer": self._analysis_summary(dealer_rounds),
+            "non_dealer": self._analysis_summary(non_dealer_rounds),
+            "unknown_dealer": counted - len(dealer_rounds) - len(non_dealer_rounds),
+            "hand_features": self._analysis_groups(rounds, "hand_features"),
+            "tags": self._analysis_groups(rounds, "tags"),
+        }
+
     def save(self, token, *, title, memo, tags, payload):
         return self.save_many(token, [dict(title=title, memo=memo, tags=tags, payload=payload)])[0]
 

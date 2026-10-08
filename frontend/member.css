@@ -21,6 +21,19 @@
 .member-panel .research-kifu-save-details > summary:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
 .member-panel .research-kifu-save-details .research-kifu-form { border: 0; background: transparent; }
 .member-panel .research-kifu-statistics-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid #d7c2a4; }
+.member-panel .research-kifu-analysis-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid #d7c2a4; }
+.member-panel .research-kifu-analysis-description { margin: -8px 0 12px; color: #67717d; font-size: 12px; line-height: 1.65; }
+.member-panel #researchKifuAnalysis { margin-top: 14px; }
+.member-panel .research-kifu-analysis-note { margin: 0 0 10px; padding: 9px 10px; border-radius: 5px; background: #f3f6f4; color: #40514b; font-size: 12px; line-height: 1.65; }
+.member-panel .research-kifu-analysis-insights { margin: 0 0 16px; padding-left: 20px; font-size: 12px; line-height: 1.75; }
+.member-panel .research-kifu-analysis-table-wrap { margin-top: 14px; overflow-x: auto; }
+.member-panel .research-kifu-analysis-table-wrap h5 { margin: 0 0 6px; font-size: 13px; }
+.member-panel .research-kifu-analysis-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.member-panel .research-kifu-analysis-table th,
+.member-panel .research-kifu-analysis-table td { padding: 6px 7px; border-bottom: 1px solid #e2d7c8; text-align: right; white-space: nowrap; }
+.member-panel .research-kifu-analysis-table th:first-child,
+.member-panel .research-kifu-analysis-table td:first-child { text-align: left; }
+.member-panel .research-kifu-analysis-footnote { margin: 12px 0 0; color: #67717d; font-size: 10px; line-height: 1.6; }
 .member-auto-kifu-notice { font-size: 13px; color: #9e2929; background: #fff3f3; padding: 8px; overflow-wrap: anywhere; }
 .member-panel .member-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid #d4d9dd; }
 .member-panel .member-tabs button {

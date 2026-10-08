@@ -121,6 +121,10 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
     def statistics(request: Request):
         return {"statistics": store.statistics(token(request))}
 
+    @router.post("/analysis")
+    def analysis(request: Request):
+        return {"analysis": store.analysis(token(request))}
+
     @router.post("/delete-many")
     def delete_many(request: Request, data: DeleteManyInput):
         return {"ok": True, "deleted": store.delete_many(token(request), data.record_ids)}

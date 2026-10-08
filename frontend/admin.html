@@ -720,6 +720,8 @@
       kifu_library_opened: "棋譜ライブラリを開く",
       kifu_saved: "棋譜を保存",
       kifu_loaded: "棋譜を読み込み",
+      discord_info_opened: "Discord案内を開く",
+      discord_invite_clicked: "Discord招待リンクを開く",
     };
     const ROOM_LABELS = {
       lobby: "トップページ",
@@ -2241,6 +2243,8 @@
         ["自分がホスト", `${data.host_game_starts || 0}回`],
         ["他の対局へ参加", `${data.joined_game_starts || 0}回`],
         ["ペア練習", `${data.pair_practice_games || 0}回`],
+        ["Discord案内", `${data.event_counts?.discord_info_opened || 0}回`],
+        ["Discord招待リンク", `${data.event_counts?.discord_invite_clicked || 0}回`],
       ];
       document.getElementById("metricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>

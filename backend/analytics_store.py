@@ -43,6 +43,8 @@ ALLOWED_EVENTS = frozenset({
     "kifu_library_opened",
     "kifu_saved",
     "kifu_loaded",
+    "discord_info_opened",
+    "discord_invite_clicked",
     "heartbeat",
 })
 ALLOWED_ROOM_TYPES = frozenset({
