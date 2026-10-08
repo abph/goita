@@ -144,6 +144,22 @@
     .analytics-toolbar select, .analytics-toolbar input { width: auto; }
     .analytics-custom-range { display: flex; align-items: center; gap: 6px; }
     .analytics-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; margin-top: 16px; }
+    .memory-panel { margin-bottom: 16px; }
+    .memory-heading { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+    .memory-heading > div { flex: 1 1 260px; }
+    .memory-heading h2 { margin: 0 0 5px; }
+    .memory-summary { margin: 0; font-size: 22px; font-weight: 850; }
+    .memory-meter { height: 12px; margin-top: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+    .memory-meter span { display: block; width: 0; height: 100%; background: var(--accent); transition: width .2s ease; }
+    .memory-meter span.warning { background: #b36b00; }
+    .memory-meter span.danger { background: var(--danger); }
+    .memory-details { display: flex; flex-wrap: wrap; gap: 7px 18px; margin-top: 10px; color: var(--muted); }
+    .memory-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .restart-dialog { width: min(520px, calc(100% - 28px)); border: 1px solid var(--line); border-radius: 6px; padding: 0; color: var(--ink); }
+    .restart-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+    .restart-dialog-inner { padding: 20px; }
+    .restart-dialog h2 { margin: 0 0 10px; }
+    .restart-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     table { width: 100%; border-collapse: collapse; }
     .table-scroll { max-width: 100%; overflow-x: auto; }
     .tactical-mismatch-table { min-width: 1040px; }
@@ -631,6 +647,24 @@
       </section>
 
       <section id="analyticsView" class="view">
+        <section class="panel memory-panel" aria-labelledby="memoryHeading">
+          <div class="memory-heading">
+            <div>
+              <h2 id="memoryHeading" class="section-heading">サーバーメモリ</h2>
+              <p id="memorySummary" class="memory-summary">読み込んでいます...</p>
+            </div>
+            <button id="memoryRefresh" class="button" type="button">更新</button>
+          </div>
+          <div class="memory-meter" role="meter" aria-label="メモリ使用率" aria-valuemin="0" aria-valuemax="100">
+            <span id="memoryMeterFill"></span>
+          </div>
+          <div id="memoryDetails" class="memory-details"></div>
+          <div class="memory-actions">
+            <button id="memoryCleanup" class="button" type="button">未使用メモリを整理</button>
+            <button id="serverRestart" class="button danger" type="button" disabled>完全リセット</button>
+          </div>
+          <div id="memoryStatus" class="status" aria-live="polite"></div>
+        </section>
         <div class="analytics-toolbar">
           <label for="analyticsDays">集計期間</label>
           <select id="analyticsDays">
@@ -702,6 +736,23 @@
       </div>
       <div id="aiBenchmarkDialogBody"></div>
     </div>
+  </dialog>
+
+  <dialog id="restartDialog" class="restart-dialog">
+    <form id="restartForm" class="restart-dialog-inner" method="dialog">
+      <h2>サーバーを完全リセット</h2>
+      <p>Render上のサーバーを再起動します。接続中の対局は切断されます。</p>
+      <p id="restartImpact" class="muted"></p>
+      <div class="field">
+        <label for="restartConfirmation">確認のため「完全リセット」と入力してください</label>
+        <input id="restartConfirmation" autocomplete="off">
+      </div>
+      <div id="restartStatus" class="status" aria-live="polite"></div>
+      <div class="restart-dialog-actions">
+        <button id="restartCancel" class="button" type="button">キャンセル</button>
+        <button id="restartConfirm" class="button danger" type="submit">完全リセットを実行</button>
+      </div>
+    </form>
   </dialog>
 
   <script>
@@ -2175,6 +2226,74 @@
       return `${(value / 1024 / 1024).toFixed(1)} MB`;
     }
 
+    let memorySnapshot = null;
+
+    function renderMemory(data) {
+      memorySnapshot = data;
+      const used = data.used_bytes == null ? null : Number(data.used_bytes);
+      const limit = data.limit_bytes == null ? null : Number(data.limit_bytes);
+      const percent = data.usage_percent == null ? null : Number(data.usage_percent);
+      document.getElementById("memorySummary").textContent = used == null
+        ? "メモリ量を取得できません"
+        : limit == null
+          ? `${formatBytes(used)} 使用中`
+          : `${formatBytes(used)} / ${formatBytes(limit)}（${percent.toFixed(1)}%）`;
+
+      const meter = document.getElementById("memoryMeterFill");
+      const meterValue = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+      meter.style.width = `${meterValue}%`;
+      meter.className = meterValue >= 90 ? "danger" : meterValue >= 75 ? "warning" : "";
+      meter.parentElement.setAttribute("aria-valuenow", String(meterValue));
+      meter.parentElement.hidden = !Number.isFinite(percent);
+
+      document.getElementById("memoryDetails").innerHTML = [
+        `接続中 ${Number(data.connected_clients || 0)}人`,
+        `進行中 ${Number(data.active_games || 0)}局`,
+        `整理可能 ${Number(data.unused_rooms || 0)}部屋`,
+        data.process_rss_bytes == null ? "プロセス使用量 取得不可" : `プロセス使用量 ${formatBytes(data.process_rss_bytes)}`,
+      ].map(value => `<span>${escapeHtml(value)}</span>`).join("");
+
+      const restart = document.getElementById("serverRestart");
+      restart.disabled = !data.restart_configured;
+      restart.title = data.restart_configured
+        ? "Render上のサーバーを再起動します"
+        : "RenderにRENDER_API_KEYを設定すると利用できます";
+    }
+
+    async function loadMemoryStatus({silent = false} = {}) {
+      const status = document.getElementById("memoryStatus");
+      if (!silent) status.textContent = "メモリ状況を読み込んでいます...";
+      try {
+        renderMemory(await api("/admin/api/memory"));
+        if (!silent) {
+          status.textContent = memorySnapshot.restart_configured
+            ? "最新の状況です。"
+            : "完全リセットを使うには、RenderにRENDER_API_KEYを設定してください。";
+        }
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        if (!silent) status.textContent = error.message;
+      }
+    }
+
+    async function cleanupUnusedMemory() {
+      const button = document.getElementById("memoryCleanup");
+      const status = document.getElementById("memoryStatus");
+      button.disabled = true;
+      status.textContent = "使われていない部屋とメモリを整理しています...";
+      try {
+        const data = await api("/admin/api/memory/cleanup", {method: "POST"});
+        renderMemory(data.after);
+        const rooms = Number(data.rooms_reset || 0) + Number(data.score_rooms_expired || 0);
+        status.textContent = `${rooms}部屋を整理しました。対局中の部屋は維持されています。`;
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     function formatDate(value, timeOnly = false) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return "-";
@@ -2488,7 +2607,10 @@
       const name = tab.dataset.tab;
       document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === tab));
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${name}View`));
-      if (name === "analytics") loadAnalytics();
+      if (name === "analytics") {
+        loadAnalytics();
+        loadMemoryStatus();
+      }
       if (name === "regionalAds") loadRegionalAds();
       if (name === "survey") loadSurvey();
       if (name === "scoreAudit") loadScoreAudit();
@@ -2498,7 +2620,50 @@
       else window.goitaMemberAdmin?.hideCredential();
     }));
 
-    document.getElementById("analyticsRefresh").addEventListener("click", loadAnalytics);
+    document.getElementById("analyticsRefresh").addEventListener("click", () => {
+      loadAnalytics();
+      loadMemoryStatus();
+    });
+    document.getElementById("memoryRefresh").addEventListener("click", () => loadMemoryStatus());
+    document.getElementById("memoryCleanup").addEventListener("click", cleanupUnusedMemory);
+    document.getElementById("serverRestart").addEventListener("click", () => {
+      const dialog = document.getElementById("restartDialog");
+      document.getElementById("restartConfirmation").value = "";
+      document.getElementById("restartStatus").textContent = "";
+      document.getElementById("restartImpact").textContent = memorySnapshot
+        ? `現在、${Number(memorySnapshot.connected_clients || 0)}人が接続し、${Number(memorySnapshot.active_games || 0)}局が進行中です。`
+        : "現在の接続状況を取得できていません。";
+      dialog.showModal();
+      document.getElementById("restartConfirmation").focus();
+    });
+    document.getElementById("restartCancel").addEventListener("click", () => {
+      document.getElementById("restartDialog").close();
+    });
+    document.getElementById("restartForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const confirmation = document.getElementById("restartConfirmation").value.trim();
+      const status = document.getElementById("restartStatus");
+      const button = document.getElementById("restartConfirm");
+      if (confirmation !== "完全リセット") {
+        status.textContent = "確認欄に「完全リセット」と入力してください。";
+        return;
+      }
+      button.disabled = true;
+      status.textContent = "Renderへ完全リセットを依頼しています...";
+      try {
+        const data = await api("/admin/api/restart", {
+          method: "POST",
+          body: JSON.stringify({confirmation}),
+        });
+        status.textContent = data.message || "完全リセットを開始しました。";
+        document.getElementById("memoryStatus").textContent = "完全リセットを開始しました。新しいサーバーへの切り替えをお待ちください。";
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
     document.getElementById("surveyRefresh").addEventListener("click", loadSurvey);
     document.getElementById("surveyCampaignSelect").addEventListener("change", loadSurvey);
     document.getElementById("analyticsDays").addEventListener("change", () => {
@@ -2507,6 +2672,12 @@
     });
     initializeAnalyticsDates();
     updateAnalyticsRangeVisibility();
+    window.setInterval(() => {
+      const analyticsView = document.getElementById("analyticsView");
+      if (!document.getElementById("adminView").hidden && analyticsView.classList.contains("active")) {
+        loadMemoryStatus({silent: true});
+      }
+    }, 15000);
     document.getElementById("responseMetricsRefresh").addEventListener("click", loadResponseMetrics);
     document.getElementById("aiMetricsDownload").addEventListener("click", downloadAiMetrics);
     document.getElementById("scoreAuditRefresh").addEventListener("click", loadScoreAudit);

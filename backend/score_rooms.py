@@ -92,6 +92,9 @@ async def score_lifespan(app):
         while True:
             await asyncio.sleep(15)
             await app.state.sweep_score_rooms()
+            sweep_empty_rooms = getattr(app.state, "sweep_empty_rooms", None)
+            if callable(sweep_empty_rooms):
+                await sweep_empty_rooms()
     async with trace_lifespan(app):
         task = asyncio.create_task(sweep())
         try:

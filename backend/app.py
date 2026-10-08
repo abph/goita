@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+import ctypes
+import gc
 import hashlib
 import hmac
 import json
@@ -278,6 +280,7 @@ AI_HELP_COOLDOWN_SECONDS = 10
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip() or "gemini-3.1-flash-lite"
 DISCONNECT_SEAT_GRACE_SECONDS = 60
 CLIENT_HEARTBEAT_TIMEOUT_SECONDS = 90
+EMPTY_ROOM_RESET_SECONDS = 60
 TURN_TIME_LIMIT_OPTIONS = frozenset({0, 30, 60, 120})
 DEAL_MODE_OPTIONS = frozenset(
     {"normal", "balanced", "balanced_wardna", "frequent", "frequent_200"}
@@ -393,6 +396,8 @@ class ConnectionManager:
             self.client_names[key] = _sanitize_player_name(name)
             self.client_tags[key] = _sanitize_player_tag(tag)
             self.cancel_disconnect_release(game_id, client_id)
+        if game_id != "lobby":
+            _mark_room_cleanup_active(game_id)
 
     def disconnect(self, websocket: WebSocket, game_id: str, client_id: str = "") -> bool:
         if game_id in self.active_connections:
@@ -2606,6 +2611,10 @@ class AdminPrivateRoomPasswordUpdateRequest(BaseModel):
     game_id: str
     new_password: str = Field(default="", max_length=128)
     reset_to_default: bool = False
+
+
+class AdminRestartRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=32)
 
 
 class AnalyticsEventRequest(BaseModel):
@@ -6509,6 +6518,268 @@ def admin_settings(request: Request):
     return _lobby_admin_payload()
 
 
+def _read_memory_counter(path: str) -> Optional[int]:
+    try:
+        value = Path(path).read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+    if not value or value == "max":
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _process_rss_bytes() -> Optional[int]:
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) * 1024
+    except (OSError, UnicodeError, ValueError, IndexError):
+        pass
+
+    if os.name != "nt":
+        return None
+    try:
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("PageFaultCount", ctypes.c_ulong),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+
+        counters = ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        get_current_process.restype = ctypes.c_void_p
+        process = get_current_process()
+        get_process_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCounters),
+            ctypes.c_ulong,
+        ]
+        get_process_memory_info.restype = ctypes.c_int
+        succeeded = get_process_memory_info(
+            process,
+            ctypes.byref(counters),
+            counters.cb,
+        )
+        return int(counters.WorkingSetSize) if succeeded else None
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _cgroup_memory_bytes() -> Tuple[Optional[int], Optional[int]]:
+    for current_path, limit_path in (
+        ("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.max"),
+        (
+            "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+            "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+        ),
+    ):
+        current = _read_memory_counter(current_path)
+        limit = _read_memory_counter(limit_path)
+        if current is None and limit is None:
+            continue
+        if limit is not None and limit >= (1 << 60):
+            limit = None
+        return current, limit
+    return None, None
+
+
+def _configured_memory_limit_bytes() -> Optional[int]:
+    raw = (os.getenv("MEMORY_LIMIT_BYTES") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _admin_memory_payload() -> Dict[str, Any]:
+    process_rss = _process_rss_bytes()
+    cgroup_current, cgroup_limit = _cgroup_memory_bytes()
+    limit = _configured_memory_limit_bytes() or cgroup_limit
+    used = cgroup_current if cgroup_current is not None else process_rss
+    usage_percent = (
+        round((used / limit) * 100, 1)
+        if used is not None and limit is not None and limit > 0
+        else None
+    )
+    connected_clients = {
+        client_id
+        for (_game_id, client_id), connections in manager.client_connections.items()
+        if client_id and connections
+    }
+    active_games = sum(
+        1
+        for game in GAMES.values()
+        if game.get("is_started")
+        and not bool(getattr(game.get("state"), "finished", False))
+    )
+    unused_rooms = sum(
+        1
+        for game_id, game in GAMES.items()
+        if (
+            (
+                _is_empty_room_reset_target(game_id, game)
+                and bool(game.get("empty_room_cleanup_armed", False))
+            )
+            or is_score_room(game_id)
+        )
+        and not _room_has_live_connections(game_id)
+    )
+    return {
+        "used_bytes": used,
+        "limit_bytes": limit,
+        "usage_percent": usage_percent,
+        "process_rss_bytes": process_rss,
+        "measurement_source": "container" if cgroup_current is not None else "process",
+        "connected_clients": len(connected_clients),
+        "socket_connections": sum(
+            len(connections) for connections in manager.active_connections.values()
+        ),
+        "active_games": active_games,
+        "unused_rooms": unused_rooms,
+        "restart_configured": bool(
+            (os.getenv("RENDER_API_KEY") or "").strip()
+            and (os.getenv("RENDER_SERVICE_ID") or "").strip()
+        ),
+        "measured_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _collect_unused_process_memory() -> Tuple[int, bool]:
+    collected = gc.collect()
+    trimmed = False
+    if os.name == "posix":
+        try:
+            trim = getattr(ctypes.CDLL(None), "malloc_trim", None)
+            if trim is not None:
+                trim.argtypes = [ctypes.c_size_t]
+                trim.restype = ctypes.c_int
+                trimmed = bool(trim(0))
+        except (AttributeError, OSError, ValueError):
+            pass
+    return collected, trimmed
+
+
+def _checkpoint_before_restart() -> None:
+    for checkpoint in (
+        checkpoint_ai_search_telemetry,
+        checkpoint_background_search_value_model,
+        checkpoint_generic_response_patterns,
+    ):
+        try:
+            checkpoint("admin_restart")
+        except Exception:
+            LOGGER.exception("Checkpoint before admin restart failed: %s", checkpoint)
+
+
+def _request_render_restart() -> None:
+    api_key = (os.getenv("RENDER_API_KEY") or "").strip()
+    service_id = (os.getenv("RENDER_SERVICE_ID") or "").strip()
+    if not api_key or not service_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Renderの再起動設定がありません。RENDER_API_KEYを設定してください。",
+        )
+    if not re.fullmatch(r"srv-[A-Za-z0-9_-]+", service_id):
+        raise HTTPException(status_code=503, detail="RenderのサービスIDが正しくありません。")
+    endpoint = (
+        "https://api.render.com/v1/services/"
+        f"{urllib.parse.quote(service_id, safe='')}/restart"
+    )
+    request = urllib.request.Request(
+        endpoint,
+        data=b"",
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "SorouGoitaAdmin/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if not 200 <= int(response.status) < 300:
+                raise OSError(f"unexpected status {response.status}")
+    except urllib.error.HTTPError as error:
+        LOGGER.error("Render restart API returned HTTP %s", error.code)
+        raise HTTPException(
+            status_code=502,
+            detail="Renderに再起動を依頼できませんでした。APIキーと権限を確認してください。",
+        ) from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        LOGGER.error("Render restart API request failed: %s", type(error).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Renderに再起動を依頼できませんでした。しばらくしてから再実行してください。",
+        ) from error
+
+
+@app.get("/admin/api/memory")
+def admin_memory(request: Request):
+    _require_site_admin(request)
+    return _admin_memory_payload()
+
+
+@app.post("/admin/api/memory/cleanup")
+async def admin_memory_cleanup(request: Request):
+    _require_site_admin(request)
+    before = _admin_memory_payload()
+    reset_rooms = 0
+    expired_score_rooms = 0
+    for game_id, game in list(GAMES.items()):
+        if _room_has_live_connections(game_id):
+            continue
+        try:
+            if is_score_room(game_id):
+                if await _expire_score_room(game_id, force=True):
+                    expired_score_rooms += 1
+            elif (
+                _is_empty_room_reset_target(game_id, game)
+                and game.get("empty_room_cleanup_armed", False)
+                and await _reset_empty_room(game_id, force=True, collect_memory=False)
+            ):
+                reset_rooms += 1
+        except Exception:
+            LOGGER.exception("Manual unused-room cleanup failed: %s", game_id)
+    collected, trimmed = await asyncio.to_thread(_collect_unused_process_memory)
+    return {
+        "ok": True,
+        "rooms_reset": reset_rooms,
+        "score_rooms_expired": expired_score_rooms,
+        "collected_objects": collected,
+        "heap_trimmed": trimmed,
+        "before": before,
+        "after": _admin_memory_payload(),
+    }
+
+
+@app.post("/admin/api/restart")
+async def admin_restart(request: Request, req: AdminRestartRequest):
+    _require_site_admin(request)
+    if not hmac.compare_digest(req.confirmation, "完全リセット"):
+        raise HTTPException(status_code=400, detail="確認欄に「完全リセット」と入力してください。")
+    await asyncio.to_thread(_checkpoint_before_restart)
+    await asyncio.to_thread(_request_render_restart)
+    return {"ok": True, "message": "Renderへ完全リセットを依頼しました。"}
+
+
 @app.get("/api/regional-ad")
 def public_regional_ad(request: Request, surface: str = "public_room"):
     if surface not in REGIONAL_AD_SURFACES:
@@ -7595,11 +7866,17 @@ def _score_identity(request, response, *, create=False):
     return get_trace_store().identity(request, response, MEMBER_STORE, create=create)
 
 
-async def _expire_score_room(game_id):
+async def _expire_score_room(game_id, *, force: bool = False) -> bool:
     async with _game_turn_lock(game_id):
         game = GAMES.get(game_id)
-        if not game or time.monotonic() - game["score_last_active"] < IDLE_SECONDS:
-            return
+        if (
+            not game
+            or (
+                not force
+                and time.monotonic() - game["score_last_active"] < IDLE_SECONDS
+            )
+        ):
+            return False
         # Completed results are saved before releasing transient game state.
         _save_trace_result(game)
         for agent in game.get("agents", {}).values():
@@ -7620,6 +7897,163 @@ async def _expire_score_room(game_id):
                 manager.client_names.pop(key, None)
                 manager.client_tags.pop(key, None)
     GAME_TURN_LOCKS.pop(game_id, None)
+    return True
+
+
+def _is_empty_room_reset_target(game_id: str, game: Optional[Dict[str, Any]] = None) -> bool:
+    if _is_main_game_id(game_id) or game_id in PRIVATE_ROOM_NAMES or game_id == DEBUG_GID:
+        return not bool((game or {}).get("tutorial_mode", False))
+    return False
+
+
+def _mark_room_cleanup_active(game_id: str) -> None:
+    game = GAMES.get(game_id)
+    if not game or not _is_empty_room_reset_target(game_id, game):
+        return
+    game["empty_room_cleanup_armed"] = True
+    game.pop("empty_room_since", None)
+
+
+def _room_has_live_connections(game_id: str) -> bool:
+    return bool(manager.active_connections.get(game_id)) or bool(
+        voice_manager.connections.get(game_id)
+    )
+
+
+def _cancel_and_clear_game_agents(game: Dict[str, Any]) -> None:
+    for collection_name in ("agents", "beginner_support_agents"):
+        agents = game.get(collection_name, {})
+        if not isinstance(agents, dict):
+            continue
+        for agent in agents.values():
+            cancel = getattr(agent, "cancel_background_search", None)
+            if callable(cancel):
+                try:
+                    cancel(reason="empty_room_reset")
+                except TypeError:
+                    cancel()
+            for method_name in (
+                "clear_time_search_cache",
+                "clear_branched_attack_cache",
+                "clear_branched_attack_inference_cache",
+                "clear_probabilistic_hand_inference_cache",
+                "clear_conditional_response_dictionary",
+            ):
+                clear = getattr(agent, method_name, None)
+                if callable(clear):
+                    clear()
+            for attribute_name in (
+                "_track",
+                "_my_initial_hands_by_state_id",
+                "_neural_public_history_by_state_id",
+            ):
+                retained = getattr(agent, attribute_name, None)
+                if isinstance(retained, dict):
+                    retained.clear()
+
+
+def _fresh_empty_room(game_id: str, old_game: Dict[str, Any]) -> Dict[str, Any]:
+    dealer = _validate_seat(str(old_game.get("dealer", "A")), name="dealer")
+    ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
+    deal_mode = (
+        "normal"
+        if _is_main_game_id(game_id)
+        else _normalize_deal_mode(
+            old_game.get("next_deal_mode", old_game.get("deal_mode", "normal"))
+        )
+    )
+    fresh = _create_game_obj(
+        dealer=dealer,
+        ai_profile=ai_profile,
+        deal_mode=deal_mode,
+    )
+    for key in (
+        "password",
+        "admin_password",
+        "admin_password_hash",
+        "owner_name",
+        "show_legal_actions",
+        "show_log",
+        "room_background_image",
+        "hidden_from_lobby",
+        "is_debug_room",
+        "debug_auto_next_round",
+        "debug_auto_new_game",
+        "debug_dictionary_narrowing",
+        "turn_time_limit_seconds",
+        "next_turn_time_limit_seconds",
+    ):
+        if key in old_game:
+            fresh[key] = copy.deepcopy(old_game[key])
+    fresh["ai_seats"] = sorted(_ai_seat_set(old_game))
+    fresh["deal_mode"] = deal_mode
+    fresh["next_deal_mode"] = deal_mode
+    fresh["empty_room_cleanup_armed"] = False
+    fresh.pop("empty_room_since", None)
+    return fresh
+
+
+async def _reset_empty_room(
+    game_id: str,
+    *,
+    force: bool = False,
+    collect_memory: bool = True,
+) -> bool:
+    async with _game_turn_lock(game_id):
+        old_game = GAMES.get(game_id)
+        if (
+            not old_game
+            or not _is_empty_room_reset_target(game_id, old_game)
+            or _room_has_live_connections(game_id)
+            or not old_game.get("empty_room_cleanup_armed", False)
+        ):
+            return False
+        empty_since = old_game.get("empty_room_since")
+        if not force and (
+            empty_since is None
+            or time.monotonic() - float(empty_since) < EMPTY_ROOM_RESET_SECONDS
+        ):
+            return False
+
+        _cancel_turn_timeout_task(game_id)
+        _cancel_debug_auto_next_round_task(game_id)
+        _cancel_and_clear_game_agents(old_game)
+        fresh = _fresh_empty_room(game_id, old_game)
+        GAMES[game_id] = fresh
+        manager.active_connections.pop(game_id, None)
+        LOGGER.info("Reset unused room and released AI state: %s", game_id)
+
+    del old_game
+    if collect_memory:
+        gc.collect()
+    await manager.broadcast_update("lobby")
+    return True
+
+
+async def _sweep_empty_rooms() -> None:
+    now = time.monotonic()
+    candidates: List[str] = []
+    for game_id, game in list(GAMES.items()):
+        if not _is_empty_room_reset_target(game_id, game):
+            continue
+        if _room_has_live_connections(game_id):
+            game["empty_room_cleanup_armed"] = True
+            game.pop("empty_room_since", None)
+            continue
+        if not game.get("empty_room_cleanup_armed", False):
+            continue
+        empty_since = game.get("empty_room_since")
+        if empty_since is None:
+            game["empty_room_since"] = now
+            continue
+        if now - float(empty_since) >= EMPTY_ROOM_RESET_SECONDS:
+            candidates.append(game_id)
+
+    for game_id in candidates:
+        try:
+            await _reset_empty_room(game_id)
+        except Exception:
+            LOGGER.exception("Empty room cleanup failed: %s", game_id)
 
 
 async def _sweep_score_rooms():
@@ -7632,6 +8066,7 @@ async def _sweep_score_rooms():
 
 
 app.state.sweep_score_rooms = _sweep_score_rooms
+app.state.sweep_empty_rooms = _sweep_empty_rooms
 app.add_middleware(ScoreRoomGuard, games=GAMES, identity=_score_identity, expire=_expire_score_room)
 
 

@@ -56,6 +56,14 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert 'id="privateAdRoomSelect"' in admin
     assert 'id="privateAdSummary"' in admin
     assert 'id="sessionList"' in admin
+    assert 'id="memorySummary"' in admin
+    assert 'id="memoryCleanup"' in admin
+    assert 'id="serverRestart"' in admin
+    assert 'id="restartDialog"' in admin
+    assert "未使用メモリを整理" in admin
+    assert 'api("/admin/api/memory")' in admin
+    assert 'api("/admin/api/memory/cleanup", {method: "POST"})' in admin
+    assert 'api("/admin/api/restart"' in admin
     assert 'id="sourceRows"' in admin
     assert "流入元" in admin
     assert "data.sources" in admin
@@ -158,6 +166,9 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
     assert '"ai_generic_response_patterns"' in backend
     assert "checkpoint_generic_response_patterns" in backend
     assert '@app.get("/admin/api/ai-metrics/export")' in backend
+    assert '@app.get("/admin/api/memory")' in backend
+    assert '@app.post("/admin/api/memory/cleanup")' in backend
+    assert '@app.post("/admin/api/restart")' in backend
     assert '@private_archive_router.put("/admin/api/ai-benchmark/import")' in backend
     assert '@private_archive_router.put("/admin/api/ai-benchmark/{case_id}/review")' in backend
     assert '"passwords_included": False' in backend
