@@ -333,6 +333,9 @@
   function isGuest() {
     return sessionResolved && !member;
   }
+  function isMember() {
+    return sessionResolved && !!member;
+  }
   function requestRegistration() {
     registrationRequested = true;
     const activeRoot = roots.find(root => root.classList.contains("active"));
@@ -369,7 +372,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canUseChampionStamp, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, requestRegistration, requestLibrary};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canUseChampionStamp, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, isMember, requestRegistration, requestLibrary};
   render();
   refresh();
 })();

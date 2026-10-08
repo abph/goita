@@ -32,14 +32,27 @@ def test_lobby_intro_has_smaller_mobile_typography():
     assert ".lobby-purpose-option { min-height: 60px;" in HTML
 
 
-def test_lobby_welcome_name_row_is_compact_and_layout_stable():
+def test_lobby_welcome_and_next_recommendation_are_compact_and_state_based():
     assert 'class="lobby-welcome-row"' in HTML
     assert 'id="lobbyWelcomeMessage"' in HTML
-    assert 'id="lobbyWelcomeNameButton"' in HTML
-    assert 'onclick="openLobbyNameModal()"' in HTML
+    assert 'id="lobbyWelcomeNameButton"' not in HTML
+    assert 'id="lobbyNextRecommendation"' in HTML
+    assert 'id="lobbyNextRecommendationButton"' in HTML
+    assert 'onclick="activateLobbyNextRecommendation()"' in HTML
     assert ".lobby-welcome-row {\n        min-height: 30px;" in HTML
     assert ".lobby-welcome-row { min-height: 28px;" in HTML
+    assert ".lobby-next-recommendation {\n        box-sizing: border-box;" in HTML
+    assert "min-height: 42px;" in HTML
+    assert "min-height: 54px;" in HTML
     assert "text-overflow: ellipsis;" in HTML
+    recommendation = HTML.split("function renderLobbyNextRecommendation()", 1)[1].split(
+        "function activateLobbyNextRecommendation()", 1
+    )[0]
+    assert 'action = "name"' in recommendation
+    assert 'action = "register"' in recommendation
+    assert 'action = "discord"' in recommendation
+    assert 'window.goitaMembers?.isGuest() === true' in recommendation
+    assert 'window.goitaMembers?.isMember() === true' in recommendation
     assert '<div id="lobbyNameModal" class="modal-overlay"' in HTML
     assert 'onsubmit="saveLobbyName(event)"' in HTML
 

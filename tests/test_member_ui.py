@@ -13,7 +13,7 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20260918a"' in html
+    assert 'src="/static/member.js?v=20261008a"' in html
     assert 'href="/static/member.css?v=20261008a"' in html
 
 
@@ -35,6 +35,13 @@ def test_member_ui_never_uses_browser_credential_storage():
     assert "document.cookie" not in script
     assert "paid_enabled:" not in script
     assert "paid_until:" not in script
+
+
+def test_member_ui_exposes_resolved_guest_and_member_states_to_lobby():
+    script = (ROOT / "frontend" / "member.js").read_text(encoding="utf-8")
+    assert "return sessionResolved && !member;" in script
+    assert "return sessionResolved && !!member;" in script
+    assert "isGuest, isMember, requestRegistration" in script
 
 
 def test_admin_has_manual_member_issuance_and_confirmed_delete_action():
