@@ -1303,19 +1303,28 @@
     }
     .lobby-footer {
         margin: 36px 0 16px;
-        padding: 28px 12px 22px;
+        padding: 22px 12px 18px;
         border-top: 1px solid rgba(139, 90, 43, 0.28);
         color: #666;
         text-align: center;
     }
+    .lobby-footer-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        align-items: center;
+        gap: 22px;
+        margin-bottom: 16px;
+        text-align: left;
+    }
+    .lobby-footer-navigation { min-width: 0; }
     .lobby-footer-links {
         display: flex;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 4px 14px;
         margin: 0;
     }
-    .lobby-footer-links-secondary { margin: 2px 0 16px; }
+    .lobby-footer-links-secondary { margin-top: 2px; }
     .lobby-footer-link {
         appearance: none;
         display: inline-flex;
@@ -1333,43 +1342,38 @@
     .lobby-footer-link:hover { color: #a2521c; }
     .lobby-footer-copy { font-size: 12px; }
     .lobby-discord-card {
-        box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 18px;
-        max-width: 860px;
-        margin: -8px auto 24px;
-        padding: 12px 14px 12px 16px;
-        border: 1px solid rgba(88, 101, 242, 0.35);
-        border-radius: 9px;
-        background: rgba(247, 248, 255, 0.9);
+        gap: 10px;
+        min-width: 0;
+        padding: 5px 0 5px 18px;
+        border-left: 1px solid rgba(88, 101, 242, 0.28);
         color: #3d3f58;
-        box-shadow: 0 3px 9px rgba(57, 62, 123, 0.07);
     }
     .lobby-discord-card-copy { min-width: 0; }
     .lobby-discord-card h2 {
         margin: 0 0 3px;
         color: #3e426d;
-        font-size: 14px;
+        font-size: 13px;
         line-height: 1.4;
     }
     .lobby-discord-card p {
         margin: 0;
         color: #5c5f72;
-        font-size: 11px;
-        line-height: 1.55;
+        font-size: 10px;
+        line-height: 1.45;
     }
     .lobby-discord-card button {
         flex: 0 0 auto;
-        min-height: 34px;
-        padding: 6px 13px;
+        min-height: 30px;
+        padding: 5px 9px;
         border: 1px solid #5865f2;
         border-radius: 6px;
         background: #5865f2;
         color: #fff;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 800;
     }
     .lobby-discord-card button:hover,
@@ -1411,13 +1415,19 @@
             row-gap: 4px;
         }
         .lobby-footer-link { font-size: 11px; }
+        .lobby-footer-main {
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
         .lobby-discord-card {
-            gap: 9px;
-            margin: -8px 0 18px;
-            padding: 10px;
+            gap: 8px;
+            padding: 10px 0 0;
+            border-top: 1px solid rgba(88, 101, 242, 0.2);
+            border-left: 0;
         }
         .lobby-discord-card h2 { font-size: 12px; }
-        .lobby-discord-card p { font-size: 9px; }
+        .lobby-discord-card p { display: none; }
         .lobby-discord-card button { padding: 5px 9px; font-size: 10px; }
     }
 
@@ -5345,25 +5355,28 @@
     </div>
   </section>
 
-  <section class="lobby-discord-card" aria-labelledby="lobbyDiscordTitle">
-    <div class="lobby-discord-card-copy">
-      <h2 id="lobbyDiscordTitle">Discordで対局相手を探す</h2>
-      <p>対局募集、質問、感想・改善要望などに利用できます。</p>
-    </div>
-    <button type="button" onclick="openDiscordCommunity()">Discordに参加する</button>
-  </section>
-
   <footer class="lobby-footer">
-    <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
-      <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('support')">支援について</button>
-    </nav>
-    <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('contact')">お問い合わせ</button>
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('privacy')">プライバシーポリシー</button>
-      <button class="lobby-footer-link" type="button" onclick="openSiteInfo('notice')">利用上の注意</button>
-    </nav>
+    <div class="lobby-footer-main">
+      <div class="lobby-footer-navigation">
+        <nav class="lobby-footer-links lobby-footer-links-primary" aria-label="そろうごいたの案内">
+          <a class="lobby-footer-link" href="https://vrcgoita.com/ai/" target="_blank" rel="noopener noreferrer">そろうごいたとは</a>
+          <button class="lobby-footer-link" type="button" onclick="openSiteInfo('learn')">ごいたを知る</button>
+          <button class="lobby-footer-link" type="button" onclick="openSiteInfo('support')">支援について</button>
+        </nav>
+        <nav class="lobby-footer-links lobby-footer-links-secondary" aria-label="サイト情報">
+          <button class="lobby-footer-link" type="button" onclick="openSiteInfo('contact')">お問い合わせ</button>
+          <button class="lobby-footer-link" type="button" onclick="openSiteInfo('privacy')">プライバシーポリシー</button>
+          <button class="lobby-footer-link" type="button" onclick="openSiteInfo('notice')">利用上の注意</button>
+        </nav>
+      </div>
+      <section class="lobby-discord-card" aria-labelledby="lobbyDiscordTitle">
+        <div class="lobby-discord-card-copy">
+          <h2 id="lobbyDiscordTitle">Discordで対局相手を探す</h2>
+          <p>対局募集、質問、感想・改善要望などに利用できます。</p>
+        </div>
+        <button type="button" onclick="openDiscordCommunity()">Discordを見る</button>
+      </section>
+    </div>
     <div class="lobby-footer-copy">© そろうごいた</div>
   </footer>
 

@@ -67,14 +67,18 @@ def test_discord_community_is_available_from_lobby_and_menus() -> None:
     assert 'class="lobby-discord-card"' in html
     assert html.count('onclick="openSiteInfo(\'discord\')"') == 2
     assert 'onclick="openDiscordCommunity()"' in html
-    assert html.index('id="lobbyRoomsSection"') < html.index('class="lobby-discord-card"') < html.index('class="lobby-footer"')
+    assert html.index('id="lobbyRoomsSection"') < html.index('class="lobby-footer"') < html.index('class="lobby-discord-card"')
+    assert 'class="lobby-footer-main"' in html
+    assert 'class="lobby-footer-navigation"' in html
+    assert "grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);" in html
+    assert ".lobby-discord-card p { display: none; }" in html
     footer_links = html.split('class="lobby-footer-links lobby-footer-links-primary"', 1)[1].split("</nav>", 1)[0]
     assert ">Discord</button>" not in footer_links
     assert 'href: "https://discord.gg/JvNE7VfDXQ"' in html
     for source in [
         "Discordで対局相手を探す",
         "対局募集、質問、感想・改善要望などに利用できます。",
-        "Discordに参加する",
+        "Discordを見る",
         "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
         "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
         "Discordサーバーに参加する",
