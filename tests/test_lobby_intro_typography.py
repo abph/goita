@@ -8,13 +8,15 @@ def test_lobby_intro_uses_scoped_typography_classes():
     assert '<div class="lobby-intro">' in HTML
     assert '<div class="lobby-brand-lockup">' in HTML
     assert '<div class="lobby-brand-row">' in HTML
+    assert '<div class="lobby-utility-bar">' in HTML
     assert '<p class="lobby-brand-certification">日本ごいた協会認定</p>' in HTML
     assert '<p class="lobby-brand-subtitle">オンライン対局室</p>' in HTML
     assert "grid-template-columns: auto auto;" in HTML
     assert "grid-row: 1 / 3;" in HTML
     assert ".lobby-toolbar .lobby-menu-label { display: none; }" in HTML
     assert 'aria-label="メニュー"' in HTML
-    assert "transform: translateY(-50%);" in HTML
+    assert ".lobby-toolbar {\n        position: relative;" in HTML
+    assert HTML.index('class="lobby-utility-bar"') < HTML.index('class="lobby-brand-row"')
     assert '<section class="lobby-purpose-guide lobby-section-card"' in HTML
     assert HTML.count('class="lobby-purpose-guide lobby-section-card"') == 1
     assert HTML.count('class="lobby-purpose-option"') == 13
@@ -24,8 +26,10 @@ def test_lobby_intro_uses_scoped_typography_classes():
 
 
 def test_lobby_intro_has_smaller_mobile_typography():
-    assert ".lobby-intro {\n        padding: 28px 0 34px;" in HTML
-    assert ".lobby-intro { padding: 20px 0 28px; }" in HTML
+    assert ".lobby-intro {\n        padding: 0 0 34px;" in HTML
+    assert ".lobby-intro { padding: 0 0 28px; }" in HTML
+    assert ".lobby-utility-bar { min-height: 32px;" in HTML
+    assert ".lobby-brand-row { margin-top: 16px; }" in HTML
     assert ".lobby-intro h1 { font-size: 28px; }" in HTML
     assert ".lobby-brand-certification { font-size: 9px; }" in HTML
     assert ".lobby-brand-subtitle { font-size: 11px; }" in HTML
@@ -39,11 +43,11 @@ def test_lobby_welcome_and_next_recommendation_are_compact_and_state_based():
     assert 'id="lobbyNextRecommendation"' in HTML
     assert 'id="lobbyNextRecommendationButton"' in HTML
     assert 'onclick="activateLobbyNextRecommendation()"' in HTML
-    assert ".lobby-welcome-row {\n        min-height: 30px;" in HTML
-    assert ".lobby-welcome-row { min-height: 28px;" in HTML
-    assert ".lobby-next-recommendation {\n        box-sizing: border-box;" in HTML
-    assert "min-height: 42px;" in HTML
-    assert "min-height: 54px;" in HTML
+    assert ".lobby-utility-bar {\n        min-height: 34px;" in HTML
+    assert ".lobby-welcome-row {\n        min-width: 0;" in HTML
+    assert ".lobby-next-recommendation {\n        min-width: 0;" in HTML
+    assert "min-height: 28px;" in HTML
+    assert ".lobby-next-recommendation-text { display: none; }" in HTML
     assert "text-overflow: ellipsis;" in HTML
     recommendation = HTML.split("function renderLobbyNextRecommendation()", 1)[1].split(
         "function activateLobbyNextRecommendation()", 1
