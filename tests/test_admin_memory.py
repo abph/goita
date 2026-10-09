@@ -2,7 +2,7 @@ import asyncio
 from urllib.request import Request
 
 import pytest
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 from backend import app as app_module
 
@@ -65,6 +65,29 @@ def test_render_restart_requires_api_key(monkeypatch) -> None:
         app_module._request_render_restart()
 
     assert error.value.status_code == 503
+
+
+def test_admin_restart_returns_before_deferred_render_request(monkeypatch) -> None:
+    async def scenario() -> None:
+        background_tasks = BackgroundTasks()
+        monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
+        monkeypatch.setattr(
+            app_module,
+            "_render_restart_configuration",
+            lambda: ("secret-test-key", "srv-test123"),
+        )
+
+        response = await app_module.admin_restart(
+            object(),
+            app_module.AdminRestartRequest(confirmation="完全リセット"),
+            background_tasks,
+        )
+
+        assert response["ok"] is True
+        assert "受け付けました" in response["message"]
+        assert len(background_tasks.tasks) == 1
+
+    asyncio.run(scenario())
 
 
 def test_forced_unused_room_cleanup_does_not_wait_sixty_seconds(monkeypatch) -> None:

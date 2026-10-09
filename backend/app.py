@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Optional, Tuple, Set, Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Body, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -6689,7 +6689,7 @@ def _checkpoint_before_restart() -> None:
             LOGGER.exception("Checkpoint before admin restart failed: %s", checkpoint)
 
 
-def _request_render_restart() -> None:
+def _render_restart_configuration() -> Tuple[str, str]:
     api_key = (os.getenv("RENDER_API_KEY") or "").strip()
     service_id = (os.getenv("RENDER_SERVICE_ID") or "").strip()
     if not api_key or not service_id:
@@ -6699,6 +6699,11 @@ def _request_render_restart() -> None:
         )
     if not re.fullmatch(r"srv-[A-Za-z0-9_-]+", service_id):
         raise HTTPException(status_code=503, detail="RenderのサービスIDが正しくありません。")
+    return api_key, service_id
+
+
+def _request_render_restart() -> None:
+    api_key, service_id = _render_restart_configuration()
     endpoint = (
         "https://api.render.com/v1/services/"
         f"{urllib.parse.quote(service_id, safe='')}/restart"
@@ -6729,6 +6734,23 @@ def _request_render_restart() -> None:
             status_code=502,
             detail="Renderに再起動を依頼できませんでした。しばらくしてから再実行してください。",
         ) from error
+
+
+async def _restart_render_service_after_response() -> None:
+    """Flush the admin response before Render begins replacing this instance."""
+    await asyncio.sleep(1.0)
+    try:
+        await asyncio.to_thread(_checkpoint_before_restart)
+        await asyncio.to_thread(_request_render_restart)
+        LOGGER.info("Render restart requested by site administrator")
+    except HTTPException as error:
+        LOGGER.error(
+            "Deferred Render restart request failed with HTTP %s: %s",
+            error.status_code,
+            error.detail,
+        )
+    except Exception:
+        LOGGER.exception("Deferred Render restart request failed")
 
 
 @app.get("/admin/api/memory")
@@ -6771,13 +6793,20 @@ async def admin_memory_cleanup(request: Request):
 
 
 @app.post("/admin/api/restart")
-async def admin_restart(request: Request, req: AdminRestartRequest):
+async def admin_restart(
+    request: Request,
+    req: AdminRestartRequest,
+    background_tasks: BackgroundTasks,
+):
     _require_site_admin(request)
-    if not hmac.compare_digest(req.confirmation, "完全リセット"):
+    if req.confirmation != "完全リセット":
         raise HTTPException(status_code=400, detail="確認欄に「完全リセット」と入力してください。")
-    await asyncio.to_thread(_checkpoint_before_restart)
-    await asyncio.to_thread(_request_render_restart)
-    return {"ok": True, "message": "Renderへ完全リセットを依頼しました。"}
+    _render_restart_configuration()
+    background_tasks.add_task(_restart_render_service_after_response)
+    return {
+        "ok": True,
+        "message": "完全リセットを受け付けました。30～60秒ほどお待ちください。",
+    }
 
 
 @app.get("/api/regional-ad")

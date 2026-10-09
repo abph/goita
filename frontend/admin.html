@@ -2659,7 +2659,9 @@
         document.getElementById("memoryStatus").textContent = "完全リセットを開始しました。新しいサーバーへの切り替えをお待ちください。";
       } catch (error) {
         if (error.status === 401) showLogin();
-        status.textContent = error.message;
+        status.textContent = error.status
+          ? error.message
+          : "サーバーの切り替えで通信が一時的に切れた可能性があります。30～60秒後に管理ページを再読み込みしてください。";
       } finally {
         button.disabled = false;
       }
