@@ -34,8 +34,9 @@ def test_lobby_chat_uses_shared_public_channel_and_bubble_button() -> None:
     assert "function toggleLobbyChatPanel(open, focusComposer = true)" in html
     assert "let initialLobbyChatAutoOpenHandled = false;" in html
     assert "function openInitialLobbyChatOnce()" in html
+    assert "if(!isDesktopChatDocked()){" in html
     assert "toggleLobbyChatPanel(true, false);" in html
-    assert "if(input && focusComposer) input.focus();" in html
+    assert "if(input && focusComposer && isDesktopChatDocked()) input.focus();" in html
     assert "function positionLobbyChatBelowIntro()" in html
     assert 'document.querySelector("#lobbyView .lobby-intro")' in html
     assert 'intro.getBoundingClientRect().bottom + 10' in html

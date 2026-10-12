@@ -12,7 +12,7 @@ def test_mobile_room_chat_matches_lobby_toggle_and_clears_settings() -> None:
     assert html.count('<span aria-hidden="true">💬</span>') >= 2
     assert "btn.style.display = inRoom && !docked ? \"flex\" : \"none\"" in html
     assert "badge.hidden = chatVisible || unread === 0" in html
-    assert "#chatPanel,\n      #lobbyChatPanel {\n        top: 54px;" in html
+    assert "#chatPanel {\n        top: 54px;" in html
     assert "width: 42px" in html
     assert "height: 42px" in html
     panel_css = html.split("    .chat-panel {", 1)[1].split("    }", 1)[0]
@@ -45,9 +45,21 @@ def test_mobile_chat_close_is_easy_to_tap_after_typing() -> None:
     assert "function closeChatPanelOnPointerDown(event, kind)" in html
     assert "activeElement.blur();" in html
     assert "touch-action: manipulation;" in html
+    assert 'id="chatBackdrop" class="chat-backdrop"' in html
+    assert 'id="lobbyChatBackdrop" class="chat-backdrop"' in html
+    assert "backdrop.hidden = !showBackdrop;" in html
+    assert "backdrop.hidden = !chatOpen;" in html
+    assert '<span class="chat-close-label">閉じる</span>' in html
     mobile_close_css = html.split("      .chat-close {", 1)[1].split("      }", 1)[0]
-    assert "width: 44px;" in mobile_close_css
+    assert "min-width: 80px;" in mobile_close_css
     assert "height: 44px;" in mobile_close_css
+
+
+def test_mobile_chat_does_not_auto_open_or_raise_keyboard() -> None:
+    html = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "if(!isDesktopChatDocked()){\n    toggleLobbyChatPanel(false, false);" in html
+    assert html.count("if(input && focusComposer && isDesktopChatDocked()) input.focus();") == 2
 
 
 def test_chat_people_rows_use_compact_spacing() -> None:

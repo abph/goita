@@ -15,7 +15,7 @@
       --desktop-log-panel-width: 280px;
       --chat-panel-height: min(430px, calc(100vh - 90px));
       --chat-people-width: 168px;
-      --mobile-chat-height: 430px;
+      --mobile-chat-height: 340px;
       --mobile-chat-top-height: 138px;
       --lobby-chat-top: 230px;
     }
@@ -2094,6 +2094,12 @@
       transform: translateX(0);
       opacity: 1;
     }
+    .chat-backdrop {
+      display: none;
+    }
+    .chat-backdrop[hidden] {
+      display: none !important;
+    }
     #lobbyChatPanel {
       top: var(--lobby-chat-top);
       height: min(var(--chat-panel-height), calc(100dvh - var(--lobby-chat-top) - 12px));
@@ -2149,6 +2155,9 @@
       user-select: none;
       -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
+    }
+    .chat-close-label {
+      display: none;
     }
     .chat-content {
       position: relative;
@@ -2778,6 +2787,19 @@
         border-color: rgba(139, 90, 43, 0.34);
         box-shadow: -4px 6px 14px rgba(0,0,0,0.09);
       }
+      .chat-backdrop.open {
+        position: fixed;
+        inset: 0;
+        z-index: 898;
+        display: block;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: rgba(37, 24, 13, 0.18);
+        touch-action: manipulation;
+      }
       #chatPanel {
         top: 54px;
       }
@@ -2871,16 +2893,29 @@
         font-size: 10px;
       }
       .chat-header {
-        top: 0;
-        right: 0;
+        top: 6px;
+        right: 6px;
         background: transparent;
       }
       .chat-close {
-        width: 44px;
+        gap: 4px;
+        width: auto;
+        min-width: 80px;
         height: 44px;
+        padding: 0 10px;
+        border: 1px solid rgba(139, 90, 43, 0.58);
+        border-radius: 999px;
+        background: rgba(255, 253, 245, 0.96);
+        box-shadow: 0 2px 7px rgba(0,0,0,0.16);
+        font-size: 18px;
+        font-weight: 800;
+      }
+      .chat-close-label {
+        display: inline;
+        font-size: 12px;
       }
       .chat-messages {
-        padding: 6px 6px 6px 7px;
+        padding: 48px 6px 6px 7px;
         background: rgba(244, 239, 223, 0.08);
       }
       .chat-message {
@@ -5384,12 +5419,13 @@
     <span aria-hidden="true">💬</span>
     <span id="lobbyChatUnread" class="lobby-chat-unread" hidden></span>
   </button>
+  <button id="lobbyChatBackdrop" class="chat-backdrop" type="button" onclick="closeChatPanel('lobby')" aria-label="チャットを閉じる" hidden></button>
   <aside id="lobbyChatPanel" class="chat-panel lobby-chat-panel" aria-label="ロビーチャット" aria-live="polite" hidden>
     <aside id="lobbyChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
       <div id="lobbyChatPeopleList" class="room-chat-people-list"></div>
     </aside>
     <div class="chat-header">
-      <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'lobby')" onclick="closeChatPanel('lobby')" aria-label="閉じる">×</button>
+      <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'lobby')" onclick="closeChatPanel('lobby')" aria-label="閉じる"><span class="chat-close-label">閉じる</span><span aria-hidden="true">×</span></button>
     </div>
     <div class="chat-content">
       <div id="lobbyChatMessages" class="chat-messages"></div>
@@ -5539,12 +5575,13 @@
           <span aria-hidden="true">💬</span>
           <span id="chatUnread" class="lobby-chat-unread" hidden></span>
         </button>
+        <button id="chatBackdrop" class="chat-backdrop" type="button" onclick="closeChatPanel('room')" aria-label="チャットを閉じる" hidden></button>
         <div id="chatPanel" class="chat-panel" aria-live="polite">
           <aside id="roomChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
             <div id="roomChatPeopleList" class="room-chat-people-list"></div>
           </aside>
           <div class="chat-header">
-            <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'room')" onclick="closeChatPanel('room')" aria-label="閉じる">×</button>
+            <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'room')" onclick="closeChatPanel('room')" aria-label="閉じる"><span class="chat-close-label">閉じる</span><span aria-hidden="true">×</span></button>
           </div>
           <div class="chat-content">
             <div id="chatMessages" class="chat-messages"></div>
@@ -5779,8 +5816,8 @@
             <div class="settings-row">
               <label for="lobbyMobileChatHeight">高さ</label>
               <select id="lobbyMobileChatHeight" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-                <option value="tall" selected>高い</option>
-                <option value="normal">普通</option>
+                <option value="tall">高い</option>
+                <option value="normal" selected>普通</option>
                 <option value="short">低い</option>
               </select>
             </div>
@@ -5942,8 +5979,8 @@
           <div class="settings-row">
             <label for="mobileChatHeight">高さ</label>
             <select id="mobileChatHeight" style="width:100%; padding:8px; box-sizing:border-box; font-size:16px;">
-              <option value="tall" selected>高い</option>
-              <option value="normal">普通</option>
+              <option value="tall">高い</option>
+              <option value="normal" selected>普通</option>
               <option value="short">低い</option>
             </select>
           </div>
@@ -8044,7 +8081,7 @@ function loadPersonalSettings() {
                 : "normal",
             mobileChatHeight: ["tall", "normal", "short"].includes(saved.mobileChatHeight)
                 ? saved.mobileChatHeight
-                : "tall",
+                : "normal",
             mobileChatTransparency: Number.isFinite(savedMobileChatTransparency)
                 ? Math.max(0, Math.min(90, savedMobileChatTransparency))
                 : defaultMobileChatTransparency,
@@ -8066,7 +8103,7 @@ function loadPersonalSettings() {
             boardViewMode: "2d",
             mobileChatPlacement: "right",
             mobileChatWidth: "normal",
-            mobileChatHeight: "tall",
+            mobileChatHeight: "normal",
             mobileChatTransparency: 0,
             chatNoticeVisibility: "important",
         };
@@ -8101,11 +8138,11 @@ function applyPersonalSettingsAppearance() {
     );
     document.documentElement.style.setProperty(
         "--mobile-chat-height",
-        mobileChatHeights[personalSettings.mobileChatHeight] || mobileChatHeights.tall
+        mobileChatHeights[personalSettings.mobileChatHeight] || mobileChatHeights.normal
     );
     document.documentElement.style.setProperty(
         "--mobile-chat-top-height",
-        mobileTopChatHeights[personalSettings.mobileChatHeight] || mobileTopChatHeights.tall
+        mobileTopChatHeights[personalSettings.mobileChatHeight] || mobileTopChatHeights.normal
     );
     document.body.style.setProperty("--mobile-chat-opacity", String((100 - transparency) / 100));
     applyBoardViewMode();
@@ -8184,7 +8221,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyMobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("lobbyMobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
-    document.getElementById("lobbyMobileChatHeight").value = personalSettings.mobileChatHeight || "tall";
+    document.getElementById("lobbyMobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("lobbyMobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateLobbyMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("lobbyChatNoticeVisibility").value = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
@@ -8335,7 +8372,7 @@ function saveLobbyPersonalSettings() {
             : "normal",
         mobileChatHeight: ["tall", "normal", "short"].includes(document.getElementById("lobbyMobileChatHeight").value)
             ? document.getElementById("lobbyMobileChatHeight").value
-            : "tall",
+            : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("lobbyMobileChatTransparency").value) || 0)),
         chatNoticeVisibility: normalizeChatNoticeVisibility(document.getElementById("lobbyChatNoticeVisibility").value),
         enableEffects: document.getElementById("lobbyCheckEnableEffects").checked,
@@ -10094,7 +10131,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
-    document.getElementById("mobileChatHeight").value = personalSettings.mobileChatHeight || "tall";
+    document.getElementById("mobileChatHeight").value = personalSettings.mobileChatHeight || "normal";
     document.getElementById("mobileChatTransparency").value = String(personalSettings.mobileChatTransparency);
     updateMobileChatTransparencyDisplay(personalSettings.mobileChatTransparency);
     document.getElementById("chatNoticeVisibility").value = normalizeChatNoticeVisibility(personalSettings.chatNoticeVisibility);
@@ -10440,7 +10477,7 @@ async function savePersonalSettings() {
             : "normal",
         mobileChatHeight: ["tall", "normal", "short"].includes(document.getElementById("mobileChatHeight").value)
             ? document.getElementById("mobileChatHeight").value
-            : "tall",
+            : "normal",
         mobileChatTransparency: Math.max(0, Math.min(90, Number(document.getElementById("mobileChatTransparency").value) || 0)),
         chatNoticeVisibility: normalizeChatNoticeVisibility(document.getElementById("chatNoticeVisibility").value),
         enableEffects: document.getElementById("checkEnableEffects").checked,
@@ -13419,12 +13456,18 @@ function positionLobbyChatBelowIntro(){
 function toggleLobbyChatPanel(open, focusComposer = true){
   lobbyChatOpen = (typeof open === "boolean") ? open : !lobbyChatOpen;
   const panel = document.getElementById("lobbyChatPanel");
+  const backdrop = document.getElementById("lobbyChatBackdrop");
   const btn = document.getElementById("lobbyChatToggle");
   const inLobby = document.getElementById("lobbyView")?.style.display !== "none";
   if(inLobby && lobbyChatOpen) positionLobbyChatBelowIntro();
   if(panel){
     panel.classList.toggle("open", inLobby && lobbyChatOpen);
     panel.hidden = !inLobby || !lobbyChatOpen;
+  }
+  if(backdrop){
+    const showBackdrop = !isDesktopChatDocked() && inLobby && lobbyChatOpen;
+    backdrop.classList.toggle("open", showBackdrop);
+    backdrop.hidden = !showBackdrop;
   }
   if(btn){
     btn.classList.toggle("open", lobbyChatOpen);
@@ -13443,7 +13486,7 @@ function toggleLobbyChatPanel(open, focusComposer = true){
       const box = document.getElementById("lobbyChatMessages");
       const input = document.getElementById("lobbyChatInput");
       if(box) box.scrollTop = box.scrollHeight;
-      if(input && focusComposer) input.focus();
+      if(input && focusComposer && isDesktopChatDocked()) input.focus();
     }, 0);
   }
   updateMobileChatPageScrollLock();
@@ -13452,6 +13495,10 @@ function toggleLobbyChatPanel(open, focusComposer = true){
 function openInitialLobbyChatOnce(){
   if(initialLobbyChatAutoOpenHandled) return;
   initialLobbyChatAutoOpenHandled = true;
+  if(!isDesktopChatDocked()){
+    toggleLobbyChatPanel(false, false);
+    return;
+  }
   toggleLobbyChatPanel(true, false);
 }
 
@@ -13557,9 +13604,14 @@ function toggleChatPanel(open, focusComposer = true){
   if(isDesktopChatDocked()) return;
   chatOpen = (typeof open === "boolean") ? open : !chatOpen;
   const panel = document.getElementById("chatPanel");
+  const backdrop = document.getElementById("chatBackdrop");
   const btn = document.getElementById("chatToggle");
   const badge = document.getElementById("chatUnread");
   if(panel) panel.classList.toggle("open", chatOpen);
+  if(backdrop){
+    backdrop.classList.toggle("open", chatOpen);
+    backdrop.hidden = !chatOpen;
+  }
   if(btn) {
     btn.classList.toggle("open", chatOpen);
     btn.setAttribute("aria-expanded", String(chatOpen));
@@ -13574,7 +13626,7 @@ function toggleChatPanel(open, focusComposer = true){
       const box = document.getElementById("chatMessages");
       const input = document.getElementById("chatInput");
       if(box) box.scrollTop = box.scrollHeight;
-      if(input && focusComposer) input.focus();
+      if(input && focusComposer && isDesktopChatDocked()) input.focus();
     }, 0);
   }
   updateMobileChatPageScrollLock();
