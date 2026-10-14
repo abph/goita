@@ -142,6 +142,10 @@ MAIN_ROOM_DEFAULT_AI_SEATS: Dict[str, Tuple[str, ...]] = {
 DEBUG_GID = "debug"
 DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = 3.0
 PRIVATE_A_GID = "room-gold-01"
+KANAZAWA_TEAM_ROOM_GID = "room-bronze-03"
+KANAZAWA_TEAM_ROOM_PASSWORD = "saitamakyuusi"
+KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD = "imakyuusi"
+KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD = "saitama1011"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 DEFAULT_LOBBY_ADMIN_PASSWORD = "admin-lobby"
 LOBBY_ADMIN_PASSWORD = (
@@ -151,16 +155,16 @@ PRIVATE_ROOM_DEFINITIONS = (
     {"gid": PRIVATE_A_GID, "pass": None, "admin": "admin-a", "owner": "プライベートA"},
     {"gid": "room-silver-02", "pass": "1222", "admin": "admin-b", "owner": "プライベートB"},
     {
-        "gid": "room-bronze-03",
-        "pass": "saitama1011",
-        "admin": "1011made",
+        "gid": KANAZAWA_TEAM_ROOM_GID,
+        "pass": KANAZAWA_TEAM_ROOM_PASSWORD,
+        "admin": KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD,
         "owner": "金沢大会チーム埼玉",
     },
     {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
     {"gid": "room-iron-05", "pass": None, "admin": "admin-e", "owner": "プライベートE"},
     {"gid": "room-platinum-06", "pass": None, "admin": "admin-f", "owner": "プライベートF"},
 )
-DIRECT_ACCESS_PRIVATE_ROOM_IDS = frozenset({"room-bronze-03"})
+DIRECT_ACCESS_PRIVATE_ROOM_IDS = frozenset({KANAZAWA_TEAM_ROOM_GID})
 LOBBY_PRIVATE_ROOM_IDS = tuple(
     room["gid"]
     for room in PRIVATE_ROOM_DEFINITIONS
@@ -4170,8 +4174,27 @@ def _apply_room_management_settings(
             game["room_background_image"] = ""
 
 
+def _migrate_kanazawa_team_room_passwords(
+    stored_rooms: Dict[str, Dict[str, Any]],
+) -> bool:
+    """Rotate the former shared URL credentials once in persisted settings."""
+
+    settings = stored_rooms.get(KANAZAWA_TEAM_ROOM_GID)
+    if not isinstance(settings, dict):
+        return False
+    if settings.get("password") != KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD:
+        return False
+    settings["password"] = KANAZAWA_TEAM_ROOM_PASSWORD
+    # The new plain default is used until an administrator changes it again.
+    settings["admin_password_hash"] = ""
+    return True
+
+
 def _load_persisted_room_management_settings() -> None:
     stored_rooms = load_room_settings(ROOM_SETTINGS_PATH)
+    kanazawa_passwords_migrated = _migrate_kanazawa_team_room_passwords(
+        stored_rooms
+    )
     lobby_settings = stored_rooms.get(LOBBY_SETTINGS_STORAGE_KEY)
     if lobby_settings is not None:
         _apply_lobby_management_settings(lobby_settings)
@@ -4186,6 +4209,12 @@ def _load_persisted_room_management_settings() -> None:
     if debug_game is not None:
         debug_game["ai_profile"] = "experimental_ai2"
         debug_game["agents"] = _create_agents("experimental_ai2")
+    if (
+        kanazawa_passwords_migrated
+        and ROOM_SETTINGS_PATH is not None
+        and not _save_persisted_room_management_settings()
+    ):
+        LOGGER.error("Unable to persist the Kanazawa team room password rotation")
 
 
 def _save_persisted_room_management_settings() -> bool:

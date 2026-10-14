@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from fastapi import HTTPException
 
 import backend.app as app_module
@@ -106,14 +107,14 @@ def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
     assert app_module.LOBBY_ROOM_SETTINGS["private_room_count"] == 4
     assert room_definition == {
         "gid": "room-bronze-03",
-        "pass": "saitama1011",
-        "admin": "1011made",
+        "pass": "saitamakyuusi",
+        "admin": "imakyuusi",
         "owner": "金沢大会チーム埼玉",
     }
 
     room = app_module.GAMES[room_definition["gid"]]
-    assert room["password"] == "saitama1011"
-    assert room["admin_password"] == "1011made"
+    assert room["password"] == "saitamakyuusi"
+    assert room["admin_password"] == "imakyuusi"
     assert room["owner_name"] == "金沢大会チーム埼玉"
     assert room["hidden_from_lobby"] is True
     assert room_definition["gid"] in app_module.DIRECT_ACCESS_PRIVATE_ROOM_IDS
@@ -124,12 +125,34 @@ def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
 
     listed_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
     assert room_definition["gid"] not in listed_ids
-    assert app_module.verify_password(room_definition["gid"], "saitama1011") == {"ok": True}
+    assert app_module.verify_password(room_definition["gid"], "saitamakyuusi") == {"ok": True}
+    with pytest.raises(HTTPException) as old_password_error:
+        app_module.verify_password(room_definition["gid"], "saitama1011")
+    assert old_password_error.value.status_code == 401
+    assert app_module._room_admin_password_matches(room, "imakyuusi") is True
+    assert app_module._room_admin_password_matches(room, "1011made") is False
 
     html = (app_module.FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
     assert '["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
     assert '["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
     assert "autoEnterDirectPrivateRoomFromUrl" in html
+
+
+def test_kanazawa_team_saved_passwords_are_rotated_once() -> None:
+    old_hash = app_module.hash_admin_password("old-admin")
+    stored_rooms = {
+        app_module.KANAZAWA_TEAM_ROOM_GID: {
+            "owner_name": "金沢大会チーム埼玉",
+            "password": app_module.KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD,
+            "admin_password_hash": old_hash,
+        }
+    }
+
+    assert app_module._migrate_kanazawa_team_room_passwords(stored_rooms) is True
+    settings = stored_rooms[app_module.KANAZAWA_TEAM_ROOM_GID]
+    assert settings["password"] == app_module.KANAZAWA_TEAM_ROOM_PASSWORD
+    assert settings["admin_password_hash"] == ""
+    assert app_module._migrate_kanazawa_team_room_passwords(stored_rooms) is False
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
