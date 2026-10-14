@@ -96,6 +96,8 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         'receive_enemy_big_piece_ally_signal: "相方へ2回目の攻め情報を伝えるため、飛・角を同じ駒で受ける"',
         'receive_prevent_enemy_immediate_finish: "パスすると敵の上がりが確定するため受ける"',
         'match(/^neural_tiebreak_current_gap_',
+        'match(/^attack_preserve_royals_without_continuation_',
+        '王・玉から始めても明確な攻めの続きがないため、王・玉を残して${piece}で攻める',
         'match(/^shi_package_final_attack_enemy_map_',
         '初期し配分は${distribution}が最有力。敵方の残りしは最有力${shiPackage[1]}枚',
         'match(/^kyosha_round_route_depth_',

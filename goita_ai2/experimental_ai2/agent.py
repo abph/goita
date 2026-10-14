@@ -5,11 +5,20 @@ from __future__ import annotations
 import copy
 import math
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from goita_ai2.current_ai.agent import RuleBasedAgent as CurrentRuleBasedAgent
 from goita_ai2.current_ai.endgame import ForcedWinStatus
+from goita_ai2.current_ai.forced_win_planner import (
+    ForcedWinPlan,
+    ForcedWinProofSource,
+    ForcedWinRoute,
+    ForcedWinScoreMode,
+    ForcedWinTiming,
+    ForcedWinWinner,
+)
 from goita_ai2.neural_policy import NeuralPolicyModel, live_state_payload
 
 
@@ -36,6 +45,7 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         # Intermediate (Middle 3) profile.
         self.STRONG_OPENING_CONTINUATION_PROOF_ENABLED = True
         self.STRONG_OPENING_CONTINUATION_ABSOLUTE_RANKS = ("SS", "S", "A")
+        self.PRESERVE_ROYALS_WITHOUT_OPENING_CONTINUATION_ENABLED = True
         # Retained for diagnostics and compatibility with older snapshots.
         self.NEURAL_PRIMARY_ENABLED = False
         self.NEURAL_TIEBREAK_ENABLED = True
@@ -45,6 +55,72 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         self.NEURAL_TIEBREAK_CURRENT_RELATIVE_GAP = 0.05
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
+
+    def _initial_upside_forced_win_plan(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+    ) -> Optional[ForcedWinPlan]:
+        """Use a singleton kyosha probe only when a strong hand still wins.
+
+        After blocking one shi and attacking the only kyosha, every other
+        kyosha may be returned before its stock is exhausted. The remaining
+        shi receives shi, either royal receives every non-shi/non-kyosha
+        attack, and the complete kaku or hisha pair cannot be received by an
+        opponent. This proves a 50-point floor while preserving the branch
+        where the two royals finish for 100 points.
+
+        The absolute-rank gate keeps this exceptional one-card signal out of
+        ordinary hands. No opponent hand is inspected by this proof.
+        """
+        established = super()._initial_upside_forced_win_plan(
+            state,
+            player,
+            actions,
+        )
+        if established is not None:
+            return established
+
+        if not bool(self.STRONG_OPENING_CONTINUATION_PROOF_ENABLED):
+            return None
+        axes = self._initial_hand_axes_for_state(state, player)
+        absolute_rank = str(axes.get("absolute_rank", axes.get("rank", "D")))
+        if absolute_rank not in self.STRONG_OPENING_CONTINUATION_ABSOLUTE_RANKS:
+            return None
+
+        hand = list(state.hands[player])
+        counts = Counter(hand)
+        big_pair = next(
+            (piece for piece in ("7", "6") if counts.get(piece, 0) == 2),
+            None,
+        )
+        action: Action = ("attack_after_block", "1", "2")
+        if not (
+            len(hand) == 8
+            and counts.get("1", 0) >= 2
+            and counts.get("2", 0) == 1
+            and counts.get("8", 0) == 1
+            and counts.get("9", 0) == 1
+            and big_pair is not None
+            and action in actions
+        ):
+            return None
+
+        return ForcedWinPlan(
+            action=action,
+            timing=ForcedWinTiming.INITIAL,
+            score_mode=ForcedWinScoreMode.HIGH_SCORE_BRANCH,
+            winner=ForcedWinWinner.SELF,
+            route=ForcedWinRoute.BRANCHING,
+            proof_source=ForcedWinProofSource.INITIAL_PATTERN,
+            minimum_score=50.0,
+            expected_score=50.0,
+            maximum_score=100.0,
+            immediate=False,
+            trigger="strong_hand_single_kyosha_exhaustion_route",
+            planned_steps=(("1", "2"),),
+        )
 
     def _eight_card_shallow_plan_action(
         self,
@@ -232,6 +308,115 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
             "action": [action_type, visible_block, attack],
         })
 
+    def _opening_royal_without_continuation_fallback(
+        self,
+        state,
+        player: str,
+        actions: List[Action],
+        rule_action: Action,
+        *,
+        rule_reason: str,
+        rule_authority: str,
+        attack_count_before: int,
+    ) -> Optional[Action]:
+        """Keep both royals when an ordinary first attack has no next route.
+
+        A first royal attack is meaningful when a proven or strategic planner
+        supplies its continuation.  A plain score fallback does not establish
+        that route: playing the second royal next would still leave the third
+        attack unexplained.  In that case prefer a truthful repeated attack,
+        then an emergency kyosha/shi probe, before spending either royal.
+        """
+        action_type, _block, attack = rule_action
+        tracker = self._track.get(id(state))
+        hand = state.hands[player]
+        if (
+            not bool(self.PRESERVE_ROYALS_WITHOUT_OPENING_CONTINUATION_ENABLED)
+            or rule_authority != "ordinary"
+            or rule_reason != "score_fallback"
+            or tracker is None
+            or action_type not in ("attack", "attack_after_block")
+            or attack not in ("8", "9")
+            or int(attack_count_before) != 0
+            or "8" not in hand
+            or "9" not in hand
+        ):
+            return None
+
+        if isinstance(tracker.get("active_forced_win_plan"), dict):
+            return None
+        planned_intent = tracker.get("planned_attack_intent")
+        if (
+            isinstance(planned_intent, dict)
+            and str(planned_intent.get("attack_piece")) == str(attack)
+            and bool(planned_intent.get("success_condition"))
+        ):
+            return None
+
+        non_royal = [
+            action
+            for action in actions
+            if action[0] in ("attack", "attack_after_block")
+            and action[2] is not None
+            and action[2] not in ("8", "9")
+        ]
+        if not non_royal:
+            return None
+
+        # Preserve the two royals as future receiving/finishing pieces when a
+        # non-royal hidden piece is available as well.
+        keep_both_royals = [
+            action for action in non_royal if action[1] not in ("8", "9")
+        ]
+        if keep_both_royals:
+            non_royal = keep_both_royals
+
+        scores = {
+            tuple(item.get("action", ())): float(item.get("score"))
+            for item in self.last_attack_candidate_scores
+            if isinstance(item, dict)
+            and isinstance(item.get("action"), (list, tuple))
+            and len(item.get("action")) == 3
+            and item.get("score") is not None
+        }
+
+        def best(candidates: List[Action]) -> Optional[Action]:
+            if not candidates:
+                return None
+            return max(candidates, key=lambda action: scores.get(action, -math.inf))
+
+        truthful_repeat = [
+            action
+            for action in non_royal
+            if action[2] != "1"
+            and (
+                action[2] in ("6", "7")
+                or state.hands[player].count(action[2]) >= 2
+                or self._singleton_first_attack_has_concrete_purpose(
+                    state,
+                    player,
+                    action[0],
+                    action[1],
+                    action[2],
+                )
+            )
+        ]
+        selected = best(truthful_repeat)
+        if selected is not None:
+            return selected
+
+        # When every ordinary piece would send a false multiplicity signal,
+        # a kyosha or shi probe is the smaller concession.  It keeps both
+        # royals available and avoids inventing a royal sequence with no third
+        # attack.  Kyosha is preferred so two shi can still receive or finish.
+        selected = best([action for action in non_royal if action[2] == "2"])
+        if selected is not None:
+            return selected
+        selected = best([action for action in non_royal if action[2] == "1"])
+        if selected is not None:
+            return selected
+        return best(non_royal)
+
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         # The current AI still evaluates the position so proven wins and other
         # exact guards remain available. Keep a clean tracker snapshot because
@@ -240,9 +425,63 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         tracker = self._track.get(id(state))
         tracker_before = copy.deepcopy(tracker) if tracker is not None else None
         rule_action = super().select_action(state, player, actions)
+        active_plan = (
+            self._track.get(id(state), {}).get("active_forced_win_plan")
+            if self._track.get(id(state)) is not None
+            else None
+        )
+        if (
+            isinstance(active_plan, dict)
+            and active_plan.get("trigger")
+            == "strong_hand_single_kyosha_exhaustion_route"
+            and rule_action == ("attack_after_block", "1", "2")
+        ):
+            self._set_decision_reason("tsume")
+            self._set_score_fallback_detail(
+                "high_score_strong_single_kyosha_exhaustion_"
+                "safe_50_max_100"
+            )
         rule_reason = str(self.last_decision_reason or "")
         rule_detail = str(self.last_score_fallback_detail or "")
         rule_authority = str(self.last_rule_search_authority or "ordinary")
+        royal_fallback = self._opening_royal_without_continuation_fallback(
+            state,
+            player,
+            actions,
+            rule_action,
+            rule_reason=rule_reason,
+            rule_authority=rule_authority,
+            attack_count_before=int(
+                (tracker_before or {}).get("my_attack_count", 0)
+            ),
+        )
+        if royal_fallback is not None and royal_fallback != rule_action:
+            original_royal = rule_action[2]
+            if tracker_before is not None:
+                live_tracker = self._track.get(id(state))
+                if live_tracker is not None:
+                    live_tracker.clear()
+                    live_tracker.update(tracker_before)
+            rule_action = royal_fallback
+            self._commit_neural_tiebreak_action(state, player, rule_action)
+            rule_reason = "score_fallback"
+            rule_detail = (
+                "attack_preserve_royals_without_continuation_"
+                f"{rule_action[2]}"
+            )
+            rule_authority = "strong"
+            self._set_decision_reason(rule_reason)
+            self._set_score_fallback_detail(rule_detail)
+            self.last_rule_search_authority = rule_authority
+            self.last_attack_intent_comparison = {
+                "kind": "preserve_royals_without_continuation",
+                "selected": "fallback",
+                "planned_attack": original_royal,
+                "selected_attack": rule_action[2],
+                "reason": "opening_royal_has_no_third_attack",
+            }
+            self.last_attack_candidate_snapshot = {}
+            self._finalize_attack_candidate_snapshot(actions, rule_action)
         protect_shi_continuation = rule_detail.startswith(
             "attack_enemy_team_shi_remaining_"
         )

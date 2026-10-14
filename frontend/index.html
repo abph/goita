@@ -6999,6 +6999,13 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return `Continue the precomputed plan by attacking with ${piece}`;
         return `事前に用意した計画を継続し、${piece}で攻める`;
     }
+    match = String(detail || "").match(/^attack_preserve_royals_without_continuation_([1-7])$/);
+    if(match) {
+        const piece = gameLogCandidatePieceLabel(match[1], language);
+        if(language === "zh") return `王与玉开局后没有明确的后续进攻，因此保留王与玉，改用${piece}进攻。`;
+        if(language === "en") return `Keep both royals and attack with ${piece} because opening with a royal has no clear continuation.`;
+        return `王・玉から始めても明確な攻めの続きがないため、王・玉を残して${piece}で攻める`;
+    }
     match = String(detail || "").match(/^neural_tiebreak_current_gap_(-?[\d.]+)_neural_margin_(-?[\d.]+)$/);
     if(match) {
         if(language === "zh") return `当前AI的候选接近（差${match[1]}），用学习结果进行比较（神经网络差${match[2]}）`;
