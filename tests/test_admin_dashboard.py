@@ -177,11 +177,14 @@ def test_admin_dashboard_is_separate_and_not_linked_from_lobby_settings() -> Non
 def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> None:
     lobby = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 
-    first = "本人から明示的な依頼または同意がある場合を除き、運営側が特定の利用者の棋譜や打ち方を収集・分析することはありません。"
-    second = "利用者が自ら保存を選択しない限り、棋譜がサーバーに保存されることもありません。"
+    first = "運営は、特定のプレイヤーを研究する目的で、その人の棋譜を集めたり、打ち方を分析したりすることは決してありません。"
+    second = "ただし、「ごいたオンライン」と同じように、対局した他のプレイヤーが棋譜を保存し、その棋譜を使って特定のプレイヤーの打ち方を研究することは可能です。"
     assert first in lobby
     assert second in lobby
     assert lobby.index(first) < lobby.index(second)
+    assert "参加者が手動保存または自動保存を利用した場合" in lobby
+    assert "表示名、手駒および対局手順が含まれる場合があります。" in lobby
+    assert "スコアアタック中に利用者が実際に打った棋譜は、挑戦履歴やランキングの記録としては保存しません。" in lobby
     assert "分析用の記録には、名前、チャット内容、棋譜、手駒、ペア相手、対戦相手の情報を含めません。" in lobby
     assert "推定した都道府県または国・地域を記録する場合があります。" in lobby
     assert "デバッグルームのボイスチャットは" not in lobby
