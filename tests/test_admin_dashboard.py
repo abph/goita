@@ -182,6 +182,9 @@ def test_privacy_policy_leads_with_kifu_guarantee_and_explains_analytics() -> No
     assert first in lobby
     assert second in lobby
     assert lobby.index(first) < lobby.index(second)
+    assert 'infoKey === "privacy" && index === 0' in lobby
+    assert 'paragraph.className = "site-info-emphasis"' in lobby
+    assert ".site-info-body .site-info-emphasis" in lobby
     assert "参加者が手動保存または自動保存を利用した場合" in lobby
     assert "表示名、手駒および対局手順が含まれる場合があります。" in lobby
     assert "スコアアタック中に利用者が実際に打った棋譜は、挑戦履歴やランキングの記録としては保存しません。" in lobby

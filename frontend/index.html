@@ -1388,6 +1388,17 @@
     .site-info-body p { margin: 0 0 12px; }
     .site-info-body p:last-child { margin-bottom: 0; }
     .site-info-body a { color: #8b4f1f; font-weight: 800; text-underline-offset: 3px; }
+    .site-info-body .site-info-emphasis {
+        margin-bottom: 16px;
+        padding: 12px 14px;
+        border-left: 4px solid #8b4f1f;
+        border-radius: 8px;
+        background: #fff4df;
+        color: #4c2d15;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.65;
+    }
     .site-resource-list {
         margin-top: 14px;
         border-top: 1px solid rgba(139, 90, 43, 0.25);
@@ -7924,9 +7935,12 @@ function openSiteInfo(infoKey) {
     if (!info) return;
     document.getElementById("siteInfoTitle").textContent = info.title;
     const body = document.getElementById("siteInfoBody");
-    const contents = info.paragraphs.map((text) => {
+    const contents = info.paragraphs.map((text, index) => {
         const paragraph = document.createElement("p");
         paragraph.textContent = text;
+        if (infoKey === "privacy" && index === 0) {
+            paragraph.className = "site-info-emphasis";
+        }
         return paragraph;
     });
     if (info.link) {
