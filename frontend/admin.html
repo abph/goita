@@ -1681,7 +1681,7 @@
       gatheringDescription.textContent = gathering.ending
         ? "開催を終了しています。進行中の150点ゲームが終わると通常モードへ戻ります。"
         : gathering.enabled
-          ? `開催中です。参加者 ${Number(gathering.participants?.length || 0)}人。通常の対人公開部屋は新規入室できません。`
+          ? `開催中です。参加者 ${Number(gathering.participants?.length || 0)}人・対局中 ${Number(gathering.active_table_count || 0)}/${Number(gathering.max_tables || 4)}卓・待機 ${Number(gathering.waiting_count || 0)}人。通常の対人公開部屋は新規入室できません。`
           : "現在は通常の公開部屋モードです。";
       document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
