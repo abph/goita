@@ -1711,6 +1711,63 @@
         box-shadow: 0 8px 16px rgba(0,0,0,0.2);
         background: #f8e182;
     }
+    .room-card.is-display-only { cursor: default; }
+    .room-card.is-display-only:hover {
+        transform: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .room-card.has-pixel-board-background {
+        overflow: hidden;
+        isolation: isolate;
+    }
+    .room-card .public-room-pixel-background {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: .72;
+        pointer-events: none;
+        image-rendering: pixelated;
+    }
+    .room-card.has-pixel-board-background::after {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        background: rgba(255, 250, 232, .14);
+        content: "";
+        pointer-events: none;
+    }
+    .room-card.has-pixel-board-background > :not(.public-room-pixel-background) {
+        position: relative;
+        z-index: 2;
+    }
+    .room-card.has-pixel-board-background .seat-badge,
+    .room-card.has-pixel-board-background .seat-badge.ai,
+    .room-card.has-pixel-board-background .seat-badge.empty {
+        background: rgba(255, 255, 255, .95);
+        box-shadow: 0 1px 3px rgba(61, 39, 20, .2);
+    }
+    .room-card.has-pixel-board-background .room-heading,
+    .room-card.has-pixel-board-background .room-score,
+    .room-card.has-pixel-board-background .gathering-card-status {
+        border-radius: 4px;
+        background: rgba(255, 255, 255, .92);
+        box-shadow: 0 1px 3px rgba(61, 39, 20, .18);
+    }
+    .room-card.has-pixel-board-background .room-heading {
+        box-sizing: border-box;
+        padding: 2px 5px;
+    }
+    .room-card.has-pixel-board-background .room-score { padding: 3px 5px; }
+    .room-card .gathering-card-status {
+        margin-top: 4px;
+        padding: 3px 5px;
+        color: #4f3826;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
     .room-card .center-info {
         grid-column: 2;
         grid-row: 2;
@@ -1923,6 +1980,7 @@
     @media (max-width: 701px) {
       .room-card.has-room-heading { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); }
       .room-card .room-score { font-size: 7px; }
+      .room-card .gathering-card-status { margin-top: 2px; padding: 2px; font-size: 6.5px; }
       .room-card .seat-left .seat-badge,
       .room-card .seat-right .seat-badge { font-size: 7.5px; padding-inline: 2px; }
     }
@@ -6753,7 +6811,7 @@
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20260821b").catch((error) => {
+  import("/static/boardPixel.js?v=20261015a").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -8721,6 +8779,11 @@ let meetingPublicTableRefreshInFlight = false;
 let meetingPublicTableLastRefreshAt = 0;
 let meetingPublicTableSnapshots = [];
 let meetingPublicTableRoomNames = new Map();
+let lobbyPublicPixelRefreshInFlight = false;
+let lobbyPublicPixelRefreshQueued = false;
+let lobbyPublicPixelLastRefreshAt = 0;
+let lobbyPublicPixelSnapshots = [];
+let lobbyPublicPixelEnabled = false;
 let latestLegal = [];
 let latestBeginnerRecommendation = null;
 let beginnerRecommendationKey = "";
@@ -9087,8 +9150,15 @@ function connectWS(targetGid) {
                 } else {
                     if(!queueImmediateActionUpdate(data)) refresh();
                 }
-            } else if (data.type === "public_table_update" && currentWsGid === MEETING_ROOM_GID) {
-                refreshMeetingPublicTables(true);
+            } else if (data.type === "public_table_update") {
+                if (currentWsGid === MEETING_ROOM_GID) refreshMeetingPublicTables(true);
+                if (currentWsGid === "lobby") {
+                    if(latestGatheringEvent?.enabled && GATHERING_TABLE_IDS.has(data.game_id)) {
+                        fetchRoomList();
+                    } else {
+                        refreshLobbyPublicPixelBoards(true);
+                    }
+                }
             }
         } catch (e) {
             console.error("WebSocket Message Error:", e);
@@ -9998,6 +10068,7 @@ function declineGatheringWelcome() {
 function updateGatheringLobby(event) {
     latestGatheringEvent = event && typeof event === "object" ? event : null;
     const active = !!latestGatheringEvent?.enabled;
+    renderLobbyPublicPixelBoards();
     const banner = document.getElementById("gatheringLobbyBanner");
     if (banner) banner.hidden = !active || !!latestGatheringEvent?.ending;
     const summary = document.getElementById("gatheringLobbySummary");
@@ -10107,6 +10178,54 @@ function gatheringStatusLabel(status) {
     return ({playing:"対局中", selected:"15秒後に開始", waiting:"待機中", resting:"休憩中"})[status] || status;
 }
 
+function gatheringLobbyTableName(tableId) {
+    return `集会室${Array.from(GATHERING_TABLE_IDS).indexOf(tableId) + 1}卓`;
+}
+
+function gatheringLobbyTableStatus(room) {
+    const status = String(room.gathering_table_status || "idle");
+    if(status === "playing") return uiText("対局中");
+    if(status === "finished" || room.gathering_match_finished) return uiText("入れ替え中");
+    if(status === "countdown") {
+        const seconds = Math.max(0, Number(room.countdown_remaining || 0));
+        const language = currentUiLanguage();
+        if(language === "en") return `${seconds}s to start`;
+        if(language === "zh") return `${seconds}秒后开始`;
+        return `${seconds}秒後に開始`;
+    }
+    return uiText("対局者を待っています");
+}
+
+function gatheringLobbyRooms(event) {
+    const tableMap = new Map(
+        (Array.isArray(event?.tables) ? event.tables : [])
+            .map(table => [String(table.table_id || ""), table])
+    );
+    return Array.from(GATHERING_TABLE_IDS).map(tableId => {
+        const table = tableMap.get(tableId) || {};
+        const playerNames = table.player_names || {};
+        const aiSeats = new Set(Array.isArray(table.ai_seats) ? table.ai_seats : []);
+        const seats = Object.fromEntries(["A", "B", "C", "D"].map(seat => [
+            seat,
+            String(playerNames[seat] || "").trim() || (aiSeats.has(seat) ? "AI" : "Empty"),
+        ]));
+        return {
+            game_id: tableId,
+            owner_name: table.name || gatheringLobbyTableName(tableId),
+            is_main_room: true,
+            is_private: false,
+            requires_password: false,
+            seats,
+            is_started: !!table.is_started,
+            total_team_score: table.total_team_score || {AC: 0, BD: 0},
+            gathering_table_status: table.status || "idle",
+            gathering_match_finished: !!table.match_finished,
+            countdown_remaining: Number(table.countdown_remaining || 0),
+            is_gathering_table: true,
+        };
+    });
+}
+
 function renderGatheringRoom(event) {
     latestGatheringEvent = event && typeof event === "object" ? event : null;
     const panel = document.getElementById("gatheringRoomPanel");
@@ -10174,7 +10293,9 @@ async function fetchRoomList() {
         const res = await fetch(`${API}/games/list?${roomListQuery.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
+        lobbyPublicPixelEnabled = data.public_board_previews_enabled === true;
         updateGatheringLobby(data.gathering_event);
+        if(lobbyPublicPixelEnabled && !latestGatheringEvent?.enabled) void refreshLobbyPublicPixelBoards();
         renderLobbyChat(data.public_chat_messages || []);
         renderLobbyPeople(data.site_people || []);
         
@@ -10185,11 +10306,18 @@ async function fetchRoomList() {
         mainContainer.innerHTML = ""; 
         privateContainer.innerHTML = ""; 
         
-        if (!data.rooms || data.rooms.length === 0) {
+        const sourceRooms = Array.isArray(data.rooms) ? data.rooms : [];
+        const displayRooms = latestGatheringEvent?.enabled
+            ? [
+                ...gatheringLobbyRooms(latestGatheringEvent),
+                ...sourceRooms.filter(room => room.is_main_room !== true),
+              ]
+            : sourceRooms;
+        if (displayRooms.length === 0) {
             return;
         }
 
-        data.rooms.forEach(room => {
+        displayRooms.forEach(room => {
             const card = document.createElement("div");
             card.className = "room-card";
             
@@ -10230,6 +10358,9 @@ async function fetchRoomList() {
             const scoreHtml = room.is_started === true
                 ? `<div class="room-score"><div class="room-score-ac">AC：${scoreValue("AC")}点</div><div class="room-score-bd">BD：${scoreValue("BD")}点</div></div>`
                 : "";
+            const gatheringStatusHtml = room.is_gathering_table
+                ? `<div class="gathering-card-status">${escapeLobbyHtml(gatheringLobbyTableStatus(room))}</div>`
+                : "";
 
             if (requiresPassword) {
                 card.innerHTML = `
@@ -10249,6 +10380,7 @@ async function fetchRoomList() {
                     <div class="seat-left">${makeBadge('D', s['D'])}</div>
                     <div class="center-info">
                         ${scoreHtml}
+                        ${gatheringStatusHtml}
                     </div>
                     <div class="seat-right">${makeBadge('B', s['B'])}</div>
                     <div class="seat-bottom">${makeBadge('A', s['A'])}</div>
@@ -10256,13 +10388,24 @@ async function fetchRoomList() {
             }
             
             if (isMainRoom) {
-                card.onclick = () => joinMainRoom(room.game_id, room.owner_name);
+                card.dataset.publicRoomId = room.game_id;
+                if(room.is_gathering_table) {
+                    if(room.is_started && room.gathering_table_status === "playing") {
+                        card.onclick = () => openGatheringTable(room.game_id, room.owner_name);
+                    } else {
+                        card.classList.add("is-display-only");
+                        card.setAttribute("aria-disabled", "true");
+                    }
+                } else {
+                    card.onclick = () => joinMainRoom(room.game_id, room.owner_name);
+                }
                 mainContainer.appendChild(card);
             } else {
                 card.onclick = () => tryJoinRoom(room.game_id, requiresPassword);
                 privateContainer.appendChild(card);
             }
         });
+        renderLobbyPublicPixelBoards();
 
     } catch (e) {
         console.error("部屋リストの取得に失敗:", e);
@@ -15313,6 +15456,10 @@ function buildMeetingPublicTableSnapshot(table) {
   const physToSeat = {A:"A", B:"B", C:"C", D:"D"};
   const slotMap = buildSlotMap(physToSeat);
   const pieces = [];
+  const names = {...(table.player_names || {A:"", B:"", C:"", D:""})};
+  (Array.isArray(table.ai_seats) ? table.ai_seats : []).forEach((seat) => {
+    if(!names[seat]) names[seat] = "AI";
+  });
   let currentAttackIndex = -1;
   const currentAttacker = table.attacker;
 
@@ -15354,7 +15501,7 @@ function buildMeetingPublicTableSnapshot(table) {
     roomId: table.game_id,
     roomName: table.room_name || table.game_id,
     pieces,
-    names: table.player_names || {A:"", B:"", C:"", D:""},
+    names,
     physToSeat,
     turn: table.turn,
     isStarted: !!table.is_started,
@@ -15370,6 +15517,110 @@ function buildMeetingPublicTableSnapshot(table) {
       atMs: table.last_public_action.at_ms,
     } : null,
   };
+}
+
+function buildGatheringLobbyTableSnapshots(event) {
+  const tableMap = new Map(
+    (Array.isArray(event?.tables) ? event.tables : [])
+      .map(table => [String(table.table_id || ""), table])
+  );
+  return Array.from(GATHERING_TABLE_IDS).map(tableId => {
+    const table = tableMap.get(tableId) || {};
+    return buildMeetingPublicTableSnapshot({
+      game_id: tableId,
+      room_name: table.name || gatheringLobbyTableName(tableId),
+      is_started: !!table.is_started,
+      finished: !!table.finished || !!table.match_finished,
+      turn: table.turn ?? null,
+      attacker: table.attacker || "",
+      board_public: table.board_public || {},
+      player_names: table.player_names || {},
+      ai_seats: table.ai_seats || [],
+      total_team_score: table.total_team_score || {AC: 0, BD: 0},
+      round_count: table.round_count || 1,
+      last_public_action: null,
+    });
+  });
+}
+
+function renderLobbyPublicPixelBoards() {
+  const container = document.getElementById("lobbyMainRoom");
+  if(!container) return;
+  const gatheringActive = !!latestGatheringEvent?.enabled;
+  const activeSnapshots = gatheringActive
+    ? buildGatheringLobbyTableSnapshots(latestGatheringEvent)
+    : lobbyPublicPixelSnapshots;
+  const snapshotsByRoom = new Map(
+    activeSnapshots.map((snapshot) => [snapshot.roomId, snapshot])
+  );
+  container.querySelectorAll(".room-card[data-public-room-id]").forEach((card) => {
+    const roomId = card.dataset.publicRoomId || "";
+    const snapshot = snapshotsByRoom.get(roomId);
+    const gatheringCard = GATHERING_TABLE_IDS.has(roomId);
+    const showBackground = currentWsGid === "lobby" && (
+      (gatheringActive && gatheringCard)
+      || (!gatheringActive && !gatheringCard && lobbyPublicPixelEnabled)
+    );
+    let canvas = card.querySelector(".public-room-pixel-background");
+    if(!showBackground || !snapshot || window.goitaBoardPixel?.renderToCanvas == null) {
+      canvas?.remove();
+      card.classList.remove("has-pixel-board-background");
+      return;
+    }
+    if(!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.className = "public-room-pixel-background";
+      canvas.width = 320;
+      canvas.height = 320;
+      canvas.setAttribute("aria-hidden", "true");
+      card.prepend(canvas);
+    }
+    card.classList.add("has-pixel-board-background");
+    window.goitaBoardPixel.renderToCanvas(
+      {...snapshot, backgroundOnly: true},
+      canvas,
+      "color"
+    );
+  });
+}
+
+async function refreshLobbyPublicPixelBoards(force = false) {
+  if(currentWsGid !== "lobby") return;
+  if(latestGatheringEvent?.enabled) {
+    renderLobbyPublicPixelBoards();
+    return;
+  }
+  if(!lobbyPublicPixelEnabled) {
+    renderLobbyPublicPixelBoards();
+    return;
+  }
+  const now = Date.now();
+  if(!force && now - lobbyPublicPixelLastRefreshAt < 800) {
+    renderLobbyPublicPixelBoards();
+    return;
+  }
+  if(lobbyPublicPixelRefreshInFlight) {
+    lobbyPublicPixelRefreshQueued = true;
+    return;
+  }
+  lobbyPublicPixelRefreshInFlight = true;
+  try {
+    const query = new URLSearchParams({exclude: MEETING_ROOM_GID});
+    const response = await fetch(`${API}/games/public-tables?${query.toString()}`);
+    if(!response.ok) return;
+    const data = await response.json();
+    lobbyPublicPixelSnapshots = (data.tables || []).map(buildMeetingPublicTableSnapshot);
+    lobbyPublicPixelLastRefreshAt = Date.now();
+    renderLobbyPublicPixelBoards();
+  } catch(error) {
+    console.warn("Lobby public-room boards could not be refreshed.", error);
+  } finally {
+    lobbyPublicPixelRefreshInFlight = false;
+    if(lobbyPublicPixelRefreshQueued && currentWsGid === "lobby") {
+      lobbyPublicPixelRefreshQueued = false;
+      void refreshLobbyPublicPixelBoards(true);
+    }
+  }
 }
 
 async function refreshMeetingPublicTables(force = false) {
@@ -17228,6 +17479,8 @@ window.addEventListener("goita-public-table-open", async (event) => {
 
 window.addEventListener("goita-board-pixel-ready", () => {
   applyBoardViewMode();
+  renderLobbyPublicPixelBoards();
+  if(currentWsGid === "lobby") void refreshLobbyPublicPixelBoards(true);
 });
 
 window.addEventListener("goita-voice-chat-ready", () => {
@@ -17254,6 +17507,7 @@ window.addEventListener("goita-language-change", () => {
   updateChatComposerUi();
   updateVoiceChatUi();
   window.goitaBoard3D?.setPublicTables?.(meetingPublicTableSnapshots);
+  if(currentWsGid === "lobby") void refreshLobbyPublicPixelBoards(true);
   updateSeatButtons(latestState || {});
   if(latestState) {
     renderGameLog(latestState.log || []);

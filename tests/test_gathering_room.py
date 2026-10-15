@@ -322,6 +322,9 @@ def test_gathering_table_snapshot_hides_facedown_receive_piece(monkeypatch):
     assert snapshot is not None
     assert snapshot["board_public"]["A"]["receive"][0] == "■"
     assert snapshot["board_public"]["A"]["attack"][0] == "銀"
+    assert snapshot["finished"] is False
+    assert snapshot["attacker"] == ""
+    assert snapshot["round_count"] == 1
 
 
 def test_gathering_table_uses_public_room_visibility_rules():

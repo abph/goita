@@ -11,7 +11,7 @@ def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20260821b")' in html
+    assert 'import("/static/boardPixel.js?v=20261015a")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
@@ -36,10 +36,14 @@ def test_pixel_board_uses_low_resolution_canvas_and_public_snapshot() -> None:
     assert "buildBoard3DSnapshot(state)" in html
     assert "piece.ownHidden) context.globalAlpha = 0.32" in board_module
     assert "window.goitaBoardPixel.render" in html
+    assert "window.goitaBoardPixel.renderToCanvas" in html
     assert "window.goitaBoardPixel.setTheme" in html
     assert "const palettes" in board_module
     assert 'setTheme(theme)' in board_module
     assert 'theme === "mono" ? palettes.mono : palettes.color' in board_module
+    assert "function renderToCanvas(snapshot, targetCanvas" in board_module
+    assert "targetContext.drawImage(canvas, 0, 0, SIZE, SIZE)" in board_module
+    assert "if (!latestSnapshot.backgroundOnly)" in board_module
     assert 'board: "#ffffff"' in board_module
     assert 'humanPiece: "#ffffff"' in board_module
     assert 'hiddenPiece: "#ffffff"' in board_module

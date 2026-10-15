@@ -249,14 +249,39 @@ function drawScene() {
 
   latestSnapshot.pieces.forEach(drawPiece);
 
-  drawCenterPanel(latestSnapshot);
-  drawSeatLabels(latestSnapshot);
+  if (!latestSnapshot.backgroundOnly) {
+    drawCenterPanel(latestSnapshot);
+    drawSeatLabels(latestSnapshot);
+  }
 }
 
 function render(snapshot) {
   if (!context || !snapshot) return;
   latestSnapshot = snapshot;
   drawScene();
+}
+
+function renderToCanvas(snapshot, targetCanvas, theme = "color") {
+  if (!context || !canvas || !snapshot || !targetCanvas) return false;
+  const targetContext = targetCanvas.getContext?.("2d");
+  if (!targetContext) return false;
+
+  const previousSnapshot = latestSnapshot;
+  const previousPalette = palette;
+  palette = theme === "mono" ? palettes.mono : palettes.color;
+  latestSnapshot = snapshot;
+  drawScene();
+
+  targetCanvas.width = SIZE;
+  targetCanvas.height = SIZE;
+  targetContext.imageSmoothingEnabled = false;
+  targetContext.clearRect(0, 0, SIZE, SIZE);
+  targetContext.drawImage(canvas, 0, 0, SIZE, SIZE);
+
+  latestSnapshot = previousSnapshot;
+  palette = previousPalette;
+  if (visible && latestSnapshot) drawScene();
+  return true;
 }
 
 function setVisible(nextVisible) {
@@ -304,6 +329,7 @@ window.goitaBoardPixel = {
   setVisible,
   setTheme,
   render,
+  renderToCanvas,
   getCanvas: () => canvas,
 };
 

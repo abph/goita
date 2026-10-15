@@ -414,6 +414,10 @@
             </div>
           </div>
           <p class="muted">部屋を減らしても、進行中の対局は中断されません。</p>
+          <div class="room-options" style="margin-top:12px">
+            <label><input id="publicBoardPreviewsEnabled" type="checkbox"> 公開部屋カードに盤面を表示する</label>
+          </div>
+          <p class="muted">オンにすると、公開部屋カードの背景に現在の盤面を表示します。</p>
 
           <h3 class="subheading">公開部屋の名前</h3>
           <p class="muted">各ルーム名は12文字以内で入力してください。</p>
@@ -1687,6 +1691,7 @@
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
       document.getElementById("privateRoomCount").max = data.private_room_max ?? 5;
+      document.getElementById("publicBoardPreviewsEnabled").checked = data.public_board_previews_enabled === true;
       publicRooms = Array.isArray(data.main_rooms) ? data.main_rooms : [];
       publicRoomAds = Object.fromEntries(publicRooms.map(room => [room.game_id, normalizedPublicAd(data.public_room_ads?.[room.game_id])]));
       const publicSelect = document.getElementById("publicAdRoomSelect");
@@ -2529,6 +2534,7 @@
       const payload = {
         main_room_count: Number(document.getElementById("mainRoomCount").value),
         private_room_count: Number(document.getElementById("privateRoomCount").value),
+        public_board_previews_enabled: document.getElementById("publicBoardPreviewsEnabled").checked,
         main_room_names: mainRoomNames,
         private_room_ads: privateRoomAds,
         public_room_ads: publicRoomAds,

@@ -269,6 +269,7 @@ LOBBY_ROOM_SETTINGS = {
     "private_room_count": _initial_room_count(
         "LOBBY_PRIVATE_ROOM_COUNT", 4, 0, len(LOBBY_PRIVATE_ROOM_IDS)
     ),
+    "public_board_previews_enabled": False,
 }
 LOBBY_SETTINGS_STORAGE_KEY = "__lobby__"
 PRIVATE_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
@@ -533,13 +534,22 @@ class ConnectionManager:
             game["update_version"] = game.get("update_version", 0) + 1
             payload.update(action_token=_action_state_token(game, game["state"]), update_version=game["update_version"])
         await self._broadcast_payload(game_id, payload)
-        if (
-            (game_id in MAIN_GIDS and game_id != MEETING_ROOM_GID)
-            or _is_gathering_table_id(game_id)
-        ):
-            await self._broadcast_payload(
-                MEETING_ROOM_GID,
-                {"type": "public_table_update", "game_id": game_id},
+        if game_id in MAIN_GIDS and game_id != MEETING_ROOM_GID:
+            public_table_payload = {
+                "type": "public_table_update",
+                "game_id": game_id,
+            }
+            await self._broadcast_payload(MEETING_ROOM_GID, public_table_payload)
+            if LOBBY_ROOM_SETTINGS["public_board_previews_enabled"]:
+                await self._broadcast_payload("lobby", public_table_payload)
+        elif _is_gathering_table_id(game_id):
+            public_table_payload = {
+                "type": "public_table_update",
+                "game_id": game_id,
+            }
+            await asyncio.gather(
+                self._broadcast_payload(MEETING_ROOM_GID, public_table_payload),
+                self._broadcast_payload("lobby", public_table_payload),
             )
         if game and game_id != "lobby":
             score = game.get("total_team_score", {})
@@ -2622,6 +2632,7 @@ class LobbySettingsUpdateRequest(BaseModel):
     admin_password: str
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
+    public_board_previews_enabled: bool = False
     main_room_names: Optional[Dict[str, str]] = None
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     public_room_ads: Optional[Dict[str, PublicRoomAdSettingsRequest]] = None
@@ -2639,6 +2650,7 @@ class LobbySettingsUpdateRequest(BaseModel):
 class AdminLobbySettingsUpdateRequest(BaseModel):
     main_room_count: int = Field(ge=1, le=len(LOBBY_MAIN_ROOM_IDS))
     private_room_count: int = Field(ge=0, le=len(LOBBY_PRIVATE_ROOM_IDS))
+    public_board_previews_enabled: bool = False
     main_room_names: Optional[Dict[str, str]] = None
     private_room_ads: Optional[Dict[str, PrivateRoomAdSettingsRequest]] = None
     public_room_ads: Optional[Dict[str, PublicRoomAdSettingsRequest]] = None
@@ -4133,6 +4145,9 @@ def _lobby_management_settings() -> Dict[str, Any]:
     return {
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
+        "public_board_previews_enabled": LOBBY_ROOM_SETTINGS[
+            "public_board_previews_enabled"
+        ],
         "main_room_names": copy.deepcopy(MAIN_ROOM_NAMES),
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "public_room_ads": copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS),
@@ -4169,6 +4184,7 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
             LOGGER.warning("Ignoring invalid persisted public-room notices")
     main_count = settings.get("main_room_count")
     private_count = settings.get("private_room_count")
+    public_board_previews_enabled = settings.get("public_board_previews_enabled")
     if isinstance(main_count, int):
         LOBBY_ROOM_SETTINGS["main_room_count"] = max(
             1, min(len(LOBBY_MAIN_ROOM_IDS), main_count)
@@ -4176,6 +4192,10 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
     if isinstance(private_count, int):
         LOBBY_ROOM_SETTINGS["private_room_count"] = max(
             0, min(len(LOBBY_PRIVATE_ROOM_IDS), private_count)
+        )
+    if isinstance(public_board_previews_enabled, bool):
+        LOBBY_ROOM_SETTINGS["public_board_previews_enabled"] = (
+            public_board_previews_enabled
         )
     main_room_names = settings.get("main_room_names")
     if isinstance(main_room_names, dict):
@@ -5844,12 +5864,15 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
         "status": status,
         "is_started": bool((game or {}).get("is_started", False)),
         "match_finished": bool((game or {}).get("match_finished", False)),
+        "finished": bool(getattr((game or {}).get("state"), "finished", False)),
         "player_names": player_names,
         "human_seats": sorted(_seat_set(human_seats)),
         "ai_seats": ai_seats,
         "total_team_score": dict((game or {}).get("total_team_score", {"AC": 0, "BD": 0})),
         "dealer": str((game or {}).get("dealer", "A")),
         "turn": getattr((game or {}).get("state"), "turn", None),
+        "attacker": getattr((game or {}).get("state"), "attacker", "") or "",
+        "round_count": int((game or {}).get("round_count", 1)),
         "board_public": safe_board,
         "countdown_remaining": max(
             0,
@@ -7208,6 +7231,9 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
     return {
         "rooms": rooms,
         "room_totals": room_totals,
+        "public_board_previews_enabled": LOBBY_ROOM_SETTINGS[
+            "public_board_previews_enabled"
+        ],
         "site_people": build_site_people(),
         "public_chat_messages": _chat_messages_for_lobby(),
         "gathering_event": _gathering_event_public_payload(client_id),
@@ -7298,6 +7324,9 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ok": True,
         "main_room_count": LOBBY_ROOM_SETTINGS["main_room_count"],
         "private_room_count": LOBBY_ROOM_SETTINGS["private_room_count"],
+        "public_board_previews_enabled": LOBBY_ROOM_SETTINGS[
+            "public_board_previews_enabled"
+        ],
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "public_room_ads": copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS),
         "main_room_max": len(LOBBY_MAIN_ROOM_IDS),
@@ -7400,6 +7429,9 @@ async def update_lobby_admin_settings(req: LobbySettingsUpdateRequest):
         })
     LOBBY_ROOM_SETTINGS["main_room_count"] = req.main_room_count
     LOBBY_ROOM_SETTINGS["private_room_count"] = req.private_room_count
+    LOBBY_ROOM_SETTINGS["public_board_previews_enabled"] = (
+        req.public_board_previews_enabled
+    )
     if next_main_room_names is not None:
         _apply_main_room_names(next_main_room_names)
     PRIVATE_ROOM_AD_SETTINGS.clear()
