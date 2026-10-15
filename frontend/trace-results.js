@@ -3,7 +3,19 @@ let traceResultId = '';
 function updateRoundResetButton(state, isHost, autoNextRoundPending) {
   const button = document.getElementById('btnNewGame');
   if (!button) return;
-  button.style.display = isHost && state.finished && !state.practice_replay_active && !autoNextRoundPending ? '' : 'none';
+  const gatheringRotationPending = (
+    isGatheringRoomId(gid)
+    && state.gathering_event?.enabled === true
+    && state.match_finished === true
+  );
+  button.style.display = (
+    isHost
+    && state.finished
+    && !state.practice_replay_active
+    && !autoNextRoundPending
+    && !gatheringRotationPending
+  ) ? '' : 'none';
+  if (gatheringRotationPending) button.onclick = null;
   button.disabled = nextRoundRequestInFlight || traceActionBusy;
   if (nextRoundRequestInFlight) {
     button.textContent = uiText('配牌中...');

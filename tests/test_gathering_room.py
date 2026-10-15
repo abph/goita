@@ -327,6 +327,30 @@ def test_gathering_table_snapshot_hides_facedown_receive_piece(monkeypatch):
     assert snapshot["round_count"] == 1
 
 
+def test_gathering_table_snapshot_names_waiting_room_and_selected_players(monkeypatch):
+    table_id = app_module.GATHERING_TABLE_IDS[1]
+    players = {
+        "a": participant("Aさん"),
+        "b": participant("Bさん"),
+    }
+    monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+    monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+        table_id: {
+            "status": "countdown",
+            "players": ["a", "b"],
+            "countdown_until": time.monotonic() + 15,
+        }
+    })
+    monkeypatch.setattr(app_module, "GAMES", {})
+
+    snapshot = app_module._gathering_table_snapshot(table_id)
+
+    assert app_module._gathering_table_label(table_id) == "第2卓"
+    assert snapshot is not None
+    assert snapshot["name"] == "第2卓"
+    assert snapshot["selected_names"] == ["Aさん", "Bさん"]
+
+
 def test_gathering_table_uses_public_room_visibility_rules():
     assert app_module._is_main_game_id(app_module.GATHERING_TABLE_IDS[0]) is True
 
@@ -436,12 +460,52 @@ def test_gathering_mode_blocks_new_public_seat_but_allows_reconnect(monkeypatch)
                 app_module.MAIN_GID, "B", client_id="new-player"
             )
         assert error.value.status_code == 409
-        assert "集会室" in str(error.value.detail)
+        assert "待合室" in str(error.value.detail)
 
         response = await app_module.claim_seat(
             app_module.MAIN_GID, "A", client_id="existing-player"
         )
         assert response["ok"] is True
+
+    asyncio.run(scenario())
+
+
+def test_gathering_assigned_seat_can_be_reclaimed_by_same_client(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        game = app_module._create_game_obj(dealer="A")
+        game["human_seats"] = {"A": "assigned-player"}
+        game["is_started"] = True
+        game["state"].finished = True
+        game["total_team_score"] = {"AC": 50, "BD": 20}
+        games = dict(app_module.GAMES)
+        games[table_id] = game
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+
+        await app_module.reset_game(
+            table_id,
+            dealer="A",
+            requester="A",
+            client_id="assigned-player",
+            keep_score=True,
+            auto_start=True,
+        )
+
+        response = await app_module.claim_seat(
+            table_id, "A", client_id="assigned-player"
+        )
+        assert response["ok"] is True
+        assert response["human_seats"] == ["A"]
+        assert games[table_id]["total_team_score"] == {"AC": 50, "BD": 20}
+        assert games[table_id]["is_started"] is True
+
+        with pytest.raises(HTTPException) as error:
+            await app_module.claim_seat(
+                table_id, "A", client_id="different-player"
+            )
+        assert error.value.status_code == 409
+        assert "自動で決まります" in str(error.value.detail)
 
     asyncio.run(scenario())
 
@@ -457,5 +521,16 @@ def test_frontend_and_admin_include_gathering_controls():
     assert "return MAIN_ROOM_IDS.has(roomId) || GATHERING_TABLE_IDS.has(roomId);" in lobby
     assert "今回は休憩する" in lobby
     assert "固定ペア" in lobby
+    assert 'id="gatheringRoomTitle">待合室' in lobby
+    assert 'id="gatheringExitButton"' in lobby
+    assert "gathering-waiting-room" in lobby
+    assert "function syncGatheringWaitingRoomReturn(state)" in lobby
+    assert "await openGatheringHub();" in lobby
+    assert "そろうごいた会　待合室" in lobby
+    trace_results = (
+        app_module.BASE_DIR / "frontend" / "trace-results.js"
+    ).read_text(encoding="utf-8")
+    assert "const gatheringRotationPending" in trace_results
+    assert "&& !gatheringRotationPending" in trace_results
     assert 'id="gatheringAdminToggle"' in admin
     assert 'api("/admin/api/gathering"' in admin

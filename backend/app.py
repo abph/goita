@@ -5812,9 +5812,9 @@ def _gathering_client_connected(client_id: str) -> bool:
 
 def _gathering_table_label(table_id: str) -> str:
     try:
-        return f"集会室{GATHERING_TABLE_IDS.index(table_id) + 1}卓"
+        return f"第{GATHERING_TABLE_IDS.index(table_id) + 1}卓"
     except ValueError:
-        return "集会室"
+        return "待合室"
 
 
 def _gathering_table_is_active(table_id: str) -> bool:
@@ -5840,6 +5840,11 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
     player_names = dict((game or {}).get("player_names", {}))
     human_seats = dict((game or {}).get("human_seats", {}))
     ai_seats = sorted(_ai_seat_set(game or {}))
+    selected_names = [
+        str(GATHERING_PARTICIPANTS.get(client_id, {}).get("name", "")) or "ゲスト"
+        for client_id in list((meta or {}).get("players", []))
+        if client_id in GATHERING_PARTICIPANTS
+    ]
     raw_board = (game or {}).get("board", _new_board_snapshot())
     safe_board: Dict[str, Dict[str, Any]] = {}
     for seat in ALL_SEATS:
@@ -5866,6 +5871,7 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
         "match_finished": bool((game or {}).get("match_finished", False)),
         "finished": bool(getattr((game or {}).get("state"), "finished", False)),
         "player_names": player_names,
+        "selected_names": selected_names,
         "human_seats": sorted(_seat_set(human_seats)),
         "ai_seats": ai_seats,
         "total_team_score": dict((game or {}).get("total_team_score", {"AC": 0, "BD": 0})),
@@ -5967,7 +5973,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
         "ending": bool(GATHERING_EVENT_SETTINGS["ending"]),
         "event_id": str(GATHERING_EVENT_SETTINGS["event_id"]),
         "room_id": MEETING_ROOM_GID,
-        "room_name": "集会室",
+        "room_name": "そろうごいた会　待合室",
         "wait_seconds": GATHERING_WAIT_SECONDS,
         "countdown_seconds": GATHERING_COUNTDOWN_SECONDS,
         "max_tables": GATHERING_MAX_TABLES,
@@ -7042,7 +7048,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 is_main_room = _is_main_game_id(connected_game_id)
                 is_private_room = connected_game_id in PRIVATE_ROOM_NAMES
                 if _is_gathering_channel(connected_game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-                    location = "集会室"
+                    location = "そろうごいた会"
                 elif is_main_room:
                     location = MAIN_ROOM_NAMES.get(connected_game_id, "公開部屋")
                 elif is_score_room(connected_game_id):
@@ -7174,7 +7180,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 seats_info[s] = "Empty"
 
         owner_name = (
-            "集会室"
+            "そろうごいた会　待合室"
             if gid == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]
             else MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
         )
@@ -7579,7 +7585,7 @@ async def admin_update_gathering(req: GatheringAdminRequest, request: Request):
             _cancel_turn_timeout_task(MEETING_ROOM_GID)
             _cancel_and_clear_game_agents(game)
         hub_game = _create_game_obj(dealer="A", ai_profile=DEFAULT_AI_PROFILE)
-        hub_game["owner_name"] = "集会室"
+        hub_game["owner_name"] = "そろうごいた会　待合室"
         hub_game["hidden_from_lobby"] = False
         GAMES[MEETING_ROOM_GID] = hub_game
         _schedule_gathering_matchmaking(reset_wait=True)
@@ -7608,7 +7614,7 @@ async def admin_update_gathering(req: GatheringAdminRequest, request: Request):
     if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
         GATHERING_EVENT_SETTINGS.clear()
         GATHERING_EVENT_SETTINGS.update(previous)
-        raise HTTPException(status_code=500, detail="集会室モードを永続保存できませんでした")
+        raise HTTPException(status_code=500, detail="そろうごいた会モードを永続保存できませんでした")
     await _gathering_broadcast()
     return _lobby_admin_payload()
 
@@ -7620,7 +7626,7 @@ async def join_gathering(game_id: str, req: GatheringJoinRequest):
     if GATHERING_EVENT_SETTINGS["ending"]:
         raise HTTPException(status_code=409, detail="そろうごいた会は終了処理中です。")
     if not manager.has_client_connection(game_id, req.client_id):
-        raise HTTPException(status_code=409, detail="集会室へ接続してから参加してください。")
+        raise HTTPException(status_code=409, detail="待合室へ接続してから参加してください。")
     now = time.monotonic()
     item = GATHERING_PARTICIPANTS.get(req.client_id)
     if item is None:
@@ -7662,7 +7668,10 @@ async def leave_gathering(game_id: str, req: GatheringPresenceRequest):
     _gathering_remove_participant(req.client_id)
     _schedule_gathering_matchmaking()
     await _gathering_broadcast()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "gathering_event": _gathering_event_public_payload(req.client_id),
+    }
 
 
 @app.post("/games/{game_id}/gathering/start-with-ai")
@@ -7670,7 +7679,7 @@ async def start_gathering_with_ai(game_id: str, req: GatheringPresenceRequest):
     if game_id != MEETING_ROOM_GID or not GATHERING_EVENT_SETTINGS["enabled"]:
         raise HTTPException(status_code=409, detail="現在、そろうごいた会は開催していません。")
     if req.client_id not in GATHERING_PARTICIPANTS:
-        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     table_id = await _start_gathering_table_with_ai(req.client_id)
     return {
         "ok": True,
@@ -7682,7 +7691,7 @@ async def start_gathering_with_ai(game_id: str, req: GatheringPresenceRequest):
 @app.post("/games/{game_id}/gathering/rest")
 async def update_gathering_rest(game_id: str, req: GatheringRestRequest):
     if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
-        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     targets = {req.client_id}
     partner = str(GATHERING_PARTICIPANTS[req.client_id].get("pair_with", ""))
     if partner in GATHERING_PARTICIPANTS:
@@ -7704,7 +7713,7 @@ async def update_gathering_rest(game_id: str, req: GatheringRestRequest):
 @app.post("/games/{game_id}/gathering/pair/request")
 async def request_gathering_pair(game_id: str, req: GatheringPairRequest):
     if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
-        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     target = _gathering_client_from_public_id(req.target_id)
     if not target or target == req.client_id:
         raise HTTPException(status_code=400, detail="相手を選び直してください。")
@@ -7722,7 +7731,7 @@ async def request_gathering_pair(game_id: str, req: GatheringPairRequest):
 @app.post("/games/{game_id}/gathering/pair/accept")
 async def accept_gathering_pair(game_id: str, req: GatheringPairRequest):
     if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
-        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     requester = _gathering_client_from_public_id(req.target_id)
     if not requester or GATHERING_PAIR_REQUESTS.get(requester) != req.client_id:
         raise HTTPException(status_code=409, detail="ペア申請が見つかりません。")
@@ -8356,7 +8365,7 @@ async def _vacate_room_seat(game_id, req):
 @app.post("/games/{game_id}/start")
 async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-        raise HTTPException(status_code=409, detail="集会室の対局は自動で始まります。")
+        raise HTTPException(status_code=409, detail="そろうごいた会の対局は自動で始まります。")
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can start.")
     if _is_main_game_id(game_id):
@@ -8385,7 +8394,7 @@ async def shuffle_waiting_room_seats(
     client_id: str = "",
 ):
     if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
+        raise HTTPException(status_code=409, detail="そろうごいた会の席は自動で決まります。")
     if requester != "A":
         raise HTTPException(status_code=403, detail="A席のホストだけが席をシャッフルできます。")
     if is_score_room(game_id):
@@ -8799,7 +8808,7 @@ async def reset_game(
         and GATHERING_EVENT_SETTINGS["enabled"]
         and old_game.get("match_finished")
     ):
-        raise HTTPException(status_code=409, detail="集会室の次の組み合わせを準備しています。")
+        raise HTTPException(status_code=409, detail="そろうごいた会の次の組み合わせを準備しています。")
     _require_human_seat_owner(old_game, "A", client_id)
     _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
@@ -8947,7 +8956,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         and GATHERING_EVENT_SETTINGS["enabled"]
         and old_game.get("match_finished")
     ):
-        raise HTTPException(status_code=409, detail="集会室の次の組み合わせを準備しています。")
+        raise HTTPException(status_code=409, detail="そろうごいた会の次の組み合わせを準備しています。")
     _require_human_seat_owner(old_game, "A", body.client_id)
     _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
@@ -9659,8 +9668,6 @@ async def vacate_private_room_seat(
 
 @app.post("/games/{game_id}/claim")
 async def claim_seat(game_id: str, seat: str, client_id: str = ""):
-    if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:
@@ -9669,6 +9676,17 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if not client_id:
         raise HTTPException(status_code=400, detail="client_id is required")
     game = GAMES[game_id]
+    if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
+        human_seats = game.get("human_seats", {})
+        if isinstance(human_seats, dict) and human_seats.get(seat) == client_id:
+            manager.cancel_disconnect_release(game_id, client_id)
+            return {
+                "ok": True,
+                "game_id": game_id,
+                "human_seats": sorted(_seat_set(human_seats)),
+                "ai_seats": sorted(_ai_seat_set(game)),
+            }
+        raise HTTPException(status_code=409, detail="そろうごいた会の席は自動で決まります。")
     if (
         GATHERING_EVENT_SETTINGS["enabled"]
         and game_id in GATHERING_HUMAN_PUBLIC_ROOM_IDS
@@ -9676,7 +9694,7 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     ):
         raise HTTPException(
             status_code=409,
-            detail="そろうごいた会の開催中は集会室をご利用ください。",
+            detail="そろうごいた会の開催中は待合室からご参加ください。",
         )
     
     hs = game.setdefault("human_seats", {})
@@ -9770,7 +9788,7 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
 @app.post("/games/{game_id}/set_ai")
 async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: str = ""):
     if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
+        raise HTTPException(status_code=409, detail="そろうごいた会の席は自動で決まります。")
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:

@@ -5439,8 +5439,8 @@
   <section id="lobbyRoomsSection" class="card lobby-room-section lobby-section-card" style="margin-bottom: 24px; text-align: center;">
     <div id="gatheringLobbyBanner" class="gathering-lobby-banner" hidden>
       <strong>現在、「そろうごいた会」を開催しています！</strong>
-      <span id="gatheringLobbySummary">集会室で、いろいろな人と自動的に対局できます。</span>
-      <button type="button" onclick="joinGatheringRoom()">集会室に入る</button>
+      <span id="gatheringLobbySummary">待合室から参加し、いろいろな人と自動的に対局できます。</span>
+      <button type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
     </div>
     <div class="lobby-room-category-nav" role="tablist" aria-label="表示する対局ルーム">
       <button id="lobbyPublicRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-label="公開部屋を表示" aria-selected="true" aria-controls="lobbyPublicRoomsPanel" onclick="showLobbyRoomCategory('public')" onkeydown="handleLobbyRoomCategoryKeydown(event)">← 公開部屋</button>
@@ -5555,16 +5555,25 @@
 
   <section id="gatheringRoomPanel" class="gathering-room-panel" hidden>
     <div class="gathering-room-summary">
-      <strong>そろうごいた会・集会室</strong>
-      <span id="gatheringRoomStatus">参加状況を読み込んでいます。</span>
+      <span class="gathering-room-eyebrow">そろうごいた会</span>
+      <h2 id="gatheringRoomTitle">待合室</h2>
+      <p id="gatheringRoomStatus">参加状況を読み込んでいます。</p>
     </div>
     <div class="gathering-room-actions">
-      <button id="gatheringJoinButton" type="button" onclick="joinGatheringQueue()">参加する</button>
+      <button id="gatheringJoinButton" type="button" onclick="joinGatheringQueue()">そろうごいた会に参加する</button>
       <button id="gatheringRestButton" type="button" onclick="toggleGatheringRest()" hidden>今回は休憩する</button>
       <button id="gatheringAiStartButton" type="button" onclick="startGatheringWithAi()" hidden>AIを入れて開始</button>
-      <button id="gatheringHubButton" type="button" onclick="openGatheringHub()" hidden>集会室ロビーへ</button>
+      <button id="gatheringHubButton" type="button" onclick="openGatheringHub()" hidden>待合室へ</button>
+      <button id="gatheringExitButton" type="button" onclick="leaveGatheringEvent()" hidden>退出する</button>
     </div>
+    <div class="gathering-room-stats" aria-label="参加状況">
+      <div class="gathering-room-stat"><span>参加者</span><strong id="gatheringParticipantCount">0人</strong></div>
+      <div class="gathering-room-stat"><span>対局中</span><strong id="gatheringPlayingCount">0人</strong></div>
+      <div class="gathering-room-stat"><span>待機中</span><strong id="gatheringWaitingCount">0人</strong></div>
+    </div>
+    <h3 class="gathering-room-section-title">卓の状況</h3>
     <div id="gatheringTables" class="gathering-tables"></div>
+    <h3 class="gathering-room-section-title">参加者</h3>
     <div id="gatheringParticipants" class="gathering-participants"></div>
     <div id="gatheringPairControls" class="gathering-pair-controls" hidden>
       <label for="gatheringPairTarget">固定ペア</label>
@@ -5841,10 +5850,10 @@
   <div class="modal-content gathering-welcome-content" role="dialog" aria-modal="true" aria-labelledby="gatheringWelcomeTitle" onclick="event.stopPropagation()">
     <h2 id="gatheringWelcomeTitle">現在、「そろうごいた会」を開催しています！</h2>
     <p><strong>開催中は、通常の対人公開部屋は利用できません。</strong></p>
-    <p>集会室では、基本的に参加者を2人ずつ入れ替えながら、いろいろな人と自動的に対局できます。途中参加・途中退出もできます。</p>
+    <p>待合室から参加すると、基本的に参加者を2人ずつ入れ替えながら、いろいろな人と自動的に対局できます。途中参加・途中退出もできます。</p>
     <p><strong>みんなとごいたをしませんか？</strong></p>
     <div class="gathering-welcome-actions">
-      <button class="primary" type="button" onclick="joinGatheringRoom()">集会室に入る</button>
+      <button class="primary" type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
       <button type="button" onclick="declineGatheringWelcome()">今回は参加しない</button>
     </div>
   </div>
@@ -6769,11 +6778,19 @@
   .gathering-welcome-content p { line-height:1.75; }
   .gathering-welcome-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:20px; }
   .gathering-welcome-actions .primary { background:#8a5627; color:#fff; font-weight:800; }
-  .gathering-room-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 14px; margin:0 auto 12px; padding:10px 14px; max-width:980px; border:1px dashed rgba(110,71,31,.48); border-radius:9px; background:rgba(255,249,229,.9); color:#4e3826; font-size:13px; }
+  .gathering-room-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 18px; margin:0 auto 12px; padding:18px; max-width:980px; border:1px dashed rgba(110,71,31,.48); border-radius:12px; background:rgba(255,249,229,.94); color:#4e3826; font-size:13px; }
   .gathering-room-panel[hidden] { display:none; }
-  .gathering-room-summary { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
-  .gathering-room-actions { display:flex; gap:7px; }
+  .gathering-room-summary { display:grid; gap:4px; align-content:center; }
+  .gathering-room-eyebrow { color:#8a633f; font-size:11px; font-weight:800; letter-spacing:.08em; }
+  .gathering-room-summary h2 { margin:0; color:#50351e; font-size:24px; line-height:1.25; }
+  .gathering-room-summary p { margin:2px 0 0; line-height:1.6; }
+  .gathering-room-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:7px; }
   .gathering-room-actions button,.gathering-pair-controls button { padding:6px 9px; font-size:12px; }
+  .gathering-room-stats { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+  .gathering-room-stat { display:grid; gap:2px; padding:9px 12px; border-radius:8px; background:rgba(255,255,255,.8); text-align:center; }
+  .gathering-room-stat span { color:#725b47; font-size:10px; }
+  .gathering-room-stat strong { color:#50351e; font-size:18px; }
+  .gathering-room-section-title { grid-column:1/-1; margin:2px 0 -7px; font-size:13px; }
   .gathering-tables { grid-column:1/-1; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:7px; }
   .gathering-table-card { display:grid; gap:4px; padding:7px 8px; border:1px solid rgba(110,71,31,.24); border-radius:7px; background:#fff; text-align:left; }
   .gathering-table-card strong { font-size:12px; }
@@ -6788,9 +6805,28 @@
   .gathering-pair-controls select { width:auto; min-width:130px; padding:5px; }
   .gathering-pair-request { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; background:#fff; }
   .gathering-room-active #seatButtons { display:none !important; }
+  .gathering-table-room .gathering-room-stats,
+  .gathering-table-room .gathering-room-section-title,
+  .gathering-table-room .gathering-tables,
+  .gathering-table-room .gathering-participants,
+  .gathering-table-room .gathering-pair-controls,
+  .gathering-table-room .gathering-pair-requests { display:none !important; }
+  .gathering-waiting-room .top-controls,
+  .gathering-waiting-room .play-main-column,
+  .gathering-waiting-room #handHint,
+  .gathering-waiting-room #hostControlsPanel,
+  .gathering-waiting-room #logCard { display:none !important; }
+  .gathering-waiting-room .game-content-layout { display:block; max-width:980px; margin:0 auto; }
+  .gathering-waiting-room .play-layout { justify-content:center; }
+  .gathering-waiting-room .play-layout .chat-panel:not([hidden]) { position:static; width:min(100%,560px); max-height:520px; margin:0 auto; }
   @media(max-width:700px) {
     .gathering-room-panel { grid-template-columns:1fr; margin:0 8px 10px; padding:9px; }
-    .gathering-room-actions { grid-row:2; }
+    .gathering-room-summary h2 { font-size:20px; }
+    .gathering-room-actions { grid-row:2; justify-content:flex-start; }
+    .gathering-room-stats { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .gathering-room-stat { padding:7px 4px; }
+    .gathering-room-stat strong { font-size:16px; }
+    .gathering-tables { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .gathering-welcome-actions { flex-direction:column; }
     .gathering-welcome-actions button { width:100%; }
   }
@@ -6798,7 +6834,7 @@
 <script src="/static/score-rankings.js?v=20260919a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261007a"></script>
-<script src="/static/trace-results.js?v=20260917e"></script>
+<script src="/static/trace-results.js?v=20261016a"></script>
 <script src="/static/i18n-en.js?v=20261008a"></script>
 <script src="/static/i18n.js?v=20261008a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
@@ -8136,6 +8172,7 @@ function closeSiteInfo(event) {
 // 状態管理変数
 let gid = MAIN_GID;
 let latestGatheringEvent = null;
+let gatheringWaitingRoomReturnTimer = null;
 const WATCH = "W";
 let currentWsGid = null;
 let currentAdminPass = ""; 
@@ -9423,6 +9460,10 @@ async function tryJoinRoom(targetGid, isPrivate) {
 
 async function enterRoom(targetGid, roomName) {
     cancelImmediateAction();
+    if (gatheringWaitingRoomReturnTimer) {
+        clearTimeout(gatheringWaitingRoomReturnTimer);
+        gatheringWaitingRoomReturnTimer = null;
+    }
     document.body.classList.remove("tutorial-room");
     const tutorialGuide = document.getElementById("tutorialGuide");
     if (tutorialGuide) tutorialGuide.hidden = true;
@@ -9526,6 +9567,10 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 }
 
 async function returnToLobby() {
+    if (gatheringWaitingRoomReturnTimer) {
+        clearTimeout(gatheringWaitingRoomReturnTimer);
+        gatheringWaitingRoomReturnTimer = null;
+    }
     if (isGatheringRoomId(gid) && latestGatheringEvent?.joined) {
         try { await gatheringApi("leave"); } catch (_error) {}
     }
@@ -9536,6 +9581,7 @@ async function returnToLobby() {
     closePracticeScenePicker();
     document.body.classList.remove("personal-score-room");
     document.body.classList.remove("tutorial-room");
+    document.body.classList.remove("gathering-room-active", "gathering-waiting-room", "gathering-table-room");
     const tutorialGuide = document.getElementById("tutorialGuide");
     if (tutorialGuide) tutorialGuide.hidden = true;
     cancelImmediateAction();
@@ -9652,7 +9698,7 @@ async function startGuidedMatch(kind) {
     if (!aiMatch && latestGatheringEvent?.enabled) {
         featureGuideRoomTag = {roomId: MEETING_ROOM_GID, tag: "human_match"};
         await joinGatheringRoom();
-        setHint(uiText("プレイヤータグを「対人希望」にしました。集会室の待機列に参加しました。"));
+        setHint(uiText("プレイヤータグを「対人希望」にしました。そろうごいた会の待合室に参加しました。"));
         return;
     }
     const roomId = aiMatch ? "main-e" : MAIN_GID;
@@ -9916,7 +9962,7 @@ async function startBeginnerGuidedMatch(kind) {
     if (!aiMatch && latestGatheringEvent?.enabled) {
         featureGuideRoomTag = {roomId: MEETING_ROOM_GID, tag: "beginner"};
         await joinGatheringRoom();
-        setHint(uiText("初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。集会室の待機列に参加しました。"));
+        setHint(uiText("初心者サポートをONにし、プレイヤータグを「ごいた初心者」にしました。そろうごいた会の待合室に参加しました。"));
         return;
     }
     featureGuideRoomTag = {roomId, tag: "beginner"};
@@ -10090,7 +10136,7 @@ async function joinGatheringRoom() {
     }
     const modal = document.getElementById("gatheringWelcomeModal");
     if (modal) modal.style.display = "none";
-    await enterRoom(MEETING_ROOM_GID, "集会室");
+    await enterRoom(MEETING_ROOM_GID, "そろうごいた会　待合室");
     await joinGatheringQueue();
 }
 
@@ -10101,7 +10147,7 @@ async function gatheringApi(path, body = {}) {
         body: JSON.stringify({client_id: clientId, ...body}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || "集会室の操作に失敗しました。");
+    if (!response.ok) throw new Error(data.detail || "そろうごいた会の操作に失敗しました。");
     return data;
 }
 
@@ -10124,7 +10170,7 @@ async function joinGatheringQueue() {
                 await new Promise(resolve => setTimeout(resolve, 150));
             }
         }
-        throw lastError || new Error("集会室への接続を確認できませんでした。");
+        throw lastError || new Error("待合室への接続を確認できませんでした。");
     } catch (error) {
         setHint(error.message);
     }
@@ -10139,14 +10185,26 @@ async function startGatheringWithAi() {
     } catch (error) { setHint(error.message); }
 }
 
-async function openGatheringTable(tableId, tableName = "集会室") {
+async function openGatheringTable(tableId, tableName = "") {
     if (!GATHERING_TABLE_IDS.has(tableId)) return;
-    await enterRoom(tableId, tableName);
+    await enterRoom(tableId, `そろうごいた会　${tableName || gatheringLobbyTableName(tableId)}`);
 }
 
 async function openGatheringHub() {
     if (gid === MEETING_ROOM_GID) return;
-    await enterRoom(MEETING_ROOM_GID, "集会室");
+    await enterRoom(MEETING_ROOM_GID, "そろうごいた会　待合室");
+}
+
+async function leaveGatheringEvent() {
+    try {
+        if (latestGatheringEvent?.joined) {
+            const data = await gatheringApi("leave");
+            latestGatheringEvent = data.gathering_event || {...latestGatheringEvent, joined:false, own_status:""};
+        }
+        await returnToLobby();
+    } catch (error) {
+        setHint(error.message);
+    }
 }
 
 async function toggleGatheringRest() {
@@ -10170,7 +10228,7 @@ async function requestGatheringPair() {
 async function acceptGatheringPair(targetId) {
     try {
         await gatheringApi("pair/accept", {target_id: targetId});
-        setHint("固定ペアを設定しました。集会室を退出するまで同じペアになります。");
+        setHint("固定ペアを設定しました。そろうごいた会を退出するまで同じペアになります。");
     } catch (error) { setHint(error.message); }
 }
 
@@ -10179,7 +10237,7 @@ function gatheringStatusLabel(status) {
 }
 
 function gatheringLobbyTableName(tableId) {
-    return `集会室${Array.from(GATHERING_TABLE_IDS).indexOf(tableId) + 1}卓`;
+    return `第${Array.from(GATHERING_TABLE_IDS).indexOf(tableId) + 1}卓`;
 }
 
 function gatheringLobbyTableStatus(room) {
@@ -10230,14 +10288,25 @@ function renderGatheringRoom(event) {
     latestGatheringEvent = event && typeof event === "object" ? event : null;
     const panel = document.getElementById("gatheringRoomPanel");
     const visible = isGatheringRoomId(gid) && !!latestGatheringEvent?.enabled;
+    const inWaitingRoom = visible && gid === MEETING_ROOM_GID;
     if (panel) panel.hidden = !visible;
     document.body.classList.toggle("gathering-room-active", visible);
+    document.body.classList.toggle("gathering-waiting-room", inWaitingRoom);
+    document.body.classList.toggle("gathering-table-room", visible && !inWaitingRoom);
     if (!visible) return;
+    const title = document.getElementById("gatheringRoomTitle");
+    if (title) title.textContent = inWaitingRoom ? "待合室" : gatheringLobbyTableName(gid);
     const status = document.getElementById("gatheringRoomStatus");
     const countdown = Number(latestGatheringEvent.countdown_remaining || 0);
+    const ownTableSnapshot = (Array.isArray(latestGatheringEvent.tables) ? latestGatheringEvent.tables : [])
+        .find(table => String(table.table_id || "") === String(latestGatheringEvent.own_table_id || ""));
+    const ownCountdown = Number(ownTableSnapshot?.countdown_remaining ?? countdown);
     const wait = Number(latestGatheringEvent.next_match_wait_remaining || 0);
     if (latestGatheringEvent.ending) {
         status.textContent = "開催終了後です。進行中の150点ゲームが終わるまで対局できます。";
+    } else if (latestGatheringEvent.own_status === "selected") {
+        const ownTable = latestGatheringEvent.own_table_name || "次の卓";
+        status.textContent = `${ownTable}で${Math.max(0, ownCountdown)}秒後に対局を自動開始します。`;
     } else if (countdown > 0) {
         status.textContent = `次の対局を${countdown}秒後に自動開始します。`;
     } else if (latestGatheringEvent.own_status === "playing") {
@@ -10247,33 +10316,60 @@ function renderGatheringRoom(event) {
     } else if (latestGatheringEvent.can_start_with_ai) {
         status.textContent = "人間4人を待っています。希望する場合はAIを入れて開始できます。";
     } else {
-        status.textContent = "参加者を待っています。待機中は現在の対局を観戦できます。";
+        status.textContent = "参加者を待っています。卓の状況を見たり、現在の対局を観戦したりできます。";
     }
     const participants = Array.isArray(latestGatheringEvent.participants) ? latestGatheringEvent.participants : [];
-    document.getElementById("gatheringJoinButton").hidden = !!latestGatheringEvent.joined;
+    const playingCount = participants.filter(item => item.status === "playing").length;
+    const waitingCount = participants.filter(item => ["waiting", "selected"].includes(item.status)).length;
+    document.getElementById("gatheringParticipantCount").textContent = `${participants.length}人`;
+    document.getElementById("gatheringPlayingCount").textContent = `${playingCount}人`;
+    document.getElementById("gatheringWaitingCount").textContent = `${waitingCount}人`;
+    document.getElementById("gatheringJoinButton").hidden = !!latestGatheringEvent.joined || !inWaitingRoom;
     const restButton = document.getElementById("gatheringRestButton");
-    restButton.hidden = !latestGatheringEvent.joined;
+    restButton.hidden = !latestGatheringEvent.joined || !inWaitingRoom;
     restButton.textContent = latestGatheringEvent.own_status === "resting" ? "待機列に戻る" : "今回は休憩する";
     const aiButton = document.getElementById("gatheringAiStartButton");
-    aiButton.hidden = !latestGatheringEvent.can_start_with_ai;
+    aiButton.hidden = !latestGatheringEvent.can_start_with_ai || !inWaitingRoom;
     const hubButton = document.getElementById("gatheringHubButton");
     hubButton.hidden = (
-        gid === MEETING_ROOM_GID
+        inWaitingRoom
         || latestGatheringEvent.own_status === "playing"
     );
-    const tables = Array.isArray(latestGatheringEvent.tables) ? latestGatheringEvent.tables : [];
+    const exitButton = document.getElementById("gatheringExitButton");
+    exitButton.hidden = !inWaitingRoom || !latestGatheringEvent.joined;
+    const tableMap = new Map(
+        (Array.isArray(latestGatheringEvent.tables) ? latestGatheringEvent.tables : [])
+            .map(table => [String(table.table_id || ""), table])
+    );
+    const tables = Array.from(GATHERING_TABLE_IDS).map(tableId => tableMap.get(tableId) || {
+        table_id: tableId,
+        name: gatheringLobbyTableName(tableId),
+        status: "idle",
+        player_names: {},
+        selected_names: [],
+        ai_seats: [],
+        total_team_score: {AC:0, BD:0},
+    });
     document.getElementById("gatheringTables").innerHTML = tables.map(table => {
         const names = Object.entries(table.player_names || {})
             .filter(([, name]) => String(name || "").trim())
             .map(([seat, name]) => `${seat}:${escapeLobbyHtml(name)}`);
+        const selectedNames = (Array.isArray(table.selected_names) ? table.selected_names : [])
+            .map(name => escapeLobbyHtml(name));
         const aiCount = Array.isArray(table.ai_seats) ? table.ai_seats.length : 0;
-        const players = names.join(" / ") || (table.status === "countdown" ? "組み合わせ中" : "対局者を待っています");
+        const players = names.join(" / ") || selectedNames.join(" / ") || "対局者を待っています";
         const score = `AC ${Number(table.total_team_score?.AC || 0)}点 / BD ${Number(table.total_team_score?.BD || 0)}点`;
         const ai = aiCount ? `・AI ${aiCount}席` : "";
-        const watch = table.is_started
-            ? `<button type="button" onclick="openGatheringTable('${escapeLobbyHtml(table.table_id)}','${escapeLobbyHtml(table.name || "集会室")}')">この卓を見る</button>`
-            : `<span>${Number(table.countdown_remaining || 0)}秒後に開始</span>`;
-        return `<div class="gathering-table-card"><strong>${escapeLobbyHtml(table.name || table.table_id)}</strong><span>${players}${ai}</span><span>${score}</span>${watch}</div>`;
+        let action = '<span>対局者を待っています</span>';
+        if (table.status === "countdown") {
+            action = `<span>${Number(table.countdown_remaining || 0)}秒後に開始</span>`;
+        } else if (table.is_started) {
+            action = `<button type="button" onclick="openGatheringTable('${escapeLobbyHtml(table.table_id)}','${escapeLobbyHtml(table.name || gatheringLobbyTableName(table.table_id))}')">この卓を見る</button>`;
+        } else if (table.status === "finished") {
+            action = '<span>次の組み合わせを準備中</span>';
+        }
+        const scoreLine = table.is_started ? `<span>${score}</span>` : "";
+        return `<div class="gathering-table-card"><strong>${escapeLobbyHtml(table.name || gatheringLobbyTableName(table.table_id))}</strong><span>${players}${ai}</span>${scoreLine}${action}</div>`;
     }).join("");
     document.getElementById("gatheringParticipants").innerHTML = participants.map(item => {
         const pair = item.pair_name ? `・${escapeLobbyHtml(item.pair_name)}と固定ペア` : "";
@@ -10285,6 +10381,34 @@ function renderGatheringRoom(event) {
     document.getElementById("gatheringPairTarget").innerHTML = candidates.map(item => `<option value="${escapeLobbyHtml(item.id)}">${escapeLobbyHtml(item.name)}</option>`).join("");
     const requests = Array.isArray(latestGatheringEvent.incoming_pair_requests) ? latestGatheringEvent.incoming_pair_requests : [];
     document.getElementById("gatheringPairRequests").innerHTML = requests.map(item => `<span class="gathering-pair-request">${escapeLobbyHtml(item.name)}さんから固定ペアの申請 <button type="button" onclick="acceptGatheringPair('${escapeLobbyHtml(item.id)}')">承認する</button></span>`).join("");
+}
+
+function syncGatheringWaitingRoomReturn(state) {
+    const shouldReturn = (
+        GATHERING_TABLE_IDS.has(gid)
+        && state?.match_finished === true
+        && state?.gathering_event?.enabled === true
+        && state?.gathering_event?.joined === true
+        && ["waiting", "resting"].includes(state?.gathering_event?.own_status)
+    );
+    if (!shouldReturn) {
+        if (gatheringWaitingRoomReturnTimer) {
+            clearTimeout(gatheringWaitingRoomReturnTimer);
+            gatheringWaitingRoomReturnTimer = null;
+        }
+        return;
+    }
+    if (gatheringWaitingRoomReturnTimer) return;
+    gatheringWaitingRoomReturnTimer = setTimeout(async () => {
+        gatheringWaitingRoomReturnTimer = null;
+        if (
+            GATHERING_TABLE_IDS.has(gid)
+            && latestState?.match_finished === true
+            && ["waiting", "resting"].includes(latestGatheringEvent?.own_status)
+        ) {
+            await openGatheringHub();
+        }
+    }, 5000);
 }
 
 async function fetchRoomList() {
@@ -17067,6 +17191,7 @@ async function refreshFromState(confirmedState = null){
   latestState = state;
   if (isGatheringRoomId(gid)) {
     renderGatheringRoom(state.gathering_event);
+    syncGatheringWaitingRoomReturn(state);
     const assignedTable = String(state.gathering_event?.own_table_id || "");
     if (
       state.gathering_event?.enabled
@@ -17074,7 +17199,7 @@ async function refreshFromState(confirmedState = null){
       && assignedTable !== gid
       && state.gathering_event?.own_status === "playing"
     ) {
-      await enterRoom(assignedTable, state.gathering_event?.own_table_name || "集会室");
+      await enterRoom(assignedTable, `そろうごいた会　${state.gathering_event?.own_table_name || gatheringLobbyTableName(assignedTable)}`);
       return;
     }
     if (!state.gathering_event?.enabled && GATHERING_TABLE_IDS.has(gid)) {
@@ -17114,7 +17239,10 @@ async function refreshFromState(confirmedState = null){
   
   const currentRoomNameEl = document.getElementById("currentRoomName");
   if(currentRoomNameEl) {
-      setRoomNameText(currentRoomNameEl, state.owner_name || (isMainRoomId(gid) ? "みんなでごいたA" : ""));
+      const gatheringName = gid === MEETING_ROOM_GID
+          ? "そろうごいた会　待合室"
+          : (GATHERING_TABLE_IDS.has(gid) ? `そろうごいた会　${gatheringLobbyTableName(gid)}` : "");
+      setRoomNameText(currentRoomNameEl, gatheringName || state.owner_name || (isMainRoomId(gid) ? "みんなでごいたA" : ""));
   }
 
   // 古い盤面上のスコアボードは不要になったため、非表示で固定
@@ -17255,7 +17383,9 @@ async function refreshFromState(confirmedState = null){
               setHint(`練習局終了。勝者:${state.winner}（得点には加算されません）。ホストの操作をお待ちください。`);
           }
       } else if (state.match_finished) {
-          if (autoNextRoundPending) {
+          if (GATHERING_TABLE_IDS.has(gid) && state.gathering_event?.enabled) {
+              setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) 5秒後に待合室へ戻ります。`);
+          } else if (autoNextRoundPending) {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！3秒後に新規ゲームを開始します。`);
           } else if (mySeat === "A") {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) 「新規ゲーム」でスコアをリセットします。`);
