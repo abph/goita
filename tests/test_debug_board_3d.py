@@ -29,7 +29,10 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert '"room-copper-04"' in html
     assert "function supportsAlternateBoardViews(roomId)" in html
     assert "return roomId === DEBUG_GID || roomId === MEETING_ROOM_GID || PRIVATE_ROOM_IDS.has(roomId);" in html
-    assert 'return roomId === MEETING_ROOM_GID ? "meeting-room" : personalSettings.boardViewMode;' in html
+    assert 'if (roomId === MEETING_ROOM_GID)' in html
+    assert 'return latestGatheringEvent?.enabled' in html
+    assert '? (personalSettings.boardViewMode === "meeting-room" ? "2d" : personalSettings.boardViewMode)' in html
+    assert ': "meeting-room";' in html
     assert 'supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none"' in html
     assert "const boardViewsEnabled = supportsAlternateBoardViews(gid);" in html
     assert 'id="boardViewMeetingRoomButton"' in html

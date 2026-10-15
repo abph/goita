@@ -397,6 +397,12 @@
         </form>
         <form id="settingsForm" class="panel">
           <h2 class="section-heading">サイト設定</h2>
+          <section class="notice-summary" aria-labelledby="gatheringAdminHeading" style="margin-bottom:18px">
+            <h3 id="gatheringAdminHeading" class="subheading" style="margin-top:0">そろうごいた会</h3>
+            <p id="gatheringAdminDescription" class="muted">現在は通常の公開部屋モードです。</p>
+            <button id="gatheringAdminToggle" class="button primary" type="button">そろうごいた会を開始</button>
+            <div id="gatheringAdminStatus" class="status" role="status" aria-live="polite"></div>
+          </section>
           <div class="form-grid">
             <div class="field">
               <label for="mainRoomCount">表示する公開部屋数</label>
@@ -1665,6 +1671,18 @@
     }
 
     function applySettings(data) {
+      const gathering = data.gathering_event || {};
+      const gatheringButton = document.getElementById("gatheringAdminToggle");
+      const gatheringDescription = document.getElementById("gatheringAdminDescription");
+      gatheringButton.dataset.enabled = gathering.enabled ? "true" : "false";
+      gatheringButton.textContent = gathering.enabled ? "そろうごいた会を終了" : "そろうごいた会を開始";
+      gatheringButton.classList.toggle("danger", !!gathering.enabled);
+      gatheringButton.classList.toggle("primary", !gathering.enabled);
+      gatheringDescription.textContent = gathering.ending
+        ? "開催を終了しています。進行中の150点ゲームが終わると通常モードへ戻ります。"
+        : gathering.enabled
+          ? `開催中です。参加者 ${Number(gathering.participants?.length || 0)}人。通常の対人公開部屋は新規入室できません。`
+          : "現在は通常の公開部屋モードです。";
       document.getElementById("mainRoomCount").value = data.main_room_count ?? 4;
       document.getElementById("mainRoomCount").max = data.main_room_max ?? 6;
       document.getElementById("privateRoomCount").value = data.private_room_count ?? 4;
@@ -2534,6 +2552,30 @@
         status.textContent = "保存しました。";
       } catch (error) {
         status.textContent = error.message;
+      }
+    });
+
+    document.getElementById("gatheringAdminToggle").addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const currentlyEnabled = button.dataset.enabled === "true";
+      const action = currentlyEnabled ? "終了" : "開始";
+      if (!confirm(`そろうごいた会を${action}しますか？`)) return;
+      const status = document.getElementById("gatheringAdminStatus");
+      button.disabled = true;
+      status.textContent = `${action}しています...`;
+      try {
+        const data = await api("/admin/api/gathering", {
+          method: "PUT",
+          body: JSON.stringify({enabled: !currentlyEnabled}),
+        });
+        applySettings(data);
+        status.textContent = data.gathering_event?.ending
+          ? "進行中のゲーム終了後に通常モードへ戻ります。"
+          : `そろうごいた会を${action}しました。`;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     });
 

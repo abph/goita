@@ -7,6 +7,7 @@ import ctypes
 import gc
 import hashlib
 import hmac
+import itertools
 import json
 import logging
 import os
@@ -127,6 +128,25 @@ DEFAULT_MAIN_ROOM_NAMES: Dict[str, str] = {
 MAIN_ROOM_NAMES: Dict[str, str] = dict(DEFAULT_MAIN_ROOM_NAMES)
 MAIN_GIDS = frozenset(MAIN_ROOM_NAMES)
 MEETING_ROOM_GID = "main-d"
+GATHERING_HUMAN_PUBLIC_ROOM_IDS = frozenset({MAIN_GID, "main-b", "main-c"})
+GATHERING_WAIT_SECONDS = max(
+    1, int(os.getenv("GOITA_GATHERING_WAIT_SECONDS", "300") or 300)
+)
+GATHERING_COUNTDOWN_SECONDS = max(
+    1, int(os.getenv("GOITA_GATHERING_COUNTDOWN_SECONDS", "15") or 15)
+)
+GATHERING_EVENT_SETTINGS: Dict[str, Any] = {
+    "enabled": False,
+    "ending": False,
+    "event_id": "",
+}
+GATHERING_PARTICIPANTS: Dict[str, Dict[str, Any]] = {}
+GATHERING_PAIR_REQUESTS: Dict[str, str] = {}
+GATHERING_LAST_PLAYERS: List[str] = []
+GATHERING_PAIR_HISTORY: Counter = Counter()
+GATHERING_MATCH_TASK: Optional[asyncio.Task] = None
+GATHERING_WAIT_DEADLINE: Optional[float] = None
+GATHERING_COUNTDOWN_UNTIL: Optional[float] = None
 LOBBY_MAIN_ROOM_IDS = (
     MAIN_GID,
     "main-b",
@@ -731,6 +751,10 @@ async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bo
     game = GAMES.get(game_id)
     if not game:
         return False
+    gathering_participant = bool(
+        game_id == MEETING_ROOM_GID
+        and client_id in GATHERING_PARTICIPANTS
+    )
     human_seats = game.get("human_seats", {})
     if not isinstance(human_seats, dict):
         return False
@@ -741,8 +765,15 @@ async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bo
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
             removed_seats.add(seat)
-    if not removed_seats:
+    if not removed_seats and not gathering_participant:
         return False
+    if gathering_participant:
+        if game.get("is_started") and not game.get("match_finished"):
+            ai_seats = _ai_seat_set(game)
+            ai_seats.update(removed_seats)
+            _store_ai_seats(game, ai_seats)
+        _gathering_remove_participant(client_id)
+        _schedule_gathering_matchmaking()
     _clear_shared_kifu_for_client(game, client_id)
     _reset_public_deal_mode_after_host_leaves(game_id, game, removed_seats)
     await manager.broadcast_update(game_id)
@@ -2604,6 +2635,28 @@ class AdminLobbySettingsUpdateRequest(BaseModel):
     )
 
 
+class GatheringAdminRequest(BaseModel):
+    enabled: bool
+
+
+class GatheringJoinRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(default="", max_length=32)
+    tag: str = Field(default="", max_length=32)
+
+
+class GatheringPresenceRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+
+
+class GatheringRestRequest(GatheringPresenceRequest):
+    resting: bool
+
+
+class GatheringPairRequest(GatheringPresenceRequest):
+    target_id: str = Field(min_length=8, max_length=80)
+
+
 class PrivateRoomAdminPasswordUpdateRequest(BaseModel):
     admin_password: str
     game_id: str
@@ -3663,6 +3716,11 @@ def _state_public_view(
         "spectator_count": manager.spectator_count(game_id, game_obj),
         "shared_kifu": shared_kifu_public,
         "shared_kifu_can_stop": shared_kifu_can_stop,
+        "gathering_event": (
+            _gathering_event_public_payload(client_id)
+            if game_id == MEETING_ROOM_GID
+            else None
+        ),
     }
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["owned_human_seats"] = sorted(owned_human_seats)
@@ -4062,10 +4120,23 @@ def _lobby_management_settings() -> Dict[str, Any]:
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "public_room_ads": copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS),
         "regional_ads": copy.deepcopy(REGIONAL_AD_SETTINGS),
+        "gathering_event": copy.deepcopy(GATHERING_EVENT_SETTINGS),
     }
 
 
 def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
+    gathering = settings.get("gathering_event")
+    if isinstance(gathering, dict):
+        GATHERING_EVENT_SETTINGS["enabled"] = bool(gathering.get("enabled", False))
+        GATHERING_EVENT_SETTINGS["ending"] = bool(gathering.get("ending", False))
+        GATHERING_EVENT_SETTINGS["event_id"] = str(gathering.get("event_id", ""))[:64]
+        # Active games are in memory only.  After a server restart there is no
+        # match left to finish, so a persisted closing state can end immediately.
+        if GATHERING_EVENT_SETTINGS["ending"]:
+            GATHERING_EVENT_SETTINGS["enabled"] = False
+            GATHERING_EVENT_SETTINGS["ending"] = False
+        if GATHERING_EVENT_SETTINGS["enabled"] and not GATHERING_EVENT_SETTINGS["event_id"]:
+            GATHERING_EVENT_SETTINGS["event_id"] = secrets.token_hex(8)
     if isinstance(settings.get("regional_ads"), list):
         try:
             REGIONAL_AD_SETTINGS[:] = normalize_regional_ads(settings["regional_ads"])
@@ -4504,6 +4575,13 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 game["match_winner"] = "AC" if game["total_team_score"]["AC"] >= 150 else "BD"
                 msg = f"Match finished! winner={game['match_winner']}, final_score={game['total_team_score']}"
                 game["log"].append(msg)
+                if game.get("gathering_match"):
+                    try:
+                        asyncio.get_running_loop().create_task(
+                            _gathering_match_completed()
+                        )
+                    except RuntimeError:
+                        LOGGER.warning("Gathering rotation could not be scheduled.")
             else:
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
@@ -5651,6 +5729,379 @@ def _vrc_solo_response(body: str) -> PlainTextResponse:
     )
 
 
+def _gathering_public_id(client_id: str) -> str:
+    return hmac.new(
+        ADMIN_SESSION_SECRET,
+        f"gathering|{client_id}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+
+
+def _gathering_client_from_public_id(public_id: str) -> str:
+    return next(
+        (
+            client_id
+            for client_id in GATHERING_PARTICIPANTS
+            if hmac.compare_digest(_gathering_public_id(client_id), public_id)
+        ),
+        "",
+    )
+
+
+def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
+    now = time.monotonic()
+    own = GATHERING_PARTICIPANTS.get(client_id)
+    participants = []
+    for participant_id, item in sorted(
+        GATHERING_PARTICIPANTS.items(),
+        key=lambda pair: (
+            {"playing": 0, "selected": 1, "waiting": 2, "resting": 3}.get(
+                str(pair[1].get("status", "waiting")), 4
+            ),
+            float(pair[1].get("wait_since", now)),
+        ),
+    ):
+        pair_id = str(item.get("pair_with", ""))
+        pair_item = GATHERING_PARTICIPANTS.get(pair_id, {})
+        participants.append({
+            "id": _gathering_public_id(participant_id),
+            "name": str(item.get("name", "")) or "ゲスト",
+            "tag": str(item.get("tag", "")),
+            "status": str(item.get("status", "waiting")),
+            "rest_after_match": bool(item.get("rest_after_match", False)),
+            "pair_name": str(pair_item.get("name", "")),
+            "is_self": participant_id == client_id,
+            "waiting_seconds": max(0, int(now - float(item.get("wait_since", now)))),
+        })
+    incoming = []
+    for requester, target in GATHERING_PAIR_REQUESTS.items():
+        if target != client_id or requester not in GATHERING_PARTICIPANTS:
+            continue
+        incoming.append({
+            "id": _gathering_public_id(requester),
+            "name": str(GATHERING_PARTICIPANTS[requester].get("name", "")) or "ゲスト",
+        })
+    return {
+        "enabled": bool(GATHERING_EVENT_SETTINGS["enabled"]),
+        "ending": bool(GATHERING_EVENT_SETTINGS["ending"]),
+        "event_id": str(GATHERING_EVENT_SETTINGS["event_id"]),
+        "room_id": MEETING_ROOM_GID,
+        "room_name": "集会室",
+        "wait_seconds": GATHERING_WAIT_SECONDS,
+        "countdown_seconds": GATHERING_COUNTDOWN_SECONDS,
+        "countdown_remaining": max(
+            0,
+            int((GATHERING_COUNTDOWN_UNTIL or now) - now + 0.999),
+        ) if GATHERING_COUNTDOWN_UNTIL else 0,
+        "next_match_wait_remaining": max(
+            0,
+            int((GATHERING_WAIT_DEADLINE or now) - now + 0.999),
+        ) if GATHERING_WAIT_DEADLINE else 0,
+        "joined": own is not None,
+        "own_status": str(own.get("status", "")) if own else "",
+        "participants": participants,
+        "incoming_pair_requests": incoming,
+    }
+
+
+def _gathering_connected_waiters() -> List[str]:
+    return [
+        client_id
+        for client_id, item in GATHERING_PARTICIPANTS.items()
+        if item.get("status") in {"waiting", "selected"}
+        and manager.has_client_connection(MEETING_ROOM_GID, client_id)
+    ]
+
+
+def _gathering_units(client_ids: List[str]) -> List[Tuple[str, ...]]:
+    available = set(client_ids)
+    units: List[Tuple[str, ...]] = []
+    while available:
+        client_id = min(
+            available,
+            key=lambda value: float(
+                GATHERING_PARTICIPANTS[value].get("wait_since", time.monotonic())
+            ),
+        )
+        available.remove(client_id)
+        partner = str(GATHERING_PARTICIPANTS[client_id].get("pair_with", ""))
+        if partner in available:
+            available.remove(partner)
+            units.append((client_id, partner))
+        else:
+            units.append((client_id,))
+    return units
+
+
+def _select_gathering_players(client_ids: List[str], allow_ai: bool) -> List[str]:
+    if not client_ids:
+        return []
+    units = _gathering_units(client_ids)
+    candidates: List[Tuple[str, ...]] = []
+    for size in range(1, len(units) + 1):
+        for chosen_units in itertools.combinations(units, size):
+            flat = tuple(value for unit in chosen_units for value in unit)
+            if len(flat) <= 4:
+                candidates.append(flat)
+    full = [candidate for candidate in candidates if len(candidate) == 4]
+    if full:
+        candidates = full
+    elif not allow_ai:
+        return []
+    last = set(GATHERING_LAST_PLAYERS)
+    desired_changes = 0
+    if last:
+        outsiders = len(set(client_ids) - last)
+        desired_changes = 2 if outsiders >= 2 else (1 if outsiders == 1 else 0)
+    now = time.monotonic()
+
+    def score(candidate: Tuple[str, ...]) -> Tuple[float, ...]:
+        selected = set(candidate)
+        changes = len(selected - last) if last else 0
+        change_penalty = abs(changes - desired_changes)
+        fixed_pair_count = sum(
+            1
+            for item in candidate
+            if str(GATHERING_PARTICIPANTS[item].get("pair_with", "")) in selected
+        ) // 2
+        total_wait = sum(
+            max(0.0, now - float(GATHERING_PARTICIPANTS[item].get("wait_since", now)))
+            for item in candidate
+        )
+        total_games = sum(int(GATHERING_PARTICIPANTS[item].get("games", 0)) for item in candidate)
+        return (
+            float(len(candidate)),
+            -float(change_penalty),
+            float(fixed_pair_count),
+            total_wait,
+            -float(total_games),
+        )
+
+    return list(max(candidates, key=score)) if candidates else []
+
+
+def _gathering_waits_for_two_changes(client_ids: List[str], allow_fallback: bool) -> bool:
+    return bool(
+        GATHERING_LAST_PLAYERS
+        and len(set(client_ids) - set(GATHERING_LAST_PLAYERS)) < 2
+        and not allow_fallback
+    )
+
+
+def _gathering_team_groups(selected: List[str]) -> List[List[str]]:
+    remaining = list(selected)
+    groups: List[List[str]] = []
+    for client_id in list(remaining):
+        partner = str(GATHERING_PARTICIPANTS.get(client_id, {}).get("pair_with", ""))
+        if partner in remaining and client_id in remaining:
+            groups.append([client_id, partner])
+            remaining.remove(client_id)
+            remaining.remove(partner)
+    last = set(GATHERING_LAST_PLAYERS)
+    while remaining and len(groups) < 2:
+        first = remaining.pop(0)
+        opposite_indexes = [
+            index for index, candidate in enumerate(remaining)
+            if (first in last) != (candidate in last)
+        ]
+        candidate_indexes = opposite_indexes or list(range(len(remaining)))
+        partner_index = min(
+            candidate_indexes,
+            key=lambda index: GATHERING_PAIR_HISTORY[
+                tuple(sorted((first, remaining[index])))
+            ],
+        ) if candidate_indexes else None
+        group = [first]
+        if partner_index is not None:
+            group.append(remaining.pop(partner_index))
+        groups.append(group)
+    if remaining:
+        for client_id in remaining:
+            min(groups, key=len).append(client_id)
+    return groups[:2]
+
+
+def _gathering_replace_game(selected: List[str]) -> None:
+    old = GAMES.get(MEETING_ROOM_GID, {})
+    dealer = random.choice(list(ALL_SEATS))
+    new_game = _create_game_obj(
+        dealer=dealer,
+        ai_profile=_normalize_ai_profile(old.get("ai_profile")),
+        deal_mode=_normalize_deal_mode(old.get("next_deal_mode", "normal")),
+    )
+    for key in (
+        "password", "admin_password", "admin_password_hash", "owner_name",
+        "show_legal_actions", "show_log", "room_background_image",
+        "hidden_from_lobby", "turn_time_limit_seconds", "next_turn_time_limit_seconds",
+    ):
+        if key in old:
+            new_game[key] = copy.deepcopy(old[key])
+    new_game["owner_name"] = "集会室"
+    new_game["chat_messages"] = list(old.get("chat_messages", []))[-100:]
+    groups = _gathering_team_groups(selected)
+    seats_by_group = (("A", "C"), ("B", "D"))
+    human_seats: Dict[str, str] = {}
+    names = {seat: "" for seat in ALL_SEATS}
+    tags = {seat: "" for seat in ALL_SEATS}
+    for group_index, group in enumerate(groups):
+        for member_index, client_id in enumerate(group[:2]):
+            seat = seats_by_group[group_index][member_index]
+            human_seats[seat] = client_id
+            participant = GATHERING_PARTICIPANTS[client_id]
+            names[seat] = str(participant.get("name", ""))
+            tags[seat] = str(participant.get("tag", ""))
+            participant["status"] = "playing"
+            participant["last_played_at"] = time.monotonic()
+    new_game["human_seats"] = human_seats
+    new_game["ai_seats"] = [seat for seat in ALL_SEATS if seat not in human_seats]
+    new_game["player_names"] = names
+    new_game["player_tags"] = tags
+    new_game["is_started"] = True
+    new_game["log"].append(f"Game start. dealer={dealer} [GATHERING]")
+    new_game["gathering_match"] = True
+    GAMES[MEETING_ROOM_GID] = new_game
+    for group in groups:
+        if len(group) == 2:
+            GATHERING_PAIR_HISTORY[tuple(sorted(group))] += 1
+    _arm_turn_timeout(MEETING_ROOM_GID)
+
+
+async def _gathering_broadcast() -> None:
+    await manager.broadcast_update(MEETING_ROOM_GID)
+    await manager.broadcast_update("lobby")
+
+
+def _cancel_gathering_match_task() -> None:
+    global GATHERING_MATCH_TASK, GATHERING_COUNTDOWN_UNTIL
+    task = GATHERING_MATCH_TASK
+    GATHERING_MATCH_TASK = None
+    GATHERING_COUNTDOWN_UNTIL = None
+    if task is not None and task is not asyncio.current_task() and not task.done():
+        task.cancel()
+
+
+def _schedule_gathering_matchmaking(*, reset_wait: bool = False) -> None:
+    global GATHERING_MATCH_TASK, GATHERING_WAIT_DEADLINE
+    if not GATHERING_EVENT_SETTINGS["enabled"] or GATHERING_EVENT_SETTINGS["ending"]:
+        return
+    game = GAMES.get(MEETING_ROOM_GID)
+    if game and game.get("is_started") and not bool(game.get("match_finished")):
+        return
+    now = time.monotonic()
+    if reset_wait or GATHERING_WAIT_DEADLINE is None:
+        GATHERING_WAIT_DEADLINE = now + GATHERING_WAIT_SECONDS
+    if GATHERING_MATCH_TASK is not None and not GATHERING_MATCH_TASK.done():
+        GATHERING_MATCH_TASK.cancel()
+    GATHERING_MATCH_TASK = asyncio.create_task(_gathering_matchmaking_worker())
+
+
+async def _gathering_matchmaking_worker() -> None:
+    global GATHERING_MATCH_TASK, GATHERING_WAIT_DEADLINE, GATHERING_COUNTDOWN_UNTIL
+    current_task = asyncio.current_task()
+    try:
+        while GATHERING_EVENT_SETTINGS["enabled"] and not GATHERING_EVENT_SETTINGS["ending"]:
+            waiters = _gathering_connected_waiters()
+            deadline = GATHERING_WAIT_DEADLINE or (time.monotonic() + GATHERING_WAIT_SECONDS)
+            allow_ai = time.monotonic() >= deadline
+            waiting_for_two_changes = _gathering_waits_for_two_changes(
+                waiters, allow_ai
+            )
+            selected = (
+                [] if waiting_for_two_changes
+                else _select_gathering_players(waiters, allow_ai)
+            )
+            if not selected or (len(selected) < 4 and not allow_ai):
+                await _gathering_broadcast()
+                await asyncio.sleep(max(0.25, deadline - time.monotonic()))
+                continue
+            for client_id in selected:
+                GATHERING_PARTICIPANTS[client_id]["status"] = "selected"
+            GATHERING_COUNTDOWN_UNTIL = time.monotonic() + GATHERING_COUNTDOWN_SECONDS
+            await _gathering_broadcast()
+            await asyncio.sleep(GATHERING_COUNTDOWN_SECONDS)
+            selected = [
+                client_id for client_id in selected
+                if client_id in GATHERING_PARTICIPANTS
+                and GATHERING_PARTICIPANTS[client_id].get("status") == "selected"
+                and manager.has_client_connection(MEETING_ROOM_GID, client_id)
+            ]
+            if not selected:
+                GATHERING_WAIT_DEADLINE = time.monotonic() + GATHERING_WAIT_SECONDS
+                GATHERING_COUNTDOWN_UNTIL = None
+                continue
+            if len(selected) < 4 and time.monotonic() < deadline:
+                for client_id in selected:
+                    GATHERING_PARTICIPANTS[client_id]["status"] = "waiting"
+                GATHERING_COUNTDOWN_UNTIL = None
+                continue
+            _gathering_replace_game(selected)
+            GATHERING_COUNTDOWN_UNTIL = None
+            GATHERING_WAIT_DEADLINE = None
+            await _gathering_broadcast()
+            return
+    except asyncio.CancelledError:
+        return
+    finally:
+        if GATHERING_MATCH_TASK is current_task:
+            GATHERING_MATCH_TASK = None
+
+
+async def _gathering_finish_event() -> None:
+    global GATHERING_WAIT_DEADLINE
+    _cancel_gathering_match_task()
+    GATHERING_EVENT_SETTINGS.update({"enabled": False, "ending": False})
+    GATHERING_PARTICIPANTS.clear()
+    GATHERING_PAIR_REQUESTS.clear()
+    GATHERING_LAST_PLAYERS.clear()
+    GATHERING_PAIR_HISTORY.clear()
+    GATHERING_WAIT_DEADLINE = None
+    if MEETING_ROOM_GID in GAMES:
+        GAMES[MEETING_ROOM_GID]["owner_name"] = MAIN_ROOM_NAMES[MEETING_ROOM_GID]
+    if ROOM_SETTINGS_PATH is not None:
+        _save_persisted_room_management_settings()
+    await _gathering_broadcast()
+
+
+async def _gathering_match_completed() -> None:
+    global GATHERING_WAIT_DEADLINE
+    if GATHERING_EVENT_SETTINGS["ending"]:
+        await _gathering_finish_event()
+        return
+    GATHERING_LAST_PLAYERS[:] = [
+        client_id
+        for client_id, item in GATHERING_PARTICIPANTS.items()
+        if item.get("status") == "playing"
+    ]
+    now = time.monotonic()
+    for client_id in GATHERING_LAST_PLAYERS:
+        item = GATHERING_PARTICIPANTS.get(client_id)
+        if not item:
+            continue
+        item["games"] = int(item.get("games", 0)) + 1
+        item["wait_since"] = now
+        item["status"] = "resting" if item.pop("rest_after_match", False) else "waiting"
+    GATHERING_WAIT_DEADLINE = now + GATHERING_WAIT_SECONDS
+    await _gathering_broadcast()
+    _schedule_gathering_matchmaking()
+
+
+def _gathering_remove_participant(client_id: str) -> None:
+    item = GATHERING_PARTICIPANTS.pop(client_id, None)
+    GATHERING_PAIR_REQUESTS.pop(client_id, None)
+    for requester, target in list(GATHERING_PAIR_REQUESTS.items()):
+        if target == client_id:
+            GATHERING_PAIR_REQUESTS.pop(requester, None)
+    if not item:
+        return
+    partner = str(item.get("pair_with", ""))
+    if partner in GATHERING_PARTICIPANTS:
+        GATHERING_PARTICIPANTS[partner]["pair_with"] = ""
+        if GATHERING_PARTICIPANTS[partner].get("status") == "resting":
+            GATHERING_PARTICIPANTS[partner]["status"] = "waiting"
+            GATHERING_PARTICIPANTS[partner]["wait_since"] = time.monotonic()
+
+
+
 def _vrc_solo_error(code: str, message: str = "") -> PlainTextResponse:
     safe_code = re.sub(r"[^a-z0-9_-]", "", str(code or "error").lower()) or "error"
     safe_message = str(message or "").replace("|", "/").replace("\r", " ").replace("\n", " ")
@@ -6225,7 +6676,11 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             else:
                 seats_info[s] = "Empty"
 
-        owner_name = MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
+        owner_name = (
+            "集会室"
+            if gid == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]
+            else MAIN_ROOM_NAMES.get(gid, data.get("owner_name", "サポーター"))
+        )
         return {
             "game_id": gid,
             "is_main_room": _is_main_game_id(gid),
@@ -6243,10 +6698,20 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
             "total_team_score": dict(data.get("total_team_score", {"AC": 0, "BD": 0})),
         }
 
+    gathering_enabled = bool(GATHERING_EVENT_SETTINGS["enabled"])
     rooms = [
         build_room_info(gid, GAMES[gid])
         for gid in MAIN_ROOM_NAMES
-        if not GAMES[gid].get("hidden_from_lobby", False)
+        if (
+            (gathering_enabled and gid == MEETING_ROOM_GID)
+            or (
+                not GAMES[gid].get("hidden_from_lobby", False)
+                and not (
+                    gathering_enabled
+                    and gid in GATHERING_HUMAN_PUBLIC_ROOM_IDS
+                )
+            )
+        )
     ]
     for gid, data in GAMES.items():
         if not _is_main_game_id(gid) and not data.get("hidden_from_lobby", False):
@@ -6271,6 +6736,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
         "room_totals": room_totals,
         "site_people": build_site_people(),
         "public_chat_messages": _chat_messages_for_lobby(),
+        "gathering_event": _gathering_event_public_payload(client_id),
     }
 
 
@@ -6385,6 +6851,7 @@ def _lobby_admin_payload() -> Dict[str, Any]:
         "ai_prediction_cache": prediction_sample_cache_snapshot(),
         "ai_conditional_response": _conditional_response_admin_snapshot(),
         "ai_generic_response_patterns": generic_response_pattern_snapshot(),
+        "gathering_event": _gathering_event_public_payload(),
     }
 
 
@@ -6545,6 +7012,169 @@ def admin_logout(response: Response):
 def admin_settings(request: Request):
     _require_site_admin(request)
     return _lobby_admin_payload()
+
+
+@app.put("/admin/api/gathering")
+async def admin_update_gathering(req: GatheringAdminRequest, request: Request):
+    _require_site_admin(request)
+    previous = copy.deepcopy(GATHERING_EVENT_SETTINGS)
+    if req.enabled:
+        GATHERING_EVENT_SETTINGS.update({
+            "enabled": True,
+            "ending": False,
+            "event_id": f"{int(time.time())}-{secrets.token_hex(4)}",
+        })
+        game = GAMES[MEETING_ROOM_GID]
+        game["owner_name"] = "集会室"
+        active_match = bool(
+            game.get("is_started")
+            and not game.get("match_finished")
+            and _human_seat_set(game)
+        )
+        if active_match:
+            game["gathering_match"] = True
+            now = time.monotonic()
+            for seat, client_id in dict(game.get("human_seats", {})).items():
+                GATHERING_PARTICIPANTS[client_id] = {
+                    "name": str(game.get("player_names", {}).get(seat, "")) or "ゲスト",
+                    "tag": str(game.get("player_tags", {}).get(seat, "")),
+                    "status": "playing",
+                    "wait_since": now,
+                    "games": 0,
+                    "pair_with": "",
+                }
+        else:
+            _schedule_gathering_matchmaking(reset_wait=True)
+    else:
+        game = GAMES.get(MEETING_ROOM_GID, {})
+        active_match = bool(
+            game.get("gathering_match")
+            and game.get("is_started")
+            and not game.get("match_finished")
+        )
+        if active_match:
+            GATHERING_EVENT_SETTINGS["ending"] = True
+            _cancel_gathering_match_task()
+        else:
+            await _gathering_finish_event()
+    if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
+        GATHERING_EVENT_SETTINGS.clear()
+        GATHERING_EVENT_SETTINGS.update(previous)
+        raise HTTPException(status_code=500, detail="集会室モードを永続保存できませんでした")
+    await _gathering_broadcast()
+    return _lobby_admin_payload()
+
+
+@app.post("/games/{game_id}/gathering/join")
+async def join_gathering(game_id: str, req: GatheringJoinRequest):
+    if game_id != MEETING_ROOM_GID or not GATHERING_EVENT_SETTINGS["enabled"]:
+        raise HTTPException(status_code=409, detail="現在、そろうごいた会は開催していません。")
+    if GATHERING_EVENT_SETTINGS["ending"]:
+        raise HTTPException(status_code=409, detail="そろうごいた会は終了処理中です。")
+    if not manager.has_client_connection(game_id, req.client_id):
+        raise HTTPException(status_code=409, detail="集会室へ接続してから参加してください。")
+    now = time.monotonic()
+    item = GATHERING_PARTICIPANTS.get(req.client_id)
+    if item is None:
+        item = {
+            "status": "waiting",
+            "wait_since": now,
+            "games": 0,
+            "pair_with": "",
+        }
+        GATHERING_PARTICIPANTS[req.client_id] = item
+    item["name"] = _sanitize_player_name(req.name) or "ゲスト"
+    item["tag"] = _sanitize_player_tag(req.tag)
+    if item.get("status") == "resting":
+        item["status"] = "waiting"
+        item["wait_since"] = now
+    _schedule_gathering_matchmaking(reset_wait=GATHERING_WAIT_DEADLINE is None)
+    await _gathering_broadcast()
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
+
+
+@app.post("/games/{game_id}/gathering/leave")
+async def leave_gathering(game_id: str, req: GatheringPresenceRequest):
+    if game_id != MEETING_ROOM_GID:
+        raise HTTPException(status_code=404, detail="集会室ではありません。")
+    game = GAMES.get(game_id, {})
+    human_seats = game.get("human_seats", {})
+    for seat, owner in list(human_seats.items()) if isinstance(human_seats, dict) else []:
+        if owner != req.client_id:
+            continue
+        del human_seats[seat]
+        _clear_player_name(game, seat)
+        if game.get("is_started") and not game.get("match_finished"):
+            ai_seats = _ai_seat_set(game)
+            ai_seats.add(seat)
+            _store_ai_seats(game, ai_seats)
+    _gathering_remove_participant(req.client_id)
+    _schedule_gathering_matchmaking()
+    await _gathering_broadcast()
+    return {"ok": True}
+
+
+@app.post("/games/{game_id}/gathering/rest")
+async def update_gathering_rest(game_id: str, req: GatheringRestRequest):
+    if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
+        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+    targets = {req.client_id}
+    partner = str(GATHERING_PARTICIPANTS[req.client_id].get("pair_with", ""))
+    if partner in GATHERING_PARTICIPANTS:
+        targets.add(partner)
+    now = time.monotonic()
+    for client_id in targets:
+        item = GATHERING_PARTICIPANTS[client_id]
+        if item.get("status") == "playing":
+            item["rest_after_match"] = bool(req.resting)
+        else:
+            item["status"] = "resting" if req.resting else "waiting"
+            item["wait_since"] = now
+    _schedule_gathering_matchmaking()
+    await _gathering_broadcast()
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
+
+
+@app.post("/games/{game_id}/gathering/pair/request")
+async def request_gathering_pair(game_id: str, req: GatheringPairRequest):
+    if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
+        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+    target = _gathering_client_from_public_id(req.target_id)
+    if not target or target == req.client_id:
+        raise HTTPException(status_code=400, detail="相手を選び直してください。")
+    source_item = GATHERING_PARTICIPANTS[req.client_id]
+    target_item = GATHERING_PARTICIPANTS[target]
+    if source_item.get("status") not in {"waiting", "resting"} or target_item.get("status") not in {"waiting", "resting"}:
+        raise HTTPException(status_code=409, detail="待機中または休憩中の相手に申し込めます。")
+    if source_item.get("pair_with") or target_item.get("pair_with"):
+        raise HTTPException(status_code=409, detail="すでに固定ペアが設定されています。")
+    GATHERING_PAIR_REQUESTS[req.client_id] = target
+    await _gathering_broadcast()
+    return {"ok": True}
+
+
+@app.post("/games/{game_id}/gathering/pair/accept")
+async def accept_gathering_pair(game_id: str, req: GatheringPairRequest):
+    if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
+        raise HTTPException(status_code=404, detail="集会室の参加者が見つかりません。")
+    requester = _gathering_client_from_public_id(req.target_id)
+    if not requester or GATHERING_PAIR_REQUESTS.get(requester) != req.client_id:
+        raise HTTPException(status_code=409, detail="ペア申請が見つかりません。")
+    if (
+        GATHERING_PARTICIPANTS[requester].get("status") not in {"waiting", "resting"}
+        or GATHERING_PARTICIPANTS[req.client_id].get("status") not in {"waiting", "resting"}
+    ):
+        raise HTTPException(status_code=409, detail="対局開始前だけ固定ペアを設定できます。")
+    if GATHERING_PARTICIPANTS[requester].get("pair_with") or GATHERING_PARTICIPANTS[req.client_id].get("pair_with"):
+        raise HTTPException(status_code=409, detail="すでに固定ペアが設定されています。")
+    GATHERING_PARTICIPANTS[requester]["pair_with"] = req.client_id
+    GATHERING_PARTICIPANTS[req.client_id]["pair_with"] = requester
+    for source, target in list(GATHERING_PAIR_REQUESTS.items()):
+        if source in {requester, req.client_id} or target in {requester, req.client_id}:
+            GATHERING_PAIR_REQUESTS.pop(source, None)
+    _schedule_gathering_matchmaking()
+    await _gathering_broadcast()
+    return {"ok": True}
 
 
 def _read_memory_counter(path: str) -> Optional[int]:
@@ -7159,6 +7789,8 @@ async def _vacate_room_seat(game_id, req):
 
 @app.post("/games/{game_id}/start")
 async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
+    if game_id == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]:
+        raise HTTPException(status_code=409, detail="集会室の対局は自動で始まります。")
     if requester != "A":
         raise HTTPException(status_code=403, detail="Only player in seat A can start.")
     if _is_main_game_id(game_id):
@@ -7186,6 +7818,8 @@ async def shuffle_waiting_room_seats(
     requester: str = "W",
     client_id: str = "",
 ):
+    if game_id == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]:
+        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
     if requester != "A":
         raise HTTPException(status_code=403, detail="A席のホストだけが席をシャッフルできます。")
     if is_score_room(game_id):
@@ -7594,6 +8228,12 @@ async def reset_game(
         raise HTTPException(status_code=404, detail="game not found")
 
     old_game = GAMES.get(game_id, {})
+    if (
+        game_id == MEETING_ROOM_GID
+        and GATHERING_EVENT_SETTINGS["enabled"]
+        and old_game.get("match_finished")
+    ):
+        raise HTTPException(status_code=409, detail="集会室の次の組み合わせを準備しています。")
     _require_human_seat_owner(old_game, "A", client_id)
     _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
@@ -7652,6 +8292,7 @@ async def reset_game(
     new_game["room_background_image"] = room_background_image
     new_game["hidden_from_lobby"] = hidden_from_lobby
     new_game["is_debug_room"] = is_debug_room
+    new_game["gathering_match"] = bool(old_game.get("gathering_match", False))
     new_game["debug_auto_next_round"] = debug_auto_next_round
     new_game["debug_auto_new_game"] = debug_auto_new_game
     new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
@@ -7734,6 +8375,12 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     dealer = _validate_seat(body.dealer, name="dealer")
     preset = body.preset_counts or {}
     old_game = GAMES.get(game_id, {})
+    if (
+        game_id == MEETING_ROOM_GID
+        and GATHERING_EVENT_SETTINGS["enabled"]
+        and old_game.get("match_finished")
+    ):
+        raise HTTPException(status_code=409, detail="集会室の次の組み合わせを準備しています。")
     _require_human_seat_owner(old_game, "A", body.client_id)
     _cancel_debug_auto_next_round_task(game_id)
     password = old_game.get("password")
@@ -7799,6 +8446,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["gathering_match"] = bool(old_game.get("gathering_match", False))
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
@@ -7837,6 +8485,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["room_background_image"] = room_background_image
         new_game["hidden_from_lobby"] = hidden_from_lobby
         new_game["is_debug_room"] = is_debug_room
+        new_game["gathering_match"] = bool(old_game.get("gathering_match", False))
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
@@ -8441,6 +9090,8 @@ async def vacate_private_room_seat(
 
 @app.post("/games/{game_id}/claim")
 async def claim_seat(game_id: str, seat: str, client_id: str = ""):
+    if game_id == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]:
+        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:
@@ -8449,6 +9100,15 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
     if not client_id:
         raise HTTPException(status_code=400, detail="client_id is required")
     game = GAMES[game_id]
+    if (
+        GATHERING_EVENT_SETTINGS["enabled"]
+        and game_id in GATHERING_HUMAN_PUBLIC_ROOM_IDS
+        and client_id not in set(game.get("human_seats", {}).values())
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="そろうごいた会の開催中は集会室をご利用ください。",
+        )
     
     hs = game.setdefault("human_seats", {})
     released_seats: List[str] = []
@@ -8501,6 +9161,12 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
         raise HTTPException(status_code=404, detail="game not found")
     seat = _validate_seat(seat, name="seat")
     game = GAMES[game_id]
+    gathering_release = bool(
+        game_id == MEETING_ROOM_GID
+        and client_id in GATHERING_PARTICIPANTS
+    )
+    if gathering_release:
+        _gathering_remove_participant(client_id)
     hs = game.setdefault("human_seats", {})
     if isinstance(hs, dict):
         if seat in hs and hs[seat] == client_id:
@@ -8509,6 +9175,10 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
             _clear_player_name(game, seat)
             await voice_manager.disconnect_seat(game_id, seat, client_id)
             _reset_public_deal_mode_after_host_leaves(game_id, game, {seat})
+            if gathering_release and game.get("is_started") and not game.get("match_finished"):
+                ai_seats = _ai_seat_set(game)
+                ai_seats.add(seat)
+                _store_ai_seats(game, ai_seats)
 
     remove_tutorial = bool(
         game.get("tutorial_mode", False)
@@ -8532,6 +9202,8 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
 
 @app.post("/games/{game_id}/set_ai")
 async def set_ai_seat(game_id: str, seat: str, enabled: bool = True, client_id: str = ""):
+    if game_id == MEETING_ROOM_GID and GATHERING_EVENT_SETTINGS["enabled"]:
+        raise HTTPException(status_code=409, detail="集会室の席は自動で決まります。")
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:
