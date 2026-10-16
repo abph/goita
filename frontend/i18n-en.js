@@ -645,6 +645,8 @@
     "集会室": "Meeting Room",
     "待機中": "Waiting",
     "対局者を待っています": "Waiting for players",
+    "開始待ち": "Waiting",
+    "入替中": "Rotating",
     "入れ替え中": "Rotating players",
     "対局中": "Playing",
     "終局": "Finished",
