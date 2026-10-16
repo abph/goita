@@ -137,7 +137,7 @@ GATHERING_WAIT_SECONDS = max(
     1, int(os.getenv("GOITA_GATHERING_WAIT_SECONDS", "300") or 300)
 )
 GATHERING_COUNTDOWN_SECONDS = max(
-    1, int(os.getenv("GOITA_GATHERING_COUNTDOWN_SECONDS", "15") or 15)
+    1, int(os.getenv("GOITA_GATHERING_COUNTDOWN_SECONDS", "5") or 5)
 )
 GATHERING_AUTO_NEXT_ROUND_DELAY_SECONDS = max(
     0.1,
@@ -786,14 +786,11 @@ async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bo
     if gathering_participant:
         participant = GATHERING_PARTICIPANTS.get(client_id, {})
         assigned_table_id = str(participant.get("assigned_table_id", ""))
-        if (
-            participant.get("status") == "selected"
-            and _gathering_dissolve_ready_table(assigned_table_id)
-        ):
-            _gathering_remove_participant(client_id)
-            _schedule_gathering_matchmaking()
-            await _gathering_broadcast()
-            return True
+        if participant.get("status") == "selected" and _is_gathering_table_id(assigned_table_id):
+            meta = GATHERING_TABLE_META.get(assigned_table_id, {})
+            meta["players"] = [
+                value for value in list(meta.get("players", [])) if value != client_id
+            ]
     human_seats = game.get("human_seats", {})
     if not isinstance(human_seats, dict):
         return False
@@ -6034,6 +6031,10 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
         "name": str(outgoing_item.get("name", "")) or "ゲスト",
     } if outgoing_target and outgoing_item else None
     own_table_id = str(own.get("assigned_table_id", "")) if own else ""
+    own_enter_remaining = (
+        max(0, int(float(own.get("enter_at", 0)) - now + 0.999))
+        if own else 0
+    )
     can_start_with_ai, ai_wait_remaining = _gathering_ai_start_state(client_id)
     tables = [
         snapshot
@@ -6077,6 +6078,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
         "own_status": str(own.get("status", "")) if own else "",
         "own_table_id": own_table_id,
         "own_table_name": _gathering_table_label(own_table_id) if own_table_id else "",
+        "own_enter_remaining": own_enter_remaining,
         "participants": participants,
         "incoming_pair_requests": incoming,
         "outgoing_pair_request": outgoing,
@@ -6471,36 +6473,74 @@ def _schedule_gathering_matchmaking(*, reset_wait: bool = False) -> None:
     GATHERING_MATCH_TASK = loop.create_task(_gathering_matchmaking_worker())
 
 
+def _gathering_select_exact(client_ids: List[str], count: int) -> List[str]:
+    """Choose exactly count people without splitting a reciprocal fixed pair."""
+    if count <= 0:
+        return []
+    units = _gathering_units(client_ids)
+    candidates: List[Tuple[str, ...]] = []
+    for size in range(1, len(units) + 1):
+        for chosen in itertools.combinations(units, size):
+            flat = tuple(value for unit in chosen for value in unit)
+            if len(flat) == count:
+                candidates.append(flat)
+    if not candidates:
+        return []
+    now = time.monotonic()
+    candidates.sort(key=lambda candidate: sum(
+        max(0.0, now - float(GATHERING_PARTICIPANTS[item].get("wait_since", now)))
+        for item in candidate
+    ), reverse=True)
+    return list(candidates[0])
+
+
+def _gathering_waiters_for_table(table_id: str) -> Tuple[List[str], Optional[float]]:
+    now = time.monotonic()
+    eligible: List[str] = []
+    blocked_deadlines: List[float] = []
+    for client_id in _gathering_connected_waiters():
+        item = GATHERING_PARTICIPANTS.get(client_id, {})
+        deadline = float(item.get("blocked_until", 0) or 0)
+        if item.get("blocked_table_id") == table_id and deadline > now:
+            blocked_deadlines.append(deadline)
+            continue
+        eligible.append(client_id)
+    return eligible, (min(blocked_deadlines) if blocked_deadlines else None)
+
+
 def _gathering_prepare_waiting_table(table_id: str, selected: List[str]) -> None:
-    """Seat four waiting players without starting the game."""
-    _reset_manual_gathering_table(table_id)
+    """Reserve a table and guide selected players there without choosing seats."""
+    meta = GATHERING_TABLE_META.get(table_id, {})
+    existing = [
+        client_id for client_id in list(meta.get("players", []))
+        if client_id in GATHERING_PARTICIPANTS
+        and GATHERING_PARTICIPANTS[client_id].get("assigned_table_id") == table_id
+    ]
+    if not existing:
+        _reset_manual_gathering_table(table_id)
+        meta = GATHERING_TABLE_META[table_id]
     game = GAMES[table_id]
-    groups = _gathering_team_groups(selected, last_players=[])
-    seats_by_group = (("A", "C"), ("B", "D"))
-    human_seats: Dict[str, str] = {}
-    names = {seat: "" for seat in ALL_SEATS}
-    tags = {seat: "" for seat in ALL_SEATS}
-    for group_index, group in enumerate(groups):
-        for member_index, client_id in enumerate(group[:2]):
-            seat = seats_by_group[group_index][member_index]
-            participant = GATHERING_PARTICIPANTS[client_id]
-            human_seats[seat] = client_id
-            names[seat] = str(participant.get("name", "")) or "ゲスト"
-            tags[seat] = str(participant.get("tag", ""))
-            participant["status"] = "selected"
-            participant["assigned_table_id"] = table_id
-    game["human_seats"] = human_seats
+    now = time.monotonic()
+    enter_at = now + GATHERING_COUNTDOWN_SECONDS
+    for client_id in selected:
+        participant = GATHERING_PARTICIPANTS[client_id]
+        participant["status"] = "selected"
+        participant["assigned_table_id"] = table_id
+        participant["enter_at"] = enter_at
+        participant.pop("blocked_table_id", None)
+        participant.pop("blocked_until", None)
+    players = list(dict.fromkeys([*existing, *selected]))
     game["ai_seats"] = []
-    game["player_names"] = names
-    game["player_tags"] = tags
     game["gathering_match"] = True
     game["gathering_table_id"] = table_id
     GATHERING_TABLE_META[table_id] = {
         "status": "ready",
-        "players": list(selected),
-        "last_players": [],
+        "players": players,
+        "last_players": list(meta.get("last_players", [])),
+        "retained_players": list(meta.get("retained_players", existing)),
         "uses_ai": False,
-        "assigned_at": time.monotonic(),
+        "assigned_at": now,
+        "countdown_until": enter_at,
     }
 
 
@@ -6528,31 +6568,38 @@ async def _gathering_matchmaking_worker() -> None:
     try:
         setup_manual_gathering_rooms()
         while GATHERING_EVENT_SETTINGS["enabled"] and not GATHERING_EVENT_SETTINGS["ending"]:
-            waiters = _gathering_connected_waiters()
-            if len(waiters) < 4:
-                break
-            available_tables = [
-                table_id for table_id in GATHERING_TABLE_IDS
-                if GATHERING_TABLE_META.get(table_id, {}).get("status") == "idle"
-                and not GAMES.get(table_id, {}).get("is_started")
-                and not _human_seat_set(GAMES.get(table_id, {}))
-                and not _gathering_table_has_pending_returns(table_id)
-                and table_id not in GATHERING_TABLE_TASKS
-            ]
-            if not available_tables:
-                break
-            selected: List[str] = []
-            for unit in _gathering_units(waiters):
-                if len(selected) + len(unit) > 4:
+            progressed = False
+            wake_deadlines: List[float] = []
+            table_ids = sorted(
+                GATHERING_TABLE_IDS,
+                key=lambda value: 0 if GATHERING_TABLE_META.get(value, {}).get("players") else 1,
+            )
+            for table_id in table_ids:
+                game = GAMES.get(table_id, {})
+                meta = GATHERING_TABLE_META.get(table_id, {})
+                if game.get("is_started") or meta.get("status") not in {"idle", "ready"}:
                     continue
-                selected.extend(unit)
-                if len(selected) == 4:
-                    break
-            if len(selected) != 4:
+                current = [
+                    client_id for client_id in list(meta.get("players", []))
+                    if client_id in GATHERING_PARTICIPANTS
+                    and GATHERING_PARTICIPANTS[client_id].get("assigned_table_id") == table_id
+                ]
+                needed = 4 - len(current)
+                if needed <= 0:
+                    continue
+                waiters, blocked_until = _gathering_waiters_for_table(table_id)
+                if blocked_until:
+                    wake_deadlines.append(blocked_until)
+                selected = _gathering_select_exact(waiters, needed)
+                if len(selected) != needed:
+                    continue
+                _gathering_prepare_waiting_table(table_id, selected)
+                progressed = True
+                await _gathering_broadcast()
+            if wake_deadlines:
+                _schedule_gathering_wake(min(wake_deadlines))
+            if not progressed:
                 break
-            table_id = available_tables[0]
-            _gathering_prepare_waiting_table(table_id, selected)
-            await _gathering_broadcast()
     except asyncio.CancelledError:
         return
     finally:
@@ -6605,27 +6652,66 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
         if item.get("status") == "playing"
         and item.get("assigned_table_id") == table_id
     ]
-    if (
-        not completed_players
-        and GATHERING_TABLE_META.get(table_id, {}).get("status") == "finished"
-    ):
+    if not completed_players:
         return
     GATHERING_LAST_PLAYERS[:] = completed_players
     now = time.monotonic()
+    units = _gathering_units(completed_players)
+    retained_options: List[List[str]] = []
+    for size in range(1, len(units) + 1):
+        for chosen in itertools.combinations(units, size):
+            flat = [value for unit in chosen for value in unit]
+            if len(flat) == 2:
+                retained_options.append(flat)
+    retained = (
+        random.choice(retained_options)
+        if retained_options
+        else random.sample(completed_players, min(2, len(completed_players)))
+    )
+    retained_set = set(retained)
+    outgoing = [client_id for client_id in completed_players if client_id not in retained_set]
+    old_game = GAMES.get(table_id, {})
+    old_human_seats = dict(old_game.get("human_seats", {}))
+    old_names = dict(old_game.get("player_names", {}))
+    old_tags = dict(old_game.get("player_tags", {}))
     for client_id in completed_players:
         item = GATHERING_PARTICIPANTS.get(client_id)
         if not item:
             continue
         item["games"] = int(item.get("games", 0)) + 1
         item.pop("rest_after_match", None)
-        item["status"] = "finished"
-        item["assigned_table_id"] = table_id
+        item.pop("enter_at", None)
+    _reset_manual_gathering_table(table_id)
+    game = GAMES[table_id]
+    retained_seats = {
+        seat: client_id for seat, client_id in old_human_seats.items()
+        if client_id in retained_set
+    }
+    game["human_seats"] = retained_seats
+    for seat, client_id in retained_seats.items():
+        game["player_names"][seat] = old_names.get(seat, "")
+        game["player_tags"][seat] = old_tags.get(seat, "")
+        item = GATHERING_PARTICIPANTS.get(client_id)
+        if item:
+            item["status"] = "selected"
+            item["assigned_table_id"] = table_id
+    for client_id in outgoing:
+        item = GATHERING_PARTICIPANTS.get(client_id)
+        if not item:
+            continue
+        item["status"] = "waiting"
+        item["assigned_table_id"] = MEETING_ROOM_GID
+        item["wait_since"] = now
+        item["blocked_table_id"] = table_id
+        item["blocked_until"] = now + GATHERING_WAIT_SECONDS
     GATHERING_TABLE_META[table_id] = {
-        "status": "finished",
+        "status": "ready",
+        "players": retained,
+        "retained_players": retained,
         "last_players": completed_players,
         "completed_at": now,
-        "ready_at": now + GATHERING_WAIT_SECONDS,
-        "uses_ai": bool(_ai_seat_set(GAMES.get(table_id, {}))),
+        "uses_ai": False,
+        "countdown_until": 0.0,
     }
     GATHERING_WAIT_DEADLINE = now + GATHERING_WAIT_SECONDS
     if GATHERING_EVENT_SETTINGS["ending"]:
@@ -6634,6 +6720,7 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
         else:
             await _gathering_broadcast()
         return
+    _schedule_gathering_matchmaking()
     await _gathering_broadcast()
 
 
@@ -6662,6 +6749,16 @@ def _gathering_close_empty_table(table_id: str) -> None:
         return
     game = GAMES.get(table_id)
     if not game or _human_seat_set(game):
+        return
+    meta = GATHERING_TABLE_META.get(table_id, {})
+    reserved = [
+        client_id for client_id in list(meta.get("players", []))
+        if client_id in GATHERING_PARTICIPANTS
+        and GATHERING_PARTICIPANTS[client_id].get("assigned_table_id") == table_id
+    ]
+    if reserved:
+        meta["players"] = reserved
+        meta["status"] = "ready"
         return
     _reset_manual_gathering_table(table_id)
     if (
@@ -7744,8 +7841,11 @@ async def leave_gathering(game_id: str, req: GatheringPresenceRequest):
         raise HTTPException(status_code=404, detail="集会室ではありません。")
     item = GATHERING_PARTICIPANTS.get(req.client_id, {})
     assigned_table_id = str(item.get("assigned_table_id", ""))
-    if item.get("status") == "selected":
-        _gathering_dissolve_ready_table(assigned_table_id)
+    if item.get("status") == "selected" and _is_gathering_table_id(assigned_table_id):
+        meta = GATHERING_TABLE_META.get(assigned_table_id, {})
+        meta["players"] = [
+            value for value in list(meta.get("players", [])) if value != req.client_id
+        ]
     for table_id in GATHERING_TABLE_IDS:
         game = GAMES.get(table_id, {})
         human_seats = game.get("human_seats", {})
@@ -7777,11 +7877,26 @@ async def return_gathering_to_waiting(game_id: str, req: GatheringPresenceReques
         raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     table_id = str(item.get("assigned_table_id", ""))
     if item.get("status") == "selected":
-        _gathering_dissolve_ready_table(table_id)
-        item = GATHERING_PARTICIPANTS.get(req.client_id, item)
+        game = GAMES.get(table_id, {}) if _is_gathering_table_id(table_id) else {}
+        human_seats = game.get("human_seats", {})
+        if isinstance(human_seats, dict):
+            for seat, owner in list(human_seats.items()):
+                if owner == req.client_id:
+                    del human_seats[seat]
+                    _clear_player_name(game, seat)
+                    await voice_manager.disconnect_seat(table_id, seat, req.client_id)
+        meta = GATHERING_TABLE_META.get(table_id, {})
+        meta["players"] = [
+            value for value in list(meta.get("players", [])) if value != req.client_id
+        ]
         item["status"] = "waiting"
-        item["assigned_table_id"] = ""
+        item["assigned_table_id"] = MEETING_ROOM_GID
         item["wait_since"] = time.monotonic()
+        item["blocked_table_id"] = table_id
+        item["blocked_until"] = item["wait_since"] + GATHERING_WAIT_SECONDS
+        item.pop("enter_at", None)
+        if not meta.get("players"):
+            _reset_manual_gathering_table(table_id)
         _schedule_gathering_matchmaking()
         await _gathering_broadcast()
         return {
@@ -8592,6 +8707,19 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
         game["gathering_table_id"] = game_id
         player_ids = list(dict.fromkeys(game.get("human_seats", {}).values()))
         now = time.monotonic()
+        reserved_ids = list(GATHERING_TABLE_META.get(game_id, {}).get("players", []))
+        for participant_id in reserved_ids:
+            if participant_id in player_ids:
+                continue
+            participant = GATHERING_PARTICIPANTS.get(participant_id)
+            if not participant:
+                continue
+            participant["status"] = "waiting"
+            participant["assigned_table_id"] = MEETING_ROOM_GID
+            participant["wait_since"] = now
+            participant["blocked_table_id"] = game_id
+            participant["blocked_until"] = now + GATHERING_WAIT_SECONDS
+            participant.pop("enter_at", None)
         for participant_id in player_ids:
             participant = GATHERING_PARTICIPANTS.get(participant_id)
             if not participant:
@@ -8599,6 +8727,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
             participant["status"] = "playing"
             participant["assigned_table_id"] = game_id
             participant["last_played_at"] = now
+            participant.pop("enter_at", None)
         GATHERING_TABLE_META[game_id] = {
             "status": "playing",
             "players": player_ids,
@@ -8606,6 +8735,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
             "uses_ai": bool(_ai_seat_set(game)),
             "started_at": now,
         }
+        _schedule_gathering_matchmaking()
     _arm_turn_timeout(game_id)
 
     if gathering_table:
@@ -8622,7 +8752,7 @@ async def shuffle_waiting_room_seats(
     client_id: str = "",
 ):
     if _is_gathering_channel(game_id) and GATHERING_EVENT_SETTINGS["enabled"]:
-        raise HTTPException(status_code=409, detail="そろうごいた会の席は自動で決まります。")
+        raise HTTPException(status_code=409, detail="そろうごいた会では席シャッフルを利用できません。")
     if requester != "A":
         raise HTTPException(status_code=403, detail="A席のホストだけが席をシャッフルできます。")
     if is_score_room(game_id):
@@ -9933,12 +10063,19 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         if not participant:
             raise HTTPException(status_code=409, detail="先に待合室から、そろうごいた会へ参加してください。")
         status = str(participant.get("status", ""))
-        if not game.get("is_started"):
+        assigned_table_id = str(participant.get("assigned_table_id", ""))
+        assigned_before_start = bool(
+            not game.get("is_started")
+            and status == "selected"
+            and assigned_table_id == game_id
+            and GATHERING_TABLE_META.get(game_id, {}).get("status") == "ready"
+        )
+        if not game.get("is_started") and not assigned_before_start:
             raise HTTPException(
                 status_code=409,
-                detail="待機中の4人を空いている卓へ自動で着席させます。",
+                detail="待合室から案内された卓で席を選んでください。",
             )
-        if status not in {"waiting", "resting"}:
+        if not assigned_before_start and status not in {"waiting", "resting"}:
             raise HTTPException(status_code=409, detail="別の卓への着席中または対局中です。")
         if game.get("match_finished"):
             raise HTTPException(status_code=409, detail="この卓の対局は終了しています。")
@@ -9968,12 +10105,14 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         game.setdefault("player_tags", {item: "" for item in ALL_SEATS})[seat] = str(
             participant.get("tag", "")
         )
-        participant["status"] = "playing"
+        participant["status"] = "selected" if assigned_before_start else "playing"
         participant["assigned_table_id"] = game_id
-        participant["last_played_at"] = time.monotonic()
+        if not assigned_before_start:
+            participant["last_played_at"] = time.monotonic()
         meta = GATHERING_TABLE_META.setdefault(game_id, {"status": "idle"})
-        meta["status"] = "playing" if game.get("is_started") else "idle"
-        meta["players"] = list(dict.fromkeys(human_seats.values()))
+        meta["status"] = "ready" if assigned_before_start else "playing"
+        if not assigned_before_start:
+            meta["players"] = list(dict.fromkeys(human_seats.values()))
         meta["uses_ai"] = bool(ai_seats)
         manager.cancel_disconnect_release(game_id, client_id)
         for released_seat in released_seats:
@@ -10067,6 +10206,14 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
         _is_gathering_channel(game_id)
         and client_id in GATHERING_PARTICIPANTS
     )
+    gathering_participant = GATHERING_PARTICIPANTS.get(client_id, {}) if gathering_release else {}
+    gathering_ready_move = bool(
+        _is_gathering_table_id(game_id)
+        and not game.get("is_started")
+        and gathering_participant.get("status") == "selected"
+        and gathering_participant.get("assigned_table_id") == game_id
+        and GATHERING_TABLE_META.get(game_id, {}).get("status") == "ready"
+    )
     hs = game.setdefault("human_seats", {})
     if isinstance(hs, dict):
         if seat in hs and hs[seat] == client_id:
@@ -10082,15 +10229,16 @@ async def release_seat(game_id: str, seat: str, client_id: str = ""):
 
     if gathering_release and _is_gathering_table_id(game_id):
         participant = GATHERING_PARTICIPANTS.get(client_id)
-        if participant:
+        if participant and not gathering_ready_move:
             participant.pop("rest_after_match", None)
             participant["status"] = "waiting"
             participant["assigned_table_id"] = ""
             participant["wait_since"] = time.monotonic()
         meta = GATHERING_TABLE_META.setdefault(game_id, {"status": "idle"})
-        meta["players"] = list(dict.fromkeys(hs.values())) if isinstance(hs, dict) else []
+        if not gathering_ready_move:
+            meta["players"] = list(dict.fromkeys(hs.values())) if isinstance(hs, dict) else []
         meta["uses_ai"] = bool(_ai_seat_set(game))
-        if not game.get("is_started"):
+        if not game.get("is_started") and not gathering_ready_move:
             meta["status"] = "idle"
         if game.get("match_finished") and not _gathering_table_has_pending_returns(game_id):
             _reset_manual_gathering_table(game_id)

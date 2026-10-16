@@ -5439,7 +5439,7 @@
   <section id="lobbyRoomsSection" class="card lobby-room-section lobby-section-card" style="margin-bottom: 24px; text-align: center;">
     <div id="gatheringLobbyBanner" class="gathering-lobby-banner" hidden>
       <strong>現在、「そろうごいた会」を開催しています！</strong>
-      <span id="gatheringLobbySummary">待合室で4人そろうと、空いている卓へ自動で案内します。</span>
+      <span id="gatheringLobbySummary">組み合わせが決まると、5秒後に空いている卓へ案内します。</span>
       <button type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
     </div>
     <div class="lobby-room-category-nav" role="tablist" aria-label="表示する対局ルーム">
@@ -5864,7 +5864,7 @@
   <div class="modal-content gathering-welcome-content" role="dialog" aria-modal="true" aria-labelledby="gatheringWelcomeTitle" onclick="event.stopPropagation()">
     <h2 id="gatheringWelcomeTitle">現在、「そろうごいた会」を開催しています！</h2>
     <p><strong>開催中は、通常の対人公開部屋は利用できません。</strong></p>
-    <p>待合室で4人そろうと、空いている卓へ自動で案内します。着席後はA席の人が対局を開始します。</p>
+    <p>組み合わせが決まると、5秒後に空いている卓へ案内します。卓では席を選び、A席の人が対局を開始します。</p>
     <p><strong>みんなとごいたをしませんか？</strong></p>
     <div class="gathering-welcome-actions">
       <button class="primary" type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
@@ -8311,6 +8311,8 @@ function closeSiteInfo(event) {
 // 状態管理変数
 let gid = MAIN_GID;
 let latestGatheringEvent = null;
+let gatheringAutoEnterTimer = null;
+let gatheringAutoEnterTarget = "";
 let gatheringPairTargetId = "";
 const WATCH = "W";
 let currentWsGid = null;
@@ -10259,7 +10261,7 @@ async function handleRoomReturn() {
         const activeMatch = latestState?.is_started === true;
         const confirmed = window.confirm(activeMatch
             ? "対局中です。席をAIに任せて待合室へ戻りますか？"
-            : "対局開始前です。この卓の4人を待機中に戻して、待合室へ戻りますか？"
+            : "対局開始前です。自分だけ待合室へ戻りますか？"
         );
         if (!confirmed) return;
     }
@@ -10297,7 +10299,7 @@ function updateGatheringLobby(event) {
     if (banner) banner.hidden = !active || !!latestGatheringEvent?.ending;
     const summary = document.getElementById("gatheringLobbySummary");
     if (summary && active) {
-        summary.textContent = `対局中 ${Number(latestGatheringEvent.active_table_count || 0)}卓・待機 ${Number(latestGatheringEvent.waiting_count || 0)}人。4人そろうと空いている卓へ自動で案内します。`;
+        summary.textContent = `対局中 ${Number(latestGatheringEvent.active_table_count || 0)}卓・待機 ${Number(latestGatheringEvent.waiting_count || 0)}人。組み合わせが決まると5秒後に卓へ案内します。`;
     }
     if (!active || latestGatheringEvent?.ending || gid === MEETING_ROOM_GID) return;
     let seen = false;
@@ -10684,13 +10686,21 @@ function renderGatheringRoom(event) {
     } else if (!inWaitingRoom && currentTableSnapshot?.is_started) {
         status.textContent = "対局中です。空いたAI席には待機中の人が途中参加できます。";
     } else if (!inWaitingRoom && currentTableSnapshot?.status === "ready") {
-        status.textContent = "4人そろいました。A席の人が対局を開始してください。";
+        status.textContent = "案内された4人で席を選び、A席の人が対局を開始してください。";
     } else if (!inWaitingRoom) {
-        status.textContent = "待機中の4人がそろうと、この卓へ自動で着席します。";
+        status.textContent = "案内された人が手動で席を選びます。";
     } else if (latestGatheringEvent.own_status === "finished") {
         status.textContent = "対局終了。左上の「←」で待合室へ戻れます。";
+    } else if (
+        latestGatheringEvent.own_status === "selected"
+        && latestGatheringEvent.own_table_name
+    ) {
+        const remaining = Math.max(0, Number(latestGatheringEvent.own_enter_remaining || 0));
+        status.textContent = remaining > 0
+            ? `${remaining}秒後に${latestGatheringEvent.own_table_name}へ移動します。`
+            : `${latestGatheringEvent.own_table_name}へ移動します。`;
     } else {
-        status.textContent = "待機中の4人がそろうと、空いている卓へ自動で案内します。卓を押すと観戦できます。";
+        status.textContent = "組み合わせが決まると、5秒後に空いている卓へ案内します。卓を押すと観戦できます。";
     }
     const participants = Array.isArray(latestGatheringEvent.participants) ? latestGatheringEvent.participants : [];
     const setGatheringPlayerAction = (action, hidden, label = "") => {
@@ -17585,6 +17595,7 @@ async function refreshFromState(confirmedState = null){
     }
     const assignedGatheringTable = String(state.gathering_event?.own_table_id || "");
     const gatheringStatus = String(state.gathering_event?.own_status || "");
+    const gatheringEnterRemaining = Math.max(0, Number(state.gathering_event?.own_enter_remaining || 0));
     if (
       GATHERING_TABLE_IDS.has(gid)
       && assignedGatheringTable === MEETING_ROOM_GID
@@ -17599,8 +17610,30 @@ async function refreshFromState(confirmedState = null){
       && assignedGatheringTable !== gid
       && ["selected", "playing"].includes(gatheringStatus)
     ) {
-      await enterRoom(assignedGatheringTable, gatheringLobbyTableName(assignedGatheringTable));
-      return;
+      if (gatheringStatus === "selected" && gatheringEnterRemaining > 0) {
+        if (!gatheringAutoEnterTimer || gatheringAutoEnterTarget !== assignedGatheringTable) {
+          if (gatheringAutoEnterTimer) window.clearTimeout(gatheringAutoEnterTimer);
+          gatheringAutoEnterTarget = assignedGatheringTable;
+          gatheringAutoEnterTimer = window.setTimeout(async () => {
+            gatheringAutoEnterTimer = null;
+            const target = gatheringAutoEnterTarget;
+            gatheringAutoEnterTarget = "";
+            if (GATHERING_TABLE_IDS.has(target)) {
+              await enterRoom(target, gatheringLobbyTableName(target));
+            }
+          }, gatheringEnterRemaining * 1000 + 100);
+        }
+      } else {
+        if (gatheringAutoEnterTimer) window.clearTimeout(gatheringAutoEnterTimer);
+        gatheringAutoEnterTimer = null;
+        gatheringAutoEnterTarget = "";
+        await enterRoom(assignedGatheringTable, gatheringLobbyTableName(assignedGatheringTable));
+        return;
+      }
+    } else if (gatheringAutoEnterTimer) {
+      window.clearTimeout(gatheringAutoEnterTimer);
+      gatheringAutoEnterTimer = null;
+      gatheringAutoEnterTarget = "";
     }
   }
   syncSharedKifuViewer(state);

@@ -164,7 +164,7 @@ def test_fixed_pair_is_seated_as_partners_and_ai_fills_shortage(monkeypatch):
     assert game["gathering_match"] is True
 
 
-def test_matchmaking_seats_four_players_without_starting_game(monkeypatch):
+def test_matchmaking_guides_four_players_without_choosing_seats(monkeypatch):
     async def scenario():
         players = {
             client_id: participant(client_id)
@@ -195,11 +195,15 @@ def test_matchmaking_seats_four_players_without_starting_game(monkeypatch):
         monkeypatch.setattr(app_module, "_arm_turn_timeout", lambda _game_id: None)
 
         await app_module._gathering_matchmaking_worker()
-        game = games[app_module.GATHERING_TABLE_IDS[0]]
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        game = games[table_id]
         assert game["is_started"] is False
-        assert set(game["human_seats"].values()) == set(players)
+        assert game["human_seats"] == {}
         assert all(item["status"] == "selected" for item in players.values())
-        assert app_module.GATHERING_TABLE_META[app_module.GATHERING_TABLE_IDS[0]]["status"] == "ready"
+        assert all(item["assigned_table_id"] == table_id for item in players.values())
+        assert all(item["enter_at"] > time.monotonic() for item in players.values())
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == set(players)
+        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "ready"
         assert app_module.GATHERING_TABLE_TASKS == {}
 
     asyncio.run(scenario())
@@ -242,7 +246,11 @@ def test_matchmaking_opens_at_most_four_tables(monkeypatch):
             if table_id in games
         ]
         assert len(active_games) == 4
-        assert sum(len(game["human_seats"]) for game in active_games) == 16
+        assert sum(len(game["human_seats"]) for game in active_games) == 0
+        assert sum(
+            len(app_module.GATHERING_TABLE_META[table_id]["players"])
+            for table_id in app_module.GATHERING_TABLE_IDS
+        ) == 16
         assert sum(item["status"] == "waiting" for item in players.values()) == 4
         assert all(game["is_started"] is False for game in active_games)
         assert all(
@@ -597,7 +605,7 @@ def test_ending_event_waits_until_every_active_table_finishes(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_completed_players_wait_for_manual_return(monkeypatch):
+def test_completed_match_keeps_two_and_returns_two_to_waiting(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
@@ -625,32 +633,119 @@ def test_completed_players_wait_for_manual_return(monkeypatch):
 
         await app_module._gathering_match_completed(table_id)
 
-        assert all(item["status"] == "finished" for item in players.values())
-        assert all(item["assigned_table_id"] == table_id for item in players.values())
-        assert app_module._gathering_connected_waiters() == []
-        assert app_module._gathering_table_has_pending_returns(table_id) is True
+        retained = {
+            client_id for client_id, item in players.items()
+            if item["status"] == "selected"
+        }
+        outgoing = set(players) - retained
+        assert len(retained) == 2
+        assert len(outgoing) == 2
+        assert all(players[client_id]["assigned_table_id"] == table_id for client_id in retained)
+        assert all(players[client_id]["status"] == "waiting" for client_id in outgoing)
+        assert all(players[client_id]["assigned_table_id"] == app_module.MEETING_ROOM_GID for client_id in outgoing)
+        assert all(players[client_id]["blocked_table_id"] == table_id for client_id in outgoing)
+        assert set(app_module.GAMES[table_id]["human_seats"].values()) == retained
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == retained
         await app_module._gathering_match_completed(table_id)
         assert app_module.GATHERING_TABLE_META[table_id]["last_players"] == ["a", "b", "c", "d"]
+        assert app_module.GAMES[table_id]["is_started"] is False
+        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "ready"
 
-        await app_module.return_gathering_to_waiting(
-            app_module.MEETING_ROOM_GID,
-            app_module.GatheringPresenceRequest(client_id="a"),
+    asyncio.run(scenario())
+
+
+def test_completed_table_guides_two_different_waiters_and_blocks_immediate_return(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d", "e", "f")}
+        for client_id in ("a", "b", "c", "d"):
+            players[client_id]["status"] = "playing"
+            players[client_id]["assigned_table_id"] = table_id
+        game = app_module._create_game_obj(dealer="A")
+        game["is_started"] = True
+        game["match_finished"] = True
+        game["human_seats"] = dict(zip(("A", "B", "C", "D"), ("a", "b", "c", "d")))
+        games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A"), table_id: game}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_LAST_PLAYERS", [])
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+            table_id: {"status": "playing", "players": ["a", "b", "c", "d"]}
+        })
+        monkeypatch.setattr(app_module, "GATHERING_MATCH_TASK", None)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+        monkeypatch.setattr(
+            app_module.manager,
+            "has_client_connection",
+            lambda _game_id, client_id: client_id in players,
         )
 
-        assert players["a"]["status"] == "waiting"
-        assert players["a"]["assigned_table_id"] == ""
-        assert "A" not in game["human_seats"]
-        assert app_module._gathering_table_has_pending_returns(table_id) is True
+        async def no_broadcast(*_args, **_kwargs):
+            return None
 
-        for client_id in ("b", "c", "d"):
-            await app_module.return_gathering_to_waiting(
-                app_module.MEETING_ROOM_GID,
-                app_module.GatheringPresenceRequest(client_id=client_id),
-            )
-        assert app_module._gathering_table_has_pending_returns(table_id) is False
-        assert app_module.GAMES[table_id]["is_started"] is False
-        assert app_module.GAMES[table_id]["human_seats"] == {}
-        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "idle"
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        monkeypatch.setattr(app_module.manager, "broadcast_update", no_broadcast)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+        monkeypatch.setattr(app_module, "_schedule_gathering_wake", lambda _deadline: None)
+
+        await app_module._gathering_match_completed(table_id)
+        retained = {
+            client_id for client_id in ("a", "b", "c", "d")
+            if players[client_id]["status"] == "selected"
+        }
+        outgoing = {"a", "b", "c", "d"} - retained
+
+        await app_module._gathering_matchmaking_worker()
+
+        reserved = set(app_module.GATHERING_TABLE_META[table_id]["players"])
+        assert reserved == retained | {"e", "f"}
+        assert reserved.isdisjoint(outgoing)
+        assert all(players[client_id]["status"] == "selected" for client_id in ("e", "f"))
+        assert all(players[client_id]["enter_at"] > time.monotonic() for client_id in ("e", "f"))
+        assert set(app_module.GAMES[table_id]["human_seats"].values()) == retained
+
+    asyncio.run(scenario())
+
+
+def test_rotation_never_splits_a_fixed_pair(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {
+            "pair-a": participant("ペアA", pair_with="pair-b"),
+            "pair-b": participant("ペアB", pair_with="pair-a"),
+            "solo-c": participant("C"),
+            "solo-d": participant("D"),
+        }
+        for item in players.values():
+            item["status"] = "playing"
+            item["assigned_table_id"] = table_id
+        game = app_module._create_game_obj(dealer="A")
+        game["is_started"] = True
+        game["match_finished"] = True
+        game["human_seats"] = dict(zip(("A", "B", "C", "D"), players))
+        monkeypatch.setattr(app_module, "GAMES", {table_id: game})
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_LAST_PLAYERS", [])
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+            table_id: {"status": "playing", "players": list(players)}
+        })
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        await app_module._gathering_match_completed(table_id)
+
+        retained = {
+            client_id for client_id, item in players.items()
+            if item["status"] == "selected"
+        }
+        assert ("pair-a" in retained) == ("pair-b" in retained)
 
     asyncio.run(scenario())
 
@@ -692,7 +787,7 @@ def test_returning_during_match_replaces_player_with_ai(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_returning_before_start_dissolves_assignment_for_all_four(monkeypatch):
+def test_returning_before_start_only_removes_that_player(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
@@ -717,13 +812,14 @@ def test_returning_before_start_dissolves_assignment_for_all_four(monkeypatch):
         )
 
         assert players["a"]["status"] == "waiting"
-        assert players["a"]["assigned_table_id"] == ""
+        assert players["a"]["assigned_table_id"] == app_module.MEETING_ROOM_GID
         assert all(
-            players[client_id]["assigned_table_id"] == app_module.MEETING_ROOM_GID
+            players[client_id]["assigned_table_id"] == table_id
             for client_id in ("b", "c", "d")
         )
         assert games[table_id]["human_seats"] == {}
-        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "idle"
+        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "ready"
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == {"b", "c", "d"}
 
     asyncio.run(scenario())
 
@@ -850,7 +946,7 @@ def test_waiting_participant_can_take_over_gathering_ai_seat(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_fixed_pair_is_automatically_seated_on_same_team(monkeypatch):
+def test_fixed_pair_is_guided_to_the_same_table(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A")}
@@ -879,18 +975,15 @@ def test_fixed_pair_is_automatically_seated_on_same_team(monkeypatch):
 
         await app_module._gathering_matchmaking_worker()
         game = games[table_id]
-        pair_seats = {
-            seat for seat, owner in game["human_seats"].items()
-            if owner in {"pair-a", "pair-b"}
-        }
-
-        assert pair_seats in ({"A", "C"}, {"B", "D"})
+        assert game["human_seats"] == {}
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == set(players)
+        assert players["pair-a"]["assigned_table_id"] == players["pair-b"]["assigned_table_id"]
         assert all(item["status"] == "selected" for item in players.values())
 
     asyncio.run(scenario())
 
 
-def test_automatically_seated_host_can_start_gathering_table(monkeypatch):
+def test_manually_seated_host_can_start_gathering_table(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A")}
@@ -920,6 +1013,8 @@ def test_automatically_seated_host_can_start_gathering_table(monkeypatch):
 
         await app_module._gathering_matchmaking_worker()
         table = games[table_id]
+        for seat, client_id in zip(("A", "B", "C", "D"), players):
+            await app_module.claim_seat(table_id, seat, client_id=client_id)
         host_client_id = table["human_seats"]["A"]
         assert len(table["human_seats"]) == 4
         assert app_module._ai_seat_set(table) == set()
@@ -961,8 +1056,56 @@ def test_gathering_player_cannot_claim_seat_before_automatic_assignment(monkeypa
             await app_module.claim_seat(table_id, "B", client_id="player")
 
         assert error.value.status_code == 409
-        assert "自動で着席" in str(error.value.detail)
+        assert "案内された卓" in str(error.value.detail)
         assert games[table_id]["human_seats"] == {}
+
+    asyncio.run(scenario())
+
+
+def test_assigned_gathering_player_can_leave_and_take_another_open_seat(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
+        games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A")}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {})
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module.manager, "broadcast_update", no_broadcast)
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        app_module.setup_manual_gathering_rooms()
+        app_module._gathering_prepare_waiting_table(table_id, list(players))
+        game = games[table_id]
+        await app_module.claim_seat(table_id, "A", client_id="a")
+        await app_module.claim_seat(table_id, "B", client_id="b")
+        original_seat = "A"
+
+        await app_module.release_seat(table_id, original_seat, client_id="a")
+
+        assert players["a"]["status"] == "selected"
+        assert players["a"]["assigned_table_id"] == table_id
+        assert original_seat not in game["human_seats"]
+        assert app_module.GATHERING_TABLE_META[table_id]["status"] == "ready"
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == set(players)
+
+        other_owner, other_seat = next(
+            (owner, seat)
+            for seat, owner in game["human_seats"].items()
+            if owner != "a"
+        )
+        await app_module.release_seat(table_id, other_seat, client_id=other_owner)
+        response = await app_module.claim_seat(table_id, other_seat, client_id="a")
+        await app_module.claim_seat(table_id, original_seat, client_id=other_owner)
+
+        assert response["ok"] is True
+        assert game["human_seats"][other_seat] == "a"
+        assert game["human_seats"][original_seat] == other_owner
+        assert all(item["status"] == "selected" for item in players.values())
 
     asyncio.run(scenario())
 
