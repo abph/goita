@@ -382,7 +382,7 @@
     "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。": "The server is mainly run in Japanese. Posts in English and Chinese are also welcome.",
     "Discordサーバーに参加する": "Join the Discord Server",
     "Discordで対局相手を探す": "Find Players on Discord",
-    "対局募集、質問、感想・改善要望などに利用できます。": "Find matches, ask questions, and share feedback or suggestions.",
+    "初心者歓迎。対局募集、質問、感想・改善要望などに利用できます。": "Beginners welcome. Find matches, ask questions, and share feedback or suggestions.",
     "Discordに参加する": "Join Discord",
     "サイト情報": "Site Information",
     "表示言語": "Language",

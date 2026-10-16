@@ -77,7 +77,7 @@ def test_discord_community_is_available_from_lobby_and_menus() -> None:
     assert 'href: "https://discord.gg/JvNE7VfDXQ"' in html
     for source in [
         "Discordで対局相手を探す",
-        "対局募集、質問、感想・改善要望などに利用できます。",
+        "初心者歓迎。対局募集、質問、感想・改善要望などに利用できます。",
         "Discordを見る",
         "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
         "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
