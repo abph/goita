@@ -5437,11 +5437,6 @@
   </section>
 
   <section id="lobbyRoomsSection" class="card lobby-room-section lobby-section-card" style="margin-bottom: 24px; text-align: center;">
-    <div id="gatheringLobbyBanner" class="gathering-lobby-banner" hidden>
-      <strong>現在、「そろうごいた会」を開催しています！</strong>
-      <span id="gatheringLobbySummary">組み合わせが決まると、5秒後に空いている卓へ案内します。</span>
-      <button type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
-    </div>
     <div class="lobby-room-category-nav" role="tablist" aria-label="表示する対局ルーム">
       <button id="lobbyPublicRoomsTab" class="lobby-room-category-tab" type="button" role="tab" aria-label="公開部屋を表示" aria-selected="true" aria-controls="lobbyPublicRoomsPanel" onclick="showLobbyRoomCategory('public')" onkeydown="handleLobbyRoomCategoryKeydown(event)">← 公開部屋</button>
       <h2 class="lobby-section-heading lobby-room-category-title">対局ルーム</h2>
@@ -5449,8 +5444,26 @@
     </div>
     <div class="lobby-room-section-body">
      <div id="lobbyPublicRoomsPanel" class="lobby-room-panel" role="tabpanel" aria-labelledby="lobbyPublicRoomsTab">
-      <p class="lobby-room-panel-description">誰でも自由に参加・観戦できる対局室です。</p>
-      <div id="lobbyMainRoom" class="room-card-container"></div>
+      <p id="lobbyPublicRoomsDescription" class="lobby-room-panel-description">誰でも自由に参加・観戦できる対局室です。</p>
+      <div id="gatheringLobbyStage" class="gathering-lobby-stage">
+      <div id="gatheringLobbyCompact" class="gathering-lobby-compact" hidden>
+       <strong>そろうごいた会を開催中です</strong>
+       <button class="primary" type="button" onclick="joinGatheringRoom()">参加する</button>
+      </div>
+       <div id="lobbyMainRoom" class="room-card-container"></div>
+       <div id="gatheringLobbyBanner" class="gathering-lobby-overlay" role="dialog" aria-labelledby="gatheringLobbyTitle" hidden>
+        <div class="gathering-lobby-overlay-card">
+         <h3 id="gatheringLobbyTitle">現在、「そろうごいた会」を開催しています！</h3>
+         <p><strong>開催中は、通常の対人公開部屋は利用できません。</strong></p>
+         <p id="gatheringLobbySummary">組み合わせが決まると、5秒後に空いている卓へ案内します。卓では席を選び、A席の人が対局を開始します。</p>
+         <p><strong>みんなとごいたをしませんか？</strong></p>
+         <div class="gathering-lobby-overlay-actions">
+          <button class="primary" type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
+          <button type="button" onclick="declineGatheringWelcome()">今回は参加しない</button>
+         </div>
+        </div>
+       </div>
+      </div>
      </div>
 
      <div id="lobbyPrivateRoomsSection" class="lobby-room-panel" role="tabpanel" aria-labelledby="lobbyPrivateRoomsTab" hidden>
@@ -5856,19 +5869,6 @@
     <div id="siteInfoBody" class="site-info-body"></div>
     <div class="settings-footer">
       <button type="button" onclick="closeSiteInfo()">閉じる</button>
-    </div>
-  </div>
-</div>
-
-<div id="gatheringWelcomeModal" class="modal-overlay" onclick="if(event.target===this) declineGatheringWelcome()">
-  <div class="modal-content gathering-welcome-content" role="dialog" aria-modal="true" aria-labelledby="gatheringWelcomeTitle" onclick="event.stopPropagation()">
-    <h2 id="gatheringWelcomeTitle">現在、「そろうごいた会」を開催しています！</h2>
-    <p><strong>開催中は、通常の対人公開部屋は利用できません。</strong></p>
-    <p>組み合わせが決まると、5秒後に空いている卓へ案内します。卓では席を選び、A席の人が対局を開始します。</p>
-    <p><strong>みんなとごいたをしませんか？</strong></p>
-    <div class="gathering-welcome-actions">
-      <button class="primary" type="button" onclick="joinGatheringRoom()">そろうごいた会に参加する</button>
-      <button type="button" onclick="declineGatheringWelcome()">今回は参加しない</button>
     </div>
   </div>
 </div>
@@ -6796,15 +6796,24 @@
   .trace-result-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
   #traceOriginalModal { z-index:10002; }
   #traceOriginalBoard { max-width:560px; width:100%; margin:0 auto; }
-  .gathering-lobby-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 14px; margin:0 14px 14px; padding:10px 12px; border:1px solid rgba(124,79,35,.35); border-radius:8px; background:#fff4d4; color:#50351e; font-size:13px; }
-  .gathering-lobby-banner[hidden] { display:none; }
-  .gathering-lobby-banner button { padding:7px 12px; font-weight:800; }
-  .gathering-welcome-content { max-width:560px; }
-  .gathering-welcome-content h2 { padding-right:0; color:#704317; }
-  .gathering-welcome-content p { line-height:1.75; }
-  .gathering-welcome-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:20px; }
-  .gathering-welcome-actions .primary { background:#8a5627; color:#fff; font-weight:800; }
-  .gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) 230px; gap:14px; align-items:stretch; width:100%; max-width:1060px; min-width:0; margin:0 auto 12px; }
+  .gathering-lobby-stage { position:relative; min-width:0; overflow:hidden; border-radius:10px; }
+  .gathering-lobby-stage.is-overlay-visible #gatheringLobbyCompact,
+  .gathering-lobby-stage.is-overlay-visible #lobbyMainRoom { filter:blur(3px); opacity:.4; pointer-events:none; user-select:none; }
+  #lobbyPublicRoomsDescription[hidden] { display:none; }
+  .gathering-lobby-compact { display:inline-flex; align-items:center; justify-content:center; gap:5px; box-sizing:border-box; max-width:100%; margin:0 auto 10px; padding:4px 0; color:#50351e; font-size:10px; line-height:1.2; }
+  .gathering-lobby-compact[hidden] { display:none; }
+  .gathering-lobby-compact strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gathering-lobby-compact button { flex:none; min-height:0; padding:3px 5px; font-size:9px; line-height:1.2; }
+  .gathering-lobby-compact .primary { background:#8a5627; color:#fff; font-weight:800; }
+  .gathering-lobby-overlay { position:absolute; inset:0; z-index:5; display:grid; place-items:center; box-sizing:border-box; padding:18px; background:rgba(47,35,24,.34); backdrop-filter:blur(1px); }
+  .gathering-lobby-overlay[hidden] { display:none; }
+  .gathering-lobby-overlay-card { width:min(560px,100%); box-sizing:border-box; padding:20px 22px; border:1px solid rgba(124,79,35,.45); border-radius:12px; background:rgba(255,249,229,.96); box-shadow:0 10px 28px rgba(48,31,16,.28); color:#50351e; text-align:center; }
+  .gathering-lobby-overlay-card h3 { margin:0 0 12px; color:#704317; font-size:20px; }
+  .gathering-lobby-overlay-card p { margin:7px 0; line-height:1.65; }
+  .gathering-lobby-overlay-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin-top:18px; }
+  .gathering-lobby-overlay-actions button { padding:8px 12px; }
+  .gathering-lobby-overlay-actions .primary { background:#8a5627; color:#fff; font-weight:800; }
+  .gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) minmax(270px,290px); gap:14px; align-items:stretch; box-sizing:border-box; width:100%; max-width:1160px; min-width:0; margin:0 auto 12px; }
   .gathering-room-shell[hidden] { display:none; }
   .gathering-room-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 18px; min-width:0; margin:0; padding:18px; border:1px dashed rgba(110,71,31,.48); border-radius:12px; background:rgba(255,249,229,.94); color:#4e3826; font-size:13px; }
   .gathering-room-panel[hidden] { display:none; }
@@ -6855,7 +6864,7 @@
   .gathering-pair-modal-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px; }
   .gathering-pair-modal-actions button { min-height:40px; }
   .gathering-pair-modal-actions .primary { background:#8b5a2b; color:#fff; font-weight:900; }
-  .gathering-chat-slot { width:100%; min-width:0; min-height:0; height:var(--gathering-waiting-panel-height, 560px); max-height:var(--gathering-waiting-panel-height, 560px); overflow:hidden; }
+  .gathering-chat-slot { box-sizing:border-box; width:100%; max-width:100%; min-width:0; min-height:0; height:var(--gathering-waiting-panel-height, 560px); max-height:var(--gathering-waiting-panel-height, 560px); overflow:hidden; }
   .gathering-chat-players { display:none; }
   .gathering-waiting-room #gatheringChatSlot .room-chat-people { display:none !important; }
   .gathering-waiting-room #seatButtons { display:none !important; }
@@ -6867,10 +6876,10 @@
   .gathering-waiting-room #handHint,
   .gathering-waiting-room #hostControlsPanel,
   .gathering-waiting-room #logCard { display:none !important; }
-  .gathering-waiting-room .game-content-layout { display:block; max-width:1060px; margin:0 auto; }
+  .gathering-waiting-room .game-content-layout { display:block; width:100%; max-width:1160px; margin:0 auto; }
   .gathering-waiting-room .play-layout { justify-content:center; }
   @media(min-width:702px) {
-    .gathering-waiting-room #gameView { width:min(1060px,100%); }
+    .gathering-waiting-room #gameView { width:min(1160px,100%); }
     .gathering-waiting-room .gathering-waiting-layout {
       grid-template-columns:minmax(0,1fr);
       grid-template-areas:"boards";
@@ -6882,6 +6891,7 @@
       grid-template-columns:minmax(0,1fr);
       grid-template-rows:minmax(190px,1fr) minmax(0,1fr) auto;
       width:100%;
+      box-sizing:border-box;
       height:100%;
       min-height:0;
       max-height:100%;
@@ -6924,8 +6934,9 @@
       grid-row:3;
       min-width:0;
       max-width:100%;
+      box-sizing:border-box;
     }
-    .gathering-waiting-room .gathering-chat-slot .chat-compose-entry { width:100%; min-width:0; }
+    .gathering-waiting-room .gathering-chat-slot .chat-compose-entry { box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
     .gathering-waiting-room .gathering-chat-slot .chat-compose-entry > * { min-width:0; }
     .gathering-waiting-room .gathering-chat-slot .chat-header { display:none; }
   }
@@ -6939,7 +6950,7 @@
     .gathering-mobile-community { grid-area:players; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); height:300px; gap:0; }
     .gathering-mobile-community .gathering-player-section { grid-area:auto; min-width:0; height:100%; max-height:none; border-radius:10px 0 0 10px; }
     .gathering-mobile-community .gathering-participants { max-height:none; }
-    .gathering-mobile-chat-slot { min-width:0; min-height:0; height:100%; overflow:hidden; }
+    .gathering-mobile-chat-slot { box-sizing:border-box; min-width:0; min-height:0; height:100%; overflow:hidden; }
     .gathering-player-group-playing { display:none; }
     .gathering-tables { grid-template-columns:repeat(2,minmax(0,154px)); gap:4px; }
     .gathering-waiting-table-card { width:100%; height:auto; aspect-ratio:1; }
@@ -6952,6 +6963,7 @@
       grid-template-columns:minmax(0,1fr);
       grid-template-rows:minmax(0,1fr) auto;
       width:100%;
+      box-sizing:border-box;
       height:100%;
       min-height:0;
       max-height:100%;
@@ -6967,12 +6979,19 @@
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-header { display:none; }
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-content { grid-column:1; grid-row:1; min-height:0; overflow:hidden; }
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-messages { min-height:0; max-height:100%; overflow-y:auto; padding:6px; }
-    .gathering-waiting-room .gathering-mobile-chat-slot .chat-form { grid-column:1; grid-row:2; padding:4px; }
+    .gathering-waiting-room .gathering-mobile-chat-slot .chat-form { grid-column:1; grid-row:2; box-sizing:border-box; width:100%; max-width:100%; min-width:0; padding:4px; }
+    .gathering-waiting-room .gathering-mobile-chat-slot .chat-compose-entry { grid-template-columns:28px 28px minmax(0,1fr) 40px; box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-form .chat-scope-button,
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-form .chat-stamp-button { width:28px; padding:4px; }
     .gathering-waiting-room .gathering-mobile-chat-slot .chat-form .chat-submit-button { min-width:40px; padding:5px; }
-    .gathering-welcome-actions { flex-direction:column; }
-    .gathering-welcome-actions button { width:100%; }
+    .gathering-lobby-overlay { padding:10px; }
+    .gathering-lobby-overlay-card { padding:14px 12px; font-size:11px; }
+    .gathering-lobby-overlay-card h3 { margin-bottom:8px; font-size:15px; }
+    .gathering-lobby-overlay-card p { margin:5px 0; line-height:1.5; }
+    .gathering-lobby-overlay-actions { flex-direction:column; gap:6px; margin-top:10px; }
+    .gathering-lobby-overlay-actions button { width:100%; padding:7px 8px; font-size:11px; }
+    .gathering-lobby-compact { max-width:100%; margin-bottom:7px; padding:3px 5px; font-size:9px; }
+    .gathering-lobby-compact button { padding:2px 4px; font-size:8px; }
   }
 </style>
 <script src="/static/score-rankings.js?v=20260919a"></script>
@@ -10261,12 +10280,16 @@ async function handleRoomReturn() {
     }
 
     const previousStatus = String(latestGatheringEvent?.own_status || "");
+    const rotationRole = String(latestGatheringEvent?.own_rotation_role || "");
     const matchFinished = latestState?.match_finished === true || previousStatus === "finished";
     if (["selected", "playing"].includes(previousStatus) && !matchFinished) {
         const activeMatch = latestState?.is_started === true;
-        const confirmed = window.confirm(activeMatch
-            ? "対局中です。席をAIに任せて待合室へ戻りますか？"
-            : "対局開始前です。自分だけ待合室へ戻りますか？"
+        const confirmed = window.confirm(
+            rotationRole === "stay"
+                ? "あなたはこの卓に残る役です。それでも待合室へ戻りますか？"
+                : (activeMatch
+                    ? "対局中です。席をAIに任せて待合室へ戻りますか？"
+                    : "対局開始前です。自分だけ待合室へ戻りますか？")
         );
         if (!confirmed) return;
     }
@@ -10292,8 +10315,7 @@ function declineGatheringWelcome() {
     if (latestGatheringEvent?.event_id) {
         try { localStorage.setItem(gatheringSeenKey(latestGatheringEvent.event_id), "1"); } catch (_error) {}
     }
-    const modal = document.getElementById("gatheringWelcomeModal");
-    if (modal) modal.style.display = "none";
+    updateGatheringLobby(latestGatheringEvent);
 }
 
 function updateGatheringLobby(event) {
@@ -10301,17 +10323,26 @@ function updateGatheringLobby(event) {
     const active = !!latestGatheringEvent?.enabled;
     renderLobbyPublicPixelBoards();
     const banner = document.getElementById("gatheringLobbyBanner");
-    if (banner) banner.hidden = !active || !!latestGatheringEvent?.ending;
+    const compact = document.getElementById("gatheringLobbyCompact");
+    const publicDescription = document.getElementById("lobbyPublicRoomsDescription");
+    const stage = document.getElementById("gatheringLobbyStage");
+    let seen = false;
+    if (active && latestGatheringEvent?.event_id) {
+        try { seen = localStorage.getItem(gatheringSeenKey(latestGatheringEvent.event_id)) === "1"; } catch (_error) {}
+    }
+    const showOverlay = active
+        && !latestGatheringEvent?.ending
+        && !seen
+        && gid !== MEETING_ROOM_GID
+        && document.getElementById("lobbyView")?.style.display !== "none";
+    if (banner) banner.hidden = !showOverlay;
+    const showCompact = active && !latestGatheringEvent?.ending;
+    if (compact) compact.hidden = !showCompact;
+    if (publicDescription) publicDescription.hidden = showCompact;
+    if (stage) stage.classList.toggle("is-overlay-visible", showOverlay);
     const summary = document.getElementById("gatheringLobbySummary");
     if (summary && active) {
-        summary.textContent = `対局中 ${Number(latestGatheringEvent.active_table_count || 0)}卓・待機 ${Number(latestGatheringEvent.waiting_count || 0)}人。組み合わせが決まると5秒後に卓へ案内します。`;
-    }
-    if (!active || latestGatheringEvent?.ending || gid === MEETING_ROOM_GID) return;
-    let seen = false;
-    try { seen = localStorage.getItem(gatheringSeenKey(latestGatheringEvent.event_id)) === "1"; } catch (_error) {}
-    if (!seen && document.getElementById("lobbyView")?.style.display !== "none") {
-        const modal = document.getElementById("gatheringWelcomeModal");
-        if (modal) modal.style.display = "flex";
+        summary.textContent = `対局中 ${Number(latestGatheringEvent.active_table_count || 0)}卓・待機 ${Number(latestGatheringEvent.waiting_count || 0)}人。組み合わせが決まると5秒後に空いている卓へ案内します。卓では席を選び、A席の人が対局を開始します。`;
     }
 }
 
@@ -10319,8 +10350,12 @@ async function joinGatheringRoom() {
     if (latestGatheringEvent?.event_id) {
         try { localStorage.setItem(gatheringSeenKey(latestGatheringEvent.event_id), "1"); } catch (_error) {}
     }
-    const modal = document.getElementById("gatheringWelcomeModal");
-    if (modal) modal.style.display = "none";
+    const banner = document.getElementById("gatheringLobbyBanner");
+    const compact = document.getElementById("gatheringLobbyCompact");
+    const stage = document.getElementById("gatheringLobbyStage");
+    if (banner) banner.hidden = true;
+    if (compact) compact.hidden = true;
+    if (stage) stage.classList.remove("is-overlay-visible");
     await enterRoom(MEETING_ROOM_GID, "そろうごいた会　待合室");
     await joinGatheringQueue();
 }
@@ -10453,6 +10488,19 @@ function gatheringStatusLabel(status) {
 
 function gatheringLobbyTableName(tableId) {
     return `第${Array.from(GATHERING_TABLE_IDS).indexOf(tableId) + 1}卓`;
+}
+
+function gatheringRotationMessage(event, tableId) {
+    const role = String(event?.own_rotation_role || "");
+    if (!role || !GATHERING_TABLE_IDS.has(tableId)) return "";
+    const table = (Array.isArray(event?.tables) ? event.tables : [])
+        .find(item => String(item.table_id || "") === tableId);
+    const retained = (Array.isArray(table?.retained_names) ? table.retained_names : []).join("・") || "指定された2人";
+    const outgoing = (Array.isArray(table?.outgoing_names) ? table.outgoing_names : []).join("・") || "交代する2人";
+    const ownInstruction = role === "stay"
+        ? "あなたはこの卓に残ってください。"
+        : "あなたは交代です。左上の「←」から待合室へ戻り、別の卓に参加してください。";
+    return `150点ゲームが終了しました。残る人：${retained}／移動する人：${outgoing}。${ownInstruction}`;
 }
 
 function gatheringCountdownStatus(seconds) {
@@ -10685,10 +10733,13 @@ function renderGatheringRoom(event) {
     const status = document.getElementById("gatheringRoomStatus");
     const currentTableSnapshot = (Array.isArray(latestGatheringEvent.tables) ? latestGatheringEvent.tables : [])
         .find(table => String(table.table_id || "") === String(gid));
+    const rotationMessage = gatheringRotationMessage(latestGatheringEvent, gid);
     if (latestGatheringEvent.ending) {
         status.textContent = "開催終了後です。進行中の150点ゲームが終わるまで対局できます。";
+    } else if (!inWaitingRoom && rotationMessage) {
+        status.textContent = rotationMessage;
     } else if (!inWaitingRoom && currentTableSnapshot?.match_finished) {
-        status.textContent = "対局終了。左上の「←」で待合室へ戻れます。";
+        status.textContent = "150点ゲーム終了。残る2人と移動する2人を決めています…";
     } else if (!inWaitingRoom && currentTableSnapshot?.is_started) {
         status.textContent = "対局中です。空いたAI席には待機中の人が途中参加できます。";
     } else if (!inWaitingRoom && currentTableSnapshot?.status === "ready") {
@@ -10696,7 +10747,7 @@ function renderGatheringRoom(event) {
     } else if (!inWaitingRoom) {
         status.textContent = "空いている席を自由に選べます。席を離れた後も、もう一度座れます。";
     } else if (latestGatheringEvent.own_status === "finished") {
-        status.textContent = "対局終了。左上の「←」で待合室へ戻れます。";
+        status.textContent = "交代となりました。別の卓への案内を待っています。";
     } else if (
         latestGatheringEvent.own_status === "selected"
         && latestGatheringEvent.own_table_name
@@ -17804,7 +17855,13 @@ async function refreshFromState(confirmedState = null){
       startRequestInFlight = false;
   }
 
-  if (state.tutorial_mode) {
+  const gatheringRotationHint = GATHERING_TABLE_IDS.has(gid)
+      ? gatheringRotationMessage(state.gathering_event, gid)
+      : "";
+  if (gatheringRotationHint) {
+      setHint(gatheringRotationHint);
+      pending = null;
+  } else if (state.tutorial_mode) {
       if (state.tutorial_completed || state.turn !== mySeat || !pending) {
           setHint(tutorialCopy(state)[1]);
       }
@@ -17840,7 +17897,7 @@ async function refreshFromState(confirmedState = null){
           }
       } else if (state.match_finished) {
           if (GATHERING_TABLE_IDS.has(gid) && state.gathering_event?.enabled) {
-              setHint(`🎊 ${state.match_winner}ペアの勝利です！(150点到達) 左上の「←」で待合室へ戻れます。`);
+              setHint(`🎊 ${state.match_winner}ペアの勝利です！ 残る2人と移動する2人を決めています…`);
           } else if (autoNextRoundPending) {
               setHint(`🎊 ${state.match_winner}ペアの勝利です！3秒後に新規ゲームを開始します。`);
           } else if (mySeat === "A") {

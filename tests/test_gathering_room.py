@@ -605,7 +605,7 @@ def test_ending_event_waits_until_every_active_table_finishes(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_completed_match_keeps_two_and_returns_two_to_waiting(monkeypatch):
+def test_completed_match_keeps_two_and_waits_for_two_to_return_manually(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
@@ -641,15 +641,70 @@ def test_completed_match_keeps_two_and_returns_two_to_waiting(monkeypatch):
         assert len(retained) == 2
         assert len(outgoing) == 2
         assert all(players[client_id]["assigned_table_id"] == table_id for client_id in retained)
-        assert all(players[client_id]["status"] == "waiting" for client_id in outgoing)
-        assert all(players[client_id]["assigned_table_id"] == app_module.MEETING_ROOM_GID for client_id in outgoing)
+        assert all(players[client_id]["rotation_role"] == "stay" for client_id in retained)
+        assert all(players[client_id]["status"] == "finished" for client_id in outgoing)
+        assert all(players[client_id]["assigned_table_id"] == table_id for client_id in outgoing)
+        assert all(players[client_id]["rotation_role"] == "move" for client_id in outgoing)
         assert all(players[client_id]["blocked_table_id"] == table_id for client_id in outgoing)
         assert set(app_module.GAMES[table_id]["human_seats"].values()) == retained
         assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == retained
+        assert set(app_module.GATHERING_TABLE_META[table_id]["outgoing_players"]) == outgoing
+        payload = app_module._gathering_event_public_payload(next(iter(outgoing)))
+        assert payload["own_rotation_role"] == "move"
+        table = next(item for item in payload["tables"] if item["table_id"] == table_id)
+        assert set(table["retained_names"]) == retained
+        assert set(table["outgoing_names"]) == outgoing
         await app_module._gathering_match_completed(table_id)
         assert app_module.GATHERING_TABLE_META[table_id]["last_players"] == ["a", "b", "c", "d"]
         assert app_module.GAMES[table_id]["is_started"] is False
         assert app_module.GATHERING_TABLE_META[table_id]["status"] == "ready"
+
+    asyncio.run(scenario())
+
+
+def test_outgoing_player_returns_to_waiting_only_after_manual_action(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
+        for item in players.values():
+            item["status"] = "playing"
+            item["assigned_table_id"] = table_id
+        game = app_module._create_game_obj(dealer="A")
+        game["is_started"] = True
+        game["match_finished"] = True
+        game["human_seats"] = dict(zip(("A", "B", "C", "D"), players))
+        games = {table_id: game}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_LAST_PLAYERS", [])
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+            table_id: {"status": "playing", "players": list(players)}
+        })
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        await app_module._gathering_match_completed(table_id)
+        outgoing = next(
+            client_id for client_id, item in players.items()
+            if item.get("rotation_role") == "move"
+        )
+
+        assert players[outgoing]["status"] == "finished"
+        response = await app_module.return_gathering_to_waiting(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPresenceRequest(client_id=outgoing),
+        )
+
+        assert response["ok"] is True
+        assert players[outgoing]["status"] == "waiting"
+        assert players[outgoing]["assigned_table_id"] == ""
+        assert "rotation_role" not in players[outgoing]
+        assert outgoing in app_module.GATHERING_TABLE_META[table_id]["outgoing_players"]
 
     asyncio.run(scenario())
 
@@ -700,6 +755,7 @@ def test_completed_table_guides_two_different_waiters_and_blocks_immediate_retur
 
         reserved = set(app_module.GATHERING_TABLE_META[table_id]["players"])
         assert reserved == retained | {"e", "f"}
+        assert set(app_module.GATHERING_TABLE_META[table_id]["outgoing_players"]) == outgoing
         assert reserved.isdisjoint(outgoing)
         assert all(players[client_id]["status"] == "selected" for client_id in ("e", "f"))
         assert all(players[client_id]["enter_at"] > time.monotonic() for client_id in ("e", "f"))
@@ -1253,7 +1309,14 @@ def test_frontend_and_admin_include_gathering_controls():
     lobby = (app_module.BASE_DIR / "frontend" / "index.html").read_text(encoding="utf-8")
     admin = (app_module.BASE_DIR / "frontend" / "admin.html").read_text(encoding="utf-8")
 
-    assert 'id="gatheringWelcomeModal"' in lobby
+    assert 'id="gatheringLobbyStage"' in lobby
+    assert 'class="gathering-lobby-overlay"' in lobby
+    assert 'id="gatheringLobbyCompact"' in lobby
+    assert 'id="lobbyPublicRoomsDescription"' in lobby
+    assert "そろうごいた会を開催中です" in lobby
+    assert "案内を見る" not in lobby
+    assert "publicDescription.hidden = showCompact" in lobby
+    assert 'id="gatheringWelcomeModal"' not in lobby
     assert 'id="gatheringRoomPanel"' in lobby
     assert "async function joinGatheringQueue()" in lobby
     assert "const keepGatheringSeat = (" in lobby
@@ -1268,7 +1331,10 @@ def test_frontend_and_admin_include_gathering_controls():
     assert 'state?.is_started ? "・参加可" : ""' in lobby
     assert "途中から対局に参加しますか" in lobby
     assert 'id="gatheringRoomShell"' in lobby
-    assert ".gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) 230px;" in lobby
+    assert ".gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) minmax(270px,290px);" in lobby
+    assert ".gathering-lobby-stage.is-overlay-visible #lobbyMainRoom" in lobby
+    assert "backdrop-filter:blur(1px)" in lobby
+    assert "box-sizing:border-box; width:100%; max-width:100%" in lobby
     assert 'class="gathering-waiting-layout"' in lobby
     assert 'id="gatheringChatSlot"' in lobby
     assert 'id="gatheringChatPlayers"' in lobby

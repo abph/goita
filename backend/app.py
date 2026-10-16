@@ -5914,6 +5914,16 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
         for client_id in list((meta or {}).get("players", []))
         if client_id in GATHERING_PARTICIPANTS
     ]
+    retained_names = [
+        str(GATHERING_PARTICIPANTS.get(client_id, {}).get("name", "")) or "ゲスト"
+        for client_id in list((meta or {}).get("retained_players", []))
+        if client_id in GATHERING_PARTICIPANTS
+    ]
+    outgoing_names = [
+        str(GATHERING_PARTICIPANTS.get(client_id, {}).get("name", "")) or "ゲスト"
+        for client_id in list((meta or {}).get("outgoing_players", []))
+        if client_id in GATHERING_PARTICIPANTS
+    ]
     raw_board = (game or {}).get("board", _new_board_snapshot())
     safe_board: Dict[str, Dict[str, Any]] = {}
     for seat in ALL_SEATS:
@@ -5941,6 +5951,8 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
         "finished": bool(getattr((game or {}).get("state"), "finished", False)),
         "player_names": player_names,
         "selected_names": selected_names,
+        "retained_names": retained_names,
+        "outgoing_names": outgoing_names,
         "human_seats": sorted(_seat_set(human_seats)),
         "ai_seats": ai_seats,
         "total_team_score": dict((game or {}).get("total_team_score", {"AC": 0, "BD": 0})),
@@ -6076,6 +6088,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
         "tables": tables,
         "joined": own is not None,
         "own_status": str(own.get("status", "")) if own else "",
+        "own_rotation_role": str(own.get("rotation_role", "")) if own else "",
         "own_table_id": own_table_id,
         "own_table_name": _gathering_table_label(own_table_id) if own_table_id else "",
         "own_enter_remaining": own_enter_remaining,
@@ -6562,6 +6575,7 @@ def _gathering_make_room_for_free_seat(table_id: str, client_id: str) -> None:
         displaced_item["assigned_table_id"] = MEETING_ROOM_GID
         displaced_item["wait_since"] = time.monotonic()
         displaced_item.pop("enter_at", None)
+        displaced_item.pop("rotation_role", None)
 
 
 def _gathering_prepare_waiting_table(table_id: str, selected: List[str]) -> None:
@@ -6583,6 +6597,7 @@ def _gathering_prepare_waiting_table(table_id: str, selected: List[str]) -> None
         participant["status"] = "selected"
         participant["assigned_table_id"] = table_id
         participant["enter_at"] = enter_at
+        participant.pop("rotation_role", None)
         participant.pop("blocked_table_id", None)
         participant.pop("blocked_until", None)
     players = list(dict.fromkeys([*existing, *selected]))
@@ -6594,6 +6609,7 @@ def _gathering_prepare_waiting_table(table_id: str, selected: List[str]) -> None
         "players": players,
         "last_players": list(meta.get("last_players", [])),
         "retained_players": list(meta.get("retained_players", existing)),
+        "outgoing_players": list(meta.get("outgoing_players", [])),
         "uses_ai": False,
         "assigned_at": now,
         "countdown_until": enter_at,
@@ -6737,6 +6753,7 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
         item["games"] = int(item.get("games", 0)) + 1
         item.pop("rest_after_match", None)
         item.pop("enter_at", None)
+        item.pop("rotation_role", None)
     _reset_manual_gathering_table(table_id)
     game = GAMES[table_id]
     retained_seats = {
@@ -6751,19 +6768,21 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
         if item:
             item["status"] = "selected"
             item["assigned_table_id"] = table_id
+            item["rotation_role"] = "stay"
     for client_id in outgoing:
         item = GATHERING_PARTICIPANTS.get(client_id)
         if not item:
             continue
-        item["status"] = "waiting"
-        item["assigned_table_id"] = MEETING_ROOM_GID
-        item["wait_since"] = now
+        item["status"] = "finished"
+        item["assigned_table_id"] = table_id
+        item["rotation_role"] = "move"
         item["blocked_table_id"] = table_id
         item["blocked_until"] = now + GATHERING_WAIT_SECONDS
     GATHERING_TABLE_META[table_id] = {
         "status": "ready",
         "players": retained,
         "retained_players": retained,
+        "outgoing_players": outgoing,
         "last_players": completed_players,
         "completed_at": now,
         "uses_ai": False,
@@ -7932,8 +7951,15 @@ async def return_gathering_to_waiting(game_id: str, req: GatheringPresenceReques
     if item is None:
         raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
     table_id = str(item.get("assigned_table_id", ""))
-    if item.get("status") == "selected":
+    game = GAMES.get(table_id, {}) if _is_gathering_table_id(table_id) else {}
+    if item.get("status") == "playing" and game.get("match_finished"):
+        await _gathering_match_completed(table_id)
+        item = GATHERING_PARTICIPANTS.get(req.client_id)
+        if item is None:
+            raise HTTPException(status_code=409, detail="そろうごいた会は終了しました。")
+        table_id = str(item.get("assigned_table_id", ""))
         game = GAMES.get(table_id, {}) if _is_gathering_table_id(table_id) else {}
+    if item.get("status") == "selected":
         human_seats = game.get("human_seats", {})
         if isinstance(human_seats, dict):
             for seat, owner in list(human_seats.items()):
@@ -7942,15 +7968,17 @@ async def return_gathering_to_waiting(game_id: str, req: GatheringPresenceReques
                     _clear_player_name(game, seat)
                     await voice_manager.disconnect_seat(table_id, seat, req.client_id)
         meta = GATHERING_TABLE_META.get(table_id, {})
-        meta["players"] = [
-            value for value in list(meta.get("players", [])) if value != req.client_id
-        ]
+        for key in ("players", "retained_players", "outgoing_players"):
+            meta[key] = [
+                value for value in list(meta.get(key, [])) if value != req.client_id
+            ]
         item["status"] = "waiting"
         item["assigned_table_id"] = MEETING_ROOM_GID
         item["wait_since"] = time.monotonic()
         item["blocked_table_id"] = table_id
         item["blocked_until"] = item["wait_since"] + GATHERING_WAIT_SECONDS
         item.pop("enter_at", None)
+        item.pop("rotation_role", None)
         if not meta.get("players"):
             _reset_manual_gathering_table(table_id)
         _schedule_gathering_matchmaking()
@@ -7959,12 +7987,6 @@ async def return_gathering_to_waiting(game_id: str, req: GatheringPresenceReques
             "ok": True,
             "gathering_event": _gathering_event_public_payload(req.client_id),
         }
-    game = GAMES.get(table_id, {}) if _is_gathering_table_id(table_id) else {}
-    if item.get("status") == "playing" and game.get("match_finished"):
-        await _gathering_match_completed(table_id)
-        item = GATHERING_PARTICIPANTS.get(req.client_id)
-        if item is None:
-            raise HTTPException(status_code=409, detail="そろうごいた会は終了しました。")
     human_seats = game.get("human_seats", {})
     removed_seats: Set[str] = set()
     if isinstance(human_seats, dict):
@@ -7981,7 +8003,12 @@ async def return_gathering_to_waiting(game_id: str, req: GatheringPresenceReques
         ai_seats.update(removed_seats)
         _store_ai_seats(game, ai_seats)
 
+    meta = GATHERING_TABLE_META.get(table_id, {})
+    meta["players"] = [
+        value for value in list(meta.get("players", [])) if value != req.client_id
+    ]
     item.pop("rest_after_match", None)
+    item.pop("rotation_role", None)
     item["status"] = "waiting"
     item["assigned_table_id"] = ""
     item["wait_since"] = time.monotonic()
@@ -8025,9 +8052,14 @@ async def spectate_gathering(game_id: str, req: GatheringPresenceRequest):
     meta["players"] = [
         value for value in list(meta.get("players", [])) if value != req.client_id
     ]
+    for key in ("retained_players", "outgoing_players"):
+        meta[key] = [
+            value for value in list(meta.get(key, [])) if value != req.client_id
+        ]
     meta["uses_ai"] = bool(_ai_seat_set(game))
     item.pop("rest_after_match", None)
     item.pop("enter_at", None)
+    item.pop("rotation_role", None)
     item["status"] = "spectating"
     item["assigned_table_id"] = ""
     item["wait_since"] = time.monotonic()
@@ -8819,6 +8851,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
             participant["blocked_table_id"] = game_id
             participant["blocked_until"] = now + GATHERING_WAIT_SECONDS
             participant.pop("enter_at", None)
+            participant.pop("rotation_role", None)
         for participant_id in player_ids:
             participant = GATHERING_PARTICIPANTS.get(participant_id)
             if not participant:
@@ -8827,6 +8860,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
             participant["assigned_table_id"] = game_id
             participant["last_played_at"] = now
             participant.pop("enter_at", None)
+            participant.pop("rotation_role", None)
         GATHERING_TABLE_META[game_id] = {
             "status": "playing",
             "players": player_ids,
@@ -10217,6 +10251,7 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         participant["status"] = "selected" if before_start else "playing"
         participant["assigned_table_id"] = game_id
         participant.pop("enter_at", None)
+        participant.pop("rotation_role", None)
         if before_start and participant.get("blocked_table_id") != game_id:
             participant.pop("blocked_table_id", None)
             participant.pop("blocked_until", None)
