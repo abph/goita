@@ -6804,7 +6804,7 @@
   .gathering-welcome-content p { line-height:1.75; }
   .gathering-welcome-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:20px; }
   .gathering-welcome-actions .primary { background:#8a5627; color:#fff; font-weight:800; }
-  .gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) 230px; gap:14px; align-items:stretch; max-width:1060px; margin:0 auto 12px; }
+  .gathering-room-shell { display:grid; grid-template-columns:minmax(0,1fr) 230px; gap:14px; align-items:stretch; width:100%; max-width:1060px; min-width:0; margin:0 auto 12px; }
   .gathering-room-shell[hidden] { display:none; }
   .gathering-room-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px 18px; min-width:0; margin:0; padding:18px; border:1px dashed rgba(110,71,31,.48); border-radius:12px; background:rgba(255,249,229,.94); color:#4e3826; font-size:13px; }
   .gathering-room-panel[hidden] { display:none; }
@@ -6824,8 +6824,8 @@
   .gathering-player-section { grid-area:players; min-width:0; max-height:520px; overflow:hidden; border:2px solid rgba(139,90,43,.42); border-radius:10px; background:#fffdf5; }
   .gathering-board-section > h3,.gathering-player-section > h3 { margin:0 0 8px; color:#5a4028; font-size:14px; }
   .gathering-player-section > h3 { margin:0; padding:10px 12px 8px; border-bottom:1px solid rgba(139,90,43,.2); }
-  .gathering-tables { display:grid; grid-template-columns:repeat(2,240px); justify-content:center; gap:10px; }
-  .gathering-waiting-table-card { width:240px; height:240px; }
+  .gathering-tables { display:grid; grid-template-columns:repeat(2,minmax(0,240px)); justify-content:center; gap:10px; min-width:0; }
+  .gathering-waiting-table-card { width:100%; max-width:240px; height:auto; aspect-ratio:1; }
   .gathering-waiting-table-card[data-openable="true"] { cursor:pointer; }
   .gathering-waiting-table-card-status { margin-top:4px; padding:3px 5px; border-radius:4px; background:rgba(255,255,255,.92); color:#4f3826; font-size:10px; font-weight:800; line-height:1.25; }
   .gathering-participants { max-height:432px; padding:2px 9px 10px; overflow-y:auto; overscroll-behavior-y:contain; }
@@ -6855,7 +6855,7 @@
   .gathering-pair-modal-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px; }
   .gathering-pair-modal-actions button { min-height:40px; }
   .gathering-pair-modal-actions .primary { background:#8b5a2b; color:#fff; font-weight:900; }
-  .gathering-chat-slot { min-width:0; min-height:0; height:var(--gathering-waiting-panel-height, 560px); max-height:var(--gathering-waiting-panel-height, 560px); overflow:hidden; }
+  .gathering-chat-slot { width:100%; min-width:0; min-height:0; height:var(--gathering-waiting-panel-height, 560px); max-height:var(--gathering-waiting-panel-height, 560px); overflow:hidden; }
   .gathering-chat-players { display:none; }
   .gathering-waiting-room #gatheringChatSlot .room-chat-people { display:none !important; }
   .gathering-waiting-room #seatButtons { display:none !important; }
@@ -6870,6 +6870,7 @@
   .gathering-waiting-room .game-content-layout { display:block; max-width:1060px; margin:0 auto; }
   .gathering-waiting-room .play-layout { justify-content:center; }
   @media(min-width:702px) {
+    .gathering-waiting-room #gameView { width:min(1060px,100%); }
     .gathering-waiting-room .gathering-waiting-layout {
       grid-template-columns:minmax(0,1fr);
       grid-template-areas:"boards";
@@ -6921,7 +6922,11 @@
     .gathering-waiting-room .gathering-chat-slot .chat-form {
       grid-column:1;
       grid-row:3;
+      min-width:0;
+      max-width:100%;
     }
+    .gathering-waiting-room .gathering-chat-slot .chat-compose-entry { width:100%; min-width:0; }
+    .gathering-waiting-room .gathering-chat-slot .chat-compose-entry > * { min-width:0; }
     .gathering-waiting-room .gathering-chat-slot .chat-header { display:none; }
   }
   @media(max-width:700px) {
@@ -10443,7 +10448,7 @@ async function cancelGatheringPair() {
 }
 
 function gatheringStatusLabel(status) {
-    return ({playing:"着席・対局中", selected:"開始待ち", waiting:"待機中", finished:"対局終了", resting:"休憩中"})[status] || status;
+    return ({playing:"着席・対局中", selected:"開始待ち", waiting:"待機中", spectating:"観戦中", finished:"対局終了", resting:"休憩中"})[status] || status;
 }
 
 function gatheringLobbyTableName(tableId) {
@@ -10610,6 +10615,7 @@ function gatheringParticipantGroupsHtml(participants) {
         sectionHtml("selected", "対局開始待ち"),
         sectionHtml("waiting", "待機中"),
         sectionHtml("playing", "対局中"),
+        sectionHtml("spectating", "観戦中"),
         sectionHtml("resting", "休憩中"),
     ].join("");
 }
@@ -10686,9 +10692,9 @@ function renderGatheringRoom(event) {
     } else if (!inWaitingRoom && currentTableSnapshot?.is_started) {
         status.textContent = "対局中です。空いたAI席には待機中の人が途中参加できます。";
     } else if (!inWaitingRoom && currentTableSnapshot?.status === "ready") {
-        status.textContent = "案内された4人で席を選び、A席の人が対局を開始してください。";
+        status.textContent = "空いている席を自由に選べます。A席の人が対局を開始してください。";
     } else if (!inWaitingRoom) {
-        status.textContent = "案内された人が手動で席を選びます。";
+        status.textContent = "空いている席を自由に選べます。席を離れた後も、もう一度座れます。";
     } else if (latestGatheringEvent.own_status === "finished") {
         status.textContent = "対局終了。左上の「←」で待合室へ戻れます。";
     } else if (
@@ -10709,10 +10715,14 @@ function renderGatheringRoom(event) {
             if (label) button.textContent = label;
         });
     };
-    setGatheringPlayerAction("join", !!latestGatheringEvent.joined || !inWaitingRoom);
+    setGatheringPlayerAction(
+        "join",
+        !inWaitingRoom || (!!latestGatheringEvent.joined && latestGatheringEvent.own_status !== "spectating"),
+        latestGatheringEvent.own_status === "spectating" ? "待機列に参加する" : "参加する",
+    );
     setGatheringPlayerAction(
         "rest",
-        !latestGatheringEvent.joined || !inWaitingRoom || latestGatheringEvent.own_status === "selected",
+        !latestGatheringEvent.joined || !inWaitingRoom || ["selected", "spectating"].includes(latestGatheringEvent.own_status),
         latestGatheringEvent.own_status === "resting" ? "待機列に戻る" : "休憩する",
     );
     setGatheringPlayerAction("exit", !inWaitingRoom || !latestGatheringEvent.joined);
@@ -13001,7 +13011,8 @@ async function selectSpectator() {
             : "この席を離れて観戦しますか？";
         if (!window.confirm(message)) return;
         try {
-            const data = await gatheringApi("return-to-waiting");
+            await voiceChatController?.leave?.();
+            const data = await gatheringApi("spectate");
             latestGatheringEvent = data.gathering_event || latestGatheringEvent;
             mySeat = WATCH;
             pending = null;

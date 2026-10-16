@@ -1034,7 +1034,7 @@ def test_manually_seated_host_can_start_gathering_table(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_gathering_player_cannot_claim_seat_before_automatic_assignment(monkeypatch):
+def test_gathering_player_can_freely_claim_open_seat_before_assignment(monkeypatch):
     async def scenario():
         table_id = app_module.GATHERING_TABLE_IDS[0]
         games = dict(app_module.GAMES)
@@ -1052,12 +1052,13 @@ def test_gathering_player_cannot_claim_seat_before_automatic_assignment(monkeypa
 
         monkeypatch.setattr(app_module.manager, "broadcast_update", no_broadcast)
 
-        with pytest.raises(HTTPException) as error:
-            await app_module.claim_seat(table_id, "B", client_id="player")
+        response = await app_module.claim_seat(table_id, "B", client_id="player")
 
-        assert error.value.status_code == 409
-        assert "案内された卓" in str(error.value.detail)
-        assert games[table_id]["human_seats"] == {}
+        assert response["ok"] is True
+        assert games[table_id]["human_seats"] == {"B": "player"}
+        assert players["player"]["status"] == "selected"
+        assert players["player"]["assigned_table_id"] == table_id
+        assert app_module.GATHERING_TABLE_META[table_id]["players"] == ["player"]
 
     asyncio.run(scenario())
 
@@ -1110,6 +1111,144 @@ def test_assigned_gathering_player_can_leave_and_take_another_open_seat(monkeypa
     asyncio.run(scenario())
 
 
+def test_assigned_player_can_leave_seat_and_freely_spectate(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
+        games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A")}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {})
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module.manager, "broadcast_update", no_broadcast)
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        app_module.setup_manual_gathering_rooms()
+        app_module._gathering_prepare_waiting_table(table_id, list(players))
+        await app_module.claim_seat(table_id, "A", client_id="a")
+
+        response = await app_module.spectate_gathering(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPresenceRequest(client_id="a"),
+        )
+
+        assert players["a"]["status"] == "spectating"
+        assert players["a"]["assigned_table_id"] == ""
+        assert "A" not in games[table_id]["human_seats"]
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == {"b", "c", "d"}
+        assert response["gathering_event"]["joined"] is True
+        assert response["gathering_event"]["own_status"] == "spectating"
+
+        reclaimed = await app_module.claim_seat(table_id, "B", client_id="a")
+
+        assert reclaimed["ok"] is True
+        assert games[table_id]["human_seats"]["B"] == "a"
+        assert players["a"]["status"] == "selected"
+        assert players["a"]["assigned_table_id"] == table_id
+        assert set(app_module.GATHERING_TABLE_META[table_id]["players"]) == {"a", "b", "c", "d"}
+
+    asyncio.run(scenario())
+
+
+def test_gathering_player_can_choose_another_unstarted_table(monkeypatch):
+    async def scenario():
+        first_table, second_table = app_module.GATHERING_TABLE_IDS[:2]
+        players = {client_id: participant(client_id) for client_id in ("a", "b", "c", "d")}
+        games = {app_module.MEETING_ROOM_GID: app_module._create_game_obj(dealer="A")}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {})
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "ending", False)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+        app_module.setup_manual_gathering_rooms()
+        app_module._gathering_prepare_waiting_table(first_table, list(players))
+        await app_module.claim_seat(first_table, "A", client_id="a")
+
+        response = await app_module.claim_seat(second_table, "C", client_id="a")
+
+        assert response["ok"] is True
+        assert games[first_table]["human_seats"] == {}
+        assert games[second_table]["human_seats"] == {"C": "a"}
+        assert players["a"]["assigned_table_id"] == second_table
+        assert "a" not in app_module.GATHERING_TABLE_META[first_table]["players"]
+        assert app_module.GATHERING_TABLE_META[second_table]["players"] == ["a"]
+
+    asyncio.run(scenario())
+
+
+def test_rotated_player_cannot_immediately_reclaim_same_gathering_table(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        game = app_module._create_game_obj(dealer="A")
+        games = {table_id: game}
+        players = {"outgoing": participant("交代者")}
+        players["outgoing"].update({
+            "blocked_table_id": table_id,
+            "blocked_until": time.monotonic() + 60,
+        })
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+            table_id: {"status": "ready", "players": [], "uses_ai": False}
+        })
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+
+        with pytest.raises(HTTPException) as error:
+            await app_module.claim_seat(table_id, "A", client_id="outgoing")
+
+        assert error.value.status_code == 409
+        assert "交代中" in str(error.value.detail)
+        assert game["human_seats"] == {}
+
+    asyncio.run(scenario())
+
+
+def test_active_player_becomes_ai_when_switching_to_spectator(monkeypatch):
+    async def scenario():
+        table_id = app_module.GATHERING_TABLE_IDS[0]
+        players = {"a": participant("Aさん")}
+        players["a"]["status"] = "playing"
+        players["a"]["assigned_table_id"] = table_id
+        game = app_module._create_game_obj(dealer="A")
+        game["is_started"] = True
+        game["human_seats"] = {"A": "a"}
+        games = {table_id: game}
+        monkeypatch.setattr(app_module, "GAMES", games)
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {
+            table_id: {"status": "playing", "players": ["a"]}
+        })
+        monkeypatch.setitem(app_module.GATHERING_EVENT_SETTINGS, "enabled", True)
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        async def no_broadcast(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+
+        await app_module.spectate_gathering(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPresenceRequest(client_id="a"),
+        )
+
+        assert players["a"]["status"] == "spectating"
+        assert game["human_seats"] == {}
+        assert "A" in app_module._ai_seat_set(game)
+
+    asyncio.run(scenario())
+
+
 def test_frontend_and_admin_include_gathering_controls():
     lobby = (app_module.BASE_DIR / "frontend" / "index.html").read_text(encoding="utf-8")
     admin = (app_module.BASE_DIR / "frontend" / "admin.html").read_text(encoding="utf-8")
@@ -1156,6 +1295,9 @@ def test_frontend_and_admin_include_gathering_controls():
     assert 'id="gatheringParticipantCount"' not in lobby
     assert 'onclick="handleRoomReturn()"' in lobby
     assert 'gatheringApi("return-to-waiting")' in lobby
+    assert 'gatheringApi("spectate")' in lobby
+    assert 'sectionHtml("spectating", "観戦中")' in lobby
+    assert "grid-template-columns:repeat(2,minmax(0,240px))" in lobby
     assert 'assignedGatheringTable === MEETING_ROOM_GID' in lobby
     assert '["selected", "playing"].includes(gatheringStatus)' in lobby
     assert "gatheringManualReturnInProgress" not in lobby
