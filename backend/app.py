@@ -5889,11 +5889,21 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _gathering_connected_waiters() -> List[str]:
-    return [
+    connected = [
         client_id
         for client_id, item in GATHERING_PARTICIPANTS.items()
         if item.get("status") == "waiting"
         and _gathering_client_connected(client_id)
+    ]
+    connected_set = set(connected)
+    return [
+        client_id
+        for client_id in connected
+        if not (partner := str(GATHERING_PARTICIPANTS[client_id].get("pair_with", "")))
+        or (
+            partner in connected_set
+            and str(GATHERING_PARTICIPANTS.get(partner, {}).get("pair_with", "")) == client_id
+        )
     ]
 
 
@@ -5918,7 +5928,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
     for participant_id, item in sorted(
         GATHERING_PARTICIPANTS.items(),
         key=lambda pair: (
-            {"playing": 0, "selected": 1, "waiting": 2, "resting": 3}.get(
+            {"selected": 0, "waiting": 1, "playing": 2, "resting": 3}.get(
                 str(pair[1].get("status", "waiting")), 4
             ),
             float(pair[1].get("wait_since", now)),
@@ -5932,6 +5942,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
             "tag": str(item.get("tag", "")),
             "status": str(item.get("status", "waiting")),
             "rest_after_match": bool(item.get("rest_after_match", False)),
+            "pair_id": _gathering_public_id(pair_id) if pair_id else "",
             "pair_name": str(pair_item.get("name", "")),
             "table_id": str(item.get("assigned_table_id", "")),
             "table_name": _gathering_table_label(str(item.get("assigned_table_id", "")))
@@ -5947,6 +5958,12 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
             "id": _gathering_public_id(requester),
             "name": str(GATHERING_PARTICIPANTS[requester].get("name", "")) or "ゲスト",
         })
+    outgoing_target = str(GATHERING_PAIR_REQUESTS.get(client_id, ""))
+    outgoing_item = GATHERING_PARTICIPANTS.get(outgoing_target, {})
+    outgoing = {
+        "id": _gathering_public_id(outgoing_target),
+        "name": str(outgoing_item.get("name", "")) or "ゲスト",
+    } if outgoing_target and outgoing_item else None
     own_table_id = str(own.get("assigned_table_id", "")) if own else ""
     can_start_with_ai, ai_wait_remaining = _gathering_ai_start_state(client_id)
     tables = [
@@ -5993,6 +6010,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
         "own_table_name": _gathering_table_label(own_table_id) if own_table_id else "",
         "participants": participants,
         "incoming_pair_requests": incoming,
+        "outgoing_pair_request": outgoing,
     }
 
 
@@ -6011,7 +6029,7 @@ def _gathering_units(client_ids: List[str]) -> List[Tuple[str, ...]]:
         if partner in available:
             available.remove(partner)
             units.append((client_id, partner))
-        else:
+        elif not partner:
             units.append((client_id,))
     return units
 
@@ -6597,7 +6615,7 @@ def _gathering_remove_participant(client_id: str) -> None:
     partner = str(item.get("pair_with", ""))
     if partner in GATHERING_PARTICIPANTS:
         GATHERING_PARTICIPANTS[partner]["pair_with"] = ""
-        if GATHERING_PARTICIPANTS[partner].get("status") == "resting":
+        if GATHERING_PARTICIPANTS[partner].get("status") in {"waiting", "resting"}:
             GATHERING_PARTICIPANTS[partner]["status"] = "waiting"
             GATHERING_PARTICIPANTS[partner]["wait_since"] = time.monotonic()
 
@@ -7692,19 +7710,20 @@ async def start_gathering_with_ai(game_id: str, req: GatheringPresenceRequest):
 async def update_gathering_rest(game_id: str, req: GatheringRestRequest):
     if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
         raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
-    targets = {req.client_id}
-    partner = str(GATHERING_PARTICIPANTS[req.client_id].get("pair_with", ""))
-    if partner in GATHERING_PARTICIPANTS:
-        targets.add(partner)
     now = time.monotonic()
-    for client_id in targets:
-        item = GATHERING_PARTICIPANTS[client_id]
-        if item.get("status") == "playing":
-            item["rest_after_match"] = bool(req.resting)
-        else:
-            item["status"] = "resting" if req.resting else "waiting"
-            item["assigned_table_id"] = ""
-            item["wait_since"] = now
+    item = GATHERING_PARTICIPANTS[req.client_id]
+    if item.get("status") == "selected":
+        raise HTTPException(status_code=409, detail="対局開始待ちの間は休憩へ変更できません。")
+    if item.get("status") == "playing":
+        item["rest_after_match"] = bool(req.resting)
+    else:
+        item["status"] = "resting" if req.resting else "waiting"
+        item["assigned_table_id"] = ""
+        item["wait_since"] = now
+        partner = str(item.get("pair_with", ""))
+        partner_item = GATHERING_PARTICIPANTS.get(partner)
+        if not req.resting and partner_item and partner_item.get("status") == "waiting":
+            partner_item["wait_since"] = now
     _schedule_gathering_matchmaking()
     await _gathering_broadcast()
     return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
@@ -7725,7 +7744,7 @@ async def request_gathering_pair(game_id: str, req: GatheringPairRequest):
         raise HTTPException(status_code=409, detail="すでに固定ペアが設定されています。")
     GATHERING_PAIR_REQUESTS[req.client_id] = target
     await _gathering_broadcast()
-    return {"ok": True}
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
 
 
 @app.post("/games/{game_id}/gathering/pair/accept")
@@ -7742,14 +7761,55 @@ async def accept_gathering_pair(game_id: str, req: GatheringPairRequest):
         raise HTTPException(status_code=409, detail="対局開始前だけ固定ペアを設定できます。")
     if GATHERING_PARTICIPANTS[requester].get("pair_with") or GATHERING_PARTICIPANTS[req.client_id].get("pair_with"):
         raise HTTPException(status_code=409, detail="すでに固定ペアが設定されています。")
+    pair_wait_since = max(
+        float(GATHERING_PARTICIPANTS[requester].get("wait_since", time.monotonic())),
+        float(GATHERING_PARTICIPANTS[req.client_id].get("wait_since", time.monotonic())),
+    )
     GATHERING_PARTICIPANTS[requester]["pair_with"] = req.client_id
     GATHERING_PARTICIPANTS[req.client_id]["pair_with"] = requester
+    GATHERING_PARTICIPANTS[requester]["wait_since"] = pair_wait_since
+    GATHERING_PARTICIPANTS[req.client_id]["wait_since"] = pair_wait_since
     for source, target in list(GATHERING_PAIR_REQUESTS.items()):
         if source in {requester, req.client_id} or target in {requester, req.client_id}:
             GATHERING_PAIR_REQUESTS.pop(source, None)
     _schedule_gathering_matchmaking()
     await _gathering_broadcast()
-    return {"ok": True}
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
+
+
+@app.post("/games/{game_id}/gathering/pair/reject")
+async def reject_gathering_pair(game_id: str, req: GatheringPairRequest):
+    if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
+    requester = _gathering_client_from_public_id(req.target_id)
+    if not requester or GATHERING_PAIR_REQUESTS.get(requester) != req.client_id:
+        raise HTTPException(status_code=409, detail="ペア申請が見つかりません。")
+    GATHERING_PAIR_REQUESTS.pop(requester, None)
+    await _gathering_broadcast()
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
+
+
+@app.post("/games/{game_id}/gathering/pair/cancel")
+async def cancel_gathering_pair(game_id: str, req: GatheringPresenceRequest):
+    if game_id != MEETING_ROOM_GID or req.client_id not in GATHERING_PARTICIPANTS:
+        raise HTTPException(status_code=404, detail="そろうごいた会の参加者が見つかりません。")
+    item = GATHERING_PARTICIPANTS[req.client_id]
+    partner = str(item.get("pair_with", ""))
+    if partner:
+        partner_item = GATHERING_PARTICIPANTS.get(partner)
+        statuses = {str(item.get("status", "")), str((partner_item or {}).get("status", ""))}
+        if not statuses.issubset({"waiting", "resting"}):
+            raise HTTPException(status_code=409, detail="固定ペアは待機中または休憩中に解除できます。")
+        item["pair_with"] = ""
+        if partner_item:
+            partner_item["pair_with"] = ""
+    GATHERING_PAIR_REQUESTS.pop(req.client_id, None)
+    for requester, target in list(GATHERING_PAIR_REQUESTS.items()):
+        if target == req.client_id:
+            GATHERING_PAIR_REQUESTS.pop(requester, None)
+    _schedule_gathering_matchmaking()
+    await _gathering_broadcast()
+    return {"ok": True, "gathering_event": _gathering_event_public_payload(req.client_id)}
 
 
 def _read_memory_counter(path: str) -> Optional[int]:

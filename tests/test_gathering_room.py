@@ -51,6 +51,43 @@ def test_fixed_pair_is_never_split_by_matchmaking(monkeypatch):
     assert ("pair-a" in selected) == ("pair-b" in selected)
 
 
+def test_fixed_pair_waits_when_partner_is_resting(monkeypatch):
+    players = {
+        "pair-a": participant("pair-a", pair_with="pair-b"),
+        "pair-b": participant("pair-b", pair_with="pair-a"),
+        "solo-c": participant("solo-c"),
+        "solo-d": participant("solo-d"),
+        "solo-e": participant("solo-e"),
+        "solo-f": participant("solo-f"),
+    }
+    players["pair-b"]["status"] = "resting"
+    monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+    monkeypatch.setattr(app_module, "_gathering_client_connected", lambda _client_id: True)
+
+    waiters = app_module._gathering_connected_waiters()
+    selected = app_module._select_gathering_players(waiters, allow_ai=False)
+
+    assert "pair-a" not in waiters
+    assert "pair-b" not in waiters
+    assert set(selected) == {"solo-c", "solo-d", "solo-e", "solo-f"}
+
+
+def test_fixed_pair_waits_when_partner_is_disconnected(monkeypatch):
+    players = {
+        "pair-a": participant("pair-a", pair_with="pair-b"),
+        "pair-b": participant("pair-b", pair_with="pair-a"),
+        "solo-c": participant("solo-c"),
+    }
+    monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+    monkeypatch.setattr(
+        app_module,
+        "_gathering_client_connected",
+        lambda client_id: client_id != "pair-b",
+    )
+
+    assert app_module._gathering_connected_waiters() == ["solo-c"]
+
+
 def test_two_fixed_pairs_are_preferred_as_two_complete_teams(monkeypatch):
     players = {
         "pair-a": participant("pair-a", pair_with="pair-b"),
@@ -304,6 +341,86 @@ def test_ai_start_is_unavailable_while_human_table_is_active(monkeypatch):
     assert app_module._gathering_ai_start_state("a") == (False, 0)
 
 
+def test_pair_can_be_accepted_then_rest_and_cancel_independently(monkeypatch):
+    async def scenario():
+        players = {
+            "pair-a": participant("Aさん", wait_offset=20),
+            "pair-b": participant("Bさん", wait_offset=10),
+        }
+        pair_requests = {"pair-a": "pair-b"}
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_PAIR_REQUESTS", pair_requests)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {})
+        monkeypatch.setattr(app_module, "GAMES", {})
+        monkeypatch.setattr(app_module, "_schedule_gathering_matchmaking", lambda **_kwargs: None)
+
+        async def no_broadcast():
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+
+        accepted = await app_module.accept_gathering_pair(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPairRequest(
+                client_id="pair-b",
+                target_id=app_module._gathering_public_id("pair-a"),
+            ),
+        )
+        assert players["pair-a"]["pair_with"] == "pair-b"
+        assert players["pair-b"]["pair_with"] == "pair-a"
+        assert players["pair-a"]["wait_since"] == players["pair-b"]["wait_since"]
+        assert accepted["gathering_event"]["participants"][0]["pair_id"]
+
+        before_partner_wait = players["pair-a"]["wait_since"]
+        await app_module.update_gathering_rest(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringRestRequest(client_id="pair-b", resting=True),
+        )
+        assert players["pair-a"]["status"] == "waiting"
+        assert players["pair-a"]["wait_since"] == before_partner_wait
+        assert players["pair-b"]["status"] == "resting"
+
+        await app_module.cancel_gathering_pair(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPresenceRequest(client_id="pair-a"),
+        )
+        assert players["pair-a"]["pair_with"] == ""
+        assert players["pair-b"]["pair_with"] == ""
+
+    asyncio.run(scenario())
+
+
+def test_pair_request_can_be_rejected(monkeypatch):
+    async def scenario():
+        players = {
+            "requester": participant("申込者"),
+            "target": participant("相手"),
+        }
+        requests = {"requester": "target"}
+        monkeypatch.setattr(app_module, "GATHERING_PARTICIPANTS", players)
+        monkeypatch.setattr(app_module, "GATHERING_PAIR_REQUESTS", requests)
+        monkeypatch.setattr(app_module, "GATHERING_TABLE_META", {})
+        monkeypatch.setattr(app_module, "GAMES", {})
+
+        async def no_broadcast():
+            return None
+
+        monkeypatch.setattr(app_module, "_gathering_broadcast", no_broadcast)
+
+        response = await app_module.reject_gathering_pair(
+            app_module.MEETING_ROOM_GID,
+            app_module.GatheringPairRequest(
+                client_id="target",
+                target_id=app_module._gathering_public_id("requester"),
+            ),
+        )
+
+        assert requests == {}
+        assert response["gathering_event"]["incoming_pair_requests"] == []
+
+    asyncio.run(scenario())
+
+
 def test_gathering_table_snapshot_hides_facedown_receive_piece(monkeypatch):
     table_id = app_module.GATHERING_TABLE_IDS[0]
     game = app_module._create_game_obj(dealer="A")
@@ -524,6 +641,14 @@ def test_frontend_and_admin_include_gathering_controls():
     assert 'id="gatheringRoomTitle">待合室' in lobby
     assert 'id="gatheringExitButton"' in lobby
     assert "gathering-waiting-room" in lobby
+    assert 'class="gathering-waiting-layout"' in lobby
+    assert 'id="gatheringPairModal"' in lobby
+    assert "gathering-player-group-playing { display:none; }" in lobby
+    assert "renderGatheringWaitingTableCanvases(tables)" in lobby
+    assert "openGatheringPairModal" in lobby
+    assert "rejectGatheringPair" in lobby
+    assert "cancelGatheringPair" in lobby
+    assert 'id="gatheringParticipantCount"' not in lobby
     assert "function syncGatheringWaitingRoomReturn(state)" in lobby
     assert "await openGatheringHub();" in lobby
     assert "そろうごいた会　待合室" in lobby
