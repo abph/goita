@@ -646,6 +646,8 @@
     "待機中": "Waiting",
     "対局者を待っています": "Waiting for players",
     "開始待ち": "Waiting",
+    "空き": "Open",
+    "対局を見る": "Watch Match",
     "入替中": "Rotating",
     "入れ替え中": "Rotating players",
     "対局中": "Playing",
