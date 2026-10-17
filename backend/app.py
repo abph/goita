@@ -2784,6 +2784,9 @@ class RegionalAdMetricRequest(BaseModel):
     ad_id: str = Field(min_length=8, max_length=64)
     event: Literal["impression", "click"]
     surface: Literal["public_room", "score_attack"] = "public_room"
+    viewer_measurement: bool = False
+    viewer_first: bool = False
+    surface_viewer_first: bool = False
 
 
 @app.post("/analytics/event")
@@ -8602,6 +8605,9 @@ def record_regional_ad_metric(req: RegionalAdMetricRequest, request: Request):
         region or "不明",
         req.event,
         surface=req.surface,
+        viewer_measurement=req.viewer_measurement,
+        viewer_first=req.viewer_first,
+        surface_viewer_first=req.surface_viewer_first,
     ):
         raise HTTPException(400, "地域別広告の実績を記録できませんでした")
     return {"ok": True}

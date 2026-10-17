@@ -322,13 +322,59 @@ def test_existing_analytics_database_adds_prefecture_column(tmp_path: Path) -> N
     }]
 
 
+def test_existing_regional_ad_tables_add_viewer_measurement_columns(tmp_path: Path) -> None:
+    database = tmp_path / "analytics.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE regional_ad_daily_metrics (
+                metric_date TEXT NOT NULL,
+                ad_id TEXT NOT NULL,
+                region TEXT NOT NULL,
+                impressions INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (metric_date, ad_id, region)
+            );
+            CREATE TABLE regional_ad_surface_daily_metrics (
+                metric_date TEXT NOT NULL,
+                ad_id TEXT NOT NULL,
+                region TEXT NOT NULL,
+                surface TEXT NOT NULL,
+                impressions INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (metric_date, ad_id, region, surface)
+            );
+            """
+        )
+
+    store = AnalyticsStore(database)
+    store._ensure_schema()
+    with sqlite3.connect(database) as connection:
+        for table_name in (
+            "regional_ad_daily_metrics",
+            "regional_ad_surface_daily_metrics",
+        ):
+            columns = {
+                str(row[1])
+                for row in connection.execute(f"PRAGMA table_info({table_name})")
+            }
+            assert "viewers" in columns
+            assert "measured_impressions" in columns
+
+
 def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path: Path) -> None:
     store = AnalyticsStore(tmp_path / "analytics.sqlite3")
     before_midnight_jst = datetime(2026, 9, 25, 14, 59, tzinfo=timezone.utc)
     after_midnight_jst = datetime(2026, 9, 25, 15, 1, tzinfo=timezone.utc)
 
     assert store.record_regional_ad_metric(
-        "kanto-ad", "関東", "impression", now=before_midnight_jst
+        "kanto-ad", "関東", "impression",
+        viewer_measurement=True,
+        viewer_first=True,
+        surface_viewer_first=True,
+        now=before_midnight_jst,
     ) is True
     assert store.record_regional_ad_metric(
         "kanto-ad", "関東", "impression", now=after_midnight_jst
@@ -351,12 +397,18 @@ def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path:
     )
     assert metrics["kanto-ad"]["impressions"] == 3
     assert metrics["kanto-ad"]["clicks"] == 1
+    assert metrics["kanto-ad"]["viewers"] == 1
+    assert metrics["kanto-ad"]["measured_impressions"] == 1
     assert metrics["kanto-ad"]["click_rate"] == 33.3
+    assert metrics["kanto-ad"]["impressions_per_viewer"] == 1.0
     assert metrics["kanto-ad"]["regions"][0] == {
         "region": "関東",
         "impressions": 2,
         "clicks": 1,
+        "viewers": 1,
+        "measured_impressions": 1,
         "click_rate": 50.0,
+        "impressions_per_viewer": 1.0,
     }
     assert {row["date"] for row in metrics["kanto-ad"]["daily"]} == {
         "2026-09-25",
@@ -377,6 +429,8 @@ def test_regional_ad_metrics_are_aggregate_only_and_use_japanese_dates(tmp_path:
         "region",
         "impressions",
         "clicks",
+        "viewers",
+        "measured_impressions",
         "updated_at",
     }
 
@@ -386,10 +440,12 @@ def test_regional_ad_metrics_include_display_surface_breakdown(tmp_path: Path) -
     now = datetime(2026, 10, 4, 3, 0, tzinfo=timezone.utc)
 
     assert store.record_regional_ad_metric(
-        "surface-ad", "関東", "impression", surface="public_room", now=now
+        "surface-ad", "関東", "impression", surface="public_room",
+        viewer_measurement=True, viewer_first=True, surface_viewer_first=True, now=now
     ) is True
     assert store.record_regional_ad_metric(
-        "surface-ad", "関東", "impression", surface="score_attack", now=now
+        "surface-ad", "関東", "impression", surface="score_attack",
+        viewer_measurement=True, surface_viewer_first=True, now=now
     ) is True
     assert store.record_regional_ad_metric(
         "surface-ad", "関東", "click", surface="score_attack", now=now
@@ -398,13 +454,20 @@ def test_regional_ad_metrics_include_display_surface_breakdown(tmp_path: Path) -
     metrics = store.regional_ad_metrics(["surface-ad"], now=now)["surface-ad"]
     assert metrics["impressions"] == 2
     assert metrics["clicks"] == 1
+    assert metrics["viewers"] == 1
+    assert metrics["measured_impressions"] == 2
+    assert metrics["impressions_per_viewer"] == 2.0
     assert {item["surface"]: item for item in metrics["surfaces"]} == {
         "public_room": {
             "surface": "public_room", "impressions": 1,
-            "clicks": 0, "click_rate": 0.0,
+            "clicks": 0, "viewers": 1, "click_rate": 0.0,
+            "measured_impressions": 1,
+            "impressions_per_viewer": 1.0,
         },
         "score_attack": {
             "surface": "score_attack", "impressions": 1,
-            "clicks": 1, "click_rate": 100.0,
+            "clicks": 1, "viewers": 1, "click_rate": 100.0,
+            "measured_impressions": 1,
+            "impressions_per_viewer": 1.0,
         },
     }

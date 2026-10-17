@@ -243,6 +243,8 @@ class AnalyticsStore:
                         region TEXT NOT NULL,
                         impressions INTEGER NOT NULL DEFAULT 0,
                         clicks INTEGER NOT NULL DEFAULT 0,
+                        viewers INTEGER NOT NULL DEFAULT 0,
+                        measured_impressions INTEGER NOT NULL DEFAULT 0,
                         updated_at TEXT NOT NULL,
                         PRIMARY KEY (metric_date, ad_id, region)
                     );
@@ -255,6 +257,8 @@ class AnalyticsStore:
                         surface TEXT NOT NULL,
                         impressions INTEGER NOT NULL DEFAULT 0,
                         clicks INTEGER NOT NULL DEFAULT 0,
+                        viewers INTEGER NOT NULL DEFAULT 0,
+                        measured_impressions INTEGER NOT NULL DEFAULT 0,
                         updated_at TEXT NOT NULL,
                         PRIMARY KEY (metric_date, ad_id, region, surface)
                     );
@@ -280,6 +284,26 @@ class AnalyticsStore:
                         "UPDATE analytics_sessions SET country_code = 'JP' "
                         "WHERE prefecture NOT IN ('', '不明', '国外')"
                     )
+                for table_name in (
+                    "regional_ad_daily_metrics",
+                    "regional_ad_surface_daily_metrics",
+                ):
+                    metric_columns = {
+                        str(row[1])
+                        for row in connection.execute(
+                            f"PRAGMA table_info({table_name})"
+                        )
+                    }
+                    if "viewers" not in metric_columns:
+                        connection.execute(
+                            f"ALTER TABLE {table_name} "
+                            "ADD COLUMN viewers INTEGER NOT NULL DEFAULT 0"
+                        )
+                    if "measured_impressions" not in metric_columns:
+                        connection.execute(
+                            f"ALTER TABLE {table_name} "
+                            "ADD COLUMN measured_impressions INTEGER NOT NULL DEFAULT 0"
+                        )
                 connection.commit()
             self._schema_ready = True
 
@@ -399,6 +423,9 @@ class AnalyticsStore:
         event_name: str,
         *,
         surface: str = "public_room",
+        viewer_measurement: bool = False,
+        viewer_first: bool = False,
+        surface_viewer_first: bool = False,
         now: Optional[datetime] = None,
     ) -> bool:
         """Increment one privacy-limited regional advertisement aggregate."""
@@ -422,17 +449,23 @@ class AnalyticsStore:
         updated_at = occurred_at.astimezone(timezone.utc).isoformat(timespec="seconds")
         impressions = 1 if clean_event == "impression" else 0
         clicks = 1 if clean_event == "click" else 0
+        measured_impressions = 1 if impressions and viewer_measurement else 0
+        viewers = 1 if impressions and viewer_first else 0
+        surface_viewers = 1 if impressions and surface_viewer_first else 0
 
         self._ensure_schema()
         with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO regional_ad_daily_metrics (
-                    metric_date, ad_id, region, impressions, clicks, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    metric_date, ad_id, region, impressions, clicks, viewers,
+                    measured_impressions, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(metric_date, ad_id, region) DO UPDATE SET
                     impressions = impressions + excluded.impressions,
                     clicks = clicks + excluded.clicks,
+                    viewers = viewers + excluded.viewers,
+                    measured_impressions = measured_impressions + excluded.measured_impressions,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -441,6 +474,8 @@ class AnalyticsStore:
                     clean_region,
                     impressions,
                     clicks,
+                    viewers,
+                    measured_impressions,
                     updated_at,
                 ),
             )
@@ -448,11 +483,13 @@ class AnalyticsStore:
                 """
                 INSERT INTO regional_ad_surface_daily_metrics (
                     metric_date, ad_id, region, surface,
-                    impressions, clicks, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    impressions, clicks, viewers, measured_impressions, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(metric_date, ad_id, region, surface) DO UPDATE SET
                     impressions = impressions + excluded.impressions,
                     clicks = clicks + excluded.clicks,
+                    viewers = viewers + excluded.viewers,
+                    measured_impressions = measured_impressions + excluded.measured_impressions,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -462,6 +499,8 @@ class AnalyticsStore:
                     clean_surface,
                     impressions,
                     clicks,
+                    surface_viewers,
+                    measured_impressions,
                     updated_at,
                 ),
             )
@@ -496,7 +535,8 @@ class AnalyticsStore:
 
         self._ensure_schema()
         query = (
-            "SELECT metric_date, ad_id, region, impressions, clicks "
+            "SELECT metric_date, ad_id, region, impressions, clicks, viewers, "
+            "measured_impressions "
             "FROM regional_ad_daily_metrics"
         )
         parameters: list[Any] = []
@@ -509,7 +549,8 @@ class AnalyticsStore:
         with closing(self._connect()) as connection:
             rows = connection.execute(query, parameters).fetchall()
             surface_query = (
-                "SELECT metric_date, ad_id, region, surface, impressions, clicks "
+                "SELECT metric_date, ad_id, region, surface, impressions, clicks, viewers, "
+                "measured_impressions "
                 "FROM regional_ad_surface_daily_metrics"
             )
             if requested_ids:
@@ -523,7 +564,10 @@ class AnalyticsStore:
             ad_id: {
                 "impressions": 0,
                 "clicks": 0,
+                "viewers": 0,
+                "measured_impressions": 0,
                 "click_rate": 0.0,
+                "impressions_per_viewer": 0.0,
                 "regions": {},
                 "daily": [],
                 "surfaces": {},
@@ -536,7 +580,10 @@ class AnalyticsStore:
             metrics = result.setdefault(ad_id, {
                 "impressions": 0,
                 "clicks": 0,
+                "viewers": 0,
+                "measured_impressions": 0,
                 "click_rate": 0.0,
+                "impressions_per_viewer": 0.0,
                 "regions": {},
                 "daily": [],
                 "surfaces": {},
@@ -544,21 +591,30 @@ class AnalyticsStore:
             })
             impressions = int(row["impressions"])
             clicks = int(row["clicks"])
+            viewers = int(row["viewers"])
+            measured_impressions = int(row["measured_impressions"])
             metrics["impressions"] += impressions
             metrics["clicks"] += clicks
+            metrics["viewers"] += viewers
+            metrics["measured_impressions"] += measured_impressions
             region = str(row["region"])
             region_metrics = metrics["regions"].setdefault(
                 region,
-                {"region": region, "impressions": 0, "clicks": 0},
+                {"region": region, "impressions": 0, "clicks": 0, "viewers": 0,
+                 "measured_impressions": 0},
             )
             region_metrics["impressions"] += impressions
             region_metrics["clicks"] += clicks
+            region_metrics["viewers"] += viewers
+            region_metrics["measured_impressions"] += measured_impressions
             if str(row["metric_date"]) >= cutoff:
                 metrics["daily"].append({
                     "date": str(row["metric_date"]),
                     "region": region,
                     "impressions": impressions,
                     "clicks": clicks,
+                    "viewers": viewers,
+                    "measured_impressions": measured_impressions,
                 })
 
         for row in surface_rows:
@@ -566,7 +622,10 @@ class AnalyticsStore:
             metrics = result.setdefault(ad_id, {
                 "impressions": 0,
                 "clicks": 0,
+                "viewers": 0,
+                "measured_impressions": 0,
                 "click_rate": 0.0,
+                "impressions_per_viewer": 0.0,
                 "regions": {},
                 "daily": [],
                 "surfaces": {},
@@ -574,13 +633,18 @@ class AnalyticsStore:
             })
             impressions = int(row["impressions"])
             clicks = int(row["clicks"])
+            viewers = int(row["viewers"])
+            measured_impressions = int(row["measured_impressions"])
             surface = str(row["surface"])
             surface_metrics = metrics["surfaces"].setdefault(
                 surface,
-                {"surface": surface, "impressions": 0, "clicks": 0},
+                {"surface": surface, "impressions": 0, "clicks": 0, "viewers": 0,
+                 "measured_impressions": 0},
             )
             surface_metrics["impressions"] += impressions
             surface_metrics["clicks"] += clicks
+            surface_metrics["viewers"] += viewers
+            surface_metrics["measured_impressions"] += measured_impressions
             if str(row["metric_date"]) >= cutoff:
                 metrics["surface_daily"].append({
                     "date": str(row["metric_date"]),
@@ -588,13 +652,21 @@ class AnalyticsStore:
                     "surface": surface,
                     "impressions": impressions,
                     "clicks": clicks,
+                    "viewers": viewers,
+                    "measured_impressions": measured_impressions,
                 })
 
         for metrics in result.values():
             impressions = int(metrics["impressions"])
             clicks = int(metrics["clicks"])
+            viewers = int(metrics["viewers"])
+            measured_impressions = int(metrics["measured_impressions"])
             metrics["click_rate"] = round(
                 (clicks / impressions * 100.0) if impressions else 0.0,
+                1,
+            )
+            metrics["impressions_per_viewer"] = round(
+                (measured_impressions / viewers) if viewers else 0.0,
                 1,
             )
             regions = list(metrics["regions"].values())
@@ -602,6 +674,11 @@ class AnalyticsStore:
                 item["click_rate"] = round(
                     (item["clicks"] / item["impressions"] * 100.0)
                     if item["impressions"] else 0.0,
+                    1,
+                )
+                item["impressions_per_viewer"] = round(
+                    (item["measured_impressions"] / item["viewers"])
+                    if item["viewers"] else 0.0,
                     1,
                 )
             regions.sort(
@@ -613,6 +690,11 @@ class AnalyticsStore:
                 item["click_rate"] = round(
                     (item["clicks"] / item["impressions"] * 100.0)
                     if item["impressions"] else 0.0,
+                    1,
+                )
+                item["impressions_per_viewer"] = round(
+                    (item["measured_impressions"] / item["viewers"])
+                    if item["viewers"] else 0.0,
                     1,
                 )
             surfaces.sort(

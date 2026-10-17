@@ -127,7 +127,14 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     })
 
     assert app_module.record_regional_ad_metric(
-        app_module.RegionalAdMetricRequest(ad_id="kanto-ad", event="impression", surface="score_attack"),
+        app_module.RegionalAdMetricRequest(
+            ad_id="kanto-ad",
+            event="impression",
+            surface="score_attack",
+            viewer_measurement=True,
+            viewer_first=True,
+            surface_viewer_first=True,
+        ),
         request,
     ) == {"ok": True}
     assert app_module.record_regional_ad_metric(
@@ -138,12 +145,18 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     assert payload["metrics_recent_days"] == 30
     assert payload["metrics"]["kanto-ad"]["impressions"] == 1
     assert payload["metrics"]["kanto-ad"]["clicks"] == 1
+    assert payload["metrics"]["kanto-ad"]["viewers"] == 1
+    assert payload["metrics"]["kanto-ad"]["measured_impressions"] == 1
+    assert payload["metrics"]["kanto-ad"]["impressions_per_viewer"] == 1.0
     assert payload["metrics"]["kanto-ad"]["click_rate"] == 100.0
     assert payload["metrics"]["kanto-ad"]["surfaces"] == [{
         "surface": "score_attack",
         "impressions": 1,
         "clicks": 1,
+        "viewers": 1,
+        "measured_impressions": 1,
         "click_rate": 100.0,
+        "impressions_per_viewer": 1.0,
     }]
 
     with pytest.raises(HTTPException) as error:
@@ -158,15 +171,21 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     script = (ROOT / "frontend" / "regionalAds.js").read_text(encoding="utf-8")
     admin = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
     index = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    assert 'recordMetric(ad.id, "impression", surface)' in script
+    assert 'recordMetric(ad.id, "impression", surface, false' in script
+    assert "const DAILY_LIMIT = 3" in script
+    assert "viewer_first: exposure.viewerFirst" in script
+    assert "viewer_measurement: true" in script
+    assert "surface_viewer_first: exposure.surfaceViewerFirst" in script
     assert 'ad.dataset.surface || "public_room"' in script
     assert '"/api/regional-ad/metric"' in script
     assert "表示場所別・地方別・直近30日" in admin
     assert 'value="score_attack"' in admin
     assert "CTR" in admin
+    assert "閲覧ブラウザー" in admin
     assert "regionalAdMetrics" in admin
     assert ".regional-ad strong { display:block; font-size:13px; }" in index
     assert ".regional-ad p { margin:4px 0 0; font-size:14px;" in index
+    assert 'class="regional-ad-open"' in index
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index
 
