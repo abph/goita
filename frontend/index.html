@@ -488,6 +488,34 @@
       padding: 0;
       gap: 5px;
     }
+    .player-icon {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+    .player-piece-icon {
+      display: inline-grid;
+      place-items: center;
+      box-sizing: border-box;
+      padding-top: 3px;
+      border: 1px solid rgba(112, 73, 24, 0.75);
+      background: linear-gradient(135deg, #fff0b6, #dfbd67);
+      color: #1f2b9c;
+      clip-path: polygon(50% 0%, 93% 17%, 98% 100%, 2% 100%, 7% 17%);
+      filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.24));
+      font-family: "Yu Kyokasho", "游教科書体", "YuKyokasho", "Hiragino Mincho ProN", serif;
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .combo-side .player-icon {
+      width: 20px;
+      height: 20px;
+      flex-basis: 20px;
+    }
+    .combo-side .player-piece-icon { font-size: 13px; }
     .name-thinking-spinner {
       width: 16px;
       height: 16px;
@@ -973,6 +1001,8 @@
         align-items: center;
     }
     .lobby-welcome-message {
+        display: flex;
+        align-items: center;
         min-width: 0;
         max-width: 230px;
         margin: 0;
@@ -981,6 +1011,12 @@
         font-weight: 700;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+    .lobby-welcome-message .player-icon {
+        width: 22px;
+        height: 22px;
+        margin-right: 4px;
+        vertical-align: middle;
     }
     .lobby-next-recommendation {
         min-width: 0;
@@ -2286,6 +2322,11 @@
       gap: 7px;
       margin-bottom: 3px;
     }
+    .chat-meta .player-icon {
+      width: 20px;
+      height: 20px;
+      flex-basis: 20px;
+    }
     .chat-sender {
       font-size: 12px;
       font-weight: 900;
@@ -3115,6 +3156,11 @@
       align-items: center;
       gap: 5px;
     }
+    .lobby-person-identity .player-icon {
+      width: 22px;
+      height: 22px;
+      flex-basis: 22px;
+    }
     .lobby-person-name {
       min-width: 0;
       color: #3d2b1d;
@@ -3215,6 +3261,50 @@
     .settings-row { margin-bottom: 16px; }
     .settings-row label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
     .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 16px; }
+    .player-icon-picker {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .player-icon-picker-group {
+      grid-column: 1 / -1;
+      margin-top: 3px;
+      color: #6d461f;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.4;
+    }
+    .player-icon-choice {
+      display: flex;
+      min-width: 0;
+      min-height: 48px;
+      padding: 4px;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(139, 90, 43, 0.25);
+      border-radius: 7px;
+      background: rgba(255, 253, 245, 0.75);
+      color: #6d461f;
+      cursor: pointer;
+    }
+    .player-icon-choice[aria-pressed="true"] {
+      border-color: #b00000;
+      box-shadow: 0 0 0 2px rgba(176, 0, 0, 0.14);
+      background: #fff8ec;
+    }
+    .player-icon-choice .player-icon {
+      width: 32px;
+      height: 32px;
+      flex-basis: 32px;
+    }
+    .player-icon-choice .player-piece-icon { font-size: 20px; }
+    .player-icon-choice-none {
+      font-size: 11px;
+      font-weight: 900;
+    }
+    @media (max-width: 420px) {
+      .player-icon-picker { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    }
     .settings-disclosure {
       margin: 0 0 16px;
       border: 1px solid rgba(139, 90, 43, 0.35);
@@ -5893,6 +5983,10 @@
       <label for="lobbyNameInput">名前（最大9文字）</label>
       <input type="text" id="lobbyNameInput" maxlength="9" autocomplete="nickname" placeholder="名前を入力">
     </div>
+    <div class="settings-row">
+      <label>プレイヤーアイコン（任意）</label>
+      <div id="lobbyNamePlayerIcon" class="player-icon-picker" data-player-icon-picker></div>
+    </div>
     <div id="lobbyNameStatus" class="settings-status" aria-live="polite"></div>
     <div class="lobby-name-modal-actions">
       <button type="button" onclick="closeLobbyNameModal()">キャンセル</button>
@@ -5922,6 +6016,10 @@
         <div class="settings-row">
           <label for="lobbyPersonalPlayerName">名前（最大9文字）</label>
           <input type="text" id="lobbyPersonalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+        </div>
+        <div class="settings-row">
+          <label>プレイヤーアイコン（任意）</label>
+          <div id="lobbyPersonalPlayerIcon" class="player-icon-picker" data-player-icon-picker></div>
         </div>
         <div class="settings-row">
           <label for="lobbyPersonalPlayerTag">プレイヤータグ</label>
@@ -6085,6 +6183,10 @@
       <div class="settings-row">
         <label for="personalPlayerName">名前（最大9文字）</label>
         <input type="text" id="personalPlayerName" maxlength="9" autocomplete="off" placeholder="名前を入力">
+      </div>
+      <div class="settings-row">
+        <label>プレイヤーアイコン（任意）</label>
+        <div id="personalPlayerIcon" class="player-icon-picker" data-player-icon-picker></div>
       </div>
       <div class="settings-row">
         <label for="personalPlayerTag">プレイヤータグ</label>
@@ -6845,11 +6947,13 @@
   .gathering-player-block { margin-bottom:5px; overflow:hidden; border:1px solid rgba(139,90,43,.2); border-radius:7px; background:#fff; }
   .gathering-player-block.is-self { border-color:#9a672c; box-shadow:inset 3px 0 #9a672c; }
   .gathering-player-block.is-pair { background:#fffaf0; }
-  .gathering-player-row { display:grid; grid-template-columns:22px minmax(0,1fr) auto; gap:5px; align-items:center; width:100%; min-height:34px; padding:5px 7px; border:0; border-bottom:1px solid rgba(139,90,43,.12); border-radius:0; background:transparent; color:#3d2b1d; text-align:left; }
+  .gathering-player-row { display:grid; grid-template-columns:22px 22px minmax(0,1fr) auto; gap:5px; align-items:center; width:100%; min-height:34px; padding:5px 7px; border:0; border-bottom:1px solid rgba(139,90,43,.12); border-radius:0; background:transparent; color:#3d2b1d; text-align:left; }
   .gathering-player-row:last-child { border-bottom:0; }
   button.gathering-player-row.can-pair { cursor:pointer; }
   button.gathering-player-row.can-pair:hover { background:#fff2c8; }
   .gathering-player-order { color:#8a6a49; font-size:11px; font-weight:900; text-align:center; }
+  .gathering-player-icon-slot { display:flex; width:22px; height:22px; align-items:center; justify-content:center; }
+  .gathering-player-icon { width:22px; height:22px; flex-basis:22px; }
   .gathering-player-name { min-width:0; overflow:hidden; font-size:12px; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
   .gathering-player-meta { color:#80664e; font-size:9px; font-weight:700; white-space:nowrap; }
   .gathering-player-pair-note { padding:4px 8px 5px 29px; border-top:1px dashed rgba(139,90,43,.18); color:#76583b; font-size:9px; }
@@ -8374,6 +8478,28 @@ const PLAYER_TAG_LABELS = Object.freeze({
     teacher: "教えられます",
     tournament: "大会練習中",
 });
+const PLAYER_ICON_DEFINITIONS = Object.freeze({
+    shi_sparrow: {label: "すずめ", file: "shi-sparrow-pixel.png", group: "animal"},
+    ko_mouse: {label: "ねずみ", file: "ko-mouse-pixel.png", group: "animal"},
+    uma_horse: {label: "うま", file: "uma-horse-pixel.png", group: "animal"},
+    gin_squirrel: {label: "こりす", file: "gin-baby-squirrel-pixel.png", group: "animal"},
+    kin_flying_squirrel: {label: "むささび", file: "kin-flying-squirrel-pixel.png", group: "animal"},
+    kaku_dragon: {label: "りゅう", file: "kaku-dragon-pixel.png", group: "animal"},
+    hi_winged_dragon: {label: "ひりゅう", file: "hi-winged-dragon-pixel.png", group: "animal"},
+    gyoku_kitten: {label: "こねこ", file: "gyoku-kitten-pixel.png", group: "animal"},
+    ou_lynx: {label: "やまねこ", file: "ou-lynx-pixel.png", group: "animal"},
+    special_yellowtail: {label: "寒ブリ", file: "special-yellowtail-pixel.png", group: "animal"},
+    piece_shi: {label: "し", piece: "し", group: "piece"},
+    piece_ko: {label: "香", piece: "香", group: "piece"},
+    piece_uma: {label: "馬", piece: "馬", group: "piece"},
+    piece_gin: {label: "銀", piece: "銀", group: "piece"},
+    piece_kin: {label: "金", piece: "金", group: "piece"},
+    piece_kaku: {label: "角", piece: "角", group: "piece"},
+    piece_hi: {label: "飛", piece: "飛", group: "piece"},
+    piece_gyoku: {label: "玉", piece: "玉", group: "piece"},
+    piece_ou: {label: "王", piece: "王", group: "piece"},
+});
+const PLAYER_ICON_ASSET_VERSION = "20261017";
 
 function normalizePlayerTag(tag) {
     const normalized = String(tag || "").trim().toLowerCase();
@@ -8393,6 +8519,101 @@ function buildPlayerTagBadge(tag, extraClass = "") {
     badge.dataset.playerTag = normalized;
     badge.textContent = playerTagLabel(normalized);
     return badge;
+}
+
+function normalizePlayerIcon(icon) {
+    const normalized = String(icon || "").trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PLAYER_ICON_DEFINITIONS, normalized)
+        ? normalized
+        : "";
+}
+
+function playerIconSrc(icon) {
+    const normalized = normalizePlayerIcon(icon);
+    if (!normalized) return "";
+    const file = PLAYER_ICON_DEFINITIONS[normalized].file;
+    return file ? `/static/player-icons/${encodeURIComponent(file)}?v=${PLAYER_ICON_ASSET_VERSION}` : "";
+}
+
+function buildPlayerIcon(icon, extraClass = "") {
+    const normalized = normalizePlayerIcon(icon);
+    if (!normalized) return null;
+    const definition = PLAYER_ICON_DEFINITIONS[normalized];
+    if (definition.piece) {
+        const piece = document.createElement("span");
+        piece.className = `player-icon player-piece-icon${extraClass ? ` ${extraClass}` : ""}`;
+        piece.textContent = definition.piece;
+        piece.setAttribute("role", "img");
+        piece.setAttribute("aria-label", `${uiText("駒")}：${definition.piece}`);
+        piece.title = `${uiText("駒")}：${definition.piece}`;
+        return piece;
+    }
+    const image = document.createElement("img");
+    image.className = `player-icon${extraClass ? ` ${extraClass}` : ""}`;
+    image.src = playerIconSrc(normalized);
+    image.alt = uiText(definition.label);
+    image.title = uiText(definition.label);
+    image.loading = "lazy";
+    return image;
+}
+
+function playerIconHtml(icon, extraClass = "") {
+    const normalized = normalizePlayerIcon(icon);
+    if (!normalized) return "";
+    const definition = PLAYER_ICON_DEFINITIONS[normalized];
+    if (definition.piece) {
+        const pieceLabel = `${uiText("駒")}：${definition.piece}`;
+        return `<span class="player-icon player-piece-icon${extraClass ? ` ${extraClass}` : ""}" role="img" aria-label="${escapeLobbyHtml(pieceLabel)}" title="${escapeLobbyHtml(pieceLabel)}">${escapeLobbyHtml(definition.piece)}</span>`;
+    }
+    const localizedLabel = uiText(definition.label);
+    return `<img class="player-icon${extraClass ? ` ${extraClass}` : ""}" src="${playerIconSrc(normalized)}" alt="${escapeLobbyHtml(localizedLabel)}" title="${escapeLobbyHtml(localizedLabel)}">`;
+}
+
+function selectPlayerIcon(pickerId, icon) {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+    const normalized = normalizePlayerIcon(icon);
+    picker.dataset.value = normalized;
+    picker.querySelectorAll(".player-icon-choice").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.playerIcon === normalized));
+    });
+}
+
+function playerIconPickerValue(pickerId) {
+    return normalizePlayerIcon(document.getElementById(pickerId)?.dataset.value);
+}
+
+function renderPlayerIconPicker(pickerId, selectedIcon = "") {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+    if (!picker.childElementCount) {
+        const appendChoice = (icon, definition) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `player-icon-choice${icon ? "" : " player-icon-choice-none"}`;
+            button.dataset.playerIcon = icon;
+            button.setAttribute("aria-label", icon ? uiText(definition.label) : uiText("アイコンなし"));
+            button.title = icon ? uiText(definition.label) : uiText("アイコンなし");
+            button.addEventListener("click", () => selectPlayerIcon(pickerId, icon));
+            const image = buildPlayerIcon(icon);
+            if (image) button.appendChild(image);
+            else button.textContent = "なし";
+            picker.appendChild(button);
+        };
+        const appendGroup = (label, group) => {
+            const heading = document.createElement("div");
+            heading.className = "player-icon-picker-group";
+            heading.textContent = uiText(label);
+            picker.appendChild(heading);
+            Object.entries(PLAYER_ICON_DEFINITIONS)
+                .filter(([, definition]) => definition.group === group)
+                .forEach(([icon, definition]) => appendChoice(icon, definition));
+        };
+        appendChoice("", {label: "アイコンなし"});
+        appendGroup("動物", "animal");
+        appendGroup("駒", "piece");
+    }
+    selectPlayerIcon(pickerId, selectedIcon);
 }
 
 function normalizeBoardViewMode(mode) {
@@ -8425,6 +8646,7 @@ function loadPersonalSettings() {
         return {
             playerName: String(saved.playerName || "").replace(/\r?\n/g, "").slice(0, 9),
             playerTag: normalizePlayerTag(saved.playerTag),
+            playerIcon: normalizePlayerIcon(saved.playerIcon),
             enableEffects: saved.enableEffects !== false,
             enableSoundEffects: saved.enableSoundEffects !== false,
             pieceSound: ["notanomori", "standard"].includes(saved.pieceSound)
@@ -8454,6 +8676,7 @@ function loadPersonalSettings() {
         return {
             playerName: "",
             playerTag: "",
+            playerIcon: "",
             enableEffects: true,
             enableSoundEffects: true,
             pieceSound: "notanomori",
@@ -8581,6 +8804,7 @@ function setLobbyBoardViewControl(mode) {
 function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyPersonalPlayerName").value = personalSettings.playerName || "";
     document.getElementById("lobbyPersonalPlayerTag").value = normalizePlayerTag(personalSettings.playerTag);
+    renderPlayerIconPicker("lobbyPersonalPlayerIcon", personalSettings.playerIcon);
     document.getElementById("lobbyMobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("lobbyMobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
@@ -8607,11 +8831,13 @@ function renderLobbyWelcomeName() {
     const playerName = sanitizeName(personalSettings.playerName || "");
     const language = currentUiLanguage();
     const displayName = playerName || ({ja: "ゲスト", zh: "访客", en: "Guest"}[language] || "ゲスト");
-    message.textContent = language === "zh"
+    const welcomeText = language === "zh"
         ? `欢迎，${displayName}`
         : language === "en"
             ? `Welcome, ${displayName}`
             : `ようこそ、${displayName}さん`;
+    const icon = buildPlayerIcon(personalSettings.playerIcon);
+    message.replaceChildren(...(icon ? [icon] : []), document.createTextNode(welcomeText));
     renderLobbyNextRecommendation();
 }
 
@@ -8686,6 +8912,7 @@ function openLobbyNameModal() {
     );
     document.getElementById("lobbyNameStatus").textContent = "";
     input.value = personalSettings.playerName || "";
+    renderPlayerIconPicker("lobbyNamePlayerIcon", personalSettings.playerIcon);
     modal.style.display = "flex";
     window.setTimeout(() => {
         input.focus();
@@ -8705,8 +8932,10 @@ function saveLobbyName(event) {
     const input = document.getElementById("lobbyNameInput");
     const status = document.getElementById("lobbyNameStatus");
     const previousPlayerName = personalSettings.playerName || "";
+    const previousPlayerIcon = normalizePlayerIcon(personalSettings.playerIcon);
     const playerName = sanitizeName(input?.value || "");
-    personalSettings = {...personalSettings, playerName};
+    const playerIcon = playerIconPickerValue("lobbyNamePlayerIcon");
+    personalSettings = {...personalSettings, playerName, playerIcon};
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
         const lobbyNameInput = document.getElementById("lobbyPersonalPlayerName");
@@ -8714,7 +8943,7 @@ function saveLobbyName(event) {
         if (lobbyNameInput) lobbyNameInput.value = playerName;
         if (roomNameInput) roomNameInput.value = playerName;
         renderLobbyWelcomeName();
-        if (previousPlayerName !== playerName && currentWsGid) connectWS(currentWsGid);
+        if ((previousPlayerName !== playerName || previousPlayerIcon !== playerIcon) && currentWsGid) connectWS(currentWsGid);
         closeLobbyNameModal();
     } catch (_error) {
         if (status) status.textContent = uiText("保存できませんでした。");
@@ -8724,11 +8953,13 @@ function saveLobbyName(event) {
 function saveLobbyPersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
     const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
+    const previousPlayerIcon = normalizePlayerIcon(personalSettings.playerIcon);
     const previousEnableAnalytics = personalSettings.enableAnalytics !== false;
     const previousBeginnerSupport = personalSettings.enableBeginnerSupport === true;
     personalSettings = {
         playerName: sanitizeName(document.getElementById("lobbyPersonalPlayerName").value),
         playerTag: normalizePlayerTag(document.getElementById("lobbyPersonalPlayerTag").value),
+        playerIcon: playerIconPickerValue("lobbyPersonalPlayerIcon"),
         mobileChatPlacement: document.getElementById("lobbyMobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("lobbyMobileChatWidth").value)
             ? document.getElementById("lobbyMobileChatWidth").value
@@ -8752,7 +8983,7 @@ function saveLobbyPersonalSettings() {
     applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
-        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag) && currentWsGid){
+        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag || previousPlayerIcon !== personalSettings.playerIcon) && currentWsGid){
             connectWS(currentWsGid);
         }
         document.getElementById("lobbyPersonalSettingsStatus").textContent = "保存しました。";
@@ -9331,6 +9562,8 @@ function connectWS(targetGid) {
     if(personalSettings.playerName) wsParams.set("name", personalSettings.playerName);
     const playerTag = activePlayerTag(targetGid);
     if(playerTag) wsParams.set("tag", playerTag);
+    const playerIcon = normalizePlayerIcon(personalSettings.playerIcon);
+    if(playerIcon) wsParams.set("icon", playerIcon);
     const wsUrl = `${protocol}//${host}/ws/${targetGid}?${wsParams.toString()}`;
     
     socket = new WebSocket(wsUrl);
@@ -10380,6 +10613,7 @@ async function joinGatheringQueue() {
                 const data = await gatheringApi("join", {
                     name: personalSettings.playerName || "ゲスト",
                     tag: activePlayerTag(MEETING_ROOM_GID),
+                    icon: normalizePlayerIcon(personalSettings.playerIcon),
                 });
                 latestGatheringEvent = data.gathering_event || latestGatheringEvent;
                 renderGatheringRoom(latestGatheringEvent);
@@ -10639,7 +10873,8 @@ function gatheringParticipantGroupsHtml(participants) {
                 else if (canPair) meta = "ペアを申し込む";
                 const order = statusKey === "waiting" ? (index === 0 ? String(rank) : "↳") : (isPair ? "👥" : "");
                 const tag = member.tag ? `・${escapeLobbyHtml(member.tag)}` : "";
-                const rowContent = `<span class="gathering-player-order">${order}</span><span class="gathering-player-name">${escapeLobbyHtml(member.name)}${tag}</span><span class="gathering-player-meta">${escapeLobbyHtml(meta)}</span>`;
+                const icon = playerIconHtml(member.icon, "gathering-player-icon");
+                const rowContent = `<span class="gathering-player-order">${order}</span><span class="gathering-player-icon-slot">${icon}</span><span class="gathering-player-name">${escapeLobbyHtml(member.name)}${tag}</span><span class="gathering-player-meta">${escapeLobbyHtml(meta)}</span>`;
                 return canPair
                     ? `<button class="gathering-player-row can-pair" type="button" onclick="openGatheringPairModal('${escapeLobbyHtml(member.id)}')">${rowContent}</button>`
                     : `<div class="gathering-player-row">${rowContent}</div>`;
@@ -11129,6 +11364,7 @@ function syncPersonalSettingsControls() {
     const currentSeatName = isSpectator() ? "" : sanitizeName(latestState?.player_names?.[mySeat] || "");
     document.getElementById("personalPlayerName").value = personalSettings.playerName || currentSeatName;
     document.getElementById("personalPlayerTag").value = normalizePlayerTag(personalSettings.playerTag);
+    renderPlayerIconPicker("personalPlayerIcon", personalSettings.playerIcon);
     document.getElementById("mobileChatPlacement").value =
         personalSettings.mobileChatPlacement === "top" ? "top" : "right";
     document.getElementById("mobileChatWidth").value = personalSettings.mobileChatWidth || "normal";
@@ -11467,11 +11703,13 @@ function setupLobbyPieceBackground() {
 async function savePersonalSettings() {
     const previousPlayerName = personalSettings.playerName || "";
     const previousPlayerTag = normalizePlayerTag(personalSettings.playerTag);
+    const previousPlayerIcon = normalizePlayerIcon(personalSettings.playerIcon);
     const previousEnableAnalytics = personalSettings.enableAnalytics !== false;
     const previousBeginnerSupport = personalSettings.enableBeginnerSupport === true;
     personalSettings = {
         playerName: sanitizeName(document.getElementById("personalPlayerName").value),
         playerTag: normalizePlayerTag(document.getElementById("personalPlayerTag").value),
+        playerIcon: playerIconPickerValue("personalPlayerIcon"),
         mobileChatPlacement: document.getElementById("mobileChatPlacement").value === "top" ? "top" : "right",
         mobileChatWidth: ["wide", "normal", "narrow"].includes(document.getElementById("mobileChatWidth").value)
             ? document.getElementById("mobileChatWidth").value
@@ -11501,7 +11739,7 @@ async function savePersonalSettings() {
             await setName(mySeat, personalSettings.playerName);
             await refresh();
         }
-        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag) && currentWsGid){
+        if((previousPlayerName !== personalSettings.playerName || previousPlayerTag !== personalSettings.playerTag || previousPlayerIcon !== personalSettings.playerIcon) && currentWsGid){
             connectWS(currentWsGid);
         }
         document.getElementById("personalSettingsStatus").textContent = "保存しました。";
@@ -14590,6 +14828,9 @@ function buildSitePeopleFragment(sitePeople){
       const identity = document.createElement("span");
       identity.className = "lobby-person-identity";
 
+      const personIcon = buildPlayerIcon(person?.icon);
+      if(personIcon) identity.appendChild(personIcon);
+
       const name = document.createElement("span");
       name.className = "lobby-person-name";
       const rawName = String(person?.name || "ゲスト");
@@ -14740,6 +14981,12 @@ function localizedChatSender(item, viewerKind = chatViewerKind()){
   const sender = privateOutsideRoom ? "＊＊＊＊" : chatSenderDisplayName(item);
   const location = chatLocationLabel(item, viewerKind);
   return location ? `${sender}　${location}` : sender;
+}
+
+function visibleChatSenderIcon(item, viewerKind = chatViewerKind()){
+  const privateOutsideRoom = item?.origin === "room"
+    && !(viewerKind === "room" && String(item?.room_id || "") === String(gid));
+  return privateOutsideRoom ? "" : normalizePlayerIcon(item?.sender_icon);
 }
 
 function showChatToast(item){
@@ -14925,6 +15172,7 @@ function renderChatItems(box, messages, isMine = null){
       item?.local_notice === true,
       item?.ai_answer === true,
       item?.local_ai_thought === true,
+      visibleChatSenderIcon(item, viewerKind),
       typeof isMine === "function" && isMine(item),
     ]),
   ]);
@@ -14954,6 +15202,8 @@ function renderChatItems(box, messages, isMine = null){
 
     const meta = document.createElement("div");
     meta.className = "chat-meta";
+    const senderIcon = buildPlayerIcon(visibleChatSenderIcon(item, viewerKind));
+    if(senderIcon) meta.appendChild(senderIcon);
     meta.appendChild(sender);
 
     row.appendChild(meta);
@@ -15402,6 +15652,7 @@ async function sendRoomChatPayload(event, stampId = ""){
         client_id: clientId,
         name: personalSettings.playerName || "",
         tag: activePlayerTag(gid),
+        icon: normalizePlayerIcon(personalSettings.playerIcon),
         message,
         stamp_id: stamp?.id || "",
       })
@@ -15527,6 +15778,7 @@ async function sendLobbyChatPayload(event, stampId = ""){
         client_id: clientId,
         name: personalSettings.playerName || "",
         tag: activePlayerTag("lobby"),
+        icon: normalizePlayerIcon(personalSettings.playerIcon),
         message,
         stamp_id: stamp?.id || "",
       }),
@@ -16283,7 +16535,13 @@ async function setName(seat, name){
     await fetch(`${API}/games/${gid}/set_name`, {
       method:"POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ seat, client_id: clientId, name, tag: activePlayerTag(gid) })
+      body: JSON.stringify({
+        seat,
+        client_id: clientId,
+        name,
+        tag: activePlayerTag(gid),
+        icon: normalizePlayerIcon(personalSettings.playerIcon),
+      })
     });
   }catch(e){}
 }
@@ -16861,6 +17119,7 @@ function renderBoard(state){
   const SLOT_MAP = buildSlotMap(physToSeat);
   const names = state.player_names || {A:"",B:"",C:"",D:""};
   const playerTags = state.player_tags || {A:"",B:"",C:"",D:""};
+  const playerIcons = state.player_icons || {A:"",B:"",C:"",D:""};
   const pendingReceive = pendingBlockPreview(state);
   const revealedBoardHands = buildRevealedBoardHandMap(state, physToSeat, pendingReceive);
 
@@ -16915,6 +17174,8 @@ function renderBoard(state){
             nameText.setAttribute("data-i18n-ignore", "");
           }
           nameText.textContent = `${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
+          const playerIcon = buildPlayerIcon(playerIcons[seat]);
+          if(playerIcon) inner.appendChild(playerIcon);
           inner.appendChild(nameText);
           const tagBadge = buildPlayerTagBadge(playerTags[seat], "board-player-tag");
           if(tagBadge) inner.appendChild(tagBadge);

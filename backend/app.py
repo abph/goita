@@ -412,6 +412,7 @@ class ConnectionManager:
         self.client_connections: Dict[Tuple[str, str], Set[WebSocket]] = {}
         self.client_names: Dict[Tuple[str, str], str] = {}
         self.client_tags: Dict[Tuple[str, str], str] = {}
+        self.client_icons: Dict[Tuple[str, str], str] = {}
         self.disconnect_tasks: Dict[Tuple[str, str], Any] = {}
         self.client_last_seen: Dict[Tuple[str, str], float] = {}
         self.heartbeat_tasks: Dict[Tuple[str, str], Any] = {}
@@ -423,6 +424,7 @@ class ConnectionManager:
         client_id: str = "",
         name: str = "",
         tag: str = "",
+        icon: str = "",
     ):
         await websocket.accept()
         if game_id not in self.active_connections:
@@ -433,6 +435,7 @@ class ConnectionManager:
             self.client_connections.setdefault(key, set()).add(websocket)
             self.client_names[key] = _sanitize_player_name(name)
             self.client_tags[key] = _sanitize_player_tag(tag)
+            self.client_icons[key] = _sanitize_player_icon(icon)
             self.cancel_disconnect_release(game_id, client_id)
         if game_id != "lobby":
             _mark_room_cleanup_active(game_id)
@@ -451,6 +454,7 @@ class ConnectionManager:
                 self.client_connections.pop(key, None)
                 self.client_names.pop(key, None)
                 self.client_tags.pop(key, None)
+                self.client_icons.pop(key, None)
                 self.client_last_seen.pop(key, None)
                 self.cancel_heartbeat_watch(game_id, client_id)
                 return True
@@ -1043,10 +1047,37 @@ PLAYER_TAG_VALUES = frozenset({
     "tournament",
 })
 
+PLAYER_ICON_VALUES = frozenset({
+    "shi_sparrow",
+    "ko_mouse",
+    "uma_horse",
+    "gin_squirrel",
+    "kin_flying_squirrel",
+    "kaku_dragon",
+    "hi_winged_dragon",
+    "gyoku_kitten",
+    "ou_lynx",
+    "special_yellowtail",
+    "piece_shi",
+    "piece_ko",
+    "piece_uma",
+    "piece_gin",
+    "piece_kin",
+    "piece_kaku",
+    "piece_hi",
+    "piece_gyoku",
+    "piece_ou",
+})
+
 
 def _sanitize_player_tag(tag: str) -> str:
     normalized = (tag or "").strip().lower()
     return normalized if normalized in PLAYER_TAG_VALUES else ""
+
+
+def _sanitize_player_icon(icon: str) -> str:
+    normalized = (icon or "").strip().lower()
+    return normalized if normalized in PLAYER_ICON_VALUES else ""
 
 
 def _sanitize_chat_message(s: str) -> str:
@@ -1496,6 +1527,12 @@ def _chat_sender_tag(game_obj: Dict[str, Any], seat: str, spectator_tag: str = "
     return _sanitize_player_tag(spectator_tag)
 
 
+def _chat_sender_icon(game_obj: Dict[str, Any], seat: str, spectator_icon: str = "") -> str:
+    if seat in ALL_SEATS:
+        return _sanitize_player_icon((game_obj.get("player_icons") or {}).get(seat, ""))
+    return _sanitize_player_icon(spectator_icon)
+
+
 def _normalize_ai_profile(profile: Optional[str]) -> str:
     profile = (profile or DEFAULT_AI_PROFILE).strip()
     return profile if profile in AI_PROFILES else DEFAULT_AI_PROFILE
@@ -1545,6 +1582,8 @@ def _clear_player_name(game: Dict[str, Any], seat: str) -> None:
     player_names[seat] = ""
     player_tags: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
     player_tags[seat] = ""
+    player_icons: Dict[str, str] = game.setdefault("player_icons", {p: "" for p in ALL_SEATS})
+    player_icons[seat] = ""
 
 
 def _clear_shared_kifu_for_client(game: Dict[str, Any], client_id: str) -> bool:
@@ -1592,6 +1631,7 @@ def _shuffle_waiting_room_seats(game: Dict[str, Any]) -> Dict[str, str]:
     ai_seats = _ai_seat_set(game)
     player_names = game.setdefault("player_names", {seat: "" for seat in ALL_SEATS})
     player_tags = game.setdefault("player_tags", {seat: "" for seat in ALL_SEATS})
+    player_icons = game.setdefault("player_icons", {seat: "" for seat in ALL_SEATS})
     movable_seats = ["B", "C", "D"]
     occupants: Dict[str, Dict[str, str]] = {}
     for seat in movable_seats:
@@ -1601,6 +1641,7 @@ def _shuffle_waiting_room_seats(game: Dict[str, Any]) -> Dict[str, str]:
                 "client_id": valid_human_seats[seat],
                 "name": str(player_names.get(seat, "")),
                 "tag": str(player_tags.get(seat, "")),
+                "icon": str(player_icons.get(seat, "")),
             }
         elif seat in ai_seats:
             occupants[seat] = {"kind": "ai"}
@@ -1633,10 +1674,12 @@ def _shuffle_waiting_room_seats(game: Dict[str, Any]) -> Dict[str, str]:
         occupant = occupants[source]
         player_names[destination] = ""
         player_tags[destination] = ""
+        player_icons[destination] = ""
         if occupant["kind"] == "human":
             next_human_seats[destination] = occupant["client_id"]
             player_names[destination] = occupant.get("name", "")
             player_tags[destination] = occupant.get("tag", "")
+            player_icons[destination] = occupant.get("icon", "")
         elif occupant["kind"] == "ai":
             next_ai_seats.add(destination)
 
@@ -1834,8 +1877,9 @@ async def websocket_endpoint(
     client_id: str = "",
     name: str = "",
     tag: str = "",
+    icon: str = "",
 ):
-    await manager.connect(websocket, game_id, client_id, name, tag)
+    await manager.connect(websocket, game_id, client_id, name, tag, icon)
     await manager.broadcast_update(game_id)
     if game_id != "lobby":
         await manager.broadcast_update("lobby")
@@ -2522,12 +2566,14 @@ class NameRequest(BaseModel):
     client_id: str = ""
     name: str = ""
     tag: str = ""
+    icon: str = Field(default="", max_length=32)
 
 class ChatRequest(BaseModel):
     seat: str = "W"
     client_id: str = ""
     name: str = ""
     tag: str = ""
+    icon: str = Field(default="", max_length=32)
     message: str
     stamp_id: str = ""
 
@@ -2685,6 +2731,7 @@ class GatheringJoinRequest(BaseModel):
     client_id: str = Field(min_length=1, max_length=128)
     name: str = Field(default="", max_length=32)
     tag: str = Field(default="", max_length=32)
+    icon: str = Field(default="", max_length=32)
 
 
 class GatheringPresenceRequest(BaseModel):
@@ -3574,6 +3621,11 @@ def _state_public_view(
     ai_seats = _ai_seat_set(game_obj)
     player_names = game_obj.get("player_names", {p: "" for p in ALL_SEATS})
     player_tags = game_obj.get("player_tags", {p: "" for p in ALL_SEATS})
+    raw_player_icons = game_obj.get("player_icons", {p: "" for p in ALL_SEATS})
+    player_icons = {
+        seat: _sanitize_player_icon(raw_player_icons.get(seat, ""))
+        for seat in ALL_SEATS
+    }
     owner_name = game_obj.get("owner_name", "")
     is_started = game_obj.get("is_started", False)
     revealed_hand_seats = _effective_revealed_hand_seats(game_id, game_obj, state)
@@ -3673,6 +3725,7 @@ def _state_public_view(
         "winner": winner,
         "player_names": player_names,
         "player_tags": player_tags,
+        "player_icons": player_icons,
         "reveal_hands": reveal_hands,
         "revealed_hand_seats": sorted(revealed_hand_seats),
         "auto_reveal_blocked_seats": sorted(_seat_set(game_obj.get("auto_reveal_blocked_seats", []))),
@@ -3797,6 +3850,7 @@ def _create_game_obj(
         "ai_seats": [],
         "player_names": {p: "" for p in ALL_SEATS},
         "player_tags": {p: "" for p in ALL_SEATS},
+        "player_icons": {p: "" for p in ALL_SEATS},
         "chat_messages": [],
         "password": None,
         "admin_password": None,
@@ -5907,6 +5961,11 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
     if status == "idle" and not game:
         return None
     player_names = dict((game or {}).get("player_names", {}))
+    player_icons = {
+        seat: _sanitize_player_icon(value)
+        for seat, value in dict((game or {}).get("player_icons", {})).items()
+        if seat in ALL_SEATS
+    }
     human_seats = dict((game or {}).get("human_seats", {}))
     ai_seats = sorted(_ai_seat_set(game or {}))
     selected_names = [
@@ -5950,6 +6009,7 @@ def _gathering_table_snapshot(table_id: str) -> Optional[Dict[str, Any]]:
         "match_finished": bool((game or {}).get("match_finished", False)),
         "finished": bool(getattr((game or {}).get("state"), "finished", False)),
         "player_names": player_names,
+        "player_icons": {seat: player_icons.get(seat, "") for seat in ALL_SEATS},
         "selected_names": selected_names,
         "retained_names": retained_names,
         "outgoing_names": outgoing_names,
@@ -6018,6 +6078,7 @@ def _gathering_event_public_payload(client_id: str = "") -> Dict[str, Any]:
             "id": _gathering_public_id(participant_id),
             "name": str(item.get("name", "")) or "ゲスト",
             "tag": str(item.get("tag", "")),
+            "icon": _sanitize_player_icon(str(item.get("icon", ""))),
             "status": str(item.get("status", "waiting")),
             "rest_after_match": bool(item.get("rest_after_match", False)),
             "pair_id": _gathering_public_id(pair_id) if pair_id else "",
@@ -6251,6 +6312,7 @@ def _gathering_replace_game(
     human_seats: Dict[str, str] = {}
     names = {seat: "" for seat in ALL_SEATS}
     tags = {seat: "" for seat in ALL_SEATS}
+    icons = {seat: "" for seat in ALL_SEATS}
     for group_index, group in enumerate(groups):
         for member_index, client_id in enumerate(group[:2]):
             seat = seats_by_group[group_index][member_index]
@@ -6258,6 +6320,7 @@ def _gathering_replace_game(
             participant = GATHERING_PARTICIPANTS[client_id]
             names[seat] = str(participant.get("name", ""))
             tags[seat] = str(participant.get("tag", ""))
+            icons[seat] = _sanitize_player_icon(str(participant.get("icon", "")))
             participant["status"] = "playing"
             participant["assigned_table_id"] = table_id
             participant["last_played_at"] = time.monotonic()
@@ -6268,6 +6331,7 @@ def _gathering_replace_game(
     )
     new_game["player_names"] = names
     new_game["player_tags"] = tags
+    new_game["player_icons"] = icons
     new_game["is_started"] = True
     new_game["log"].append(f"Game start. dealer={dealer} [GATHERING]")
     new_game["gathering_match"] = True
@@ -6746,6 +6810,7 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
     old_human_seats = dict(old_game.get("human_seats", {}))
     old_names = dict(old_game.get("player_names", {}))
     old_tags = dict(old_game.get("player_tags", {}))
+    old_icons = dict(old_game.get("player_icons", {}))
     for client_id in completed_players:
         item = GATHERING_PARTICIPANTS.get(client_id)
         if not item:
@@ -6764,6 +6829,7 @@ async def _gathering_match_completed(table_id: str = MEETING_ROOM_GID) -> None:
     for seat, client_id in retained_seats.items():
         game["player_names"][seat] = old_names.get(seat, "")
         game["player_tags"][seat] = old_tags.get(seat, "")
+        game["player_icons"][seat] = _sanitize_player_icon(old_icons.get(seat, ""))
         item = GATHERING_PARTICIPANTS.get(client_id)
         if item:
             item["status"] = "selected"
@@ -7273,6 +7339,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
             connection_name = manager.client_names.get((connected_game_id, client_id), "")
             connection_tag = manager.client_tags.get((connected_game_id, client_id), "")
+            connection_icon = manager.client_icons.get((connected_game_id, client_id), "")
             if connected_game_id == "lobby":
                 person = {
                     "name": connection_name or "ゲスト",
@@ -7282,6 +7349,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                     "role": "lobby",
                     "seat": "",
                 }
+                if sanitized_icon := _sanitize_player_icon(connection_icon):
+                    person["icon"] = sanitized_icon
                 priority = 0
             else:
                 game = GAMES.get(connected_game_id)
@@ -7296,6 +7365,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                     )
                 player_names = game.get("player_names", {})
                 player_tags = game.get("player_tags", {})
+                player_icons = game.get("player_icons", {})
                 seat_name = (
                     _sanitize_player_name(player_names.get(seat, ""))
                     if seat and isinstance(player_names, dict)
@@ -7304,6 +7374,11 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 seat_tag = (
                     _sanitize_player_tag(player_tags.get(seat, ""))
                     if seat and isinstance(player_tags, dict)
+                    else ""
+                )
+                seat_icon = (
+                    _sanitize_player_icon(player_icons.get(seat, ""))
+                    if seat and isinstance(player_icons, dict)
                     else ""
                 )
                 is_main_room = _is_main_game_id(connected_game_id)
@@ -7343,6 +7418,13 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                     "role": "player" if seat else "spectator",
                     "seat": seat,
                 }
+                visible_icon = (
+                    ""
+                    if private_name_is_hidden
+                    else seat_icon or _sanitize_player_icon(connection_icon)
+                )
+                if visible_icon:
+                    person["icon"] = visible_icon
                 priority = 2 if seat else 1
 
             previous = candidates.get(client_id)
@@ -7540,6 +7622,12 @@ def _meeting_room_public_table_snapshot(game_id: str, game: Dict[str, Any]) -> D
         "dealer": game.get("dealer", "A"),
         "board_public": safe_board,
         "player_names": dict(game.get("player_names", {})),
+        "player_icons": {
+            seat: _sanitize_player_icon(
+                dict(game.get("player_icons", {})).get(seat, "")
+            )
+            for seat in ALL_SEATS
+        },
         "ai_seats": sorted(_ai_seat_set(game)),
         "total_team_score": dict(game.get("total_team_score", {"AC": 0, "BD": 0})),
         "round_count": int(game.get("round_count", 1)),
@@ -7830,6 +7918,7 @@ async def admin_update_gathering(req: GatheringAdminRequest, request: Request):
                 GATHERING_PARTICIPANTS[client_id] = {
                     "name": str(game.get("player_names", {}).get(seat, "")) or "ゲスト",
                     "tag": str(game.get("player_tags", {}).get(seat, "")),
+                    "icon": _sanitize_player_icon(str(game.get("player_icons", {}).get(seat, ""))),
                     "status": "playing",
                     "wait_since": now,
                     "games": 0,
@@ -7902,6 +7991,7 @@ async def join_gathering(game_id: str, req: GatheringJoinRequest):
         GATHERING_PARTICIPANTS[req.client_id] = item
     item["name"] = _sanitize_player_name(req.name) or "ゲスト"
     item["tag"] = _sanitize_player_tag(req.tag)
+    item["icon"] = _sanitize_player_icon(req.icon)
     if item.get("status") in {"resting", "spectating"}:
         item["status"] = "waiting"
         item["wait_since"] = now
@@ -9025,6 +9115,7 @@ async def start_guided_practice(req: GuidedPracticeRequest):
     game["ai_seats"] = ["B", "C", "D"]
     game["player_names"] = {seat: "" for seat in ALL_SEATS}
     game["player_tags"] = {seat: "" for seat in ALL_SEATS}
+    game["player_icons"] = {seat: "" for seat in ALL_SEATS}
     game["ai_profile"] = "intermediate_middle2"
     game["next_deal_mode"] = mode
     manager.cancel_disconnect_release(selected_id, req.client_id)
@@ -9144,6 +9235,7 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
                 "ai_seats",
                 "player_names",
                 "player_tags",
+                "player_icons",
                 "chat_messages",
             ):
                 restored[key] = copy.deepcopy(game.get(key, restored.get(key)))
@@ -9321,6 +9413,7 @@ async def reset_game(
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     player_tags = old_game.get("player_tags", {p: "" for p in ALL_SEATS})
+    player_icons = old_game.get("player_icons", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
@@ -9358,6 +9451,7 @@ async def reset_game(
     new_game["ai_seats"] = ai_seats
     new_game["player_names"] = player_names
     new_game["player_tags"] = player_tags
+    new_game["player_icons"] = player_icons
     new_game["chat_messages"] = chat_messages
     new_game["reveal_hands"] = False 
     new_game["revealed_hand_seats"] = []
@@ -9426,6 +9520,7 @@ async def reset_private_room_all_seats(
     _store_ai_seats(reset_game_obj, set())
     reset_game_obj["player_names"] = {seat: "" for seat in ALL_SEATS}
     reset_game_obj["player_tags"] = {seat: "" for seat in ALL_SEATS}
+    reset_game_obj["player_icons"] = {seat: "" for seat in ALL_SEATS}
     for owner in owners:
         manager.cancel_disconnect_release(game_id, owner)
     for seat in ALL_SEATS:
@@ -9469,6 +9564,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
     ai_seats = sorted(_ai_seat_set(old_game))
     player_names = old_game.get("player_names", {p: "" for p in ALL_SEATS})
     player_tags = old_game.get("player_tags", {p: "" for p in ALL_SEATS})
+    player_icons = old_game.get("player_icons", {p: "" for p in ALL_SEATS})
     chat_messages = list(old_game.get("chat_messages", []))[-100:]
     ai_profile = _normalize_ai_profile(old_game.get("ai_profile"))
     show_legal_actions = bool(old_game.get("show_legal_actions", False))
@@ -9513,6 +9609,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
         new_game["player_tags"] = player_tags
+        new_game["player_icons"] = player_icons
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
@@ -9553,6 +9650,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["ai_seats"] = ai_seats
         new_game["player_names"] = player_names
         new_game["player_tags"] = player_tags
+        new_game["player_icons"] = player_icons
         new_game["chat_messages"] = chat_messages
         new_game["reveal_hands"] = False
         new_game["revealed_hand_seats"] = []
@@ -10248,6 +10346,9 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
         game.setdefault("player_tags", {item: "" for item in ALL_SEATS})[seat] = str(
             participant.get("tag", "")
         )
+        game.setdefault("player_icons", {item: "" for item in ALL_SEATS})[seat] = (
+            _sanitize_player_icon(str(participant.get("icon", "")))
+        )
         participant["status"] = "selected" if before_start else "playing"
         participant["assigned_table_id"] = game_id
         participant.pop("enter_at", None)
@@ -10512,14 +10613,23 @@ async def set_player_name(game_id: str, req: NameRequest):
     _require_human_seat_owner(game, seat, req.client_id)
     name = _sanitize_player_name(req.name)
     tag = _sanitize_player_tag(req.tag)
+    icon = _sanitize_player_icon(req.icon)
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
     pt: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
+    pi: Dict[str, str] = game.setdefault("player_icons", {p: "" for p in ALL_SEATS})
     pn[seat] = name
     pt[seat] = tag
+    pi[seat] = icon
 
     await manager.broadcast_update(game_id)
     await manager.broadcast_update("lobby")
-    return {"ok": True, "game_id": game_id, "player_names": pn, "player_tags": pt}
+    return {
+        "ok": True,
+        "game_id": game_id,
+        "player_names": pn,
+        "player_tags": pt,
+        "player_icons": pi,
+    }
 
 
 PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice"})
@@ -10580,6 +10690,7 @@ async def post_chat_message(game_id: str, req: ChatRequest, request: Request = N
         "sender": _chat_sender_label(game, seat, req.name),
         "sender_name": _chat_sender_name(game, seat, req.name),
         "tag": _chat_sender_tag(game, seat, req.tag),
+        "sender_icon": _chat_sender_icon(game, seat, req.icon),
         "message": message,
         "ts": _next_chat_timestamp(),
     }
@@ -10636,6 +10747,7 @@ async def post_lobby_chat_message(req: ChatRequest, request: Request = None):
         "sender": name or "ゲスト",
         "sender_name": name or "ゲスト",
         "tag": _sanitize_player_tag(req.tag),
+        "sender_icon": _sanitize_player_icon(req.icon),
         "message": message,
         "ts": _next_chat_timestamp(),
         "origin": "lobby",
