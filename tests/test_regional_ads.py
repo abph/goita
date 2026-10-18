@@ -260,6 +260,10 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert 'id="regionalAdBottomAnchor"' in index
     assert 'id="regionalAdPosition"' in admin
     assert 'id="regionalAdPositionSave"' in admin
+    assert 'id="regionalAdCarouselSets"' in admin
+    assert "function renderRegionalAdCarouselSets()" in admin
+    assert "あと${remaining}件、同じ条件で広告を登録できます。" in admin
+    assert "3件の横スライド広告が設定されています。" in admin
     assert "applyPosition(data.position)" in script
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index

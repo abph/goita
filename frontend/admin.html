@@ -247,6 +247,16 @@
     .regional-ad-targets label { display:flex; align-items:center; gap:4px; }
     .regional-ad-targets input { width:auto; }
     .regional-ad-actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+    .regional-ad-set-list { display:grid; gap:10px; margin-top:12px; }
+    .regional-ad-set { padding:12px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+    .regional-ad-set-heading { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:6px 12px; }
+    .regional-ad-set-heading strong { font-size:14px; }
+    .regional-ad-set-period { color:var(--muted); font-size:12px; }
+    .regional-ad-set-flow { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-top:9px; }
+    .regional-ad-set-item { padding:6px 9px; border:1px solid #b9c2cb; border-radius:5px; background:var(--surface); font-size:13px; }
+    .regional-ad-set-item.disabled { color:var(--muted); border-style:dashed; }
+    .regional-ad-set-empty { color:var(--muted); border-style:dashed; background:#fff; }
+    .regional-ad-set-arrow { color:var(--muted); font-weight:800; }
     .regional-ad-preview { margin-top:10px; padding:12px; border:1px solid var(--line); background:#fff; white-space:pre-wrap; }
     .regional-ad-metrics { min-width:170px; font-size:12px; line-height:1.65; }
     .regional-ad-metrics strong { display:block; font-size:13px; }
@@ -575,6 +585,12 @@
           <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
         </section>
         <section class="panel">
+          <h3 class="subheading">横スライド広告セット</h3>
+          <p class="muted">3件を同じセットにするには、「対象地方」「表示場所」「掲載開始・終了」を同じ内容にして、広告を1件ずつ保存します。掲載中は広告1から広告3まで3分ごとに切り替わります。</p>
+          <p class="muted">全国共通広告は対象地方を選択せずに保存してください。</p>
+          <div id="regionalAdCarouselSets" class="regional-ad-set-list"></div>
+        </section>
+        <section class="panel">
           <h3 class="subheading">広告の編集</h3>
           <form id="regionalAdForm">
             <div class="field"><label for="regionalAdTitle">見出し</label><input id="regionalAdTitle" type="text" maxlength="40" required></div>
@@ -874,6 +890,37 @@
       const surfaces = ad?.surfaces || (ad ? ["public_room"] : ["public_room", "score_attack"]);
       document.querySelectorAll('#regionalAdSurfaces input').forEach(input => { input.checked = surfaces.includes(input.value); });
     }
+    function renderRegionalAdCarouselSets() {
+      const target = document.getElementById("regionalAdCarouselSets");
+      const groups = new Map();
+      regionalAds.forEach(ad => {
+        const targets = ad.regions?.length ? ad.regions : ["全国共通"];
+        const surfaces = ad.surfaces || ["public_room"];
+        targets.forEach(region => surfaces.forEach(surface => {
+          const key = [surface, region, ad.starts_at, ad.ends_at].join("|");
+          if (!groups.has(key)) groups.set(key, {surface, region, startsAt:ad.starts_at, endsAt:ad.ends_at, ads:[]});
+          groups.get(key).ads.push(ad);
+        }));
+      });
+      if (!groups.size) {
+        target.innerHTML = '<p class="muted">広告を保存すると、ここに横スライドの組み合わせが表示されます。</p>';
+        return;
+      }
+      target.innerHTML = [...groups.values()].map(group => {
+        const ads = group.ads.slice(0, 3);
+        const flow = [];
+        for (let index = 0; index < 3; index += 1) {
+          const ad = ads[index];
+          const item = ad
+            ? `<span class="regional-ad-set-item${ad.enabled ? "" : " disabled"}">広告${index + 1}：${escapeHtml(ad.title)}${ad.enabled ? "" : "（停止中）"}</span>`
+            : `<span class="regional-ad-set-item regional-ad-set-empty">広告${index + 1}：未登録</span>`;
+          if (index > 0) flow.push('<span class="regional-ad-set-arrow" aria-hidden="true">→</span>');
+          flow.push(item);
+        }
+        const remaining = Math.max(0, 3 - ads.length);
+        return `<div class="regional-ad-set"><div class="regional-ad-set-heading"><strong>${escapeHtml(regionalAdSurfaceLabels[group.surface] || group.surface)}・${escapeHtml(group.region)}</strong><span class="regional-ad-set-period">${escapeHtml(regionalAdDateInput(group.startsAt))} 〜 ${escapeHtml(regionalAdDateInput(group.endsAt))}</span></div><div class="regional-ad-set-flow">${flow.join("")}</div>${remaining ? `<p class="muted" style="margin:8px 0 0">あと${remaining}件、同じ条件で広告を登録できます。</p>` : '<p class="muted" style="margin:8px 0 0">3件の横スライド広告が設定されています。</p>'}</div>`;
+      }).join("");
+    }
     function renderRegionalAds() {
       const now = Date.now();
       document.getElementById("regionalAdRows").innerHTML = regionalAds.map(ad => {
@@ -887,6 +934,7 @@
         const surfaces = ad.surfaces || ["public_room"];
         return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
       }).join("") || '<tr><td colspan="7">広告はまだありません。</td></tr>';
+      renderRegionalAdCarouselSets();
     }
     async function loadRegionalAds() {
       const status = document.getElementById("regionalAdStatus");
