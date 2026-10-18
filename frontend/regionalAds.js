@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const AUTO_SLIDE_MS = 7000;
+  const AUTO_SLIDE_MS = 3 * 60 * 1000;
   const DAILY_LIMIT = 3;
   const EXPOSURE_STORAGE_KEY = "goitaRegionalAdDailyExposure";
   const VIEWER_STORAGE_PREFIX = "goitaRegionalAdViewer";
