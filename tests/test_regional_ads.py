@@ -112,23 +112,32 @@ def test_invalid_region_payload_is_rejected_cleanly() -> None:
 
 def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(app_module, "REGIONAL_AD_SETTINGS", [])
+    monkeypatch.setattr(app_module, "REGIONAL_AD_POSITION", "top")
     monkeypatch.setattr(app_module, "ROOM_SETTINGS_PATH", tmp_path / "settings.json")
     monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
     monkeypatch.setattr(app_module, "ANALYTICS_STORE", AnalyticsStore(tmp_path / "analytics.sqlite3"))
     request = Request({"type": "http", "method": "GET", "path": "/api/regional-ad", "headers": [(b"cf-ipcountry", b"JP"), (b"cf-region-code", b"JP-13")], "query_string": b""})
     now = datetime.now(timezone.utc)
     period = {"starts_at": (now - timedelta(days=1)).isoformat(), "ends_at": (now + timedelta(days=1)).isoformat()}
-    saved = app_module.admin_update_regional_ads(request, {"ads": [ad("common-ad", [], **period), ad("kanto-ad", ["関東"], **period)]})
+    saved = app_module.admin_update_regional_ads(request, {
+        "ads": [ad("common-ad", [], **period), ad("kanto-ad", ["関東"], **period)],
+        "position": "bottom",
+    })
     assert len(saved["ads"]) == 2
+    assert saved["position"] == "bottom"
     persisted = load_room_settings(app_module.ROOM_SETTINGS_PATH)[app_module.LOBBY_SETTINGS_STORAGE_KEY]
     assert len(persisted["regional_ads"]) == 2
+    assert persisted["regional_ad_position"] == "bottom"
     response = app_module.public_regional_ad(request)
     assert response.headers["cache-control"] == "no-store"
     assert b'"id":"kanto-ad"' in response.body
     assert b'"ads":[' in response.body
+    assert b'"position":"bottom"' in response.body
     app_module.REGIONAL_AD_SETTINGS[:] = []
-    app_module._apply_lobby_management_settings({"regional_ads": persisted["regional_ads"]})
+    app_module.REGIONAL_AD_POSITION = "top"
+    app_module._apply_lobby_management_settings(persisted)
     assert len(app_module.REGIONAL_AD_SETTINGS) == 2
+    assert app_module.REGIONAL_AD_POSITION == "bottom"
 
 
 def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_path, monkeypatch) -> None:
@@ -242,21 +251,42 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert "CTR" in admin
     assert "閲覧ブラウザー" in admin
     assert "regionalAdMetrics" in admin
-    assert ".regional-ad strong { display:block; font-size:13px; }" in index
-    assert ".regional-ad p { margin:4px 0 0; font-size:14px;" in index
+    assert ".regional-ad strong { display:block; font-size:12px; }" in index
+    assert ".regional-ad p { margin:4px 0 0; font-size:13px;" in index
     assert 'openMark.className = "regional-ad-open"' in script
     assert 'id="regionalAdTrack"' in index
     assert 'id="regionalAdDots"' in index
+    assert 'id="regionalAdTopAnchor"' in index
+    assert 'id="regionalAdBottomAnchor"' in index
+    assert 'id="regionalAdPosition"' in admin
+    assert 'id="regionalAdPositionSave"' in admin
+    assert "applyPosition(data.position)" in script
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index
 
 
 def test_admin_save_failure_restores_previous_ads(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(app_module, "REGIONAL_AD_SETTINGS", normalize_ads([ad("first-ad", [])]))
+    monkeypatch.setattr(app_module, "REGIONAL_AD_POSITION", "top")
     monkeypatch.setattr(app_module, "ROOM_SETTINGS_PATH", tmp_path / "settings.json")
     monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
     monkeypatch.setattr(app_module, "_save_persisted_room_management_settings", lambda: False)
     with pytest.raises(HTTPException) as error:
-        app_module.admin_update_regional_ads(None, {"ads": [ad("second-ad", [])]})
+        app_module.admin_update_regional_ads(None, {
+            "ads": [ad("second-ad", [])],
+            "position": "bottom",
+        })
     assert error.value.status_code == 500
     assert app_module.REGIONAL_AD_SETTINGS[0]["id"] == "first-ad"
+    assert app_module.REGIONAL_AD_POSITION == "top"
+
+
+def test_invalid_regional_ad_position_is_rejected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(app_module, "REGIONAL_AD_SETTINGS", [])
+    monkeypatch.setattr(app_module, "REGIONAL_AD_POSITION", "top")
+    monkeypatch.setattr(app_module, "ROOM_SETTINGS_PATH", tmp_path / "settings.json")
+    monkeypatch.setattr(app_module, "_require_site_admin", lambda _request: None)
+    with pytest.raises(HTTPException) as error:
+        app_module.admin_update_regional_ads(None, {"ads": [], "position": "center"})
+    assert error.value.status_code == 400
+    assert app_module.REGIONAL_AD_POSITION == "top"

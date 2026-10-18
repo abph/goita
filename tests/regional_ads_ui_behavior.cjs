@@ -55,12 +55,16 @@ class TestElement {
   }
 }
 
+let renderedPosition = "";
 const elements = {
   regionalAd: new TestElement("aside"),
   regionalAdClose: new TestElement("button"),
   regionalAdViewport: new TestElement("div"),
   regionalAdTrack: new TestElement("div"),
   regionalAdDots: new TestElement("div"),
+  regionalAdSlot: new TestElement("div"),
+  regionalAdTopAnchor: {after: () => { renderedPosition = "top"; }},
+  regionalAdBottomAnchor: {before: () => { renderedPosition = "bottom"; }},
 };
 elements.regionalAd.hidden = true;
 
@@ -87,6 +91,7 @@ const context = vm.createContext({
       return {
         ok: true,
         json: async () => ({
+          position: "bottom",
           ads: [
             {id:"regional-a", title:"広告A", message:"本文A", url:"https://example.com/a"},
             {id:"regional-b", title:"広告B", message:"本文B", url:"https://example.com/b"},
@@ -121,6 +126,8 @@ function runNextTimer() {
 (async () => {
   await context.window.goitaRegionalAds.sync("public_room", "room-a", "one");
   assert.equal(elements.regionalAd.hidden, false);
+  assert.equal(renderedPosition, "bottom");
+  assert.equal(elements.regionalAdSlot.dataset.position, "bottom");
   assert.equal(elements.regionalAdTrack.children.length, 3);
   assert.equal(elements.regionalAdDots.children.length, 3);
   assert.equal(elements.regionalAdTrack.style.transform, "translateX(-0%)");

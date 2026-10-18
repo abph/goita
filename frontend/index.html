@@ -1631,8 +1631,8 @@
     .regional-ad-slot { min-width:0; }
     .regional-ad { box-sizing:border-box; width:min(560px, 100%); margin:8px auto 10px; border:1px solid #a87b4d; border-radius:8px; background:#fffaf0; color:#3d2b1d; position:relative; line-height:1.6; overflow:hidden; }
     .regional-ad[hidden] { display:none !important; }
-    .regional-ad strong { display:block; font-size:13px; }
-    .regional-ad p { margin:4px 0 0; font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .regional-ad strong { display:block; font-size:12px; }
+    .regional-ad p { margin:4px 0 0; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
     .regional-ad-viewport { overflow:hidden; }
     .regional-ad-track { display:flex; align-items:stretch; transform:translateX(0); transition:transform 420ms ease; will-change:transform; }
     .regional-ad-slide { box-sizing:border-box; flex:0 0 100%; min-width:0; }
@@ -5672,6 +5672,7 @@
     </div>
   </div>
 
+  <span id="regionalAdTopAnchor" hidden></span>
   <div id="regionalAdSlot" class="regional-ad-slot">
     <aside id="regionalAd" class="regional-ad" aria-label="広告" hidden>
       <button id="regionalAdClose" class="regional-ad-close" type="button" aria-label="広告を閉じる">×</button>
@@ -5896,6 +5897,7 @@
     </div>
   </div>
 
+  <span id="regionalAdBottomAnchor" hidden></span>
   <aside id="lobbyWhisper" class="lobby-whisper" aria-label="1222のつぶやき" hidden>
     <button id="lobbyWhisperClose" class="lobby-whisper-close" type="button" aria-label="つぶやきを閉じる">×</button>
     <div class="lobby-whisper-label">1222のつぶやき</div>
@@ -7124,7 +7126,7 @@
 <script src="/static/i18n.js?v=20261008a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
-<script src="/static/regionalAds.js?v=20261019a"></script>
+<script src="/static/regionalAds.js?v=20261019b"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260906c").catch((error) => {

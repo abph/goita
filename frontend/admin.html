@@ -566,6 +566,10 @@
           <h2 class="section-heading">地域別広告</h2>
           <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方・同じ表示場所には広告を3件まで登録でき、1つの枠内で順番に表示します。</p>
           <p class="muted">実績欄では、広告ごとの表示回数・閲覧ブラウザー数（概算）・クリック回数・クリック率と、表示場所別・地方別・直近30日の日別内訳を確認できます。閲覧ブラウザー数は機能導入後の初回表示から集計します。同じ広告は1ブラウザーにつき1日3回まで表示します。</p>
+          <div class="regional-ad-actions">
+            <div class="field" style="margin:0"><label for="regionalAdPosition">広告枠の表示位置</label><select id="regionalAdPosition"><option value="top">上の方</option><option value="bottom">下の方</option></select></div>
+            <button id="regionalAdPositionSave" class="button primary" type="button">表示位置を保存</button>
+          </div>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
           <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
@@ -850,6 +854,7 @@
     const regionalAdRegions = ["北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄"];
     const regionalAdSurfaceLabels = {public_room:"公開部屋", score_attack:"スコアアタック"};
     const regionalAdField = id => document.getElementById(`regionalAd${id}`);
+    const regionalAdPosition = () => document.getElementById("regionalAdPosition").value;
     function regionalAdDateInput(value) {
       const date = new Date(value || "");
       return Number.isNaN(date.valueOf()) ? "" : new Date(date.valueOf() + 9 * 3600000).toISOString().slice(0,16);
@@ -890,6 +895,7 @@
         const data = await api("/admin/api/regional-ads");
         regionalAds = data.ads || [];
         regionalAdMetrics = data.metrics || {};
+        document.getElementById("regionalAdPosition").value = data.position === "bottom" ? "bottom" : "top";
         renderRegionalAds();
         status.textContent = `${regionalAds.length}件の広告があります。`;
         await previewRegionalAd();
@@ -2619,6 +2625,18 @@
     document.getElementById("regionalAdNew").addEventListener("click", () => resetRegionalAdForm());
     document.getElementById("regionalAdCancel").addEventListener("click", () => resetRegionalAdForm());
     document.getElementById("regionalAdRefresh").addEventListener("click", loadRegionalAds);
+    document.getElementById("regionalAdPositionSave").addEventListener("click", async () => {
+      const status = document.getElementById("regionalAdStatus");
+      status.textContent = "表示位置を保存しています...";
+      try {
+        const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads:regionalAds, position:regionalAdPosition()})});
+        regionalAds = data.ads || [];
+        regionalAdMetrics = data.metrics || regionalAdMetrics;
+        document.getElementById("regionalAdPosition").value = data.position === "bottom" ? "bottom" : "top";
+        renderRegionalAds();
+        status.textContent = "広告枠の表示位置を保存しました。";
+      } catch (error) { status.textContent = error.message; }
+    });
     document.getElementById("regionalAdPreviewRegion").addEventListener("change", previewRegionalAd);
     document.getElementById("regionalAdPreviewSurface").addEventListener("change", previewRegionalAd);
     document.getElementById("regionalAdRows").addEventListener("click", async event => {
@@ -2629,7 +2647,7 @@
       if (button.classList.contains("regional-ad-edit")) { resetRegionalAdForm(ad); regionalAdField("Title").focus(); return; }
       if (!confirm(`「${ad.title}」を削除しますか？`)) return;
       try {
-        const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads:regionalAds.filter(item => item.id !== ad.id)})});
+        const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads:regionalAds.filter(item => item.id !== ad.id), position:regionalAdPosition()})});
         regionalAds = data.ads; regionalAdMetrics = data.metrics || regionalAdMetrics; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
         document.getElementById("regionalAdStatus").textContent = "広告を削除しました。";
       } catch (error) { document.getElementById("regionalAdStatus").textContent = error.message; }
@@ -2651,7 +2669,7 @@
       const ads = editingRegionalAdId ? regionalAds.map(item => item.id === ad.id ? ad : item) : [...regionalAds, ad];
       status.textContent = "保存しています...";
       try {
-        const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads})});
+        const data = await api("/admin/api/regional-ads", {method:"PUT", body:JSON.stringify({ads, position:regionalAdPosition()})});
         regionalAds = data.ads; regionalAdMetrics = data.metrics || regionalAdMetrics; renderRegionalAds(); resetRegionalAdForm(); await previewRegionalAd();
         status.textContent = "広告を保存しました。";
       } catch (error) { status.textContent = error.message; }

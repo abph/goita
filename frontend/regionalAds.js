@@ -39,6 +39,18 @@
     element("regionalAdDots")?.replaceChildren();
   }
 
+  function applyPosition(position) {
+    const slot = element("regionalAdSlot");
+    if (!slot) return;
+    const normalized = position === "bottom" ? "bottom" : "top";
+    if (normalized === "bottom") {
+      element("regionalAdBottomAnchor")?.before(slot);
+    } else {
+      element("regionalAdTopAnchor")?.after(slot);
+    }
+    slot.dataset.position = normalized;
+  }
+
   function recordMetric(adId, event, surface, useBeacon = false, details = {}) {
     if (!adId) return;
     const body = JSON.stringify({ad_id:adId, event, surface, ...details});
@@ -219,6 +231,7 @@
       if (!response.ok) throw new Error("regional ad unavailable");
       const data = await response.json();
       if (current !== requestNumber || lastContext !== context) return;
+      applyPosition(data.position);
       const received = Array.isArray(data.ads) ? data.ads : (data.ad ? [data.ad] : []);
       const ads = received
         .filter(ad => ad && ad.id && ad.title && ad.message)

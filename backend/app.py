@@ -298,6 +298,7 @@ PUBLIC_ROOM_AD_SETTINGS: Dict[str, Dict[str, Any]] = {
     for game_id in MAIN_ROOM_NAMES
 }
 REGIONAL_AD_SETTINGS: List[Dict[str, Any]] = []
+REGIONAL_AD_POSITION = "top"
 ROOM_NAME_MAX_LEN = 12
 CHAT_MAX_LEN = 200
 AI_CHAT_MAX_LEN = 600
@@ -4269,11 +4270,13 @@ def _lobby_management_settings() -> Dict[str, Any]:
         "private_room_ads": copy.deepcopy(PRIVATE_ROOM_AD_SETTINGS),
         "public_room_ads": copy.deepcopy(PUBLIC_ROOM_AD_SETTINGS),
         "regional_ads": copy.deepcopy(REGIONAL_AD_SETTINGS),
+        "regional_ad_position": REGIONAL_AD_POSITION,
         "gathering_event": copy.deepcopy(GATHERING_EVENT_SETTINGS),
     }
 
 
 def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
+    global REGIONAL_AD_POSITION
     gathering = settings.get("gathering_event")
     if isinstance(gathering, dict):
         GATHERING_EVENT_SETTINGS["enabled"] = bool(gathering.get("enabled", False))
@@ -4291,6 +4294,8 @@ def _apply_lobby_management_settings(settings: Dict[str, Any]) -> None:
             REGIONAL_AD_SETTINGS[:] = normalize_regional_ads(settings["regional_ads"])
         except HTTPException:
             LOGGER.warning("Ignoring invalid persisted regional advertisements")
+    if settings.get("regional_ad_position") in ("top", "bottom"):
+        REGIONAL_AD_POSITION = settings["regional_ad_position"]
     public_ads = settings.get("public_room_ads")
     if isinstance(public_ads, dict):
         try:
@@ -8588,7 +8593,11 @@ def public_regional_ad(request: Request, surface: str = "public_room"):
         for item in selected
     ]
     return JSONResponse(
-        {"ads": ads, "ad": ads[0] if ads else None},
+        {
+            "ads": ads,
+            "ad": ads[0] if ads else None,
+            "position": REGIONAL_AD_POSITION,
+        },
         headers={"Cache-Control": "no-store"},
     )
 
@@ -8623,6 +8632,7 @@ def _regional_ad_admin_payload() -> Dict[str, Any]:
     ads = copy.deepcopy(REGIONAL_AD_SETTINGS)
     return {
         "ads": ads,
+        "position": REGIONAL_AD_POSITION,
         "regions": REGIONAL_AD_REGIONS,
         "surfaces": REGIONAL_AD_SURFACES,
         "metrics": ANALYTICS_STORE.regional_ad_metrics(
@@ -8641,12 +8651,19 @@ def admin_regional_ads(request: Request):
 
 @app.put("/admin/api/regional-ads")
 def admin_update_regional_ads(request: Request, payload: Dict[str, Any] = Body(...)):
+    global REGIONAL_AD_POSITION
     _require_site_admin(request)
     normalized = normalize_regional_ads(payload.get("ads"))
+    position = payload.get("position", REGIONAL_AD_POSITION)
+    if position not in ("top", "bottom"):
+        raise HTTPException(400, "広告の表示位置が正しくありません")
     previous = copy.deepcopy(REGIONAL_AD_SETTINGS)
+    previous_position = REGIONAL_AD_POSITION
     REGIONAL_AD_SETTINGS[:] = normalized
+    REGIONAL_AD_POSITION = position
     if ROOM_SETTINGS_PATH is not None and not _save_persisted_room_management_settings():
         REGIONAL_AD_SETTINGS[:] = previous
+        REGIONAL_AD_POSITION = previous_position
         raise HTTPException(500, "地域別広告を永続保存できませんでした")
     return _regional_ad_admin_payload()
 
