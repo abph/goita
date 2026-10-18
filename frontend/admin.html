@@ -564,7 +564,7 @@
       <section id="regionalAdsView" class="view">
         <section class="panel">
           <h2 class="section-heading">地域別広告</h2>
-          <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方・同じ表示場所の広告は1件に限ります。</p>
+          <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方・同じ表示場所には広告を3件まで登録でき、1つの枠内で順番に表示します。</p>
           <p class="muted">実績欄では、広告ごとの表示回数・閲覧ブラウザー数（概算）・クリック回数・クリック率と、表示場所別・地方別・直近30日の日別内訳を確認できます。閲覧ブラウザー数は機能導入後の初回表示から集計します。同じ広告は1ブラウザーにつき1日3回まで表示します。</p>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
@@ -902,14 +902,20 @@
       try {
         const data = await api(`/admin/api/regional-ads/preview?region=${encodeURIComponent(region)}&surface=${encodeURIComponent(surface)}`);
         target.replaceChildren();
-        if (!data.ad) { target.textContent = "この地域に現在表示される広告はありません。"; return; }
-        const title = document.createElement("strong"); title.textContent = data.ad.title;
-        const body = document.createElement("p"); body.textContent = data.ad.message;
-        target.append(title, body);
-        if (data.ad.url) {
-          const link = document.createElement("a"); link.href = data.ad.url; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "リンク先を開く";
-          target.append(link);
-        }
+        const ads = Array.isArray(data.ads) ? data.ads : (data.ad ? [data.ad] : []);
+        if (!ads.length) { target.textContent = "この地域に現在表示される広告はありません。"; return; }
+        ads.forEach((ad, index) => {
+          const item = document.createElement("div");
+          if (index > 0) item.style.marginTop = "16px";
+          const title = document.createElement("strong"); title.textContent = `広告${index + 1}：${ad.title}`;
+          const body = document.createElement("p"); body.textContent = ad.message;
+          item.append(title, body);
+          if (ad.url) {
+            const link = document.createElement("a"); link.href = ad.url; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "リンク先を開く";
+            item.append(link);
+          }
+          target.append(item);
+        });
       } catch (error) { target.textContent = error.message; }
     }
 

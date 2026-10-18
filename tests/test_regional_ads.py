@@ -8,7 +8,7 @@ from starlette.requests import Request
 from backend import app as app_module
 from backend.analytics_geo import PREFECTURES_BY_CODE
 from backend.analytics_store import AnalyticsStore
-from backend.regional_ads import PREFECTURE_REGIONS, infer_region, normalize_ads, select_ad
+from backend.regional_ads import PREFECTURE_REGIONS, infer_region, normalize_ads, select_ad, select_ads
 from backend.room_settings_persistence import load_room_settings
 
 
@@ -47,6 +47,21 @@ def test_regional_ad_takes_priority_and_unknown_location_uses_common_ad() -> Non
     assert select_ad(ads, "関東", now=datetime(2026, 9, 24, tzinfo=timezone.utc)) is None
 
 
+def test_carousel_selects_up_to_three_regional_ads_before_common_ads() -> None:
+    ads = normalize_ads([
+        ad("common-01", []),
+        ad("kanto-01", ["関東"]),
+        ad("common-02", []),
+        ad("kanto-02", ["関東"]),
+    ])
+    assert [item["id"] for item in select_ads(ads, "関東", now=NOW)] == [
+        "kanto-01", "kanto-02", "common-01",
+    ]
+    assert [item["id"] for item in select_ads(ads, "関西", now=NOW)] == [
+        "common-01", "common-02",
+    ]
+
+
 def test_regional_ads_can_target_public_rooms_and_score_attack_separately() -> None:
     ads = normalize_ads([
         ad("public-ad", ["関東"], surfaces=["public_room"]),
@@ -63,10 +78,21 @@ def test_existing_regional_ads_default_to_public_rooms() -> None:
     assert select_ad(normalized, "", surface="score_attack", now=NOW) is None
 
 
-def test_overlapping_enabled_ads_in_same_region_are_rejected() -> None:
+def test_up_to_three_overlapping_enabled_ads_are_allowed() -> None:
+    normalize_ads([
+        ad("first-ad", ["関東"]),
+        ad("second-ad", ["関東", "関西"]),
+        ad("third-ad", ["関東"]),
+    ])
     with pytest.raises(HTTPException) as error:
-        normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東", "関西"])])
+        normalize_ads([
+            ad("first-ad", ["関東"]),
+            ad("second-ad", ["関東", "関西"]),
+            ad("third-ad", ["関東"]),
+            ad("fourth-ad", ["関東"]),
+        ])
     assert error.value.status_code == 400
+    assert "3件まで" in error.value.detail
     normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東"], enabled=False)])
     normalize_ads([ad("first-ad", ["関東"]), ad("second-ad", ["関東"], starts_at="2026-09-23T00:00:00+00:00", ends_at="2026-09-24T00:00:00+00:00")])
     normalize_ads([
@@ -99,6 +125,7 @@ def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypat
     response = app_module.public_regional_ad(request)
     assert response.headers["cache-control"] == "no-store"
     assert b'"id":"kanto-ad"' in response.body
+    assert b'"ads":[' in response.body
     app_module.REGIONAL_AD_SETTINGS[:] = []
     app_module._apply_lobby_management_settings({"regional_ads": persisted["regional_ads"]})
     assert len(app_module.REGIONAL_AD_SETTINGS) == 2
@@ -167,16 +194,48 @@ def test_public_metric_endpoint_records_active_ad_and_admin_returns_totals(tmp_p
     assert error.value.status_code == 400
 
 
+def test_metric_endpoint_accepts_every_ad_in_current_carousel(tmp_path, monkeypatch) -> None:
+    now = datetime.now(timezone.utc)
+    period = {
+        "starts_at": (now - timedelta(days=1)).isoformat(),
+        "ends_at": (now + timedelta(days=1)).isoformat(),
+    }
+    monkeypatch.setattr(
+        app_module,
+        "REGIONAL_AD_SETTINGS",
+        normalize_ads([
+            ad("kanto-01", ["関東"], **period),
+            ad("kanto-02", ["関東"], **period),
+            ad("kanto-03", ["関東"], **period),
+        ]),
+    )
+    monkeypatch.setattr(app_module, "ANALYTICS_STORE", AnalyticsStore(tmp_path / "analytics.sqlite3"))
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/regional-ad/metric",
+        "headers": [(b"cf-ipcountry", b"JP"), (b"cf-region-code", b"JP-13")],
+        "query_string": b"",
+    })
+    assert app_module.record_regional_ad_metric(
+        app_module.RegionalAdMetricRequest(ad_id="kanto-03", event="impression"),
+        request,
+    ) == {"ok": True}
+
+
 def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     script = (ROOT / "frontend" / "regionalAds.js").read_text(encoding="utf-8")
     admin = (ROOT / "frontend" / "admin.html").read_text(encoding="utf-8")
     index = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-    assert 'recordMetric(ad.id, "impression", surface, false' in script
+    assert 'recordMetric(ad.id, "impression", currentSurface, false' in script
     assert "const DAILY_LIMIT = 3" in script
+    assert "const AUTO_SLIDE_MS = 7000" in script
+    assert "rotateStartingAd" in script
+    assert "shownInContext.has(ad.id)" in script
     assert "viewer_first: exposure.viewerFirst" in script
     assert "viewer_measurement: true" in script
     assert "surface_viewer_first: exposure.surfaceViewerFirst" in script
-    assert 'ad.dataset.surface || "public_room"' in script
+    assert 'recordMetric(link.dataset.adId, "click", currentSurface, true)' in script
     assert '"/api/regional-ad/metric"' in script
     assert "表示場所別・地方別・直近30日" in admin
     assert 'value="score_attack"' in admin
@@ -185,7 +244,9 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert "regionalAdMetrics" in admin
     assert ".regional-ad strong { display:block; font-size:13px; }" in index
     assert ".regional-ad p { margin:4px 0 0; font-size:14px;" in index
-    assert 'class="regional-ad-open"' in index
+    assert 'openMark.className = "regional-ad-open"' in script
+    assert 'id="regionalAdTrack"' in index
+    assert 'id="regionalAdDots"' in index
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index
 

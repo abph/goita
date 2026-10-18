@@ -89,20 +89,45 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
             "surfaces": surfaces,
             "enabled": bool(item.get("enabled", False)),
         })
-    for index, first in enumerate(result):
-        if not first["enabled"]:
-            continue
-        first_targets = set(first["regions"]) or {"全国共通"}
-        for second in result[index + 1:]:
-            if not second["enabled"]:
-                continue
-            second_targets = set(second["regions"]) or {"全国共通"}
-            if (first_targets & second_targets
-                    and set(first["surfaces"]) & set(second["surfaces"])
-                    and first["starts_at"] < second["ends_at"]
-                    and second["starts_at"] < first["ends_at"]):
-                raise HTTPException(400, "同じ期間・同じ地方・同じ表示場所に複数の広告は掲載できません")
+    for target in (*REGIONS, "全国共通"):
+        for surface in SURFACES:
+            events: list[tuple[str, int]] = []
+            for item in result:
+                targets = set(item["regions"]) or {"全国共通"}
+                if not item["enabled"] or target not in targets or surface not in item["surfaces"]:
+                    continue
+                events.append((item["starts_at"], 1))
+                events.append((item["ends_at"], -1))
+            active_count = 0
+            for _timestamp, delta in sorted(events, key=lambda event: (event[0], event[1])):
+                active_count += delta
+                if active_count > 3:
+                    raise HTTPException(
+                        400,
+                        "同じ期間・同じ地方・同じ表示場所に掲載できる広告は3件までです",
+                    )
     return result
+
+
+def select_ads(
+    ads: list[dict[str, Any]],
+    region: str,
+    *,
+    surface: str = "public_room",
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    if surface not in SURFACES:
+        return []
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+    active = [
+        ad for ad in ads
+        if ad["enabled"]
+        and surface in ad.get("surfaces", ["public_room"])
+        and ad["starts_at"] <= current < ad["ends_at"]
+    ]
+    regional = [ad for ad in active if region and region in ad["regions"]]
+    common = [ad for ad in active if not ad["regions"]]
+    return (regional + common)[:3]
 
 
 def select_ad(
@@ -112,15 +137,7 @@ def select_ad(
     surface: str = "public_room",
     now: datetime | None = None,
 ) -> dict[str, Any] | None:
-    if surface not in SURFACES:
-        return None
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
-    active = [
-        ad for ad in ads
-        if ad["enabled"]
-        and surface in ad.get("surfaces", ["public_room"])
-        and ad["starts_at"] <= current < ad["ends_at"]
-    ]
-    regional = next((ad for ad in active if region and region in ad["regions"]), None)
-    common = next((ad for ad in active if not ad["regions"]), None)
-    return regional or common
+    """Return the first carousel advertisement for older internal callers."""
+
+    selected = select_ads(ads, region, surface=surface, now=now)
+    return selected[0] if selected else None

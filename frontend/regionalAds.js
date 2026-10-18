@@ -1,15 +1,43 @@
 (() => {
   "use strict";
-  let lastContext = "";
-  let lastFetch = 0;
-  let requestNumber = 0;
+
+  const AUTO_SLIDE_MS = 7000;
   const DAILY_LIMIT = 3;
   const EXPOSURE_STORAGE_KEY = "goitaRegionalAdDailyExposure";
   const VIEWER_STORAGE_PREFIX = "goitaRegionalAdViewer";
+  const ROTATION_STORAGE_PREFIX = "goitaRegionalAdRotation";
   const surfaces = new Set(["public_room", "score_attack"]);
   const element = id => document.getElementById(id);
 
-  function hide() { if (element("regionalAd")) element("regionalAd").hidden = true; }
+  let lastContext = "";
+  let lastFetch = 0;
+  let requestNumber = 0;
+  let carouselAds = [];
+  let currentIndex = 0;
+  let currentSurface = "public_room";
+  let renderedKey = "";
+  let rotationTimer = 0;
+  let interactionPaused = false;
+  let touchStartX = null;
+  let suppressClickUntil = 0;
+  let shownInContext = new Set();
+
+  function stopRotation() {
+    if (rotationTimer) window.clearTimeout(rotationTimer);
+    rotationTimer = 0;
+  }
+
+  function hide() {
+    stopRotation();
+    const ad = element("regionalAd");
+    if (ad) ad.hidden = true;
+    carouselAds = [];
+    currentIndex = 0;
+    renderedKey = "";
+    shownInContext = new Set();
+    element("regionalAdTrack")?.replaceChildren();
+    element("regionalAdDots")?.replaceChildren();
+  }
 
   function recordMetric(adId, event, surface, useBeacon = false, details = {}) {
     if (!adId) return;
@@ -34,15 +62,29 @@
     return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   }
 
-  function reserveExposure(adId, surface) {
+  function dailyExposureState() {
+    const date = japanDate();
     try {
-      const date = japanDate();
       const saved = JSON.parse(localStorage.getItem(EXPOSURE_STORAGE_KEY) || "null");
-      const state = saved?.date === date && saved.counts && typeof saved.counts === "object"
+      return saved?.date === date && saved.counts && typeof saved.counts === "object"
         ? saved
         : {date, counts:{}};
+    } catch (_error) {
+      return {date, counts:{}};
+    }
+  }
+
+  function hasExposureCapacity(adId) {
+    return Number(dailyExposureState().counts[adId] || 0) < DAILY_LIMIT;
+  }
+
+  function reserveExposure(adId, surface) {
+    try {
+      const state = dailyExposureState();
       const count = Number(state.counts[adId] || 0);
-      if (count >= DAILY_LIMIT) return {allowed:false, viewerFirst:false, surfaceViewerFirst:false};
+      if (count >= DAILY_LIMIT) {
+        return {allowed:false, viewerFirst:false, surfaceViewerFirst:false};
+      }
       state.counts[adId] = count + 1;
       localStorage.setItem(EXPOSURE_STORAGE_KEY, JSON.stringify(state));
 
@@ -58,8 +100,108 @@
     }
   }
 
+  function rotateStartingAd(ads, surface) {
+    if (ads.length < 2) return ads;
+    const adSet = ads.map(ad => ad.id).join(".");
+    const key = `${ROTATION_STORAGE_PREFIX}:${surface}:${adSet}`;
+    let start = 0;
+    try {
+      start = Math.abs(Number.parseInt(localStorage.getItem(key) || "0", 10)) % ads.length;
+      localStorage.setItem(key, String((start + 1) % ads.length));
+    } catch (_error) {}
+    return [...ads.slice(start), ...ads.slice(0, start)];
+  }
+
+  function buildCarousel(ads) {
+    const track = element("regionalAdTrack");
+    const dots = element("regionalAdDots");
+    if (!track || !dots) return;
+    track.replaceChildren();
+    dots.replaceChildren();
+
+    ads.forEach((ad, index) => {
+      const slide = document.createElement("article");
+      slide.className = "regional-ad-slide";
+      slide.dataset.adId = ad.id;
+      slide.setAttribute("aria-hidden", String(index !== 0));
+
+      const content = document.createElement(ad.url ? "a" : "div");
+      content.className = "regional-ad-content";
+      content.dataset.adId = ad.id;
+      if (ad.url) {
+        content.href = ad.url;
+        content.target = "_blank";
+        content.rel = "noopener noreferrer";
+        content.tabIndex = index === 0 ? 0 : -1;
+      }
+
+      const title = document.createElement("strong");
+      title.dataset.i18nIgnore = "";
+      title.textContent = ad.title;
+      const message = document.createElement("p");
+      message.dataset.i18nIgnore = "";
+      message.textContent = ad.message;
+      const openMark = document.createElement("span");
+      openMark.className = "regional-ad-open";
+      openMark.setAttribute("aria-hidden", "true");
+      openMark.textContent = "›";
+      content.append(title, message, openMark);
+      slide.appendChild(content);
+      track.appendChild(slide);
+
+      const dot = document.createElement("span");
+      dot.className = `regional-ad-dot${index === 0 ? " active" : ""}`;
+      dots.appendChild(dot);
+    });
+  }
+
+  function recordVisibleAd() {
+    const ad = carouselAds[currentIndex];
+    if (!ad || document.hidden === true || shownInContext.has(ad.id)) return;
+    const exposure = reserveExposure(ad.id, currentSurface);
+    shownInContext.add(ad.id);
+    if (!exposure.allowed) return;
+    recordMetric(ad.id, "impression", currentSurface, false, {
+      viewer_measurement: true,
+      viewer_first: exposure.viewerFirst,
+      surface_viewer_first: exposure.surfaceViewerFirst,
+    });
+  }
+
+  function showIndex(index) {
+    if (!carouselAds.length) return;
+    currentIndex = (index + carouselAds.length) % carouselAds.length;
+    const track = element("regionalAdTrack");
+    if (track) track.style.transform = `translateX(-${currentIndex * 100}%)`;
+    track?.querySelectorAll(".regional-ad-slide").forEach((slide, slideIndex) => {
+      const active = slideIndex === currentIndex;
+      slide.setAttribute("aria-hidden", String(!active));
+      const link = slide.querySelector("a");
+      if (link) link.tabIndex = active ? 0 : -1;
+    });
+    element("regionalAdDots")?.querySelectorAll(".regional-ad-dot").forEach((dot, dotIndex) => {
+      dot.classList.toggle("active", dotIndex === currentIndex);
+    });
+    recordVisibleAd();
+  }
+
+  function startRotation() {
+    stopRotation();
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    if (carouselAds.length < 2 || interactionPaused || document.hidden === true || reducedMotion) return;
+    rotationTimer = window.setTimeout(() => {
+      showIndex(currentIndex + 1);
+      startRotation();
+    }, AUTO_SLIDE_MS);
+  }
+
   async function sync(surface, roomId, exposureId = "") {
-    if (!surfaces.has(surface)) { requestNumber++; lastContext = ""; hide(); return; }
+    if (!surfaces.has(surface)) {
+      requestNumber++;
+      lastContext = "";
+      hide();
+      return;
+    }
     if (!element("regionalAd")) return;
     const context = `${surface}:${roomId}:${exposureId || "room"}`;
     const now = Date.now();
@@ -70,49 +212,107 @@
     if (contextChanged) hide();
     const current = ++requestNumber;
     try {
-      const response = await fetch(`/api/regional-ad?surface=${encodeURIComponent(surface)}`, {credentials:"same-origin", cache:"no-store"});
+      const response = await fetch(
+        `/api/regional-ad?surface=${encodeURIComponent(surface)}`,
+        {credentials:"same-origin", cache:"no-store"},
+      );
       if (!response.ok) throw new Error("regional ad unavailable");
       const data = await response.json();
       if (current !== requestNumber || lastContext !== context) return;
-      if (!data.ad) { hide(); return; }
-      const ad = data.ad;
-      if (sessionStorage.getItem(`goitaRegionalAdDismissed:${ad.id}`)) return;
-      const renderKey = `${ad.id}:${context}`;
+      const received = Array.isArray(data.ads) ? data.ads : (data.ad ? [data.ad] : []);
+      const ads = received
+        .filter(ad => ad && ad.id && ad.title && ad.message)
+        .filter(ad => hasExposureCapacity(ad.id))
+        .slice(0, 3);
+      if (!ads.length || sessionStorage.getItem(`goitaRegionalAdDismissed:${surface}`)) {
+        hide();
+        return;
+      }
+      const nextKey = `${context}:${ads.map(ad => ad.id).join(",")}`;
       const adElement = element("regionalAd");
-      if (!adElement.hidden && adElement.dataset.renderKey === renderKey) return;
-      const exposure = reserveExposure(ad.id, surface);
-      if (!exposure.allowed) { hide(); return; }
-      element("regionalAdTitle").textContent = ad.title;
-      element("regionalAdMessage").textContent = ad.message;
-      const link = element("regionalAdLink");
-      if (ad.url) link.href = ad.url;
-      else link.removeAttribute("href");
-      adElement.dataset.adId = ad.id;
-      adElement.dataset.surface = surface;
-      adElement.dataset.renderKey = renderKey;
+      if (!adElement.hidden && renderedKey === nextKey) return;
+
+      stopRotation();
+      currentSurface = surface;
+      renderedKey = nextKey;
+      shownInContext = new Set();
+      carouselAds = rotateStartingAd(ads, surface);
+      currentIndex = 0;
+      buildCarousel(carouselAds);
       adElement.hidden = false;
-      recordMetric(ad.id, "impression", surface, false, {
-        viewer_measurement: true,
-        viewer_first: exposure.viewerFirst,
-        surface_viewer_first: exposure.surfaceViewerFirst,
-      });
+      showIndex(0);
+      startRotation();
       window.goitaI18n?.refresh?.();
-    } catch (_error) { if (current === requestNumber) hide(); }
+    } catch (_error) {
+      if (current === requestNumber) hide();
+    }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    const adElement = element("regionalAd");
+    const viewport = element("regionalAdViewport");
+    const track = element("regionalAdTrack");
+
     element("regionalAdClose")?.addEventListener("click", () => {
-      const id = element("regionalAd")?.dataset.adId;
-      if (id) sessionStorage.setItem(`goitaRegionalAdDismissed:${id}`, "1");
+      sessionStorage.setItem(`goitaRegionalAdDismissed:${currentSurface}`, "1");
       hide();
     });
-    element("regionalAdLink")?.addEventListener("click", () => {
-      const ad = element("regionalAd");
-      const link = element("regionalAdLink");
-      if (ad?.dataset.adId && link?.hasAttribute("href")) {
-        recordMetric(ad.dataset.adId, "click", ad.dataset.surface || "public_room", true);
+    track?.addEventListener("click", event => {
+      if (Date.now() < suppressClickUntil) {
+        event.preventDefault();
+        return;
+      }
+      const link = event.target.closest("a[data-ad-id]");
+      if (!link?.dataset.adId) return;
+      recordMetric(link.dataset.adId, "click", currentSurface, true);
+    });
+
+    adElement?.addEventListener("mouseenter", () => {
+      interactionPaused = true;
+      stopRotation();
+    });
+    adElement?.addEventListener("mouseleave", () => {
+      interactionPaused = false;
+      startRotation();
+    });
+    adElement?.addEventListener("focusin", () => {
+      interactionPaused = true;
+      stopRotation();
+    });
+    adElement?.addEventListener("focusout", () => {
+      window.setTimeout(() => {
+        if (!adElement.contains(document.activeElement)) {
+          interactionPaused = false;
+          startRotation();
+        }
+      }, 0);
+    });
+
+    viewport?.addEventListener("touchstart", event => {
+      touchStartX = event.changedTouches[0]?.clientX ?? null;
+      interactionPaused = true;
+      stopRotation();
+    }, {passive:true});
+    viewport?.addEventListener("touchend", event => {
+      const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+      const distance = touchStartX == null ? 0 : endX - touchStartX;
+      touchStartX = null;
+      if (Math.abs(distance) >= 36 && carouselAds.length > 1) {
+        showIndex(currentIndex + (distance < 0 ? 1 : -1));
+        suppressClickUntil = Date.now() + 450;
+      }
+      interactionPaused = false;
+      startRotation();
+    }, {passive:true});
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopRotation();
+      else {
+        recordVisibleAd();
+        startRotation();
       }
     });
   });
+
   window.goitaRegionalAds = Object.freeze({sync});
 })();

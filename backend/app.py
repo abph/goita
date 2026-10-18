@@ -88,7 +88,7 @@ from backend.regional_ads import (
     SURFACES as REGIONAL_AD_SURFACES,
     infer_region,
     normalize_ads as normalize_regional_ads,
-    select_ad as select_regional_ad,
+    select_ads as select_regional_ads,
 )
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute, create_member_router, require_member_origin
@@ -8582,23 +8582,29 @@ def public_regional_ad(request: Request, surface: str = "public_room"):
     if surface not in REGIONAL_AD_SURFACES:
         raise HTTPException(400, "広告の表示場所が正しくありません")
     region = infer_region(request.headers)
-    selected = select_regional_ad(REGIONAL_AD_SETTINGS, region, surface=surface)
-    ad = ({key: selected[key] for key in ("id", "title", "message", "url")}
-          if selected else None)
-    return JSONResponse({"ad": ad}, headers={"Cache-Control": "no-store"})
+    selected = select_regional_ads(REGIONAL_AD_SETTINGS, region, surface=surface)
+    ads = [
+        {key: item[key] for key in ("id", "title", "message", "url")}
+        for item in selected
+    ]
+    return JSONResponse(
+        {"ads": ads, "ad": ads[0] if ads else None},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/regional-ad/metric")
 def record_regional_ad_metric(req: RegionalAdMetricRequest, request: Request):
     region = infer_region(request.headers)
-    selected = select_regional_ad(
+    selected = select_regional_ads(
         REGIONAL_AD_SETTINGS,
         region,
         surface=req.surface,
     )
-    if selected is None or selected["id"] != req.ad_id:
+    selected_item = next((item for item in selected if item["id"] == req.ad_id), None)
+    if selected_item is None:
         raise HTTPException(400, "現在表示中の地域別広告ではありません")
-    if req.event == "click" and not selected.get("url"):
+    if req.event == "click" and not selected_item.get("url"):
         raise HTTPException(400, "リンクのない広告です")
     if not ANALYTICS_STORE.record_regional_ad_metric(
         req.ad_id,
@@ -8656,12 +8662,18 @@ def admin_regional_ads_preview(
         raise HTTPException(400, "対象地方が正しくありません")
     if surface not in REGIONAL_AD_SURFACES:
         raise HTTPException(400, "広告の表示場所が正しくありません")
-    selected = select_regional_ad(
+    selected = select_regional_ads(
         REGIONAL_AD_SETTINGS,
         region,
         surface=surface,
     )
-    return {"region": region, "surface": surface, "ad": copy.deepcopy(selected)}
+    copied = copy.deepcopy(selected)
+    return {
+        "region": region,
+        "surface": surface,
+        "ads": copied,
+        "ad": copied[0] if copied else None,
+    }
 
 
 @app.get("/admin/api/ai-metrics/export")
