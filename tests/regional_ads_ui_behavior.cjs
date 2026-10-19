@@ -22,11 +22,15 @@ class TestElement {
     this.children = [];
     this.dataset = {};
     this.style = {};
+    this.style.setProperty = (key, value) => { this.style[key] = value; };
+    this.style.getPropertyValue = key => this.style[key] || "";
+    this.style.removeProperty = key => { delete this.style[key]; };
     this.hidden = false;
     this.className = "";
     this.attributes = new Map();
     this.listeners = new Map();
     this.classList = {
+      contains: name => this.className.split(/\s+/).includes(name),
       toggle: (name, enabled) => {
         const names = new Set(this.className.split(/\s+/).filter(Boolean));
         if (enabled) names.add(name); else names.delete(name);
@@ -57,6 +61,9 @@ class TestElement {
 
 let renderedPosition = "";
 const elements = {
+  gameView: new TestElement("div"),
+  chatPanel: new TestElement("div"),
+  logCard: new TestElement("div"),
   regionalAd: new TestElement("aside"),
   regionalAdClose: new TestElement("button"),
   regionalAdViewport: new TestElement("div"),
@@ -67,10 +74,27 @@ const elements = {
   regionalAdBottomAnchor: {before: () => { renderedPosition = "bottom"; }},
 };
 elements.regionalAd.hidden = true;
+const playLayout = new TestElement("div");
+const mainColumn = new TestElement("div");
+mainColumn.className = "play-main-column";
+playLayout.append(mainColumn, elements.chatPanel);
+elements.chatPanel.parentElement = playLayout;
+elements.chatPanel.after = slot => {
+  renderedPosition = "side";
+  slot.previousElementSibling = elements.chatPanel;
+};
+mainColumn.getBoundingClientRect = () => ({width:594});
+elements.chatPanel.getBoundingClientRect = () => ({
+  width: elements.gameView.classList.contains("desktop-log-visible") ? 220 : 240,
+});
+elements.logCard.getBoundingClientRect = () => ({width:280});
 
 const metricBodies = [];
 const scheduled = new Map();
+const animationFrames = [];
+const windowListeners = new Map();
 let timerNumber = 0;
+const viewport = {clientWidth:900};
 const context = vm.createContext({
   Blob,
   Date,
@@ -82,6 +106,8 @@ const context = vm.createContext({
   document: {
     hidden: false,
     activeElement: null,
+    documentElement: viewport,
+    querySelector: selector => selector === ".play-layout" ? playLayout : mainColumn,
     getElementById: id => elements[id] || null,
     createElement: tag => new TestElement(tag),
     addEventListener: (name, callback) => { if (name === "DOMContentLoaded") callback(); },
@@ -107,6 +133,10 @@ const context = vm.createContext({
     throw new Error(`Unexpected request: ${url}`);
   },
   window: {
+    innerWidth:900,
+    getComputedStyle: () => ({columnGap:"16px"}),
+    addEventListener: (name, callback) => windowListeners.set(name, callback),
+    requestAnimationFrame: callback => { animationFrames.push(callback); return animationFrames.length; },
     goitaI18n:{refresh:() => {}},
     matchMedia:() => ({matches:false}),
     setTimeout: callback => { const id = ++timerNumber; scheduled.set(id, callback); return id; },
@@ -121,6 +151,14 @@ function runNextTimer() {
   assert.ok(callback, "carousel timer should be scheduled");
   scheduled.delete(id);
   callback();
+}
+
+function resize(width) {
+  viewport.clientWidth = width;
+  context.window.innerWidth = width;
+  elements.regionalAdSlot.previousElementSibling = null;
+  windowListeners.get("resize")();
+  while (animationFrames.length) animationFrames.shift()();
 }
 
 (async () => {
@@ -148,6 +186,27 @@ function runNextTimer() {
   assert.ok(impressions.every(item => item.viewer_measurement === true));
   assert.ok(impressions.every(item => item.viewer_first === true));
 
+  resize(1200);
+  assert.equal(elements.regionalAdSlot.dataset.position, "side", "spare width puts the same ad beside chat");
+  assert.equal(elements.regionalAdSlot.previousElementSibling, elements.chatPanel);
+  assert.equal(elements.gameView.style.getPropertyValue("--regional-ad-layout-width"), "1066px");
+  elements.gameView.classList.toggle("desktop-log-visible", true);
+  resize(1200);
+  assert.equal(elements.regionalAdSlot.dataset.position, "bottom", "the desktop log must also fit");
+  assert.equal(elements.gameView.classList.contains("regional-ad-side-visible"), false);
+  resize(1440);
+  assert.equal(elements.regionalAdSlot.dataset.position, "side");
+  assert.equal(elements.gameView.style.getPropertyValue("--regional-ad-layout-width"), "1342px");
+  elements.chatPanel.parentElement = new TestElement("aside");
+  resize(1440);
+  assert.equal(elements.regionalAdSlot.dataset.position, "bottom", "a waiting-room chat outside the play layout is not used for side ads");
+  elements.chatPanel.parentElement = playLayout;
+  resize(390);
+  assert.equal(elements.regionalAdSlot.dataset.position, "bottom", "mobile keeps the configured ad position");
+  assert.equal(elements.gameView.style.getPropertyValue("--regional-ad-layout-width"), "");
+  assert.equal(metricBodies.filter(item => item.event === "impression").length, 1, "moving the slot does not add impressions");
+  elements.gameView.classList.toggle("desktop-log-visible", false);
+
   elements.regionalAdViewport.listeners.get("touchstart")({changedTouches:[{clientX:100}]});
   elements.regionalAdViewport.listeners.get("touchend")({changedTouches:[{clientX:20}]});
   impressions = metricBodies.filter(item => item.event === "impression");
@@ -171,7 +230,7 @@ function runNextTimer() {
   assert.equal(elements.regionalAd.hidden, true, "ads disappear after three daily views each");
   assert.equal(metricBodies.filter(item => item.event === "impression").length, 9);
 
-  console.log("Regional ads: automatic rotation, explicit impression counting, and daily cap passed");
+  console.log("Regional ads: responsive sidebar, automatic rotation, explicit impression counting, and daily cap passed");
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

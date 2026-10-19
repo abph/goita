@@ -23,6 +23,8 @@
   let suppressClickUntil = 0;
   let shownInContext = new Set();
   let currentImpressionEligible = false;
+  let preferredPosition = "top";
+  let placementFrame = 0;
 
   function stopRotation() {
     if (rotationTimer) window.clearTimeout(rotationTimer);
@@ -40,18 +42,60 @@
     currentImpressionEligible = false;
     element("regionalAdTrack")?.replaceChildren();
     element("regionalAdDots")?.replaceChildren();
+    updatePlacement();
   }
 
   function applyPosition(position) {
+    preferredPosition = position === "bottom" ? "bottom" : "top";
+    updatePlacement();
+  }
+
+  function updatePlacement() {
     const slot = element("regionalAdSlot");
     if (!slot) return;
-    const normalized = position === "bottom" ? "bottom" : "top";
-    if (normalized === "bottom") {
-      element("regionalAdBottomAnchor")?.before(slot);
-    } else {
-      element("regionalAdTopAnchor")?.after(slot);
+    const game = element("gameView");
+    const chat = element("chatPanel");
+    const layout = document.querySelector(".play-layout");
+    const main = layout?.querySelector(".play-main-column");
+    const log = element("logCard");
+    let sideWidth = 0;
+    if (!element("regionalAd")?.hidden && window.innerWidth > 980
+        && game && main && chat && chat.parentElement === layout) {
+      const mainWidth = main.getBoundingClientRect().width;
+      const chatWidth = chat.getBoundingClientRect().width;
+      const gap = Number.parseFloat(window.getComputedStyle(layout).columnGap) || 16;
+      const logWidth = game.classList.contains("desktop-log-visible") && window.innerWidth >= 1150
+        ? log?.getBoundingClientRect().width || 0 : 0;
+      const requiredWidth = Math.ceil(mainWidth + chatWidth + gap * 2 + 200 + (logWidth ? logWidth + 16 : 0));
+      // Reserve the full board, chat, and any desktop log before adding the ad.
+      if (mainWidth > 0 && chatWidth > 0 && requiredWidth <= document.documentElement.clientWidth - 40) {
+        sideWidth = requiredWidth;
+      }
     }
-    slot.dataset.position = normalized;
+    game?.classList.toggle("regional-ad-side-visible", sideWidth > 0);
+    if (sideWidth) {
+      const width = `${sideWidth}px`;
+      if (game.style.getPropertyValue("--regional-ad-layout-width") !== width) {
+        game.style.setProperty("--regional-ad-layout-width", width);
+      }
+      if (slot.previousElementSibling !== chat) chat.after(slot);
+      slot.dataset.position = "side";
+    } else {
+      game?.style.removeProperty("--regional-ad-layout-width");
+      if (slot.dataset.position !== preferredPosition) {
+        if (preferredPosition === "bottom") element("regionalAdBottomAnchor")?.before(slot);
+        else element("regionalAdTopAnchor")?.after(slot);
+        slot.dataset.position = preferredPosition;
+      }
+    }
+  }
+
+  function schedulePlacement() {
+    if (placementFrame) return;
+    placementFrame = window.requestAnimationFrame(() => {
+      placementFrame = 0;
+      updatePlacement();
+    });
   }
 
   function recordMetric(adId, event, surface, useBeacon = false, details = {}) {
@@ -258,6 +302,7 @@
       currentIndex = 0;
       buildCarousel(carouselAds);
       adElement.hidden = false;
+      updatePlacement();
       showIndex(0, true);
       startRotation();
       window.goitaI18n?.refresh?.();
@@ -270,6 +315,12 @@
     const adElement = element("regionalAd");
     const viewport = element("regionalAdViewport");
     const track = element("regionalAdTrack");
+    window.addEventListener("resize", schedulePlacement);
+    if (typeof ResizeObserver === "function") {
+      const placementObserver = new ResizeObserver(schedulePlacement);
+      [element("gameView"), element("chatPanel"), element("logCard"),
+        document.querySelector(".play-main-column")].filter(Boolean).forEach(node => placementObserver.observe(node));
+    }
 
     element("regionalAdClose")?.addEventListener("click", () => {
       sessionStorage.setItem(`goitaRegionalAdDismissed:${currentSurface}`, "1");

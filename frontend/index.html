@@ -5372,6 +5372,39 @@
         font-size: clamp(24px, 8vw, 36px);
       }
     }
+    @media (min-width: 981px) {
+      #gameView.regional-ad-side-visible,
+      #gameView.regional-ad-side-visible.desktop-log-visible.chat-people-visible {
+        width: var(--regional-ad-layout-width);
+        max-width: none;
+        margin-inline: calc((100% - var(--regional-ad-layout-width)) / 2);
+      }
+      .play-layout > .regional-ad-slot[data-position="side"] {
+        flex: 0 0 200px;
+        width: 200px;
+        align-self: flex-start;
+      }
+      .regional-ad-slot[data-position="side"] .regional-ad {
+        width: 100%;
+        margin: 0;
+      }
+      .regional-ad-slot[data-position="side"] .regional-ad-content {
+        min-height: 280px;
+        padding: 32px 16px 32px;
+      }
+      .regional-ad-slot[data-position="side"] .regional-ad::before {
+        content: "広告";
+        position: absolute;
+        z-index: 2;
+        top: 7px;
+        left: 16px;
+        font-size: 10px;
+        color: #76502e;
+        pointer-events: none;
+      }
+      .regional-ad-slot[data-position="side"] .regional-ad p { margin-top: 12px; }
+      .regional-ad-slot[data-position="side"] .regional-ad strong { overflow-wrap: anywhere; }
+    }
   </style>
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
   <link rel="stylesheet" href="/static/ai-review-report.css?v=20261003a" />
@@ -7131,7 +7164,7 @@
 <script src="/static/i18n.js?v=20261008a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
-<script src="/static/regionalAds.js?v=20261020a"></script>
+<script src="/static/regionalAds.js?v=20261020b"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260906c").catch((error) => {
