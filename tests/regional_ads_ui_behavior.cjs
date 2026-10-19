@@ -142,31 +142,36 @@ function runNextTimer() {
   assert.equal(elements.regionalAdTrack.style.transform, "translateX(-200%)");
   runNextTimer();
 
-  const impressions = metricBodies.filter(item => item.event === "impression");
-  assert.equal(impressions.length, 3, "one page context counts each visible ad only once");
-  assert.deepEqual(impressions.map(item => item.ad_id), ["regional-a", "regional-b", "regional-c"]);
+  let impressions = metricBodies.filter(item => item.event === "impression");
+  assert.equal(impressions.length, 1, "automatic slides do not count as impressions");
+  assert.deepEqual(impressions.map(item => item.ad_id), ["regional-a"]);
   assert.ok(impressions.every(item => item.viewer_measurement === true));
   assert.ok(impressions.every(item => item.viewer_first === true));
 
+  elements.regionalAdViewport.listeners.get("touchstart")({changedTouches:[{clientX:100}]});
+  elements.regionalAdViewport.listeners.get("touchend")({changedTouches:[{clientX:20}]});
+  impressions = metricBodies.filter(item => item.event === "impression");
+  assert.equal(impressions.length, 2, "a user swipe counts the selected ad");
+  assert.equal(impressions[1].ad_id, "regional-b");
+
   await context.window.goitaRegionalAds.sync("public_room", "room-b", "two");
   const nextImpressions = metricBodies.filter(item => item.event === "impression");
-  assert.equal(nextImpressions.length, 4);
-  assert.equal(nextImpressions[3].ad_id, "regional-b", "the starting ad rotates between visits");
-  assert.equal(nextImpressions[3].viewer_first, false);
-  assert.equal(nextImpressions[3].surface_viewer_first, false);
+  assert.equal(nextImpressions.length, 3);
+  assert.equal(nextImpressions[2].ad_id, "regional-b", "the starting ad rotates between visits");
+  assert.equal(nextImpressions[2].viewer_first, false);
+  assert.equal(nextImpressions[2].surface_viewer_first, false);
 
-  runNextTimer();
-  runNextTimer();
-  await context.window.goitaRegionalAds.sync("public_room", "room-c", "three");
-  runNextTimer();
-  runNextTimer();
-  assert.equal(metricBodies.filter(item => item.event === "impression").length, 9);
-
-  await context.window.goitaRegionalAds.sync("public_room", "room-d", "four");
+  for (const [roomId, exposureId] of [
+    ["room-c", "three"], ["room-d", "four"], ["room-e", "five"],
+    ["room-f", "six"], ["room-g", "seven"], ["room-h", "eight"],
+    ["room-i", "nine"],
+  ]) {
+    await context.window.goitaRegionalAds.sync("public_room", roomId, exposureId);
+  }
   assert.equal(elements.regionalAd.hidden, true, "ads disappear after three daily views each");
   assert.equal(metricBodies.filter(item => item.event === "impression").length, 9);
 
-  console.log("Regional ads: carousel rotation, fair start, deduplication, and daily cap passed");
+  console.log("Regional ads: automatic rotation, explicit impression counting, and daily cap passed");
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

@@ -255,7 +255,8 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     index = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
     assert 'recordMetric(ad.id, "impression", currentSurface, false' in script
     assert "const DAILY_LIMIT = 3" in script
-    assert "const AUTO_SLIDE_MS = 3 * 60 * 1000" in script
+    assert "const AUTO_SLIDE_MS = 60 * 1000" in script
+    assert "showIndex(currentIndex + 1, false)" in script
     assert "rotateStartingAd" in script
     assert "shownInContext.has(ad.id)" in script
     assert "viewer_first: exposure.viewerFirst" in script

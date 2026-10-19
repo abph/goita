@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const AUTO_SLIDE_MS = 3 * 60 * 1000;
+  const AUTO_SLIDE_MS = 60 * 1000;
   const DAILY_LIMIT = 3;
   const EXPOSURE_STORAGE_KEY = "goitaRegionalAdDailyExposure";
   const VIEWER_STORAGE_PREFIX = "goitaRegionalAdViewer";
@@ -22,6 +22,7 @@
   let touchStartX = null;
   let suppressClickUntil = 0;
   let shownInContext = new Set();
+  let currentImpressionEligible = false;
 
   function stopRotation() {
     if (rotationTimer) window.clearTimeout(rotationTimer);
@@ -36,6 +37,7 @@
     currentIndex = 0;
     renderedKey = "";
     shownInContext = new Set();
+    currentImpressionEligible = false;
     element("regionalAdTrack")?.replaceChildren();
     element("regionalAdDots")?.replaceChildren();
   }
@@ -171,7 +173,7 @@
 
   function recordVisibleAd() {
     const ad = carouselAds[currentIndex];
-    if (!ad || document.hidden === true || shownInContext.has(ad.id)) return;
+    if (!currentImpressionEligible || !ad || document.hidden === true || shownInContext.has(ad.id)) return;
     const exposure = reserveExposure(ad.id, currentSurface);
     shownInContext.add(ad.id);
     if (!exposure.allowed) return;
@@ -182,9 +184,10 @@
     });
   }
 
-  function showIndex(index) {
+  function showIndex(index, recordImpression = false) {
     if (!carouselAds.length) return;
     currentIndex = (index + carouselAds.length) % carouselAds.length;
+    currentImpressionEligible = recordImpression;
     const track = element("regionalAdTrack");
     if (track) track.style.transform = `translateX(-${currentIndex * 100}%)`;
     track?.querySelectorAll(".regional-ad-slide").forEach((slide, slideIndex) => {
@@ -204,7 +207,7 @@
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
     if (carouselAds.length < 2 || interactionPaused || document.hidden === true || reducedMotion) return;
     rotationTimer = window.setTimeout(() => {
-      showIndex(currentIndex + 1);
+      showIndex(currentIndex + 1, false);
       startRotation();
     }, AUTO_SLIDE_MS);
   }
@@ -255,7 +258,7 @@
       currentIndex = 0;
       buildCarousel(carouselAds);
       adElement.hidden = false;
-      showIndex(0);
+      showIndex(0, true);
       startRotation();
       window.goitaI18n?.refresh?.();
     } catch (_error) {
@@ -313,7 +316,7 @@
       const distance = touchStartX == null ? 0 : endX - touchStartX;
       touchStartX = null;
       if (Math.abs(distance) >= 36 && carouselAds.length > 1) {
-        showIndex(currentIndex + (distance < 0 ? 1 : -1));
+        showIndex(currentIndex + (distance < 0 ? 1 : -1), true);
         suppressClickUntil = Date.now() + 450;
       }
       interactionPaused = false;
