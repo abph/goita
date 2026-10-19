@@ -1635,7 +1635,12 @@
     .regional-ad p { margin:4px 0 0; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
     .regional-ad-viewport { overflow:hidden; }
     .regional-ad-track { display:flex; align-items:stretch; transform:translateX(0); transition:transform 420ms ease; will-change:transform; }
-    .regional-ad-slide { box-sizing:border-box; flex:0 0 100%; min-width:0; }
+    .regional-ad-slide { box-sizing:border-box; flex:0 0 100%; min-width:0; background:#fffaf0; }
+    .regional-ad-slide[data-theme="blue"] { background:#eef6ff; }
+    .regional-ad-slide[data-theme="green"] { background:#eef9f1; }
+    .regional-ad-slide[data-theme="orange"] { background:#fff3e5; }
+    .regional-ad-slide[data-theme="pink"] { background:#fff0f4; }
+    .regional-ad-slide[data-theme="gray"] { background:#f3f5f7; }
     .regional-ad-content { display:block; box-sizing:border-box; min-height:78px; height:100%; padding:10px 40px 22px 14px; color:inherit; text-decoration:none; position:relative; }
     .regional-ad-content[href] { cursor:pointer; }
     .regional-ad-content[href]:focus-visible { outline:2px solid #76502e; outline-offset:-3px; border-radius:7px; }
@@ -7126,7 +7131,7 @@
 <script src="/static/i18n.js?v=20261008a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
-<script src="/static/regionalAds.js?v=20261019c"></script>
+<script src="/static/regionalAds.js?v=20261019d"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260906c").catch((error) => {

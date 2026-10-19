@@ -93,9 +93,9 @@ const context = vm.createContext({
         json: async () => ({
           position: "bottom",
           ads: [
-            {id:"regional-a", title:"広告A", message:"本文A", url:"https://example.com/a"},
-            {id:"regional-b", title:"広告B", message:"本文B", url:"https://example.com/b"},
-            {id:"regional-c", title:"広告C", message:"本文C", url:"https://example.com/c"},
+            {id:"regional-a", title:"広告A", message:"本文A", url:"https://example.com/a", background_theme:"blue"},
+            {id:"regional-b", title:"広告B", message:"本文B", url:"https://example.com/b", background_theme:"green"},
+            {id:"regional-c", title:"広告C", message:"本文C", url:"https://example.com/c", background_theme:"orange"},
           ],
         }),
       };
@@ -129,6 +129,10 @@ function runNextTimer() {
   assert.equal(renderedPosition, "bottom");
   assert.equal(elements.regionalAdSlot.dataset.position, "bottom");
   assert.equal(elements.regionalAdTrack.children.length, 3);
+  assert.deepEqual(
+    elements.regionalAdTrack.children.map(item => item.dataset.theme),
+    ["blue", "green", "orange"],
+  );
   assert.equal(elements.regionalAdDots.children.length, 3);
   assert.equal(elements.regionalAdTrack.style.transform, "translateX(-0%)");
 

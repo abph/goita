@@ -258,6 +258,8 @@
     .regional-ad-set-empty { color:var(--muted); border-style:dashed; background:#fff; }
     .regional-ad-set-arrow { color:var(--muted); font-weight:800; }
     .regional-ad-preview { margin-top:10px; padding:12px; border:1px solid var(--line); background:#fff; white-space:pre-wrap; }
+    .regional-ad-preview-item { padding:10px; border:1px solid var(--line); border-radius:5px; }
+    .regional-ad-background-chip { display:inline-block; min-width:54px; padding:4px 7px; border:1px solid #b9c2cb; border-radius:5px; text-align:center; font-size:12px; }
     .regional-ad-metrics { min-width:170px; font-size:12px; line-height:1.65; }
     .regional-ad-metrics strong { display:block; font-size:13px; }
     .regional-ad-metrics details { margin-top:4px; color:var(--muted); }
@@ -582,7 +584,7 @@
           </div>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
-          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>背景色</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
         </section>
         <section class="panel">
           <h3 class="subheading">横スライド広告セット</h3>
@@ -596,6 +598,7 @@
             <div class="field"><label for="regionalAdTitle">見出し</label><input id="regionalAdTitle" type="text" maxlength="40" required></div>
             <div class="field"><label for="regionalAdMessage">本文</label><textarea id="regionalAdMessage" maxlength="200" required></textarea></div>
             <div class="field"><label for="regionalAdUrl">リンク先URL（任意）</label><input id="regionalAdUrl" type="url" maxlength="2048" placeholder="https://example.com/"></div>
+            <div class="field"><label for="regionalAdBackgroundTheme">背景色</label><select id="regionalAdBackgroundTheme"><option value="standard">標準（クリーム）</option><option value="blue">青</option><option value="green">緑</option><option value="orange">オレンジ</option><option value="pink">ピンク</option><option value="gray">グレー</option></select></div>
             <fieldset><legend>対象地方（未選択なら全国共通）</legend><div id="regionalAdTargets" class="regional-ad-targets"></div></fieldset>
             <fieldset><legend>表示場所</legend><div id="regionalAdSurfaces" class="regional-ad-targets"><label><input type="checkbox" value="public_room"> 公開部屋</label><label><input type="checkbox" value="score_attack"> スコアアタック</label></div></fieldset>
             <div class="form-grid">
@@ -869,8 +872,14 @@
     let editingRegionalAdId = "";
     const regionalAdRegions = ["北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄"];
     const regionalAdSurfaceLabels = {public_room:"公開部屋", score_attack:"スコアアタック"};
+    const regionalAdBackgrounds = {
+      standard:{label:"標準", color:"#fffaf0"}, blue:{label:"青", color:"#eef6ff"},
+      green:{label:"緑", color:"#eef9f1"}, orange:{label:"オレンジ", color:"#fff3e5"},
+      pink:{label:"ピンク", color:"#fff0f4"}, gray:{label:"グレー", color:"#f3f5f7"},
+    };
     const regionalAdField = id => document.getElementById(`regionalAd${id}`);
     const regionalAdPosition = () => document.getElementById("regionalAdPosition").value;
+    const regionalAdBackground = theme => regionalAdBackgrounds[theme] || regionalAdBackgrounds.standard;
     function regionalAdDateInput(value) {
       const date = new Date(value || "");
       return Number.isNaN(date.valueOf()) ? "" : new Date(date.valueOf() + 9 * 3600000).toISOString().slice(0,16);
@@ -881,6 +890,7 @@
       regionalAdField("Title").value = ad?.title || "";
       regionalAdField("Message").value = ad?.message || "";
       regionalAdField("Url").value = ad?.url || "";
+      regionalAdField("BackgroundTheme").value = regionalAdBackgrounds[ad?.background_theme] ? ad.background_theme : "standard";
       const start = new Date();
       start.setMinutes(0, 0, 0);
       regionalAdField("StartsAt").value = regionalAdDateInput(ad?.starts_at || start.toISOString());
@@ -911,8 +921,9 @@
         const flow = [];
         for (let index = 0; index < 3; index += 1) {
           const ad = ads[index];
+          const background = regionalAdBackground(ad?.background_theme);
           const item = ad
-            ? `<span class="regional-ad-set-item${ad.enabled ? "" : " disabled"}">広告${index + 1}：${escapeHtml(ad.title)}${ad.enabled ? "" : "（停止中）"}</span>`
+            ? `<span class="regional-ad-set-item${ad.enabled ? "" : " disabled"}" style="background:${background.color}">広告${index + 1}：${escapeHtml(ad.title)}${ad.enabled ? "" : "（停止中）"}</span>`
             : `<span class="regional-ad-set-item regional-ad-set-empty">広告${index + 1}：未登録</span>`;
           if (index > 0) flow.push('<span class="regional-ad-set-arrow" aria-hidden="true">→</span>');
           flow.push(item);
@@ -925,6 +936,7 @@
       const now = Date.now();
       document.getElementById("regionalAdRows").innerHTML = regionalAds.map(ad => {
         const state = !ad.enabled ? "停止中" : now < Date.parse(ad.starts_at) ? "開始前" : now >= Date.parse(ad.ends_at) ? "終了" : "掲載中";
+        const background = regionalAdBackground(ad.background_theme);
         const metrics = regionalAdMetrics[ad.id] || {impressions:0, measured_impressions:0, viewers:0, clicks:0, click_rate:0, impressions_per_viewer:0, regions:[], daily:[]};
         const surfaceLines = (metrics.surfaces || []).map(item => `${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}：累計表示 ${Number(item.impressions || 0).toLocaleString()}回／計測開始後 ${Number(item.measured_impressions || 0).toLocaleString()}回・閲覧ブラウザー ${Number(item.viewers || 0).toLocaleString()}／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "表示場所別の実績はありません。";
         const regionLines = (metrics.regions || []).map(item => `${escapeHtml(item.region)}：累計表示 ${Number(item.impressions || 0).toLocaleString()}回／計測開始後 ${Number(item.measured_impressions || 0).toLocaleString()}回・閲覧ブラウザー ${Number(item.viewers || 0).toLocaleString()}／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "地方別の実績はありません。";
@@ -932,8 +944,8 @@
         const surfaceDailyLines = (metrics.surface_daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || dailyLines;
         const metricCell = `<div class="regional-ad-metrics"><strong>累計表示 ${Number(metrics.impressions || 0).toLocaleString()}回</strong><span>計測開始後 ${Number(metrics.measured_impressions || 0).toLocaleString()}回／閲覧ブラウザー ${Number(metrics.viewers || 0).toLocaleString()}（概算）／1ブラウザー ${Number(metrics.impressions_per_viewer || 0).toFixed(1)}回</span><br><span>クリック ${Number(metrics.clicks || 0).toLocaleString()}回／CTR ${Number(metrics.click_rate || 0).toFixed(1)}%</span><details><summary>表示場所別・地方別・直近30日</summary><div class="regional-ad-metrics-list">${surfaceLines}<hr>${regionLines}<hr>${surfaceDailyLines}</div></details></div>`;
         const surfaces = ad.surfaces || ["public_room"];
-        return `<tr><td>${escapeHtml(ad.title)}</td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
-      }).join("") || '<tr><td colspan="7">広告はまだありません。</td></tr>';
+        return `<tr><td>${escapeHtml(ad.title)}</td><td><span class="regional-ad-background-chip" style="background:${background.color}">${background.label}</span></td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
+      }).join("") || '<tr><td colspan="8">広告はまだありません。</td></tr>';
       renderRegionalAdCarouselSets();
     }
     async function loadRegionalAds() {
@@ -960,6 +972,8 @@
         if (!ads.length) { target.textContent = "この地域に現在表示される広告はありません。"; return; }
         ads.forEach((ad, index) => {
           const item = document.createElement("div");
+          item.className = "regional-ad-preview-item";
+          item.style.background = regionalAdBackground(ad.background_theme).color;
           if (index > 0) item.style.marginTop = "16px";
           const title = document.createElement("strong"); title.textContent = `広告${index + 1}：${ad.title}`;
           const body = document.createElement("p"); body.textContent = ad.message;
@@ -2710,6 +2724,7 @@
         id: editingRegionalAdId || crypto.randomUUID().replaceAll("-", ""),
         title:regionalAdField("Title").value.trim(), message:regionalAdField("Message").value.trim(),
         url:regionalAdField("Url").value.trim(), regions:[...document.querySelectorAll('#regionalAdTargets input:checked')].map(input => input.value),
+        background_theme:regionalAdField("BackgroundTheme").value,
         surfaces:[...document.querySelectorAll('#regionalAdSurfaces input:checked')].map(input => input.value),
         starts_at:start, ends_at:end, enabled:regionalAdField("Enabled").checked,
       };

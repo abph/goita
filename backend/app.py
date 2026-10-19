@@ -8589,7 +8589,7 @@ def public_regional_ad(request: Request, surface: str = "public_room"):
     region = infer_region(request.headers)
     selected = select_regional_ads(REGIONAL_AD_SETTINGS, region, surface=surface)
     ads = [
-        {key: item[key] for key in ("id", "title", "message", "url")}
+        {key: item[key] for key in ("id", "title", "message", "url", "background_theme")}
         for item in selected
     ]
     return JSONResponse(

@@ -6,6 +6,7 @@
   const EXPOSURE_STORAGE_KEY = "goitaRegionalAdDailyExposure";
   const VIEWER_STORAGE_PREFIX = "goitaRegionalAdViewer";
   const ROTATION_STORAGE_PREFIX = "goitaRegionalAdRotation";
+  const backgroundThemes = new Set(["standard", "blue", "green", "orange", "pink", "gray"]);
   const surfaces = new Set(["public_room", "score_attack"]);
   const element = id => document.getElementById(id);
 
@@ -135,6 +136,7 @@
       const slide = document.createElement("article");
       slide.className = "regional-ad-slide";
       slide.dataset.adId = ad.id;
+      slide.dataset.theme = backgroundThemes.has(ad.background_theme) ? ad.background_theme : "standard";
       slide.setAttribute("aria-hidden", String(index !== 0));
 
       const content = document.createElement(ad.url ? "a" : "div");

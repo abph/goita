@@ -78,6 +78,19 @@ def test_existing_regional_ads_default_to_public_rooms() -> None:
     assert select_ad(normalized, "", surface="score_attack", now=NOW) is None
 
 
+def test_regional_ad_background_theme_defaults_and_validation() -> None:
+    normalized = normalize_ads([
+        ad("theme-default", []),
+        ad("theme-blue", [], background_theme="blue"),
+    ])
+    assert normalized[0]["background_theme"] == "standard"
+    assert normalized[1]["background_theme"] == "blue"
+    with pytest.raises(HTTPException) as error:
+        normalize_ads([ad("theme-invalid", [], background_theme="black")])
+    assert error.value.status_code == 400
+    assert "背景色" in error.value.detail
+
+
 def test_up_to_three_overlapping_enabled_ads_are_allowed() -> None:
     normalize_ads([
         ad("first-ad", ["関東"]),
@@ -120,7 +133,10 @@ def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypat
     now = datetime.now(timezone.utc)
     period = {"starts_at": (now - timedelta(days=1)).isoformat(), "ends_at": (now + timedelta(days=1)).isoformat()}
     saved = app_module.admin_update_regional_ads(request, {
-        "ads": [ad("common-ad", [], **period), ad("kanto-ad", ["関東"], **period)],
+        "ads": [
+            ad("common-ad", [], **period),
+            ad("kanto-ad", ["関東"], background_theme="blue", **period),
+        ],
         "position": "bottom",
     })
     assert len(saved["ads"]) == 2
@@ -131,6 +147,7 @@ def test_admin_save_persists_and_public_endpoint_uses_region(tmp_path, monkeypat
     response = app_module.public_regional_ad(request)
     assert response.headers["cache-control"] == "no-store"
     assert b'"id":"kanto-ad"' in response.body
+    assert b'"background_theme":"blue"' in response.body
     assert b'"ads":[' in response.body
     assert b'"position":"bottom"' in response.body
     app_module.REGIONAL_AD_SETTINGS[:] = []
@@ -261,10 +278,14 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert 'id="regionalAdPosition"' in admin
     assert 'id="regionalAdPositionSave"' in admin
     assert 'id="regionalAdCarouselSets"' in admin
+    assert 'id="regionalAdBackgroundTheme"' in admin
+    assert 'background_theme:regionalAdField("BackgroundTheme").value' in admin
     assert "function renderRegionalAdCarouselSets()" in admin
     assert "あと${remaining}件、同じ条件で広告を登録できます。" in admin
     assert "3件の横スライド広告が設定されています。" in admin
     assert "applyPosition(data.position)" in script
+    assert "slide.dataset.theme" in script
+    assert '.regional-ad-slide[data-theme="blue"]' in index
     assert 'state.trace_attempt_id || "active"' in index
     assert '"score_attack"' in index
 

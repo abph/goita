@@ -14,6 +14,7 @@ from backend.analytics_geo import infer_country_code, infer_prefecture
 
 REGIONS = ("北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄")
 SURFACES = ("public_room", "score_attack")
+BACKGROUND_THEMES = ("standard", "blue", "green", "orange", "pink", "gray")
 PREFECTURE_REGIONS = {
     "北海道": "北海道",
     **{name + "県": "東北" for name in ("青森", "岩手", "宮城", "秋田", "山形", "福島")},
@@ -60,6 +61,7 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
         url = str(item.get("url") or "").strip()
         regions = item.get("regions")
         surfaces = item.get("surfaces", ["public_room"])
+        background_theme = str(item.get("background_theme") or "standard").strip()
         if not AD_ID_RE.fullmatch(ad_id) or ad_id in ids:
             raise HTTPException(400, "広告IDが正しくありません")
         if not title or len(title) > 40 or not message or len(message) > 200:
@@ -75,6 +77,8 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
                 or len(surfaces) != len(set(surfaces))
                 or any(surface not in SURFACES for surface in surfaces)):
             raise HTTPException(400, "広告の表示場所が正しくありません")
+        if background_theme not in BACKGROUND_THEMES:
+            raise HTTPException(400, "広告の背景色が正しくありません")
         if url:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > 2048:
@@ -87,6 +91,7 @@ def normalize_ads(raw: Any) -> list[dict[str, Any]]:
             "id": ad_id, "title": title, "message": message, "url": url,
             "regions": regions, "starts_at": start.isoformat(), "ends_at": end.isoformat(),
             "surfaces": surfaces,
+            "background_theme": background_theme,
             "enabled": bool(item.get("enabled", False)),
         })
     for target in (*REGIONS, "全国共通"):
