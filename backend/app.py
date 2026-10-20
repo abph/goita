@@ -10148,8 +10148,10 @@ async def start_random_debug_trace(
         candidates = _random_trace_candidates()
     except ValueError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+    selection = get_trace_store().challenge_selection()
+    candidates = [item for item in candidates if item.get("challenge_id") not in selection["uniform"]]
     if body.selection_mode == "divergent":
-        challenges = get_trace_store().divergent_challenges()
+        challenges = selection["divergent"]
         # The existing candidate list enforces current archive/audit eligibility.
         candidates = list({item["challenge_id"]: item for item in candidates
                            if item["challenge_id"] in challenges}.values())

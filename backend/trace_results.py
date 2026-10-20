@@ -21,6 +21,19 @@ from backend.private_kifu_archive import archive_path
 GUEST_COOKIE = "goita_trace_guest"
 RETENTION = 30 * 86400
 
+# The first completed route for a player/challenge owns its period scoring.
+# Retries through that route retain the existing per-play scoring behavior.
+_PERIOD_RESULTS_SQL = """WITH completed_results AS (
+    SELECT *, FIRST_VALUE(selection_mode) OVER (
+        PARTITION BY owner,challenge ORDER BY finished,id) AS scoring_mode
+    FROM trace_attempts WHERE finished IS NOT NULL
+), counted_results AS (
+    SELECT *, CASE WHEN selection_mode='divergent' THEN
+        CASE WHEN improvement>0 THEN 10 WHEN improvement<0 THEN -10 ELSE 0 END
+        ELSE improvement END AS ranking_points
+    FROM completed_results WHERE selection_mode=scoring_mode
+)"""
+
 
 def _first_score_groups(db, now, *, challenge=None, exclude_owner=None):
     """One completed ranked first attempt per identity; never include retries."""
@@ -172,12 +185,19 @@ class TraceStore:
                         int(first and not practice), attempt_no, str(audit_candidate_id or ""), selection_mode))
         return attempt_id
 
-    def divergent_challenges(self):
+    def challenge_selection(self):
         with self.db() as db:
             summaries = {challenge: _score_distribution(scores)
                          for challenge, scores in _first_score_groups(db, self.clock()).items()}
-        return {challenge for challenge, summary in summaries.items()
-                if summary["players"] >= 3 and summary["spread"] >= 50 and summary["iqr"] >= 20}
+        return {
+            "divergent": {challenge for challenge, summary in summaries.items()
+                          if summary["players"] >= 3 and summary["spread"] >= 50 and summary["iqr"] >= 20},
+            "uniform": {challenge for challenge, summary in summaries.items()
+                        if summary["players"] >= 3 and summary["spread"] == 0},
+        }
+
+    def divergent_challenges(self):
+        return self.challenge_selection()["divergent"]
 
     def claim_audit_report(self, owner, attempt_id):
         """Claim a player's report once and return the linked audit candidate."""
@@ -241,8 +261,12 @@ class TraceStore:
             if row["selection_mode"] == "divergent":
                 scores = _first_score_groups(db, self.clock(), challenge=row["challenge"], exclude_owner=owner)
                 comparison = _score_distribution(scores.get(row["challenge"], []))
+            contribution = db.execute(_PERIOD_RESULTS_SQL +
+                " SELECT ranking_points FROM counted_results WHERE id=?", (attempt_id,)).fetchone()
             return {"attempt_id": attempt_id, "ranked": bool(row["ranked"]),
                     "selection_mode": row["selection_mode"], "comparison": comparison,
+                    "ranking_counted": contribution is not None,
+                    "ranking_points": contribution["ranking_points"] if contribution is not None else 0,
                     "mode": mode, "attempt_no": row["attempt_no"], "challenge_label": f"課題{number:03d}",
                     "is_best": row["improvement"] == best_score,
                     "guest": bool(row["guest"]), "expires_at": row["expires"],
@@ -284,10 +308,10 @@ class TraceStore:
         weekly = period in ("weekly", "weekly_previous")
         end = start + timedelta(days=7 if weekly else 1)
         with self.db() as db:
-            rows = db.execute("""WITH days AS (
+            rows = db.execute(_PERIOD_RESULTS_SQL + """, days AS (
                 SELECT owner, date(finished,'unixepoch','+9 hours') AS day,
-                       SUM(improvement) AS points, COUNT(*) AS games
-                FROM trace_attempts
+                       SUM(ranking_points) AS points, COUNT(*) AS games
+                FROM counted_results
                 WHERE finished >= ? AND finished < ? AND finished <= ?
                 GROUP BY owner, day
             ), totals AS (
@@ -318,10 +342,10 @@ class TraceStore:
         end = today.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=today.weekday())
         start = end - timedelta(days=7)
         with self.db() as db:
-            rows = db.execute("""WITH days AS (
+            rows = db.execute(_PERIOD_RESULTS_SQL + """, days AS (
                 SELECT owner, date(finished,'unixepoch','+9 hours') AS day,
-                       SUM(improvement) AS points
-                FROM trace_attempts WHERE finished >= ? AND finished < ? AND finished <= ?
+                       SUM(ranking_points) AS points
+                FROM counted_results WHERE finished >= ? AND finished < ? AND finished <= ?
                 GROUP BY owner, day
             ), totals AS (
                 SELECT owner, SUM(CASE WHEN points < 0 THEN 0 ELSE points END) AS points
@@ -347,9 +371,9 @@ class TraceStore:
             start = datetime(parsed.year, parsed.month, parsed.day, tzinfo=today.tzinfo)
             end = start + timedelta(days=1)
         with self.db() as db:
-            rows = db.execute("""WITH totals AS (
-                SELECT owner, SUM(improvement) AS points
-                FROM trace_attempts
+            rows = db.execute(_PERIOD_RESULTS_SQL + """, totals AS (
+                SELECT owner, SUM(ranking_points) AS points
+                FROM counted_results
                 WHERE finished >= ? AND finished < ? AND finished <= ?
                 GROUP BY owner
             )
