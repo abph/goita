@@ -6764,6 +6764,7 @@
     <section class="score-attack-divergent" aria-labelledby="scoreAttackDivergentTitle">
       <h4 id="scoreAttackDivergentTitle">打ち方で結果が変わる？</h4>
       <p>挑戦者によって結果が大きく分かれた棋譜です。あなたなら、どう打ちますか？</p>
+      <p>ランキングへの加算は、元の対局より良ければ＋10点、同じなら0点、悪ければ−10点です。</p>
       <button id="debugTraceDivergentButton" type="button" onclick="startRandomDebugTrace('divergent')">結果が分かれた棋譜に挑戦</button>
     </section>
     <button id="scoreAttackHowToButton" class="score-attack-how-to-button" type="button" onclick="openScoreAttackHowTo()">スコアアタックの遊び方</button>
@@ -6797,6 +6798,8 @@
     <p>対局結果と元の棋譜の得点を比べ、その差がスコアになります。</p>
     <p class="score-attack-how-to-formula"><strong>スコア ＝ 今回の点差（AC−BD）− 元の棋譜の点差（AC−BD）</strong></p>
     <p class="score-attack-how-to-example">例：元の棋譜が「AC 10点・BD 0点」、今回が「AC 30点・BD 0点」なら、スコアは＋20点です。元の対局より良ければプラス、悪ければマイナスになります。</p>
+    <p>「結果が分かれた棋譜に挑戦」のランキング加算は、プラスなら＋10点、同じなら0点、マイナスなら−10点です。棋譜別ランキングは実際の点差で比較します。</p>
+    <p>同じ棋譜で通常挑戦と専用挑戦を切り替えた場合、最初に完了した方法の結果のみランキングに加算します。</p>
     <h4>ランキングと報酬</h4>
     <ul class="score-attack-how-to-list">
       <li>スコアはデイリー・ウィークリーランキングに反映されます。</li>
@@ -6838,6 +6841,10 @@
         <div class="trace-score-line"><span>元の対局</span><strong id="traceOriginalScore"></strong><button id="traceViewOriginalButton" type="button" onclick="openTraceOriginal()">元々の棋譜を見る</button></div>
       </div>
       <p id="traceImprovement" class="trace-score-summary"></p>
+      <div id="traceRankingContribution" class="trace-ranking-contribution" hidden>
+        <p><span>ランキングへの加算</span>：<strong id="traceRankingPoints"></strong></p>
+        <p id="traceRankingNotCounted" class="settings-help-text" hidden>同じ棋譜に別の方法で挑戦済みのため、ランキングには加算しません。</p>
+      </div>
       <section id="traceComparison" class="trace-comparison" hidden>
         <h4>ほかの挑戦者の初回結果</h4>
         <p class="settings-help-text">数値は元の対局との差です。同じ人の再挑戦は含みません。</p>
@@ -6900,6 +6907,8 @@
   .score-attack-divergent p { margin:0 0 10px; font-size:13px; line-height:1.65; color:#62584e; }
   .score-attack-divergent button { width:100%; padding:10px; background:rgba(255,255,255,.72); color:#5f3b1d; }
   .trace-comparison { margin:0 0 28px; padding:12px; border:1px solid #d4d0c6; border-radius:8px; }
+  .trace-ranking-contribution { margin:-20px 0 28px; }
+  .trace-ranking-contribution p { margin:6px 0; line-height:1.6; }
   .trace-comparison h4 { margin:0 0 8px; }
   .trace-comparison p { margin:8px 0 0; line-height:1.6; }
   .trace-comparison-scores { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
@@ -7192,12 +7201,12 @@
     .gathering-lobby-compact button { padding:2px 4px; font-size:8px; }
   }
 </style>
-<script src="/static/score-rankings.js?v=20260919a"></script>
+<script src="/static/score-rankings.js?v=20261020d"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
-<script src="/static/trace-results.js?v=20261020c"></script>
-<script src="/static/i18n-en.js?v=20261020c"></script>
-<script src="/static/i18n.js?v=20261020c"></script>
+<script src="/static/trace-results.js?v=20261020d"></script>
+<script src="/static/i18n-en.js?v=20261020d"></script>
+<script src="/static/i18n.js?v=20261020d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>

@@ -5,6 +5,14 @@
  */
 (() => {
   const exact = Object.freeze({
+    "ランキングへの加算は、元の対局より良ければ＋10点、同じなら0点、悪ければ−10点です。": "Ranking points: +10 for a better result than the original game, 0 for the same result, and −10 for a worse result.",
+    "ランキングへの加算": "Ranking Points",
+    "同じ棋譜に別の方法で挑戦済みのため、ランキングには加算しません。": "This game was already completed through the other mode, so this attempt does not add ranking points.",
+    "今日終了した対戦の加算点を合計します。": "Ranking points from games completed today are added together.",
+    "日ごとの加算点を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。": "Daily ranking points are added together, treating negative daily totals as zero. Today's total updates as you play.",
+    "結果が分かれた棋譜への挑戦は、プラスなら＋10点、同じなら0点、マイナスなら−10点に換算します。": "Games with varied results award +10 ranking points for a positive difference, 0 for no difference, or −10 for a negative difference.",
+    "「結果が分かれた棋譜に挑戦」のランキング加算は、プラスなら＋10点、同じなら0点、マイナスなら−10点です。棋譜別ランキングは実際の点差で比較します。": "Games with varied results award +10, 0, or −10 ranking points for positive, equal, or negative differences. Each game's leaderboard still uses the actual point difference.",
+    "同じ棋譜で通常挑戦と専用挑戦を切り替えた場合、最初に完了した方法の結果のみランキングに加算します。": "If you switch between regular play and the varied-results mode for the same game, only attempts through the first mode you completed count toward the overall rankings.",
     "打ち方で結果が変わる？": "How much can your choices change the result?",
     "挑戦者によって結果が大きく分かれた棋譜です。あなたなら、どう打ちますか？": "Players have had very different results with these hands. How would you play?",
     "結果が分かれた棋譜に挑戦": "Try a Game with Varied Results",

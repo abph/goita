@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 
 from backend import app as game_app
 from backend.trace_results import RETENTION, TraceStore
@@ -101,3 +102,91 @@ def test_regular_start_still_works_without_divergent_results(trace_client):
     response = trace_client.post(f"/games/{room}/trace_random_start", json={"client_id": "owner"})
     assert response.status_code == 200, response.text
     assert game_app.GAMES[room]["trace_selection_mode"] == "random"
+
+
+@pytest.mark.parametrize("difference,points", [(60, 10), (0, 0), (-80, -10)])
+def test_divergent_period_points_keep_actual_score(tmp_path, payload, difference, points):
+    store = TraceStore(tmp_path / "points.sqlite")
+    attempt = record(store, payload, "member:one", difference, selection_mode="divergent")
+    result = store.read("member:one", attempt)
+    assert result["improvement"] == difference
+    assert result["ranking"][0]["improvement"] == difference
+    assert result["ranking_points"] == points and result["ranking_counted"]
+    assert store.period_ranking("daily")["ranking"][0]["score"] == points
+    assert store.period_ranking("weekly")["ranking"][0]["score"] == max(0, points)
+
+
+@pytest.mark.parametrize("first_mode,second_mode,total", [
+    ("random", "divergent", 50), ("divergent", "random", 0),
+])
+def test_switching_mode_does_not_add_points_but_same_mode_retries_do(
+    tmp_path, payload, first_mode, second_mode, total
+):
+    now = [datetime.fromisoformat("2026-10-20T12:00:00+09:00").timestamp()]
+    store = TraceStore(tmp_path / "switch.sqlite", clock=lambda: now[0])
+    record(store, payload, "member:one", 70, selection_mode=first_mode)
+    now[0] += 1
+    switched = record(store, payload, "member:one", 40, selection_mode=second_mode)
+    assert not store.read("member:one", switched)["ranking_counted"]
+    assert store.read("member:one", switched)["ranking_points"] == 0
+    assert store.read("member:one", switched)["improvement"] == 40
+    now[0] += 1
+    record(store, payload, "member:one", -20, selection_mode=first_mode)
+    day = store.period_ranking("daily")["ranking"][0]
+    assert day["score"] == total and day["games"] == 2
+    assert store.read("member:one", switched, mode="all")["total"] == 3
+
+
+def test_award_candidates_use_normalized_points_and_previous_week_matches(tmp_path, payload):
+    now = [datetime.fromisoformat("2026-10-18T12:00:00+09:00").timestamp()]
+    store = TraceStore(tmp_path / "awards.sqlite", clock=lambda: now[0])
+    record(store, payload, "member:normal", 30)
+    record(store, payload, "member:divergent", 80, selection_mode="divergent")
+    now[0] = datetime.fromisoformat("2026-10-19T00:00:00+09:00").timestamp()
+    assert store.daily_award_candidates()["candidates"] == [{"member_id": "normal", "rank": 1}]
+    assert store.weekly_award_candidates()["candidates"] == [
+        {"member_id": "normal", "rank": 1}, {"member_id": "divergent", "rank": 2}]
+    assert [row["score"] for row in store.period_ranking("weekly_previous")["ranking"]] == [30, 10]
+
+
+@pytest.mark.parametrize("scores,excluded", [
+    ([0, 0], False), ([0, 0, 0], True), ([20, 20, 20, 20], True),
+    ([0, 0, 0, 50], False), ([10, 20, 60], False),
+])
+def test_uniform_exclusion_uses_all_initial_raw_differences(tmp_path, payload, scores, excluded):
+    store = TraceStore(tmp_path / "uniform.sqlite")
+    for n, score in enumerate(scores):
+        record(store, payload, f"member:{n}", score, selection_mode="divergent")
+    assert (store.challenge_id(payload) in store.challenge_selection()["uniform"]) is excluded
+
+
+def test_uniform_exclusion_ignores_retries_practice_and_unfinished_and_expires(tmp_path, payload):
+    now = [1000]
+    store = TraceStore(tmp_path / "expiry.sqlite", clock=lambda: now[0])
+    record(store, payload, "member:one", 0)
+    record(store, payload, "member:one", 80)
+    record(store, payload, "member:two", 0)
+    record(store, payload, "member:practice", 0, practice=True)
+    store.start("member:unfinished", False, "Player", payload)
+    assert not store.challenge_selection()["uniform"]
+    record(store, payload, "guest:three", 0, guest=True)
+    assert store.challenge_selection()["uniform"] == {store.challenge_id(payload)}
+    now[0] += RETENTION + 1
+    assert not store.challenge_selection()["uniform"]
+
+
+def test_uniform_game_is_not_selected_even_from_cached_normal_pool(trace_client, payload, monkeypatch):
+    room = enter(trace_client)
+    store = game_app.get_trace_store()
+    for n in range(3):
+        record(store, payload, f"member:{n}", 0)
+    candidate = {"payload": payload, "source": {}, "challenge_id": store.challenge_id(payload)}
+    monkeypatch.setattr(game_app, "_random_trace_candidates", lambda: [candidate])
+    path = f"/games/{room}/trace_random_start"
+    assert trace_client.post(path, json={"client_id": "owner"}).status_code == 404
+    assert trace_client.post(path, json={"client_id": "owner", "selection_mode": "divergent"}).status_code == 404
+    # Filtering does not delete histories or mutate the cached archive candidate.
+    assert candidate["payload"] == payload
+    assert store.history("member:0")["total"] == 1
+    record(store, payload, "member:four", 50)
+    assert trace_client.post(path, json={"client_id": "owner"}).status_code == 200

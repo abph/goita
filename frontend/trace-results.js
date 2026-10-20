@@ -135,6 +135,7 @@ async function openTraceResult(attemptId = '') {
   modal.querySelector('.settings-modal-close').focus();
   traceElement('traceResultContent').hidden = true;
   traceElement('traceComparison').hidden = true;
+  traceElement('traceRankingContribution').hidden = true;
   traceElement('traceResultStatus').textContent = '結果を読み込んでいます。';
   try {
     const id = attemptId || (await traceApi('trace_results/latest')).attempt_id;
@@ -147,6 +148,11 @@ async function openTraceResult(attemptId = '') {
     traceElement('traceActualScore').textContent = scoreLabel(data.actual);
     traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
     traceElement('traceImprovement').textContent = `元の対局との差　${traceSigned(data.improvement)}`;
+    if (data.selection_mode === 'divergent' || data.ranking_counted === false) {
+      traceElement('traceRankingPoints').textContent = uiText(traceSigned(data.ranking_points));
+      traceElement('traceRankingNotCounted').hidden = data.ranking_counted !== false;
+      traceElement('traceRankingContribution').hidden = false;
+    }
     const comparison = data.comparison;
     if (comparison?.players > 0) {
       const scores = traceElement('traceComparisonScores');

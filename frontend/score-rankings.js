@@ -76,12 +76,15 @@ async function openScoreRankings(period = 'daily') {
   element('scoreWeekNavigation').hidden = !weekly;
   element('scoreWeekCurrent').setAttribute('aria-pressed', String(weekly && !previousWeek));
   element('scoreWeekPrevious').setAttribute('aria-pressed', String(previousWeek));
-  element('scoreRankingsScoreHeader').textContent = weekly ? '合計点数' : '合計点差';
+  element('scoreRankingsScoreHeader').textContent = '合計点数';
   element('scoreRankingsNote').textContent = weekly
     ? previousWeek
       ? '前週分の対戦結果をもとに集計しています。日ごとのマイナスは0点として合計します。'
-      : '日ごとの合計点差を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。'
-    : '今日終了した対戦の「元の対局との差」を合計します。';
+      : '日ごとの加算点を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。'
+    : '今日終了した対戦の加算点を合計します。';
+  const conversionNote = document.createElement('span');
+  conversionNote.textContent = '結果が分かれた棋譜への挑戦は、プラスなら＋10点、同じなら0点、マイナスなら−10点に換算します。';
+  element('scoreRankingsNote').append(document.createTextNode(' '), conversionNote);
   element('scoreRankingsPeriod').textContent = '';
   element('scoreRankingsStatus').textContent = 'ランキングを読み込んでいます。';
   element('scoreRankingsRows').replaceChildren();

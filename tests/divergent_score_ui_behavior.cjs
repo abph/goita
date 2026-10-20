@@ -5,10 +5,11 @@ const vm = require('node:vm');
 
 class Element {
   constructor() { this.style = {}; this.children = []; this.textContent = ''; this.hidden = false; }
-  append(child) { this.children.push(child); }
+  append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   querySelector() { return new Element(); }
   focus() {}
+  setAttribute() {}
 }
 const elements = new Map();
 const element = id => {
@@ -18,14 +19,14 @@ const element = id => {
 const calls = [];
 let response;
 const context = vm.createContext({
-  document: {getElementById:element, createElement:()=>new Element(), addEventListener() {}},
+  document: {getElementById:element, createElement:()=>new Element(), createTextNode:text=>({textContent:text}), addEventListener() {}},
   window: {addEventListener() {}}, setTimeout, clearTimeout,
   gid:'score-test', mySeat:'W', clientId:'client', API:'',
   isScoreAttackRoom:()=>true, uiText:value=>value,
   syncScoreAttackMemberPrompt() {}, refresh:async()=>{}, setHint() {},
   fetch: async (url, init) => { calls.push({url,init}); return response; },
 });
-for (const file of ['kifu-files.js','trace-results.js']) {
+for (const file of ['kifu-files.js','trace-results.js','score-rankings.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../frontend',file),'utf8'), context);
 }
 
@@ -57,14 +58,35 @@ for (const file of ['kifu-files.js','trace-results.js']) {
   assert.equal(JSON.parse(calls.at(-1).init.body).selection_mode, 'random');
 
   const result = {actual:{AC:20,BD:0},original:{AC:0,BD:0},improvement:20,ranking:[],
+    selection_mode:'divergent',ranking_points:10,ranking_counted:true,
     comparison:{players:3,distribution:[{improvement:-50,players:2},{improvement:30,players:1}]}};
   response = {ok:true,json:async()=>result};
   await context.openTraceResult('attempt');
   assert.equal(element('traceComparison').hidden, false);
   assert.deepEqual(element('traceComparisonScores').children.map(node=>node.textContent), ['-50点 × 2人', '+30点 × 1人']);
   assert.equal(element('traceComparisonOwnScore').textContent, '+20点');
+  assert.equal(element('traceRankingPoints').textContent, '+10点');
+  assert.equal(element('traceRankingContribution').hidden, false);
+  assert.equal(element('traceRankingNotCounted').hidden, true);
+  result.ranking_counted = false;
+  result.ranking_points = 0;
+  await context.openTraceResult('switched-mode');
+  assert.equal(element('traceRankingNotCounted').hidden, false);
+  assert.equal(element('traceRankingPoints').textContent, '±0点');
+  result.selection_mode = 'random';
+  result.ranking_counted = true;
   result.comparison = null;
   await context.openTraceResult('normal-attempt');
   assert.equal(element('traceComparison').hidden, true); // Never retain stale comparisons.
+  assert.equal(element('traceRankingContribution').hidden, true);
+  response = {ok:true,json:async()=>({start_date:'2026-10-20',end_date:'2026-10-26',total:1,
+    ranking:[{rank:1,name:'Player',score:10,games:1}]})};
+  for (const period of ['daily','weekly','weekly_previous']) {
+    await context.openScoreRankings(period);
+    assert.equal(element('scoreRankingsScoreHeader').textContent, '合計点数');
+    assert.equal(element('scoreRankingsRows').children.length, 1);
+    assert.equal(element('scoreRankingsStatus').textContent, '');
+    assert.match(element('scoreRankingsNote').children.at(-1).textContent, /＋10点/);
+  }
   console.log('Divergent score attack UI behavior passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
