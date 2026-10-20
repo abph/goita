@@ -107,6 +107,7 @@ from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
 from backend.retire_room_kifu import retire_room_kifu
 from backend.ai_review_report import build_review_snapshot, log_turn_numbers
+from backend.vrc_solo_lease import LeaseError, default_store as _vrc_default_lease_store
 from backend.ai_benchmark_store import (
     AIBenchmarkStore,
     MAX_REPORT_BYTES as MAX_AI_BENCHMARK_REPORT_BYTES,
@@ -5876,11 +5877,12 @@ def _apply_agent_turn(
 VRC_SOLO_ROOM_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 VRC_SOLO_CLIENT_PREFIX = "vrc-solo:"
 VRC_SOLO_MAX_AI_ACTIONS = 64
+VRC_SOLO_LEASES = _vrc_default_lease_store()
 
 
 def _vrc_solo_ids(room_id: str) -> Tuple[str, str]:
     normalized = str(room_id or "").strip().lower()
-    if not VRC_SOLO_ROOM_RE.fullmatch(normalized):
+    if normalized != room_id or not VRC_SOLO_ROOM_RE.fullmatch(normalized):
         raise ValueError("invalid_room")
     return f"vrc-solo-{normalized}", f"{VRC_SOLO_CLIENT_PREFIX}{normalized}"
 
@@ -7150,46 +7152,121 @@ def _vrc_solo_remember_response(game: Dict[str, Any], command: str, response: st
     }
 
 
+def _vrc_solo_require(room_id: str, session: str):
+    try:
+        VRC_SOLO_LEASES.touch(room_id, session)
+    except LeaseError as error:
+        return _vrc_solo_error(str(error))
+    return None
+
+
+@app.get("/vrc/solo/{room_id}/claim", response_class=PlainTextResponse)
+async def vrc_solo_claim(room_id: str, session: str = ""):
+    try:
+        game_id, _client_id = _vrc_solo_ids(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    async with _game_turn_lock(game_id):
+        try:
+            VRC_SOLO_LEASES.claim(room_id, session)
+        except LeaseError as error:
+            return _vrc_solo_error(str(error))
+        # A fresh holder must never inherit the previous user's hands or score.
+        GAMES.pop(game_id, None)
+        response = await _vrc_solo_start_unlocked(room_id)
+        if response.body.startswith(b"G1|"):
+            VRC_SOLO_LEASES.touch(room_id, session)
+        else:
+            VRC_SOLO_LEASES.release(room_id, session)
+        return response
+
+
+@app.get("/vrc/solo/{room_id}/heartbeat", response_class=PlainTextResponse)
+async def vrc_solo_heartbeat(room_id: str, session: str = ""):
+    try:
+        game_id, _client_id = _vrc_solo_ids(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    async with _game_turn_lock(game_id):
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        return _vrc_solo_response("H1|seconds=180")
+
+
+@app.get("/vrc/solo/{room_id}/release", response_class=PlainTextResponse)
+async def vrc_solo_release(room_id: str, session: str = ""):
+    try:
+        game_id, _client_id = _vrc_solo_ids(room_id)
+    except ValueError:
+        return _vrc_solo_error("invalid_room")
+    async with _game_turn_lock(game_id):
+        try:
+            VRC_SOLO_LEASES.release(room_id, session)
+        except LeaseError as error:
+            return _vrc_solo_error(str(error))
+        game = GAMES.get(game_id)
+        if game:
+            game["vrc_pending"] = None
+            game["is_started"] = False
+            for agent in game.get("agents", {}).values():
+                cancel = getattr(agent, "cancel_background_search", None)
+                if callable(cancel):
+                    cancel()
+            await manager.broadcast_update(game_id)
+        return _vrc_solo_response("X1|released=1")
+
+
 @app.get("/vrc/solo/{room_id}/start", response_class=PlainTextResponse)
-async def vrc_solo_start(room_id: str):
+async def vrc_solo_start(room_id: str, session: str = ""):
     try:
         game_id, _client_id = _vrc_solo_ids(room_id)
     except ValueError:
         return _vrc_solo_error("invalid_room", "Room IDs use lowercase letters, numbers, and hyphens.")
     async with _game_turn_lock(game_id):
-        _existing_id, existing = _vrc_solo_game(room_id)
-        if existing is not None:
-            cached = _vrc_solo_recent_response(existing, "start", 10.0)
-            if cached:
-                return _vrc_solo_response(cached)
-            existing_state = existing.get("state")
-            if existing.get("is_started") and existing_state is not None and not existing_state.finished:
-                response = _vrc_solo_snapshot(existing)
-                _vrc_solo_remember_response(existing, "start", response)
-                return _vrc_solo_response(response)
-        game_id, game = _create_vrc_solo_game(room_id, previous=existing)
-        try:
-            await _vrc_solo_run_ai(game)
-        except RuntimeError as error:
-            return _vrc_solo_error("ai_error", str(error))
-        await manager.broadcast_update(game_id)
-        response = _vrc_solo_snapshot(game)
-        _vrc_solo_remember_response(game, "start", response)
-        return _vrc_solo_response(response)
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        return await _vrc_solo_start_unlocked(room_id)
+
+
+async def _vrc_solo_start_unlocked(room_id: str):
+    game_id, _client_id = _vrc_solo_ids(room_id)
+    _existing_id, existing = _vrc_solo_game(room_id)
+    if existing is not None:
+        existing_state = existing.get("state")
+        if existing.get("is_started") and existing_state is not None and not existing_state.finished:
+            response = _vrc_solo_snapshot(existing)
+            _vrc_solo_remember_response(existing, "start", response)
+            return _vrc_solo_response(response)
+    game_id, game = _create_vrc_solo_game(room_id, previous=existing)
+    try:
+        await _vrc_solo_run_ai(game)
+    except RuntimeError as error:
+        return _vrc_solo_error("ai_error", str(error))
+    await manager.broadcast_update(game_id)
+    response = _vrc_solo_snapshot(game)
+    _vrc_solo_remember_response(game, "start", response)
+    return _vrc_solo_response(response)
 
 
 @app.get("/vrc/solo/{room_id}/state", response_class=PlainTextResponse)
-async def vrc_solo_state(room_id: str):
+async def vrc_solo_state(room_id: str, session: str = ""):
     try:
         _game_id, game = _vrc_solo_game(room_id)
     except ValueError:
         return _vrc_solo_error("invalid_room")
-    if game is None:
-        return _vrc_solo_error("not_started", "Press START on the table.")
-    return _vrc_solo_response(_vrc_solo_snapshot(game))
+    async with _game_turn_lock(_game_id):
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        _game_id, game = _vrc_solo_game(room_id)
+        if game is None:
+            return _vrc_solo_error("not_started", "Press START on the table.")
+        return _vrc_solo_response(_vrc_solo_snapshot(game))
 
 
-async def _vrc_solo_select(room_id: str, kind: str, piece: int) -> PlainTextResponse:
+async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "") -> PlainTextResponse:
     value = _vrc_solo_piece(piece)
     if value is None:
         return _vrc_solo_error("invalid_piece")
@@ -7200,6 +7277,12 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int) -> PlainTextResp
     if game is None:
         return _vrc_solo_error("not_started")
     async with _game_turn_lock(game_id):
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        _game_id, game = _vrc_solo_game(room_id)
+        if game is None:
+            return _vrc_solo_error("not_started")
         state: GoitaState = game["state"]
         if state.finished or state.turn != "A":
             return _vrc_solo_error("not_your_turn")
@@ -7220,17 +7303,17 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int) -> PlainTextResp
 
 
 @app.get("/vrc/solo/{room_id}/block/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_block(room_id: str, piece: int):
-    return await _vrc_solo_select(room_id, "block", piece)
+async def vrc_solo_block(room_id: str, piece: int, session: str = ""):
+    return await _vrc_solo_select(room_id, "block", piece, session)
 
 
 @app.get("/vrc/solo/{room_id}/receive/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_receive(room_id: str, piece: int):
-    return await _vrc_solo_select(room_id, "receive", piece)
+async def vrc_solo_receive(room_id: str, piece: int, session: str = ""):
+    return await _vrc_solo_select(room_id, "receive", piece, session)
 
 
 @app.get("/vrc/solo/{room_id}/attack/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_attack(room_id: str, piece: int):
+async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
     attack = _vrc_solo_piece(piece)
     if attack is None:
         return _vrc_solo_error("invalid_piece")
@@ -7242,6 +7325,12 @@ async def vrc_solo_attack(room_id: str, piece: int):
         return _vrc_solo_error("not_started")
     command = f"attack:{attack}"
     async with _game_turn_lock(game_id):
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        _game_id, game = _vrc_solo_game(room_id)
+        if game is None:
+            return _vrc_solo_error("not_started")
         cached = _vrc_solo_recent_response(game, command)
         if cached:
             return _vrc_solo_response(cached)
@@ -7285,7 +7374,7 @@ async def vrc_solo_attack(room_id: str, piece: int):
 
 
 @app.get("/vrc/solo/{room_id}/pass", response_class=PlainTextResponse)
-async def vrc_solo_pass(room_id: str):
+async def vrc_solo_pass(room_id: str, session: str = ""):
     try:
         game_id, game = _vrc_solo_game(room_id)
     except ValueError:
@@ -7293,6 +7382,12 @@ async def vrc_solo_pass(room_id: str):
     if game is None:
         return _vrc_solo_error("not_started")
     async with _game_turn_lock(game_id):
+        error = _vrc_solo_require(room_id, session)
+        if error is not None:
+            return error
+        _game_id, game = _vrc_solo_game(room_id)
+        if game is None:
+            return _vrc_solo_error("not_started")
         cached = _vrc_solo_recent_response(game, "pass")
         if cached:
             return _vrc_solo_response(cached)
