@@ -75,6 +75,10 @@ class MemberKifuStore:
         result = dict(total=len(rows), counted=0, wins=0, losses=0, points_for=0,
                       points_against=0, self_finishes=0, partner_finishes=0,
                       unset=0, spectator=0, incomplete=0)
+        initial_shi = dict(counted=0, average=None, missing_hand=0, distribution=[
+            dict(count=count, rounds=0, percentage=None) for count in range(5)
+        ])
+        total_shi = 0
         for row in rows:
             payload = json.loads(row["payload_json"])
             seat = payload.get("my_seat", "")
@@ -84,6 +88,17 @@ class MemberKifuStore:
             if seat not in ("A", "B", "C", "D"):
                 result["unset"] += 1
                 continue
+            hands = payload.get("hand", {})
+            hand = hands.get(f"p{'ABCD'.index(seat)}") if isinstance(hands, dict) else None
+            if isinstance(hand, str) and len(hand) == 8 and all(piece in "し香馬銀金角飛王玉" for piece in hand):
+                # Count the original deal, including unfinished saved rounds.
+                # The final bucket groups hands with four or more shi.
+                shi_count = hand.count("し")
+                initial_shi["counted"] += 1
+                total_shi += shi_count
+                initial_shi["distribution"][min(shi_count, 4)]["rounds"] += 1
+            else:
+                initial_shi["missing_hand"] += 1
             winner = payload.get("winner")
             points = payload.get("gained_score")
             if winner not in ("A", "B", "C", "D") or type(points) is not int or points <= 0:
@@ -99,6 +114,11 @@ class MemberKifuStore:
                 result["points_against"] += points
         result["win_rate"] = round(100 * result["wins"] / result["counted"], 1) if result["counted"] else None
         result["point_difference"] = result["points_for"] - result["points_against"]
+        if initial_shi["counted"]:
+            initial_shi["average"] = round(total_shi / initial_shi["counted"], 2)
+            for bucket in initial_shi["distribution"]:
+                bucket["percentage"] = round(100 * bucket["rounds"] / initial_shi["counted"], 1)
+        result["initial_shi"] = initial_shi
         return result
 
     @staticmethod

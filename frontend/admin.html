@@ -806,6 +806,8 @@
       kifu_loaded: "棋譜を読み込み",
       discord_info_opened: "Discord案内を開く",
       discord_invite_clicked: "Discord招待リンクを開く",
+      discord_solo_prompt_shown: "AI対局後のDiscord案内を表示",
+      discord_solo_prompt_clicked: "AI対局後のDiscord案内をクリック",
     };
     const ROOM_LABELS = {
       lobby: "トップページ",
@@ -2461,6 +2463,8 @@
         ["ペア練習", `${data.pair_practice_games || 0}回`],
         ["Discord案内", `${data.event_counts?.discord_info_opened || 0}回`],
         ["Discord招待リンク", `${data.event_counts?.discord_invite_clicked || 0}回`],
+        ["AI対局後のDiscord案内表示", `${data.event_counts?.discord_solo_prompt_shown || 0}回`],
+        ["AI対局後のDiscord案内クリック", `${data.event_counts?.discord_solo_prompt_clicked || 0}回`],
       ];
       document.getElementById("metricGrid").innerHTML = metrics.map(([label, value]) => `
         <div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>

@@ -1629,6 +1629,12 @@
         display: none !important;
     }
     .regional-ad-slot { min-width:0; }
+    .solo-discord-prompt { margin-top:10px; padding:12px; border:1px solid #d4c6ad; border-radius:6px; background:rgba(255,255,255,.6); }
+    .solo-discord-prompt[hidden] { display:none !important; }
+    .solo-discord-prompt h2 { margin:0; font-size:14px; line-height:1.6; }
+    .solo-discord-prompt p { margin:4px 0 10px; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+    .solo-discord-prompt-actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .solo-discord-prompt-actions button { margin:0; padding:6px 10px; font-size:12px; }
     .regional-ad { box-sizing:border-box; width:min(560px, 100%); margin:8px auto 10px; border:1px solid #a87b4d; border-radius:8px; background:#fffaf0; color:#3d2b1d; position:relative; line-height:1.6; overflow:hidden; }
     .regional-ad[hidden] { display:none !important; }
     .regional-ad strong { display:block; font-size:12px; }
@@ -3548,6 +3554,7 @@
     #researchKifuStatistics dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; font-size: 12px; }
     #researchKifuStatistics dd { margin: 0; text-align: right; }
     #researchKifuStatistics h4 { font-size: 13px; margin: 8px 0; }
+    #researchKifuStatistics .research-kifu-shi-note { font-size:11px; line-height:1.6; color:#6a5b4e; }
     #researchKifuEditTags {
       gap: 3px 5px;
     }
@@ -5846,6 +5853,14 @@
             </div>
           </div>
           <div id="handsArea" class="hands-area"></div>
+          <section id="soloDiscordPrompt" class="solo-discord-prompt" aria-labelledby="soloDiscordTitle" hidden>
+            <h2 id="soloDiscordTitle">「AIは、なぜこの駒を出したんだろう？」</h2>
+            <p>気になった打ち方を、Discordで一緒に考えてみませんか？ ごいたの質問や、棋譜を使った相談も歓迎です。</p>
+            <div class="solo-discord-prompt-actions">
+              <button id="soloDiscordOpen" type="button">Discordを見る</button>
+              <button id="soloDiscordDismiss" type="button">閉じる</button>
+            </div>
+          </section>
         </div>
         <button id="chatToggle" class="chat-toggle" type="button" onclick="toggleChatPanel()" style="display:none;" aria-label="チャットを開く" aria-expanded="false">
           <span aria-hidden="true">💬</span>
@@ -7160,11 +7175,12 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261007a"></script>
 <script src="/static/trace-results.js?v=20261016a"></script>
-<script src="/static/i18n-en.js?v=20261008a"></script>
-<script src="/static/i18n.js?v=20261008a"></script>
+<script src="/static/i18n-en.js?v=20261020b"></script>
+<script src="/static/i18n.js?v=20261020b"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
+<script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
   import("/static/board3d.js?v=20260906c").catch((error) => {
@@ -9916,6 +9932,7 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    window.goitaSoloDiscord?.reset?.();
     cancelImmediateAction();
     document.body.classList.remove("tutorial-room");
     const tutorialGuide = document.getElementById("tutorialGuide");
@@ -10021,6 +10038,7 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 }
 
 async function returnToLobby() {
+    window.goitaSoloDiscord?.reset?.();
     if (isGatheringRoomId(gid) && latestGatheringEvent?.joined) {
         try { await gatheringApi("leave"); } catch (_error) {}
     }
@@ -11907,6 +11925,50 @@ async function createResearchKifuStatistics() {
             list.append(term, detail);
         }
         result.append(heading, list);
+        const shi = stats.initial_shi || {counted:0, average:null, missing_hand:0, distribution:[]};
+        const shiHeading = document.createElement("h4");
+        shiHeading.textContent = uiText("初期手駒のし");
+        const shiList = document.createElement("dl");
+        for (const [label, value] of [
+            ["平均し枚数", shi.average == null ? "-" : researchKifuAnalysisText("{count}枚", {count:shi.average.toFixed(2)})],
+            ["集計対象局数", shi.counted],
+            ["集計対象外：初期手駒不明", shi.missing_hand],
+        ]) {
+            const term = document.createElement("dt");
+            const detail = document.createElement("dd");
+            term.textContent = uiText(label);
+            detail.textContent = String(value);
+            shiList.append(term, detail);
+        }
+        const shiTable = document.createElement("table");
+        shiTable.className = "research-kifu-analysis-table";
+        const tableHead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        for (const label of ["しの枚数", "局数", "割合"]) {
+            const cell = document.createElement("th");
+            cell.textContent = uiText(label);
+            headerRow.append(cell);
+        }
+        tableHead.append(headerRow);
+        const tableBody = document.createElement("tbody");
+        for (const bucket of shi.distribution) {
+            const row = document.createElement("tr");
+            for (const value of [
+                bucket.count === 4 ? uiText("4枚以上") : researchKifuAnalysisText("{count}枚", {count:bucket.count}),
+                bucket.rounds,
+                bucket.percentage == null ? "-" : `${bucket.percentage.toFixed(1)}%`,
+            ]) {
+                const cell = document.createElement("td");
+                cell.textContent = String(value);
+                row.append(cell);
+            }
+            tableBody.append(row);
+        }
+        shiTable.append(tableHead, tableBody);
+        const shiNote = document.createElement("p");
+        shiNote.className = "research-kifu-shi-note";
+        shiNote.textContent = uiText("自分の席と8枚の初期手駒が確認できる保存棋譜が対象です。手札指定や特殊な配牌の棋譜も含みます。");
+        result.append(shiHeading, shiList, shiTable, shiNote);
     } catch (error) {
         if (revision === researchKifuStatisticsRevision) result.textContent = uiText(error?.message || "集計できませんでした。");
     } finally {
@@ -18023,6 +18085,12 @@ async function refreshFromState(confirmedState = null){
   syncActiveDealModeBadge();
   syncMemberKifuControls();
   trackAnalyticsGameState(state);
+  window.goitaSoloDiscord?.sync?.(state, {
+    roomId: gid,
+    roomType: analyticsRoomType(),
+    seat: mySeat,
+    normalRoom: (isMainRoomId(gid) || PRIVATE_ROOM_IDS.has(gid)) && !isGatheringRoomId(gid),
+  });
   window.goitaLobbyWhisper?.setRoomContext?.(isMainRoomId(gid), state.private_room_ad || null, state.public_room_ad || null);
   const regionalAdSurface = isMainRoomId(gid)
     ? "public_room"

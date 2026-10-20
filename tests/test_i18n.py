@@ -19,8 +19,8 @@ def test_language_switcher_and_translation_runtime_are_loaded() -> None:
     assert "setSiteLanguage('en')" in html
     assert "openSiteInfo('support')" in html
     assert '"https://vrcgoita.com/support/"' in html
-    assert '<script src="/static/i18n-en.js?v=20261008a"></script>' in html
-    assert '<script src="/static/i18n.js?v=20261008a"></script>' in html
+    assert '<script src="/static/i18n-en.js?v=20261020b"></script>' in html
+    assert '<script src="/static/i18n.js?v=20261020b"></script>' in html
     assert '"棋譜をみんなに見せる": "Show Everyone"' in i18n_en
     assert '"棋譜をみんなに見せる": "向大家展示棋谱"' in i18n
     assert 'const STORAGE_KEY = "goita-ui-language"' in i18n
@@ -79,6 +79,8 @@ def test_discord_community_is_available_from_lobby_and_menus() -> None:
         "Discordで対局相手を探す",
         "初心者歓迎。対局募集、質問、感想・改善要望などに利用できます。",
         "Discordを見る",
+        "「AIは、なぜこの駒を出したんだろう？」",
+        "気になった打ち方を、Discordで一緒に考えてみませんか？ ごいたの質問や、棋譜を使った相談も歓迎です。",
         "「VRCとごいた」Discordサーバーでは、対局相手の募集、ごいたについての質問・交流、そろうごいたへの感想・改善要望を受け付けています。",
         "サーバーは主に日本語で運営しています。英語・中国語での投稿も歓迎します。",
         "Discordサーバーに参加する",

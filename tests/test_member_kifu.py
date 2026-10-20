@@ -350,7 +350,10 @@ def test_statistics_are_on_demand_owner_scoped_and_never_persisted(library):
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["statistics"] == dict(total=9, counted=5, wins=3, losses=2,
         points_for=100, points_against=60, point_difference=40, self_finishes=1,
-        partner_finishes=2, unset=1, spectator=1, incomplete=2, win_rate=60.0)
+        partner_finishes=2, unset=1, spectator=1, incomplete=2, win_rate=60.0,
+        initial_shi=dict(counted=0, average=None, missing_hand=7, distribution=[
+            dict(count=count, rounds=0, percentage=None) for count in range(5)
+        ]))
     with members._db() as db:
         assert [tuple(row) for row in db.execute("SELECT * FROM member_kifu ORDER BY id")] == before
     store.access(token, ids[0], action="edit", my_seat="B")

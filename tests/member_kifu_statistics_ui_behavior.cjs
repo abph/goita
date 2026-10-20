@@ -9,11 +9,17 @@ class Element {
   replaceChildren() { this.children = []; this.textContent = ''; }
 }
 (async () => {
-  const elements = {researchKifuStatistics: new Element(), researchKifuStatisticsButton: new Element()};
+  const elements = {researchKifuStatistics: new Element(), researchKifuStatisticsButton: new Element(),
+    researchKifuAnalysis: new Element(), researchKifuAnalysisButton: new Element()};
   let calls = 0;
   const stats = {total: 8, counted: 5, wins: 3, losses: 2, win_rate: 60,
     points_for: 90, points_against: 50, point_difference: 40, self_finishes: 1,
-    partner_finishes: 2, unset: 1, spectator: 1, incomplete: 1};
+    partner_finishes: 2, unset: 1, spectator: 1, incomplete: 1,
+    initial_shi:{counted:4, average:2.5, missing_hand:1, distribution:[
+      {count:0,rounds:0,percentage:0}, {count:1,rounds:1,percentage:25},
+      {count:2,rounds:1,percentage:25}, {count:3,rounds:1,percentage:25},
+      {count:4,rounds:1,percentage:25},
+    ]}};
   const context = vm.createContext({
     document: {getElementById: id => elements[id], createElement: () => new Element()},
     uiText: text => text,
@@ -34,9 +40,20 @@ class Element {
   const values = elements.researchKifuStatistics.children[1].children.map(e => e.textContent);
   assert.equal(values[9], '60.0%');
   assert.equal(values[1], '8');
+  const shiValues = elements.researchKifuStatistics.children[3].children.map(e => e.textContent);
+  assert.deepEqual(shiValues, ['平均し枚数','2.50枚','集計対象局数','4','集計対象外：初期手駒不明','1']);
+  const distribution = elements.researchKifuStatistics.children[4].children[1].children;
+  assert.equal(distribution[0].children[2].textContent, '0.0%');
+  assert.equal(distribution[4].children[0].textContent, '4枚以上');
+  assert.equal(distribution[4].children[2].textContent, '25.0%');
   stats.win_rate = null;
+  stats.initial_shi.average = null;
+  stats.initial_shi.counted = 0;
+  stats.initial_shi.distribution.forEach(row => {row.rounds = 0; row.percentage = null;});
   await context.createResearchKifuStatistics();
   assert.equal(elements.researchKifuStatistics.children[1].children[9].textContent, '-');
+  assert.equal(elements.researchKifuStatistics.children[3].children[1].textContent, '-');
+  assert.equal(elements.researchKifuStatistics.children[4].children[1].children[0].children[2].textContent, '-');
   let finish;
   context.researchKifuApi = () => new Promise(resolve => {finish = resolve;});
   const stale = context.createResearchKifuStatistics();

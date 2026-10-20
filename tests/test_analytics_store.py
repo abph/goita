@@ -124,10 +124,14 @@ def test_analytics_records_discord_funnel_events(tmp_path: Path) -> None:
     store = AnalyticsStore(tmp_path / "analytics.sqlite3")
     assert store.record_event(_event(event="discord_info_opened")) is True
     assert store.record_event(_event(event="discord_invite_clicked")) is True
+    assert store.record_event(_event(event="discord_solo_prompt_shown", room_type="public_ai")) is True
+    assert store.record_event(_event(event="discord_solo_prompt_clicked", room_type="public_ai")) is True
 
     snapshot = store.snapshot(days=30)
     assert snapshot["event_counts"]["discord_info_opened"] == 1
     assert snapshot["event_counts"]["discord_invite_clicked"] == 1
+    assert snapshot["event_counts"]["discord_solo_prompt_shown"] == 1
+    assert snapshot["event_counts"]["discord_solo_prompt_clicked"] == 1
 
 
 def test_analytics_rejects_untrusted_prefecture_values(tmp_path: Path) -> None:
