@@ -7,6 +7,7 @@ import os
 import secrets
 import sqlite3
 import time
+from collections import Counter, defaultdict
 from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +20,39 @@ from backend.private_kifu_archive import archive_path
 
 GUEST_COOKIE = "goita_trace_guest"
 RETENTION = 30 * 86400
+
+
+def _first_score_groups(db, now, *, challenge=None, exclude_owner=None):
+    """One completed ranked first attempt per identity; never include retries."""
+    rows = db.execute("""WITH firsts AS (
+        SELECT challenge, improvement,
+               ROW_NUMBER() OVER (PARTITION BY owner,challenge ORDER BY started,id) AS n
+        FROM trace_attempts
+        WHERE finished IS NOT NULL AND improvement IS NOT NULL AND ranked=1
+          AND (expires IS NULL OR expires>?)
+          AND (? IS NULL OR challenge=?) AND (? IS NULL OR owner!=?))
+        SELECT challenge,improvement FROM firsts WHERE n=1""",
+        (now, challenge, challenge, exclude_owner, exclude_owner))
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row["challenge"]].append(int(row["improvement"]))
+    return groups
+
+
+def _score_distribution(scores):
+    values = sorted(scores)
+    if not values:
+        return {"players": 0, "distribution": []}
+
+    def percentile(q):
+        position = (len(values) - 1) * q
+        left = int(position)
+        return values[left] + (values[min(left + 1, len(values) - 1)] - values[left]) * (position - left)
+
+    return {"players": len(values), "minimum": values[0], "maximum": values[-1],
+            "spread": values[-1] - values[0], "iqr": percentile(.75) - percentile(.25),
+            "distribution": [{"improvement": score, "players": count}
+                             for score, count in sorted(Counter(values).items())]}
 
 
 class TraceStore:
@@ -68,6 +102,8 @@ class TraceStore:
                 db.execute("ALTER TABLE trace_attempts ADD COLUMN audit_candidate_id TEXT NOT NULL DEFAULT ''")
             if "audit_reported_at" not in columns:
                 db.execute("ALTER TABLE trace_attempts ADD COLUMN audit_reported_at REAL")
+            if "selection_mode" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN selection_mode TEXT NOT NULL DEFAULT 'random'")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_sessions WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
@@ -118,7 +154,7 @@ class TraceStore:
         canonical["rules"] = "trace-current-v1"
         return hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
-    def start(self, owner, guest, name, payload, *, practice=False, audit_candidate_id=""):
+    def start(self, owner, guest, name, payload, *, practice=False, audit_candidate_id="", selection_mode="random"):
         challenge = self.challenge_id(payload)
         attempt_id = secrets.token_urlsafe(24)
         now = self.clock()
@@ -130,11 +166,18 @@ class TraceStore:
             db.execute("INSERT OR IGNORE INTO trace_challenges VALUES (?,?)", (challenge, json.dumps(payload)))
             db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM trace_challenge_labels WHERE challenge=?)", (challenge, challenge))
             db.execute("""INSERT INTO trace_attempts(
-                id,owner,challenge,started,expires,ranked,attempt_no,audit_candidate_id
-            ) VALUES (?,?,?,?,?,?,?,?)""",
+                id,owner,challenge,started,expires,ranked,attempt_no,audit_candidate_id,selection_mode
+            ) VALUES (?,?,?,?,?,?,?,?,?)""",
                        (attempt_id, owner, challenge, now, now + RETENTION if guest else None,
-                        int(first and not practice), attempt_no, str(audit_candidate_id or "")))
+                        int(first and not practice), attempt_no, str(audit_candidate_id or ""), selection_mode))
         return attempt_id
+
+    def divergent_challenges(self):
+        with self.db() as db:
+            summaries = {challenge: _score_distribution(scores)
+                         for challenge, scores in _first_score_groups(db, self.clock()).items()}
+        return {challenge for challenge, summary in summaries.items()
+                if summary["players"] >= 3 and summary["spread"] >= 50 and summary["iqr"] >= 20}
 
     def claim_audit_report(self, owner, attempt_id):
         """Claim a player's report once and return the linked audit candidate."""
@@ -194,7 +237,12 @@ class TraceStore:
             best_score = db.execute("SELECT MAX(improvement) FROM trace_attempts WHERE owner=? AND challenge=? AND finished IS NOT NULL", (owner, row["challenge"])).fetchone()[0]
             number = db.execute("SELECT number FROM trace_challenge_labels WHERE challenge=?", (row["challenge"],)).fetchone()[0]
             before, after = payload["score_before"], payload["score_after"]
+            comparison = None
+            if row["selection_mode"] == "divergent":
+                scores = _first_score_groups(db, self.clock(), challenge=row["challenge"], exclude_owner=owner)
+                comparison = _score_distribution(scores.get(row["challenge"], []))
             return {"attempt_id": attempt_id, "ranked": bool(row["ranked"]),
+                    "selection_mode": row["selection_mode"], "comparison": comparison,
                     "mode": mode, "attempt_no": row["attempt_no"], "challenge_label": f"課題{number:03d}",
                     "is_best": row["improvement"] == best_score,
                     "guest": bool(row["guest"]), "expires_at": row["expires"],

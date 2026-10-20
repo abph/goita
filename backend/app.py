@@ -2601,6 +2601,7 @@ class DebugTraceStartRequest(BaseModel):
 class DebugTraceRandomStartRequest(BaseModel):
     requester: str = Field(default="A")
     client_id: str = ""
+    selection_mode: Literal["random", "divergent"] = "random"
 
 
 class TurnTimeLimitUpdateRequest(BaseModel):
@@ -10092,7 +10093,7 @@ def _canonical_trace_payload(payload):
 
 
 async def _begin_trace_attempt(
-    game_id, body, request, response, payload, *, practice=False, audit_candidate_id=""
+    game_id, body, request, response, payload, *, practice=False, audit_candidate_id="", selection_mode="random"
 ):
     async with _game_turn_lock(game_id):
         game = _trace_host(game_id, body)
@@ -10105,6 +10106,7 @@ async def _begin_trace_attempt(
         attempt_id = store.start(
             owner, guest, name, payload, practice=practice,
             audit_candidate_id=audit_candidate_id,
+            selection_mode=selection_mode,
         )
         result = await _start_debug_trace_payload(game_id, payload, client_id=body.client_id, attempt_id=attempt_id)
         # Preserve the participant's display name on A; archive names stay private.
@@ -10112,6 +10114,7 @@ async def _begin_trace_attempt(
         GAMES[game_id]["trace_challenge"] = store.challenge_id(payload)
         GAMES[game_id]["trace_payload"] = payload
         GAMES[game_id]["trace_audit_candidate_id"] = str(audit_candidate_id or "")
+        GAMES[game_id]["trace_selection_mode"] = selection_mode
         await manager.broadcast_update(game_id)
         return result
 
@@ -10145,6 +10148,13 @@ async def start_random_debug_trace(
         candidates = _random_trace_candidates()
     except ValueError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+    if body.selection_mode == "divergent":
+        challenges = get_trace_store().divergent_challenges()
+        # The existing candidate list enforces current archive/audit eligibility.
+        candidates = list({item["challenge_id"]: item for item in candidates
+                           if item["challenge_id"] in challenges}.values())
+        if not candidates:
+            raise HTTPException(404, "結果が大きく分かれた棋譜は、現在ありません。通常のスコアアタックをお楽しみください。")
     if not candidates:
         raise HTTPException(status_code=404, detail="スコアアタック対象の棋譜が見つかりません。")
     candidate = copy.deepcopy(random.choice(candidates))
@@ -10156,6 +10166,7 @@ async def start_random_debug_trace(
         result = await _begin_trace_attempt(
             game_id, body, request, response, candidate["payload"],
             audit_candidate_id=str(candidate.get("candidate_id") or ""),
+            selection_mode=body.selection_mode,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -10180,6 +10191,7 @@ async def start_same_trace(game_id: str, body: DebugTraceRandomStartRequest, req
     return await _begin_trace_attempt(
         game_id, body, request, response, game["trace_payload"],
         audit_candidate_id=str(game.get("trace_audit_candidate_id") or ""),
+        selection_mode=game.get("trace_selection_mode", "random"),
     )
 
 
