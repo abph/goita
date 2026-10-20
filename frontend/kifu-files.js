@@ -136,12 +136,19 @@ let debugTraceStarting = false;
 function syncDebugTraceMenu() {
   const item = document.getElementById('debugTraceMenuItem');
   if (item) item.style.display = isScoreAttackRoom() ? '' : 'none';
+  for (const id of ['debugTraceRandomButton', 'debugTraceDivergentButton']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = mySeat !== 'A' || debugTraceStarting;
+  }
+  const status = document.getElementById('debugTraceStatus');
+  if (mySeat === 'A' && status?.textContent === 'A席に着席すると対戦を開始できます。') status.textContent = '';
 }
 
 function openDebugTrace() {
   if (typeof gid === 'undefined' || !isScoreAttackRoom()) return;
   syncScoreAttackMemberPrompt();
   document.getElementById('debugTraceRandomButton').disabled = mySeat !== 'A' || debugTraceStarting;
+  document.getElementById('debugTraceDivergentButton').disabled = mySeat !== 'A' || debugTraceStarting;
   document.getElementById('debugTraceStatus').textContent = debugTraceStarting
     ? '対戦を準備しています。' : mySeat === 'A' ? '' : 'A席に着席すると対戦を開始できます。';
   const modal = document.getElementById('debugTraceModal');
@@ -336,18 +343,20 @@ function closeScoreAttackHowTo() {
   openDebugTrace();
 }
 
-async function startRandomDebugTrace() {
+async function startRandomDebugTrace(selectionMode = 'random') {
   if (!isScoreAttackRoom() || mySeat !== 'A' || debugTraceStarting) return;
   debugTraceStarting = true;
   const button = document.getElementById('debugTraceRandomButton');
+  const divergentButton = document.getElementById('debugTraceDivergentButton');
   const status = document.getElementById('debugTraceStatus');
   button.disabled = true;
+  divergentButton.disabled = true;
   status.textContent = 'スコアアタックの棋譜を選んでいます。';
   try {
     const response = await fetch(`${API}/games/${gid}/trace_random_start`, {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json','X-Goita-Member':'1'},
-      body:JSON.stringify({requester:'A',client_id:clientId}),
+      body:JSON.stringify({requester:'A',client_id:clientId,selection_mode:selectionMode}),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || 'ランダム棋譜を選べませんでした。');
@@ -359,6 +368,7 @@ async function startRandomDebugTrace() {
   } finally {
     debugTraceStarting = false;
     button.disabled = mySeat !== 'A';
+    divergentButton.disabled = mySeat !== 'A';
   }
 }
 

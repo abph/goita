@@ -134,6 +134,7 @@ async function openTraceResult(attemptId = '') {
   modal.style.display = 'flex';
   modal.querySelector('.settings-modal-close').focus();
   traceElement('traceResultContent').hidden = true;
+  traceElement('traceComparison').hidden = true;
   traceElement('traceResultStatus').textContent = '結果を読み込んでいます。';
   try {
     const id = attemptId || (await traceApi('trace_results/latest')).attempt_id;
@@ -146,6 +147,18 @@ async function openTraceResult(attemptId = '') {
     traceElement('traceActualScore').textContent = scoreLabel(data.actual);
     traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
     traceElement('traceImprovement').textContent = `元の対局との差　${traceSigned(data.improvement)}`;
+    const comparison = data.comparison;
+    if (comparison?.players > 0) {
+      const scores = traceElement('traceComparisonScores');
+      scores.replaceChildren();
+      for (const item of comparison.distribution) {
+        const score = document.createElement('span');
+        score.textContent = `${uiText(traceSigned(item.improvement))} × ${uiText(`${item.players}人`)}`;
+        scores.append(score);
+      }
+      traceElement('traceComparisonOwnScore').textContent = uiText(traceSigned(data.improvement));
+      traceElement('traceComparison').hidden = false;
+    }
     const rows = traceElement('traceRankingRows');
     rows.replaceChildren();
     for (const item of data.ranking) {

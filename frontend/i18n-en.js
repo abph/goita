@@ -5,6 +5,13 @@
  */
 (() => {
   const exact = Object.freeze({
+    "打ち方で結果が変わる？": "How much can your choices change the result?",
+    "挑戦者によって結果が大きく分かれた棋譜です。あなたなら、どう打ちますか？": "Players have had very different results with these hands. How would you play?",
+    "結果が分かれた棋譜に挑戦": "Try a Game with Varied Results",
+    "ほかの挑戦者の初回結果": "Other Players’ First-Attempt Results",
+    "数値は元の対局との差です。同じ人の再挑戦は含みません。": "Scores show the difference from the original game. Repeat attempts are excluded.",
+    "あなたの結果": "Your Result",
+    "結果が大きく分かれた棋譜は、現在ありません。通常のスコアアタックをお楽しみください。": "No games with varied results are available right now. Please try regular Score Attack.",
     "席をシャッフル": "Shuffle Seats",
     "席をシャッフルしています...": "Shuffling seats...",
     "席をシャッフルできませんでした。": "Could not shuffle the seats.",
@@ -971,6 +978,7 @@
     [/^保存上限の(\d+)件に達したため、自動保存を停止しました。$/, (_m, n) => `Automatic saving stopped because the ${n}-record limit was reached.`],
     [/^(\d+)位$/, (_m, n) => `Rank ${n}`],
     [/^(\d+)局$/, (_m, n) => `${n} games`],
+    [/^(\d+)人$/, (_m, n) => `${n} player${n === "1" ? "" : "s"}`],
     [/^([+-]?\d+|±\d+)点$/, (_m, score) => `${score} points`],
     [/^(AC|BD)：([+-]?\d+|±\d+)点$/, (_m, team, score) => `${team}: ${score} points`],
     [/^元の対局との差　(.+)$/, (_m, score) => `Difference from Original　${score}`],

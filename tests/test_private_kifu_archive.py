@@ -95,7 +95,7 @@ def test_random_trace_anonymizes_archive_metadata(archive_client, monkeypatch):
     candidate = {"payload": {"player_names": {"A": "private name"}},
                  "source": {"match_id": "private-id", "played_at": "private-date"}}
     monkeypatch.setattr(game_app, "_random_trace_candidates", lambda: [candidate])
-    async def start(game_id, body, request, response, payload):
+    async def start(game_id, body, request, response, payload, **kwargs):
         assert payload["player_names"] == {seat: f"プレイヤー{seat}" for seat in "ABCD"}
         return {"ok": True, "source": {}}
     monkeypatch.setattr(game_app, "_begin_trace_attempt", start)
