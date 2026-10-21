@@ -8,7 +8,7 @@ const path = require('node:path');
   try {
     const owners = {}, departed = {}, locked = {}, offline = {}, names = {};
     const errors = [], moves = [];
-    let started = false, active = true, turn = 'B';
+    let started = false, active = true, mixed = false, turn = 'B';
     const hand = ['1','1','2','3','4','5','6','9'];
     const clone = value => JSON.parse(JSON.stringify(value));
     const stamps = ['greeting','thanks','thinking','nice','sorry','surprised'].map((stamp_id,i) => ({seat:'A',sender:'A: VRChat Player',sender_name:'VRChat Player',
@@ -17,12 +17,13 @@ const path = require('node:path');
       const ownedSeat = Object.keys(owners).find(s => owners[s] === client);
       const seats = Object.fromEntries(['B','C','D'].map(seat => [seat, {
         joined:!!owners[seat], owned:active && owners[seat] === client && !departed[seat],
+        source:owners[seat]?.startsWith('vrc-solo:') ? 'vrchat' : owners[seat] ? 'website' : 'open',
         online:active && !!owners[seat] && !departed[seat] && !offline[seat],
         is_ai:started && !owners[seat], reconnect_seconds:offline[seat] ? 60 : 120,
         can_join:active && (!ownedSeat || ownedSeat === seat) && (owners[seat] === client || (!started && !owners[seat] && !locked[seat])),
         can_takeover:active && !!departed[seat],
       }]));
-      return {enabled:true,multi:true,active,ended:!active,waiting:active && !started,seats,...seats.C};
+      return {enabled:true,multi:true,mixed,active,ended:!active,waiting:active && !started,seats,...seats.C};
     }
     function state(client) {
       const owned = Object.keys(owners).filter(s => owners[s] === client && active && !departed[s]);
@@ -119,6 +120,22 @@ const path = require('node:path');
     await pages.B.evaluate(() => refresh());
     await pages.B.waitForFunction(() => mySeat === 'W');
     assert.match(await pages.B.locator('#vrcCoopPanel p').textContent(),/利用が終了/);
+    active = true; started = false; mixed = true;
+    for (const record of [owners,departed,locked,offline,names]) for (const key of Object.keys(record)) delete record[key];
+    owners.C = 'vrc-solo:table1:C';
+    const mixedPage = await openPage();
+    assert.match(await mixedPage.locator('#vrcCoopPanel strong').textContent(),/VRChat最大3人/);
+    assert.match(await mixedPage.getByRole('group',{name:'C席の参加',exact:true}).textContent(),/VRChatから参加中/);
+    assert.equal(await mixedPage.getByRole('button',{name:'C席で参加・再接続',exact:true}).isDisabled(),true);
+    await mixedPage.getByRole('button',{name:'B席で参加・再接続',exact:true}).click();
+    await mixedPage.waitForFunction(() => mySeat === 'B');
+    started = true; turn = 'B';
+    await mixedPage.evaluate(() => refresh());
+    const mixedState = await mixedPage.evaluate(() => ({hands:latestState.hands,owned:latestState.owned_human_seats,ai:latestState.ai_seats}));
+    assert.deepEqual(mixedState.owned,['B']); assert.deepEqual(mixedState.ai,['D']);
+    assert.equal(Array.isArray(mixedState.hands.B),true);
+    assert.equal(Array.isArray(mixedState.hands.C),false);
+    await mixedPage.screenshot({path:path.resolve(__dirname,'../analysis/vrc-mixed-browser.png'),fullPage:true});
     assert.deepEqual(errors,[]);
     console.log('B/C/D browser UI passed: three clients, seat selection, own hands, turns, one seat per client, D reconnect, busy spectator, independent presence, six A-seat image stamps and end notice.');
   } finally { await browser.close(); }

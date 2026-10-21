@@ -78,7 +78,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
-from backend import vrc_solo_playback
+from backend import vrc_solo_playback, vrc_solo_players
 from backend.vrc_solo_chat import VrcSoloChat
 from backend.balanced_deal import is_balanced_rank_deal, is_wardna_balanced_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
@@ -5909,6 +5909,8 @@ VRC_SOLO_MAX_AI_ACTIONS = 64
 VRC_SOLO_LEASES = _vrc_default_lease_store()
 VRC_WEB = VrcSoloWeb(globals())
 VRC_WEB.install(app)
+VRC_PLAYERS = vrc_solo_players.VrcSoloPlayers(globals())
+VRC_PLAYERS.install(app)
 VRC_CHAT = VrcSoloChat(globals())
 VRC_CHAT.install(app)
 
@@ -7092,6 +7094,8 @@ def _vrc_solo_hand_value(state: GoitaState, seat: str, reveal: bool) -> str:
 
 def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
     state: GoitaState = game["state"]
+    vrc_seats = vrc_solo_players.seats(game)
+    actor = state.turn
     board = game.get("board") or _new_board_snapshot()
     board_digits = []
     hidden_bits = []
@@ -7099,7 +7103,7 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         seat_board = board.get(seat, {}) if isinstance(board, dict) else {}
         receives = list(seat_board.get("receive") or [])
         receive_hidden = seat_board.get("receive_hidden", [])
-        if not state.finished and seat != "A":
+        if not state.finished and seat not in vrc_seats:
             receives = ["1" if value is not None and index < len(receive_hidden) and receive_hidden[index] else value
                         for index, value in enumerate(receives)]
         board_digits.append(_vrc_solo_digits(receives, 4))
@@ -7110,7 +7114,7 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
             for index in range(4)
         )
 
-    legal = state.legal_actions("A") if game.get("is_started") and not state.finished and state.turn == "A" else []
+    legal = state.legal_actions(actor) if game.get("is_started") and not state.finished and vrc_solo_players.may_act(game, actor) else []
     legal_receive = sorted({str(action[1]) for action in legal if action[0] == "receive" and action[1]})
     legal_block = sorted({str(action[1]) for action in legal if action[0] == "attack_after_block" and action[1]})
     legal_attack = sorted({str(action[2]) for action in legal if action[0] in {"attack", "attack_after_block"} and action[2]})
@@ -7124,10 +7128,10 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
             continue
         shadow = copy.deepcopy(state)
         try:
-            _apply_action(shadow, "A", action)
+            _apply_action(shadow, actor, action)
         except ValueError:
             continue
-        for followup in shadow.legal_actions("A"):
+        for followup in shadow.legal_actions(actor):
             if followup[0] != "attack" or not followup[2]:
                 continue
             index = (int(action[1]) - 1) * 9 + int(followup[2]) - 1
@@ -7154,9 +7158,9 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         f"scoreac={int(score.get('AC', 0))}",
         f"scorebd={int(score.get('BD', 0))}",
         f"ha={_vrc_solo_hand_value(state, 'A', True)}",
-        f"hb={_vrc_solo_hand_value(state, 'B', reveal_all)}",
-        f"hc={_vrc_solo_hand_value(state, 'C', reveal_all)}",
-        f"hd={_vrc_solo_hand_value(state, 'D', reveal_all)}",
+        f"hb={_vrc_solo_hand_value(state, 'B', reveal_all or 'B' in vrc_seats)}",
+        f"hc={_vrc_solo_hand_value(state, 'C', reveal_all or 'C' in vrc_seats)}",
+        f"hd={_vrc_solo_hand_value(state, 'D', reveal_all or 'D' in vrc_seats)}",
         f"board={''.join(board_digits)}",
         f"hidden={''.join(hidden_bits)}",
         f"lr={''.join(legal_receive)}",
@@ -7173,6 +7177,8 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         f"cweb={int(web['joined'])}", f"conline={int(web['online'])}",
         f"ctake={int(web['can_takeover'])}", f"deal={game['action_state_nonce']}",
         f"webmulti={int(web['multi'])}",
+        f"mixed={int(web['mixed'])}",
+        f"vrcmask={sum(1 << index for index, seat in enumerate(ALL_SEATS) if seat in vrc_seats)}",
         f"aimask={sum(1 << index for index, seat in enumerate(ALL_SEATS) if seat in _ai_seat_set(game))}",
     ])
     for seat in ("B", "D"):
@@ -7222,12 +7228,15 @@ def _vrc_solo_require(room_id: str, session: str):
         VRC_SOLO_LEASES.touch(room_id, session)
     except LeaseError as error:
         return _vrc_solo_error(str(error))
+    _game_id, game = _vrc_solo_game(room_id)
+    if game:
+        VRC_PLAYERS.touch(game)
     return None
 
 
 @app.get("/vrc/solo/{room_id}/claim", response_class=PlainTextResponse)
 async def vrc_solo_claim(room_id: str, session: str = "", mode: str = "solo"):
-    if mode not in {"solo", "coop", "multi"}:
+    if mode not in {"solo", "coop", "multi", "mixed"}:
         return _vrc_solo_error("invalid_mode")
     try:
         game_id, _client_id = _vrc_solo_ids(room_id)
@@ -7347,7 +7356,7 @@ async def vrc_solo_state(room_id: str, session: str = ""):
         return _vrc_solo_response(_vrc_solo_snapshot(game))
 
 
-async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "") -> PlainTextResponse:
+async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "", seat: str = "A") -> PlainTextResponse:
     value = _vrc_solo_piece(piece)
     if value is None:
         return _vrc_solo_error("invalid_piece")
@@ -7365,9 +7374,9 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "
         if game is None:
             return _vrc_solo_error("not_started")
         state: GoitaState = game["state"]
-        if not game.get("is_started") or state.finished or state.turn != "A":
+        if not game.get("is_started") or state.finished or state.turn != seat or not vrc_solo_players.may_act(game, seat):
             return _vrc_solo_error("not_your_turn")
-        legal = state.legal_actions("A")
+        legal = state.legal_actions(seat)
         if kind == "block":
             valid = any(action[0] == "attack_after_block" and action[1] == value for action in legal)
         else:
@@ -7375,6 +7384,7 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "
         if not valid:
             return _vrc_solo_error("illegal_selection")
         game["vrc_pending"] = {
+            "seat": seat,
             "kind": kind,
             "piece": value,
             "at": time.monotonic(),
@@ -7384,17 +7394,17 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "
 
 
 @app.get("/vrc/solo/{room_id}/block/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_block(room_id: str, piece: int, session: str = ""):
-    return await _vrc_solo_select(room_id, "block", piece, session)
+async def vrc_solo_block(room_id: str, piece: int, session: str = "", seat: str = "A"):
+    return await _vrc_solo_select(room_id, "block", piece, session, seat)
 
 
 @app.get("/vrc/solo/{room_id}/receive/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_receive(room_id: str, piece: int, session: str = ""):
-    return await _vrc_solo_select(room_id, "receive", piece, session)
+async def vrc_solo_receive(room_id: str, piece: int, session: str = "", seat: str = "A"):
+    return await _vrc_solo_select(room_id, "receive", piece, session, seat)
 
 
 @app.get("/vrc/solo/{room_id}/attack/{piece}", response_class=PlainTextResponse)
-async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
+async def vrc_solo_attack(room_id: str, piece: int, session: str = "", seat: str = "A"):
     attack = _vrc_solo_piece(piece)
     if attack is None:
         return _vrc_solo_error("invalid_piece")
@@ -7404,7 +7414,7 @@ async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
         return _vrc_solo_error("invalid_room")
     if game is None:
         return _vrc_solo_error("not_started")
-    command = f"attack:{attack}"
+    command = f"attack:{attack}" if seat == "A" else f"attack:{seat}:{attack}"
     async with _game_turn_lock(game_id):
         error = _vrc_solo_require(room_id, session)
         if error is not None:
@@ -7417,9 +7427,11 @@ async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
             return _vrc_solo_response(cached)
         pending = game.get("vrc_pending")
         state: GoitaState = game["state"]
-        if not game.get("is_started") or state.finished or state.turn != "A":
+        if not game.get("is_started") or state.finished or state.turn != seat or not vrc_solo_players.may_act(game, seat):
             return _vrc_solo_error("not_your_turn")
         if not isinstance(pending, dict):
+            return _vrc_solo_error("missing_selection")
+        if pending.get("seat", "A") != seat:
             return _vrc_solo_error("missing_selection")
         if pending.get("action_token") != _action_state_token(game, state):
             game["vrc_pending"] = None
@@ -7437,16 +7449,16 @@ async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
         shadow = copy.deepcopy(state)
         try:
             for action in actions:
-                if action not in shadow.legal_actions("A"):
+                if action not in shadow.legal_actions(seat):
                     raise ValueError("illegal_action")
-                _apply_action(shadow, "A", action)
+                _apply_action(shadow, seat, action)
         except ValueError:
             return _vrc_solo_error("illegal_pair")
 
         game["vrc_pending"] = None
         try:
             for action in actions:
-                _vrc_solo_apply_action(game, "A", action)
+                _vrc_solo_apply_action(game, seat, action)
             await _vrc_solo_run_ai(game)
         except (ValueError, RuntimeError) as error:
             return _vrc_solo_error("action_failed", str(error))
@@ -7457,7 +7469,7 @@ async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
 
 
 @app.get("/vrc/solo/{room_id}/pass", response_class=PlainTextResponse)
-async def vrc_solo_pass(room_id: str, session: str = ""):
+async def vrc_solo_pass(room_id: str, session: str = "", seat: str = "A"):
     try:
         game_id, game = _vrc_solo_game(room_id)
     except ValueError:
@@ -7471,22 +7483,23 @@ async def vrc_solo_pass(room_id: str, session: str = ""):
         _game_id, game = _vrc_solo_game(room_id)
         if game is None:
             return _vrc_solo_error("not_started")
-        cached = _vrc_solo_recent_response(game, "pass")
+        command = "pass" if seat == "A" else "pass:" + seat
+        cached = _vrc_solo_recent_response(game, command)
         if cached:
             return _vrc_solo_response(cached)
         state: GoitaState = game["state"]
         action = ("pass", None, None)
-        if not game.get("is_started") or state.finished or state.turn != "A" or action not in state.legal_actions("A"):
+        if not game.get("is_started") or state.finished or state.turn != seat or not vrc_solo_players.may_act(game, seat) or action not in state.legal_actions(seat):
             return _vrc_solo_error("illegal_pass")
         game["vrc_pending"] = None
         try:
-            _vrc_solo_apply_action(game, "A", action)
+            _vrc_solo_apply_action(game, seat, action)
             await _vrc_solo_run_ai(game)
         except (ValueError, RuntimeError) as error:
             return _vrc_solo_error("action_failed", str(error))
         await manager.broadcast_update(game_id)
         response = _vrc_solo_snapshot(game)
-        _vrc_solo_remember_response(game, "pass", response)
+        _vrc_solo_remember_response(game, command, response)
         return _vrc_solo_response(response)
 
 

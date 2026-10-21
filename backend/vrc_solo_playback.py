@@ -1,8 +1,10 @@
-"""Bounded, A-view-only visual history for the VRChat table (not game logic).
+"""Bounded visual history for the VRChat bridge (not game logic).
 
-Records never contain B/C/D hand values or hidden-piece values, even at a win.
-The normal final snapshot alone reveals those values after playback completes.
+Only VRChat-reserved seats have exact hands; website and AI seats stay masked,
+even at a win. This history is never included in browser state responses.
 """
+
+from backend.vrc_solo_players import seats as vrc_seats
 
 SEATS = "ABCD"
 MAX_STEPS = 128
@@ -21,16 +23,19 @@ def _frame(game, actor="-", kind="-"):
         receives = list(row.get("receive", []))
         flags = list(row.get("receive_hidden", []))
         # Deliberately mask history even when state.finished is already True.
-        safe = ["1" if seat != "A" and index < len(flags) and flags[index] and value is not None else value
+        safe = ["1" if seat not in vrc_seats(game) and index < len(flags) and flags[index] and value is not None else value
                 for index, value in enumerate(receives)]
         cells.append(_digits(safe, 4) + _digits(row.get("attack", []), 4))
         hidden.extend("1" if i < len(flags) and flags[i] else "0" for i in range(4))
-    return ["0", actor, kind, "".join(cells), "".join(hidden),
+    frame = ["0", actor, kind, "".join(cells), "".join(hidden),
             "".join(str(p) for p in state.hands["A"]),
             "".join(str(len(state.hands[s])) for s in SEATS),
             state.turn if state.turn in tuple(SEATS) else "-",
             "r" if state.phase == "receive" else "a",
             state.attacker if state.attacker in tuple(SEATS) else "-", str(state.current_attack or "0")]
+    if game.get("vrc_web", {}).get("mixed"):
+        frame.extend("".join(state.hands[seat]) if seat in vrc_seats(game) else "#" for seat in "BCD")
+    return frame
 
 
 def start(game):
@@ -68,6 +73,8 @@ def record(game, player, action):
             middle[3] = "".join(cells)
             if player == "A":
                 middle[5] += str(attack)
+            elif len(middle) == 14 and player in vrc_seats(game):
+                middle[10 + SEATS.index(player)] += str(attack)
             counts = list(middle[6])
             counts[SEATS.index(player)] = str(int(counts[SEATS.index(player)]) + 1)
             middle[6] = "".join(counts)

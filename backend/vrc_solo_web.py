@@ -28,7 +28,7 @@ class VrcSoloWeb:
     def configure(self, game, room, session, mode, previous=None):
         old = (previous or {}).get("vrc_web", {})
         web = dict(old) if old else {
-            "enabled": mode in {"coop", "multi"}, "multi": mode == "multi", "client_id": "", "last_seen": 0,
+            "enabled": mode in {"coop", "multi", "mixed"}, "multi": mode in {"multi", "mixed"}, "mixed": mode == "mixed", "client_id": "", "last_seen": 0,
             "departed": False, "takeover": False,
         }
         web.update(session=session or old.get("session", ""), closed=False)
@@ -129,10 +129,11 @@ class VrcSoloWeb:
             is_ai = seat in game.get("ai_seats", [])
             remaining = max(0, int(RECONNECT_SECONDS - elapsed + 0.999)) if owner and not departed else 0
             rows[seat] = {
-                "joined": bool(owner), "owned": active and bool(owner) and owner == client_id and not departed,
+                "joined": bool(owner), "owned": active and bool(owner) and owner == client_id and not departed and slot.get("transport") != "vrc",
                 "online": active and bool(owner) and not departed and elapsed < ONLINE_SECONDS,
                 "reconnect_seconds": remaining, "is_ai": is_ai,
-                "can_join": active and not (occupied_by_client - {seat}) and (
+                "source": "vrchat" if slot.get("transport") == "vrc" else "website" if owner else "ai" if is_ai else "open",
+                "can_join": active and slot.get("transport") != "vrc" and not (occupied_by_client - {seat}) and (
                     (bool(owner) and owner == client_id) or
                     (not owner and not game.get("is_started") and not slot.get("takeover"))
                 ),
@@ -142,7 +143,7 @@ class VrcSoloWeb:
             }
         result = {
             "enabled": enabled, "active": active, "ended": bool(web.get("closed")),
-            "multi": bool(web.get("multi")), "seats": rows,
+            "multi": bool(web.get("multi")), "mixed": bool(web.get("mixed")), "seats": rows,
             "waiting": active and not game.get("is_started", False),
         }
         result.update(rows.get("C") or {"joined": False, "owned": False, "online": False,
@@ -155,6 +156,8 @@ class VrcSoloWeb:
             raise HTTPException(409, "VRChat側の利用が終了しています。")
         if seat not in self.supported(web) or not client_id or client_id.startswith("vrc-solo:"):
             raise HTTPException(403, "サイトから操作できるのは参加可能なB・C・D席だけです。")
+        if self.slot(web, seat).get("transport") == "vrc":
+            raise HTTPException(409, "この席はVRChatから参加中です。")
         return self.slot(web, seat)
 
     async def join(self, game_id, seat, client_id):
@@ -241,7 +244,7 @@ class VrcSoloWeb:
                 if not slot.get("takeover"):
                     if not self.public(game)["seats"][seat]["can_takeover"]:
                         return self.core["_vrc_solo_error"]("partner_online", seat + "席の再接続を待っています。")
-                    slot.update(client_id="", departed=False, takeover=True)
+                    slot.update(client_id="", departed=False, takeover=True, transport="")
                     game["human_seats"].pop(seat, None)
                     game["ai_seats"] = sorted(set(game["ai_seats"]) | {seat})
                     game["player_names"][seat] = "そろうAI " + seat

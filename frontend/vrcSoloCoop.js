@@ -69,7 +69,8 @@
         lastMeta = meta;
         const seats = seatMeta(meta);
         const ownedSeat = Object.keys(seats).find(seat => seats[seat].owned);
-        title.textContent = meta?.multi ? "VRChat連携卓：A＝VRChat ／ B・C・D＝サイトから参加可能（空席はAI）"
+        title.textContent = meta?.mixed ? "VRChat連携卓：VRChat最大3人＋サイトの参加者／空席はAI"
+            : meta?.multi ? "VRChat連携卓：A＝VRChat ／ B・C・D＝サイトから参加可能（空席はAI）"
             : "VRChat連携卓：A＝VRChat ／ C＝サイト ／ B・D＝AI";
         let message;
         if (meta?.ended) {
@@ -97,7 +98,7 @@
             const info = seats[seat];
             elements.row.style.display = meta?.enabled && info ? "flex" : "none";
             if (!info) continue;
-            const state = !meta.active ? "終了" : info.owned ? "あなたの席" : info.joined
+            const state = !meta.active ? "終了" : info.source === "vrchat" ? (info.online ? "VRChatから参加中" : "VRChatから退出・切断") : info.owned ? "あなたの席" : info.joined
                 ? (info.online ? "使用中" : `再接続待ち（あと${info.reconnect_seconds}秒）`)
                 : info.is_ai ? "AI" : "空席";
             elements.label.textContent = `${seat}席：${state}（${seat === "C" ? "Aの味方" : "B・Dチーム"}）`;

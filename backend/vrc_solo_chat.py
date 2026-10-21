@@ -1,6 +1,7 @@
 """Room-only chat display and six public stamps for a leased VRChat table."""
 import time
 import unicodedata
+from backend.vrc_solo_players import may_act
 
 STAMPS = ("greeting", "thanks", "thinking", "nice", "sorry", "surprised")
 STAMP_COOLDOWN = 10.0
@@ -40,6 +41,7 @@ class VrcSoloChat:
         # Keep the panel during reconnect reservations and between rounds, but
         # spectators and AI seats never enable it.
         return any(self.core["VRC_WEB"].slot(web, seat).get("client_id")
+                   and self.core["VRC_WEB"].slot(web, seat).get("transport") != "vrc"
                    and seat not in game.get("ai_seats", [])
                    for seat in self.core["VRC_WEB"].supported(web))
 
@@ -66,6 +68,8 @@ class VrcSoloChat:
             game["chat_messages"] = list(previous.get("chat_messages", []))[-100:]
             if previous.get("vrc_stamp_last"):
                 game["vrc_stamp_last"] = dict(previous["vrc_stamp_last"])
+            if previous.get("vrc_stamp_seats"):
+                game["vrc_stamp_seats"] = dict(previous["vrc_stamp_seats"])
 
     def install(self, app):
         @app.get("/vrc/solo/{room_id}/chat")
@@ -84,7 +88,7 @@ class VrcSoloChat:
                 return self.core["_vrc_solo_response"]("C1|" + "|".join(self.fields(game)))
 
         @app.get("/vrc/solo/{room_id}/stamp/{stamp_id}")
-        async def stamp(room_id: str, stamp_id: str, session: str = ""):
+        async def stamp(room_id: str, stamp_id: str, session: str = "", seat: str = "A"):
             if stamp_id not in STAMPS:
                 return self.core["_vrc_solo_error"]("invalid_stamp")
             try:
@@ -100,8 +104,10 @@ class VrcSoloChat:
                     return self.core["_vrc_solo_error"]("not_started")
                 if not self.visible(game):
                     return self.core["_vrc_solo_error"]("chat_unavailable")
+                if not may_act(game, seat):
+                    return self.core["_vrc_solo_error"]("invalid_seat")
                 now = self.clock()
-                last = game.get("vrc_stamp_last")
+                last = game.get("vrc_stamp_last") if seat == "A" else game.get("vrc_stamp_seats", {}).get(seat)
                 if last and now - last["at"] < STAMP_COOLDOWN:
                     # Retrying the same fixed URL is an acknowledgement, not a
                     # second chat item. Other stamps must wait out the cooldown.
@@ -110,8 +116,8 @@ class VrcSoloChat:
                     return self.core["_vrc_solo_error"]("stamp_cooldown")
                 label = self.core["CHAT_STAMPS"][stamp_id]
                 item = {
-                    "seat": "A", "sender": self.core["_chat_sender_label"](game, "A"),
-                    "sender_name": self.core["_chat_sender_name"](game, "A"),
+                    "seat": seat, "sender": self.core["_chat_sender_label"](game, seat),
+                    "sender_name": self.core["_chat_sender_name"](game, seat),
                     "tag": "", "sender_icon": "", "message": label,
                     "ts": self.core["_next_chat_timestamp"](), "message_type": "stamp",
                     "stamp_id": stamp_id, "origin": "room", "room_id": game_id,
@@ -121,6 +127,10 @@ class VrcSoloChat:
                 messages.append(item)
                 del messages[:-100]
                 response = f"S1|stamp={stamp_id}|id={item['ts']}"
-                game["vrc_stamp_last"] = {"stamp": stamp_id, "at": now, "response": response}
+                last = {"stamp": stamp_id, "at": now, "response": response}
+                if seat == "A":
+                    game["vrc_stamp_last"] = last
+                else:
+                    game.setdefault("vrc_stamp_seats", {})[seat] = last
                 await self.core["manager"].broadcast_update(game_id)
                 return self.core["_vrc_solo_response"](response)
