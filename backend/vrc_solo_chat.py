@@ -1,8 +1,8 @@
-"""Room-only chat display and four public stamps for a leased VRChat table."""
+"""Room-only chat display and six public stamps for a leased VRChat table."""
 import time
 import unicodedata
 
-STAMPS = ("greeting", "thanks", "thinking", "nice")
+STAMPS = ("greeting", "thanks", "thinking", "nice", "sorry", "surprised")
 STAMP_COOLDOWN = 10.0
 
 

@@ -11,7 +11,7 @@ const path = require('node:path');
     let started = false, active = true, turn = 'B';
     const hand = ['1','1','2','3','4','5','6','9'];
     const clone = value => JSON.parse(JSON.stringify(value));
-    const stamps = ['greeting','thanks','thinking','nice'].map((stamp_id,i) => ({seat:'A',sender:'A: VRChat Player',sender_name:'VRChat Player',
+    const stamps = ['greeting','thanks','thinking','nice','sorry','surprised'].map((stamp_id,i) => ({seat:'A',sender:'A: VRChat Player',sender_name:'VRChat Player',
       message:'Aからのスタンプ',message_type:'stamp',stamp_id,ts:1000+i,origin:'room',room_id:'vrc-solo-table1'}));
     function meta(client) {
       const ownedSeat = Object.keys(owners).find(s => owners[s] === client);
@@ -91,10 +91,10 @@ const path = require('node:path');
       const visible = await page.evaluate(() => ({hands:latestState.hands,owned:latestState.owned_human_seats}));
       assert.deepEqual(visible.owned,[seat]);
       for (const other of ['A','B','C','D']) assert.equal(Array.isArray(visible.hands[other]),other === seat);
-      await page.waitForFunction(() => document.querySelectorAll('.chat-message.stamp .chat-stamp-image').length === 4);
+      await page.waitForFunction(() => document.querySelectorAll('.chat-message.stamp .chat-stamp-image').length === 6);
       const images = await page.locator('.chat-message.stamp .chat-stamp-image').evaluateAll(nodes => nodes.map(n => ({src:n.src,loaded:n.complete && n.naturalWidth > 0})));
       assert.equal(images.every(image => image.loaded),true);
-      for (const id of ['greeting','thanks','thinking','nice']) assert.equal(images.some(image => image.src.includes('/stamps/' + id + '.png')),true);
+      for (const id of ['greeting','thanks','thinking','nice','sorry','surprised']) assert.equal(images.some(image => image.src.includes('/stamps/' + id + '.png')),true);
     }
     for (const seat of ['B','D','C']) {
       await pages[seat].evaluate(() => refresh());
@@ -120,6 +120,6 @@ const path = require('node:path');
     await pages.B.waitForFunction(() => mySeat === 'W');
     assert.match(await pages.B.locator('#vrcCoopPanel p').textContent(),/利用が終了/);
     assert.deepEqual(errors,[]);
-    console.log('B/C/D browser UI passed: three clients, seat selection, own hands, turns, one seat per client, D reconnect, busy spectator, independent presence, four A-seat image stamps and end notice.');
+    console.log('B/C/D browser UI passed: three clients, seat selection, own hands, turns, one seat per client, D reconnect, busy spectator, independent presence, six A-seat image stamps and end notice.');
   } finally { await browser.close(); }
 })().catch(error => {console.error(error);process.exitCode=1;});

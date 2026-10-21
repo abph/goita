@@ -18,6 +18,11 @@ async def setup(client, room, gid, seat="C"):
         assert (await client.post(f"/games/{gid}/claim", params={"seat": seat, "client_id": "browser"})).status_code == 200
 
 
+def test_bridge_stamps_match_the_six_free_site_stamps():
+    assert STAMPS == ("greeting", "thanks", "thinking", "nice", "sorry", "surprised")
+    assert set(STAMPS) <= game_app.PUBLIC_CHAT_STAMP_IDS
+
+
 @pytest.mark.parametrize("seat", ["B", "C", "D"])
 def test_panel_appears_for_any_human_and_stays_during_disconnect(coop, seat):
     room, gid, _, clock = coop
@@ -51,7 +56,7 @@ def test_spectators_and_ai_only_never_enable_panel(coop):
 
 
 @pytest.mark.parametrize("stamp", STAMPS)
-def test_four_public_stamps_are_a_room_messages_without_game_moves(coop, stamp):
+def test_six_public_stamps_are_a_room_messages_without_game_moves(coop, stamp):
     room, gid, *_ = coop
     async def flow():
         async with await client_flow() as client:
@@ -70,14 +75,15 @@ def test_four_public_stamps_are_a_room_messages_without_game_moves(coop, stamp):
     asyncio.run(flow())
 
 
-def test_stamps_are_serialized_deduplicated_and_rate_limited(coop, monkeypatch):
+@pytest.mark.parametrize("stamp", ["greeting", "sorry", "surprised"])
+def test_stamps_are_serialized_deduplicated_and_rate_limited(coop, monkeypatch, stamp):
     room, gid, *_ = coop
     now = [100.0]
     monkeypatch.setattr(game_app.VRC_CHAT, "clock", lambda: now[0])
     async def flow():
         async with await client_flow() as client:
             await setup(client, room, gid)
-            url = f"/vrc/solo/{room}/stamp/greeting"
+            url = f"/vrc/solo/{room}/stamp/{stamp}"
             a, b = await asyncio.gather(client.get(url, params={"session": OWNER}), client.get(url, params={"session": OWNER}))
             assert a.text == b.text and len(game_app.GAMES[gid]["chat_messages"]) == 1
             other = await client.get(f"/vrc/solo/{room}/stamp/thanks", params={"session": OWNER})
@@ -102,7 +108,7 @@ def test_non_holder_cannot_read_chat_or_send_stamp(coop, session):
     asyncio.run(flow())
 
 
-@pytest.mark.parametrize("stamp", ["sorry", "weekly_champion", "unknown"])
+@pytest.mark.parametrize("stamp", ["happy", "weekly_champion", "unknown"])
 def test_restricted_or_unknown_stamps_are_not_unlocked(coop, stamp):
     room, gid, *_ = coop
     async def flow():
