@@ -51,6 +51,9 @@ def test_start_returns_compact_no_cache_snapshot(bridge):
     assert response.headers["cache-control"].startswith("no-store")
     assert game_app.GAMES[game_id]["human_seats"] == {"A": f"vrc-solo:{room_id}"}
     assert game_app.GAMES[game_id]["ai_seats"] == ["B", "C", "D"]
+    assert game_app.GAMES[game_id]["ai_profile"] == "experimental_ai2"
+    assert all(type(agent) is game_app.ExperimentalAI2RuleBasedAgent
+               for agent in game_app.GAMES[game_id]["agents"].values())
 
 
 def test_block_then_attack_is_one_server_transaction(bridge):
@@ -171,6 +174,7 @@ def test_finished_round_keeps_lease_and_next_round_keeps_score(bridge):
     assert response_text(asyncio.run(game_app.vrc_solo_start(room, OWNER))).startswith("G1|")
     assert game_app.GAMES[gid]["dealer"] == "C"
     assert game_app.GAMES[gid]["total_team_score"] == {"AC": 40, "BD": 20}
+    assert game_app.GAMES[gid]["ai_profile"] == "experimental_ai2"
 
 
 def test_server_restart_invalidates_old_lease_and_retires_connection(tmp_path):

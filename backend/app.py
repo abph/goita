@@ -6996,7 +6996,7 @@ def _create_vrc_solo_game(
             next_dealer = winner
     game = _create_game_obj(
         dealer=next_dealer,
-        ai_profile="current",
+        ai_profile="experimental_ai2",
     )
     if previous is not None and not previous.get("match_finished"):
         _preserve_match_progress(game, previous)
