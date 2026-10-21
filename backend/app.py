@@ -79,6 +79,7 @@ from backend.research_kifu_store import (
 )
 from backend.frequent_deal import is_frequent_deal
 from backend import vrc_solo_playback
+from backend.vrc_solo_chat import VrcSoloChat
 from backend.balanced_deal import is_balanced_rank_deal, is_wardna_balanced_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.survey_store import SurveyStore, resolve_survey_path
@@ -5908,6 +5909,8 @@ VRC_SOLO_MAX_AI_ACTIONS = 64
 VRC_SOLO_LEASES = _vrc_default_lease_store()
 VRC_WEB = VrcSoloWeb(globals())
 VRC_WEB.install(app)
+VRC_CHAT = VrcSoloChat(globals())
+VRC_CHAT.install(app)
 
 
 def _vrc_solo_ids(room_id: str) -> Tuple[str, str]:
@@ -7013,6 +7016,7 @@ def _create_vrc_solo_game(
     game["vrc_last_request"] = None
     game["action_state_nonce"] = secrets.token_hex(24)
     VRC_WEB.configure(game, room_id, session, mode, previous)
+    VRC_CHAT.carry(game, previous)
     vrc_solo_playback.start(game)
     GAMES[game_id] = game
     return game_id, game
@@ -7182,6 +7186,7 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         fields = ["turn=-" if item.startswith("turn=") else
                   item[:3] + "#0" if item.startswith(("ha=", "hb=", "hc=", "hd=")) else item
                   for item in fields]
+    fields.extend(VRC_CHAT.fields(game))
     fields.extend(vrc_solo_playback.fields(game))
     return "|".join(fields)
 

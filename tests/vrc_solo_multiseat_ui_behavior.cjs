@@ -11,6 +11,8 @@ const path = require('node:path');
     let started = false, active = true, turn = 'B';
     const hand = ['1','1','2','3','4','5','6','9'];
     const clone = value => JSON.parse(JSON.stringify(value));
+    const stamps = ['greeting','thanks','thinking','nice'].map((stamp_id,i) => ({seat:'A',sender:'A: VRChat Player',sender_name:'VRChat Player',
+      message:'Aからのスタンプ',message_type:'stamp',stamp_id,ts:1000+i,origin:'room',room_id:'vrc-solo-table1'}));
     function meta(client) {
       const ownedSeat = Object.keys(owners).find(s => owners[s] === client);
       const seats = Object.fromEntries(['B','C','D'].map(seat => [seat, {
@@ -32,7 +34,7 @@ const path = require('node:path');
         init_hands:Object.fromEntries(owned.map(s => [s,hand])),face_down_pieces:Object.fromEntries(owned.map(s => [s,[]])),
         board_public:Object.fromEntries(['A','B','C','D'].map(s => [s,{receive:[null,null,null,null],attack:[null,null,null,null],receive_hidden:[false,false,false,false]}])),
         log:[],player_names:{A:'VRChat Player',B:names.B || '参加待ち',C:names.C || '参加待ち',D:names.D || '参加待ち'},
-        total_team_score:{AC:40,BD:20},revealed_hand_seats:[],chat_messages:[],vrc_web:meta(client)};
+        total_team_score:{AC:40,BD:20},revealed_hand_seats:[],chat_messages:started ? clone(stamps) : [],vrc_web:meta(client)};
     }
     async function openPage() {
       const page = await browser.newPage({viewport:{width:1100,height:1100}});
@@ -89,6 +91,10 @@ const path = require('node:path');
       const visible = await page.evaluate(() => ({hands:latestState.hands,owned:latestState.owned_human_seats}));
       assert.deepEqual(visible.owned,[seat]);
       for (const other of ['A','B','C','D']) assert.equal(Array.isArray(visible.hands[other]),other === seat);
+      await page.waitForFunction(() => document.querySelectorAll('.chat-message.stamp .chat-stamp-image').length === 4);
+      const images = await page.locator('.chat-message.stamp .chat-stamp-image').evaluateAll(nodes => nodes.map(n => ({src:n.src,loaded:n.complete && n.naturalWidth > 0})));
+      assert.equal(images.every(image => image.loaded),true);
+      for (const id of ['greeting','thanks','thinking','nice']) assert.equal(images.some(image => image.src.includes('/stamps/' + id + '.png')),true);
     }
     for (const seat of ['B','D','C']) {
       await pages[seat].evaluate(() => refresh());
@@ -114,6 +120,6 @@ const path = require('node:path');
     await pages.B.waitForFunction(() => mySeat === 'W');
     assert.match(await pages.B.locator('#vrcCoopPanel p').textContent(),/利用が終了/);
     assert.deepEqual(errors,[]);
-    console.log('B/C/D browser UI passed: three clients, seat selection, own hands, turns, one seat per client, D reconnect, busy spectator, independent presence and end notice.');
+    console.log('B/C/D browser UI passed: three clients, seat selection, own hands, turns, one seat per client, D reconnect, busy spectator, independent presence, four A-seat image stamps and end notice.');
   } finally { await browser.close(); }
 })().catch(error => {console.error(error);process.exitCode=1;});
