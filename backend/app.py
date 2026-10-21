@@ -1577,11 +1577,7 @@ def _client_owned_human_seats(game: Dict[str, Any], client_id: str) -> Set[str]:
     if not client_id or not isinstance(human_seats, dict):
         return set()
     if game.get("vrc_solo_room"):
-        web = game.get("vrc_web", {})
-        if (not web.get("enabled") or web.get("closed") or web.get("departed")
-                or client_id.startswith("vrc-solo:")):
-            return set()
-        return {"C"} if web.get("client_id") == client_id else set()
+        return VRC_WEB.owned_seats(game, client_id)
     return {
         seat
         for seat, owner_client_id in human_seats.items()
@@ -7168,7 +7164,15 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         f"web={int(web['enabled'])}", f"waiting={int(web['waiting'])}",
         f"cweb={int(web['joined'])}", f"conline={int(web['online'])}",
         f"ctake={int(web['can_takeover'])}", f"deal={game['action_state_nonce']}",
+        f"webmulti={int(web['multi'])}",
+        f"aimask={sum(1 << index for index, seat in enumerate(ALL_SEATS) if seat in _ai_seat_set(game))}",
     ])
+    for seat in ("B", "D"):
+        row = web["seats"].get(seat, {})
+        prefix = seat.lower()
+        fields.extend([f"{prefix}web={int(row.get('joined', False))}",
+                       f"{prefix}online={int(row.get('online', False))}",
+                       f"{prefix}take={int(row.get('can_takeover', False))}"])
     if not game.get("is_started"):
         # Do not deal hands to either client before A explicitly starts the round.
         fields = ["turn=-" if item.startswith("turn=") else
@@ -7213,7 +7217,7 @@ def _vrc_solo_require(room_id: str, session: str):
 
 @app.get("/vrc/solo/{room_id}/claim", response_class=PlainTextResponse)
 async def vrc_solo_claim(room_id: str, session: str = "", mode: str = "solo"):
-    if mode not in {"solo", "coop"}:
+    if mode not in {"solo", "coop", "multi"}:
         return _vrc_solo_error("invalid_mode")
     try:
         game_id, _client_id = _vrc_solo_ids(room_id)
@@ -7286,9 +7290,8 @@ async def _vrc_solo_start_unlocked(room_id: str, session: str = "", mode: str = 
     if existing is not None:
         web = existing.get("vrc_web", {})
         if web.get("enabled") and not existing.get("is_started") and not web.get("closed"):
-            if not web.get("client_id") or web.get("departed") or not VRC_WEB.public(existing)["online"]:
+            if not VRC_WEB.start_waiting(existing):
                 return _vrc_solo_response(_vrc_solo_snapshot(existing))
-            existing["is_started"] = True
             try:
                 await _vrc_solo_run_ai(existing)
             except RuntimeError as error:
@@ -11205,7 +11208,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
     _handle_round_finish(game, state, action, effects)
     _complete_tutorial_if_script_finished(game)
     if game.get("vrc_solo_room"):
-        game["vrc_web"]["last_seen"] = VRC_WEB.clock()
+        VRC_WEB.touch(game, req.client_id, player)
         await _vrc_solo_run_ai(game)
     _arm_turn_timeout(game_id)
     _schedule_debug_auto_next_round(game_id)

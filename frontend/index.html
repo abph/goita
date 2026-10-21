@@ -13555,8 +13555,8 @@ async function leaveSeat(seat) {
 
 async function openSeatMenu(seat) {
     if (isVrcSoloRoom()) {
-        if (seat === "C") window.goitaVrcCoop?.focus?.();
-        else setHint("A席はVRChat、B・D席はAIです。サイトからは上の参加ボタンでC席へ参加できます。");
+        if (["B", "C", "D"].includes(seat)) window.goitaVrcCoop?.focus?.(seat);
+        else setHint("A席はVRChatです。サイトからは上の参加ボタンでB・C・D席を選べます。");
         return;
     }
     if (isPersonalScoreRoom()) return;
@@ -18684,6 +18684,6 @@ window.addEventListener("load", async ()=>{
   showLobbyWelcomeToast();
 });
 </script>
-<script src="/static/vrcSoloCoop.js?v=20261021a"></script>
+<script src="/static/vrcSoloCoop.js?v=20261021b"></script>
 </body>
 </html>
