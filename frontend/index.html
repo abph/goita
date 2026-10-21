@@ -9763,7 +9763,7 @@ function forceDisablePreset() {
 }
 
 function setAutoPlayEnabled(on){
-    autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom();
+    autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom() && !isVrcSoloRoom();
     if(!autoPlayEnabled){
         pending = null;
     }
@@ -9818,6 +9818,10 @@ function vrcSoloRoomRequestFromUrl() {
         roomId,
         roomName: `AI Solo Goita Table (${roomId.slice("vrc-solo-".length)})`,
     };
+}
+
+function isVrcSoloRoom() {
+    return /^vrc-solo-[a-z0-9][a-z0-9-]{0,31}$/.test(String(gid || ""));
 }
 
 const DIRECT_ACCESS_PRIVATE_ROOMS = new Map([
@@ -13550,6 +13554,11 @@ async function leaveSeat(seat) {
 }
 
 async function openSeatMenu(seat) {
+    if (isVrcSoloRoom()) {
+        if (seat === "C") window.goitaVrcCoop?.focus?.();
+        else setHint("A席はVRChat、B・D席はAIです。サイトからは上の参加ボタンでC席へ参加できます。");
+        return;
+    }
     if (isPersonalScoreRoom()) return;
     if (!seat || seat === WATCH) return;
     const isHuman = seatIsHuman(latestState, seat);
@@ -16791,6 +16800,7 @@ async function hideSeatHand(target){
 }
 
 async function maybeAutoRevealOwnAndAiHands(state){
+    if (state?.vrc_web) return false;
     if (isPersonalScoreRoom()) return;
   if(
     (personalSettings.autoRevealOwnHand !== true && personalSettings.autoRevealAiHands === false)
@@ -16840,6 +16850,7 @@ function renderHandRevealControls(state){
   if(!panel) return;
   panel.innerHTML = "";
   panel.style.display = "none";
+  if (state?.vrc_web) return;
 
   const ownedSeats = Array.isArray(state?.owned_human_seats) ? state.owned_human_seats : [];
   if(!state?.is_started || isSpectator() || !ownedSeats.includes(mySeat)) return;
@@ -17591,7 +17602,7 @@ function renderHands(state) {
       autoBtn.classList.toggle("active", !isSpectatorRow && autoPlayEnabled);
       autoBtn.disabled = actionIsPending() || isSpectatorRow || state.finished || !state.is_started;
       if(!isSpectatorRow) autoBtn.onclick = toggleAutoPlay;
-      passBtnWrap.appendChild(autoBtn);
+      if (!state.vrc_web) passBtnWrap.appendChild(autoBtn);
 
       rowDiv.appendChild(passBtnWrap);
     }
@@ -18054,12 +18065,13 @@ async function refreshFromState(confirmedState = null){
     await voiceChatController?.leave?.();
     mySeat = WATCH;
     latestState = state;
-    if (!(isGatheringRoomId(gid) && state.gathering_event?.joined)) {
+    if (!isVrcSoloRoom() && !(isGatheringRoomId(gid) && state.gathering_event?.joined)) {
       await returnToLobby();
       return;
     }
   }
   latestState = state;
+  window.goitaVrcCoop?.render?.(state);
   syncDebugTraceMenu?.();
   if (isGatheringRoomId(gid)) {
     renderGatheringRoom(state.gathering_event);
@@ -18483,6 +18495,8 @@ function processGameLogFeedback(state, currentLogCount){
 }
 
 function scheduleAutomaticTurn(state){
+  // The bridge server advances B/D atomically after each human action.
+  if (isVrcSoloRoom()) return;
   if(state.is_started === true && !state.finished && !isProcessingCpu){
     if(seatIsAi(state, state.turn)){
       isProcessingCpu = true;
@@ -18670,5 +18684,6 @@ window.addEventListener("load", async ()=>{
   showLobbyWelcomeToast();
 });
 </script>
+<script src="/static/vrcSoloCoop.js?v=20261021a"></script>
 </body>
 </html>

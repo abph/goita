@@ -10,6 +10,7 @@ const context = vm.createContext({
   personalSettings: { autoRevealOwnHand: true, autoRevealAiHands: true },
   autoRevealHandsInFlight: false, autoRevealHandsRoundKey: "",
   isSpectator: () => false, isMainRoomId: () => true, isCurrentClientHost: () => true,
+  isPersonalScoreRoom: () => false,
   isSeatHandRevealed: (state, seat) => state.revealed_hand_seats.includes(seat),
   uiText: text => text,
   document: { getElementById: () => panel, createElement: () => ({}) },
@@ -37,5 +38,11 @@ vm.runInContext(html.slice(html.indexOf("async function requestSeatHandReveal(")
   context.renderHandRevealControls({ ...state, finished: false, revealed_hand_seats: [] });
   assert.equal(panel.children[0].disabled, true);
   assert.equal(panel.children.length, 2, "public AI controls stay unavailable during play");
+  const callsBeforeCoop = calls.length;
+  context.renderHandRevealControls({ ...state, vrc_web: { enabled: true } });
+  assert.equal(panel.children.length, 0, "cooperative hand disclosure is server controlled");
+  assert.equal(panel.style.display, "none");
+  await context.maybeAutoRevealOwnAndAiHands({ ...state, vrc_web: { enabled: true } });
+  assert.equal(calls.length, callsBeforeCoop, "cooperative UI must not send manual/automatic reveal requests");
   console.log("Hand visibility UI: hide, labels, public restrictions and auto suppression passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -108,6 +108,7 @@ from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_a
 from backend.retire_room_kifu import retire_room_kifu
 from backend.ai_review_report import build_review_snapshot, log_turn_numbers
 from backend.vrc_solo_lease import LeaseError, default_store as _vrc_default_lease_store
+from backend.vrc_solo_web import VrcSoloWeb
 from backend.ai_benchmark_store import (
     AIBenchmarkStore,
     MAX_REPORT_BYTES as MAX_AI_BENCHMARK_REPORT_BYTES,
@@ -775,6 +776,9 @@ async def _release_disconnected_client_after_grace(game_id: str, client_id: str)
 
 
 async def _release_disconnected_client_seats(game_id: str, client_id: str) -> bool:
+    if GAMES.get(game_id, {}).get("vrc_solo_room"):
+        # The cooperative C reservation is released only by VRC's confirmed takeover.
+        return False
     gathering_participant = bool(
         _is_gathering_channel(game_id)
         and client_id in GATHERING_PARTICIPANTS
@@ -1572,6 +1576,12 @@ def _client_owned_human_seats(game: Dict[str, Any], client_id: str) -> Set[str]:
     human_seats = game.get("human_seats", {})
     if not client_id or not isinstance(human_seats, dict):
         return set()
+    if game.get("vrc_solo_room"):
+        web = game.get("vrc_web", {})
+        if (not web.get("enabled") or web.get("closed") or web.get("departed")
+                or client_id.startswith("vrc-solo:")):
+            return set()
+        return {"C"} if web.get("client_id") == client_id else set()
     return {
         seat
         for seat, owner_client_id in human_seats.items()
@@ -1605,6 +1615,8 @@ def _client_owns_human_seat(game: Dict[str, Any], seat: str, client_id: str) -> 
 
 
 def _require_human_seat_owner(game: Dict[str, Any], seat: str, client_id: str) -> None:
+    if game.get("vrc_solo_room"):
+        VRC_WEB.require_browser(game, client_id, seat)
     if not _client_owns_human_seat(game, seat, client_id):
         raise HTTPException(status_code=403, detail=f"Seat {seat} is owned by another client.")
 
@@ -1713,6 +1725,8 @@ def _effective_revealed_hand_seats(
     game: Dict[str, Any],
     state: GoitaState,
 ) -> Set[str]:
+    if game.get("vrc_solo_room") and game.get("is_started") and state.finished:
+        return set(ALL_SEATS)
     revealed = _revealed_hand_seat_set(game)
     if game_id in MAIN_GIDS and game.get("is_started") and state.finished:
         revealed.update(_ai_seat_set(game))
@@ -3615,7 +3629,8 @@ def _state_public_view(
     game_obj: Dict[str, Any],
     client_id: str = "",
 ) -> Dict[str, Any]:
-    
+    if game_obj.get("vrc_solo_room"):
+        VRC_WEB.live(game_obj)
     log = _visible_game_log(
         game_obj.get("log", []),
         round_finished=bool(state.finished),
@@ -3677,6 +3692,19 @@ def _state_public_view(
         team_score = getattr(state, "team_score", None)
         finished = state.finished
         winner = state.winner
+
+    if game_obj.get("vrc_solo_room") and not state.finished:
+        # Historical text logs include hidden block values. Do not send them to
+        # another human before the round ends, even if the log panel is hidden.
+        log = []
+        board_view = copy.deepcopy(board_view)
+        for seat, row in board_view.items():
+            if seat in owned_human_seats:
+                continue
+            row["receive"] = [
+                "■" if value is not None and row.get("receive_hidden", [False] * 4)[index] else value
+                for index, value in enumerate(row.get("receive", []))
+            ]
 
     shared_kifu = game_obj.get("shared_kifu")
     shared_kifu_public = None
@@ -3826,6 +3854,8 @@ def _state_public_view(
     payload["human_seats"] = sorted(_seat_set(human_seats))
     payload["owned_human_seats"] = sorted(owned_human_seats)
     payload["ai_seats"] = sorted(ai_seats)
+    if game_obj.get("vrc_solo_room"):
+        payload["vrc_web"] = VRC_WEB.public(game_obj, client_id)
     return payload
 
 
@@ -5878,6 +5908,8 @@ VRC_SOLO_ROOM_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 VRC_SOLO_CLIENT_PREFIX = "vrc-solo:"
 VRC_SOLO_MAX_AI_ACTIONS = 64
 VRC_SOLO_LEASES = _vrc_default_lease_store()
+VRC_WEB = VrcSoloWeb(globals())
+VRC_WEB.install(app)
 
 
 def _vrc_solo_ids(room_id: str) -> Tuple[str, str]:
@@ -6950,6 +6982,8 @@ def _vrc_solo_error(code: str, message: str = "") -> PlainTextResponse:
 def _create_vrc_solo_game(
     room_id: str,
     previous: Optional[Dict[str, Any]] = None,
+    session: str = "",
+    mode: str = "solo",
 ) -> Tuple[str, Dict[str, Any]]:
     game_id, client_id = _vrc_solo_ids(room_id)
     next_dealer = random.choice(list(ALL_SEATS))
@@ -6980,6 +7014,7 @@ def _create_vrc_solo_game(
     game["vrc_pending"] = None
     game["vrc_last_request"] = None
     game["action_state_nonce"] = secrets.token_hex(24)
+    VRC_WEB.configure(game, room_id, session, mode, previous)
     GAMES[game_id] = game
     return game_id, game
 
@@ -7058,7 +7093,12 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
     hidden_bits = []
     for seat in ALL_SEATS:
         seat_board = board.get(seat, {}) if isinstance(board, dict) else {}
-        board_digits.append(_vrc_solo_digits(seat_board.get("receive"), 4))
+        receives = list(seat_board.get("receive") or [])
+        receive_hidden = seat_board.get("receive_hidden", [])
+        if not state.finished and seat != "A":
+            receives = ["1" if value is not None and index < len(receive_hidden) and receive_hidden[index] else value
+                        for index, value in enumerate(receives)]
+        board_digits.append(_vrc_solo_digits(receives, 4))
         board_digits.append(_vrc_solo_digits(seat_board.get("attack"), 4))
         receive_hidden = seat_board.get("receive_hidden", [])
         hidden_bits.extend(
@@ -7066,7 +7106,7 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
             for index in range(4)
         )
 
-    legal = state.legal_actions("A") if not state.finished and state.turn == "A" else []
+    legal = state.legal_actions("A") if game.get("is_started") and not state.finished and state.turn == "A" else []
     legal_receive = sorted({str(action[1]) for action in legal if action[0] == "receive" and action[1]})
     legal_block = sorted({str(action[1]) for action in legal if action[0] == "attack_after_block" and action[1]})
     legal_attack = sorted({str(action[2]) for action in legal if action[0] in {"attack", "attack_after_block"} and action[2]})
@@ -7123,6 +7163,17 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         f"pass={1 if any(action[0] == 'pass' for action in legal) else 0}",
         f"last={last_action.get('player', '-')}{last_code}",
     ]
+    web = VRC_WEB.public(game)
+    fields.extend([
+        f"web={int(web['enabled'])}", f"waiting={int(web['waiting'])}",
+        f"cweb={int(web['joined'])}", f"conline={int(web['online'])}",
+        f"ctake={int(web['can_takeover'])}", f"deal={game['action_state_nonce']}",
+    ])
+    if not game.get("is_started"):
+        # Do not deal hands to either client before A explicitly starts the round.
+        fields = ["turn=-" if item.startswith("turn=") else
+                  item[:3] + "#0" if item.startswith(("ha=", "hb=", "hc=", "hd=")) else item
+                  for item in fields]
     return "|".join(fields)
 
 
@@ -7161,7 +7212,9 @@ def _vrc_solo_require(room_id: str, session: str):
 
 
 @app.get("/vrc/solo/{room_id}/claim", response_class=PlainTextResponse)
-async def vrc_solo_claim(room_id: str, session: str = ""):
+async def vrc_solo_claim(room_id: str, session: str = "", mode: str = "solo"):
+    if mode not in {"solo", "coop"}:
+        return _vrc_solo_error("invalid_mode")
     try:
         game_id, _client_id = _vrc_solo_ids(room_id)
     except ValueError:
@@ -7172,8 +7225,10 @@ async def vrc_solo_claim(room_id: str, session: str = ""):
         except LeaseError as error:
             return _vrc_solo_error(str(error))
         # A fresh holder must never inherit the previous user's hands or score.
-        GAMES.pop(game_id, None)
-        response = await _vrc_solo_start_unlocked(room_id)
+        previous_holder = GAMES.pop(game_id, None)
+        if previous_holder is not None:
+            VRC_WEB.close(previous_holder)
+        response = await _vrc_solo_start_unlocked(room_id, session=session, mode=mode)
         if response.body.startswith(b"G1|"):
             VRC_SOLO_LEASES.touch(room_id, session)
         else:
@@ -7207,12 +7262,7 @@ async def vrc_solo_release(room_id: str, session: str = ""):
             return _vrc_solo_error(str(error))
         game = GAMES.get(game_id)
         if game:
-            game["vrc_pending"] = None
-            game["is_started"] = False
-            for agent in game.get("agents", {}).values():
-                cancel = getattr(agent, "cancel_background_search", None)
-                if callable(cancel):
-                    cancel()
+            VRC_WEB.close(game)
             await manager.broadcast_update(game_id)
         return _vrc_solo_response("X1|released=1")
 
@@ -7227,21 +7277,33 @@ async def vrc_solo_start(room_id: str, session: str = ""):
         error = _vrc_solo_require(room_id, session)
         if error is not None:
             return error
-        return await _vrc_solo_start_unlocked(room_id)
+        return await _vrc_solo_start_unlocked(room_id, session=session)
 
 
-async def _vrc_solo_start_unlocked(room_id: str):
+async def _vrc_solo_start_unlocked(room_id: str, session: str = "", mode: str = "solo"):
     game_id, _client_id = _vrc_solo_ids(room_id)
     _existing_id, existing = _vrc_solo_game(room_id)
     if existing is not None:
+        web = existing.get("vrc_web", {})
+        if web.get("enabled") and not existing.get("is_started") and not web.get("closed"):
+            if not web.get("client_id") or web.get("departed") or not VRC_WEB.public(existing)["online"]:
+                return _vrc_solo_response(_vrc_solo_snapshot(existing))
+            existing["is_started"] = True
+            try:
+                await _vrc_solo_run_ai(existing)
+            except RuntimeError as error:
+                return _vrc_solo_error("ai_error", str(error))
+            await manager.broadcast_update(game_id)
+            return _vrc_solo_response(_vrc_solo_snapshot(existing))
         existing_state = existing.get("state")
         if existing.get("is_started") and existing_state is not None and not existing_state.finished:
             response = _vrc_solo_snapshot(existing)
             _vrc_solo_remember_response(existing, "start", response)
             return _vrc_solo_response(response)
-    game_id, game = _create_vrc_solo_game(room_id, previous=existing)
+    game_id, game = _create_vrc_solo_game(room_id, previous=existing, session=session, mode=mode)
     try:
-        await _vrc_solo_run_ai(game)
+        if game.get("is_started"):
+            await _vrc_solo_run_ai(game)
     except RuntimeError as error:
         return _vrc_solo_error("ai_error", str(error))
     await manager.broadcast_update(game_id)
@@ -7263,6 +7325,12 @@ async def vrc_solo_state(room_id: str, session: str = ""):
         _game_id, game = _vrc_solo_game(room_id)
         if game is None:
             return _vrc_solo_error("not_started", "Press START on the table.")
+        if game.get("is_started") and not game["state"].finished and game["state"].turn in _ai_seat_set(game):
+            try:
+                await _vrc_solo_run_ai(game)
+            except RuntimeError as error:
+                return _vrc_solo_error("ai_error", str(error))
+            await manager.broadcast_update(_game_id)
         return _vrc_solo_response(_vrc_solo_snapshot(game))
 
 
@@ -7284,7 +7352,7 @@ async def _vrc_solo_select(room_id: str, kind: str, piece: int, session: str = "
         if game is None:
             return _vrc_solo_error("not_started")
         state: GoitaState = game["state"]
-        if state.finished or state.turn != "A":
+        if not game.get("is_started") or state.finished or state.turn != "A":
             return _vrc_solo_error("not_your_turn")
         legal = state.legal_actions("A")
         if kind == "block":
@@ -7336,6 +7404,8 @@ async def vrc_solo_attack(room_id: str, piece: int, session: str = ""):
             return _vrc_solo_response(cached)
         pending = game.get("vrc_pending")
         state: GoitaState = game["state"]
+        if not game.get("is_started") or state.finished or state.turn != "A":
+            return _vrc_solo_error("not_your_turn")
         if not isinstance(pending, dict):
             return _vrc_solo_error("missing_selection")
         if pending.get("action_token") != _action_state_token(game, state):
@@ -7393,7 +7463,7 @@ async def vrc_solo_pass(room_id: str, session: str = ""):
             return _vrc_solo_response(cached)
         state: GoitaState = game["state"]
         action = ("pass", None, None)
-        if state.finished or state.turn != "A" or action not in state.legal_actions("A"):
+        if not game.get("is_started") or state.finished or state.turn != "A" or action not in state.legal_actions("A"):
             return _vrc_solo_error("illegal_pass")
         game["vrc_pending"] = None
         try:
@@ -10412,6 +10482,8 @@ async def vacate_private_room_seat(
 
 @app.post("/games/{game_id}/claim")
 async def claim_seat(game_id: str, seat: str, client_id: str = ""):
+    if GAMES.get(game_id, {}).get("vrc_solo_room"):
+        return await VRC_WEB.join(game_id, seat, client_id)
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:
@@ -10603,6 +10675,8 @@ async def claim_seat(game_id: str, seat: str, client_id: str = ""):
 
 @app.post("/games/{game_id}/release")
 async def release_seat(game_id: str, seat: str, client_id: str = ""):
+    if GAMES.get(game_id, {}).get("vrc_solo_room"):
+        return await VRC_WEB.leave(game_id, seat, client_id)
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     elif game_id not in GAMES:
@@ -10756,6 +10830,8 @@ async def set_player_name(game_id: str, req: NameRequest):
     seat = _validate_seat(req.seat, name="seat")
     _require_human_seat_owner(game, seat, req.client_id)
     name = _sanitize_player_name(req.name)
+    if game.get("vrc_solo_room") and not name:
+        name = "サイトのプレイヤー"
     tag = _sanitize_player_tag(req.tag)
     icon = _sanitize_player_icon(req.icon)
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
@@ -11128,6 +11204,9 @@ async def _step_unlocked(game_id: str, req: StepRequest):
 
     _handle_round_finish(game, state, action, effects)
     _complete_tutorial_if_script_finished(game)
+    if game.get("vrc_solo_room"):
+        game["vrc_web"]["last_seen"] = VRC_WEB.clock()
+        await _vrc_solo_run_ai(game)
     _arm_turn_timeout(game_id)
     _schedule_debug_auto_next_round(game_id)
 
