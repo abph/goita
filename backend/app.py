@@ -78,6 +78,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
+from backend import vrc_solo_playback
 from backend.balanced_deal import is_balanced_rank_deal, is_wardna_balanced_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
 from backend.survey_store import SurveyStore, resolve_survey_path
@@ -3452,6 +3453,7 @@ def _record_public_action(
         "type": action_type,
         "at_ms": int(time.time() * 1000),
     }
+    vrc_solo_playback.record(game, player, action)
 
 
 def _is_hidden_receive_by_state_delta(state: GoitaState, player: str, action_type: str, before_len: int) -> bool:
@@ -7011,6 +7013,7 @@ def _create_vrc_solo_game(
     game["vrc_last_request"] = None
     game["action_state_nonce"] = secrets.token_hex(24)
     VRC_WEB.configure(game, room_id, session, mode, previous)
+    vrc_solo_playback.start(game)
     GAMES[game_id] = game
     return game_id, game
 
@@ -7055,6 +7058,7 @@ def _vrc_solo_apply_action(
 
 
 async def _vrc_solo_run_ai(game: Dict[str, Any]) -> None:
+    vrc_solo_playback.start(game)
     state: GoitaState = game["state"]
     ai_seats = _ai_seat_set(game)
     applied = 0
@@ -7178,6 +7182,7 @@ def _vrc_solo_snapshot(game: Dict[str, Any]) -> str:
         fields = ["turn=-" if item.startswith("turn=") else
                   item[:3] + "#0" if item.startswith(("ha=", "hb=", "hc=", "hd=")) else item
                   for item in fields]
+    fields.extend(vrc_solo_playback.fields(game))
     return "|".join(fields)
 
 
