@@ -85,23 +85,35 @@ cases:
 
   - id: REC-005
     status: confirmed
-    title: 敵の2つ目を自動的に受けず3つ目まで比較する
+    title: 敵の攻めを今受けるか、確定得点を保って次の攻めを待つかを比較する
     classification: wait_for_third_attack
     priority: high
     conditions:
-      - 敵の2つ目の攻めを受けられる
+      - 敵の攻めを受けられる
       - パスしても直ちに敵が上がるとは限らない
     required: 受ける枝と、パスして敵の3つ目を待つ枝を比較する
     preferred:
       - 3つ目を受ければ高得点で上がれる場合は待つ
       - 2つ目を受けないと守備範囲を失う場合は受ける
+      - 残り4枚に王か玉と公開情報上受けられない攻め駒があり、次に来得る全種類の攻めから現在の確定最低点を維持でき、一部では現在の最高点を超える場合は待つ
     forbidden:
       - 敵の2つ目という理由だけでほぼ常に受ける
+      - 王か玉を温存できるという理由だけでパスする
+      - 実際の非公開手駒、推定確率や未知の枝を確定上がりの根拠にする
+      - 敵方に残り2枚のプレイヤーがいて、途中で先に上がれる場合に高得点を待つ
+      - 後段のサンプル探索やニューラル候補で公開情報上の確定判断を上書きする
     reason: 3つ目を受けた方が上がり点や残り形が良くなる局面がある
     regression:
       state: covered
+      note: 既存の両王待ちに加え、強化中AI2のみ公開情報の全種類比較で確定得点と高得点の分岐を検証する
       tests:
         - tests/test_receive_strategy_module.py::test_full_receive_cover_waits_for_enemy_third_attack_and_fifty_points
+        - tests/test_public_royal_wait.py::test_reported_position_passes_with_proven_floor_and_upside
+        - tests/test_public_royal_wait.py::test_natural_receive_keeps_control_piece_and_finishes_for_fifty
+        - tests/test_public_royal_wait.py::test_wait_stops_before_enemy_can_finish_and_keeps_thirty_point_fallback
+        - tests/test_public_royal_wait.py::test_hidden_piece_reallocation_does_not_change_public_wait
+        - tests/test_public_royal_wait.py::test_proven_wait_cannot_be_overturned_by_timed_search_or_neural_receive
+      example: A手番9で王・銀・し・香が残り、香4枚の所在が公開情報と自分の手駒から分かる。金はパスし、し・銀なら同種で受けて香を一周させ王で50点を狙う。敵がリーチしたら王受けから30点の確定上がりへ戻す
 
   - id: REC-006
     status: confirmed

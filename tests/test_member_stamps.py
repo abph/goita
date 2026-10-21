@@ -38,7 +38,7 @@ def stamp_env(monkeypatch, tmp_path):
         yield client, store
 
 
-def send(client, stamp="sorry", room="main", **kwargs):
+def send(client, stamp="happy", room="main", **kwargs):
     url = "/lobby/chat" if room == "lobby" else f"/games/{room}/chat"
     return client.post(url, json={"message": "", "stamp_id": stamp}, **kwargs)
 
@@ -62,12 +62,22 @@ def login_operator(client, store):
 @pytest.mark.parametrize("room", ["main", "lobby"])
 def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env, room):
     client, store = stamp_env
-    for stamp in app_module.PUBLIC_CHAT_STAMP_IDS:
+    free_stamps = {"greeting", "thanks", "thinking", "nice", "sorry", "surprised"}
+    paid_stamps = {"happy", "leave_it", "got_me", "goita_fun"}
+    assert app_module.PUBLIC_CHAT_STAMP_IDS == free_stamps
+    for stamp in free_stamps:
         assert send(client, stamp, room).status_code == 200
-    assert send(client, room=room).status_code == 401
+    for stamp in paid_stamps:
+        assert send(client, stamp, room).status_code == 401
     client.cookies.set(MEMBER_COOKIE, "forged-session")
     assert send(client, room=room).status_code == 401
     login_paid(client, store)
+    store.update("tester", enabled=True, paid_enabled=False, paid_until=None)
+    for stamp in free_stamps:
+        assert send(client, stamp, room).status_code == 200
+    for stamp in paid_stamps:
+        assert send(client, stamp, room).status_code == 403
+    store.update("tester", enabled=True, paid_enabled=True, paid_until=None)
     for stamp in set(app_module.CHAT_STAMPS) - app_module.REWARD_CHAT_STAMP_IDS:
         response = send(client, stamp, room)
         assert response.status_code == 200
@@ -100,7 +110,7 @@ def test_private_and_debug_stamps_remain_available_without_membership(stamp_env)
     client, _ = stamp_env
     for room in (app_module.PRIVATE_A_GID, app_module.DEBUG_GID):
         assert send(client, room=room).status_code == 200
-    assert client.post("/lobby/chat", json={"message": "", "stamp_id": "sorry"}).status_code == 401
+    assert client.post("/lobby/chat", json={"message": "", "stamp_id": "happy"}).status_code == 401
 
 
 def test_weekly_champion_stamp_requires_a_first_place_award_and_stays_unlocked(stamp_env):

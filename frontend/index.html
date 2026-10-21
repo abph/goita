@@ -7500,6 +7500,12 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const royalWait = String(detail || "").match(/^pass_full_receive_cover_public_route_safe_(\d+)_target_(\d+)$/);
+    if(royalWait) {
+        if(language === "en") return `Keep the guaranteed ${royalWait[1]}-point finish and pass, preserving the royal for a possible ${royalWait[2]}-point finish. Every possible next attack was checked using public information.`;
+        if(language === "zh") return `保留确定获得${royalWait[1]}分的路线并跳过，留下王或玉争取${royalWait[2]}分。已根据公开信息检查下一次所有可能的进攻。`;
+        return `${royalWait[1]}点の上がりを確保したままパスし、王か玉を残して${royalWait[2]}点を狙う。次に来得る全種類の攻めを公開情報で確認。`;
+    }
     const shiPackage = String(detail || "").match(/^shi_package_final_attack_enemy_map_(\d+)_expected_(\d+)_distribution_A(\d+)_B(\d+)_C(\d+)_D(\d+)$/);
     if(shiPackage) {
         const expected = (Number(shiPackage[2]) / 100).toFixed(2);
@@ -9366,7 +9372,7 @@ const CHAT_STAMP_DEFINITIONS = Object.freeze([
   { id: "goita_fun", label: "ごいたのしい！", emoji: "王" },
   { id: "weekly_champion", label: "週間王者！", pickerLabel: "週間王者", emoji: "王", asset: "king", rewardOnly: true },
 ]);
-const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice"]);
+const PUBLIC_CHAT_STAMP_IDS = new Set(["greeting", "thanks", "thinking", "nice", "sorry", "surprised"]);
 const CHAT_STAMP_ASSET_VERSION = "20260915a";
 let desktopRoomChatHeightObserver = null;
 let desktopRoomLogHeightObserver = null;

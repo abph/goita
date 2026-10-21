@@ -56,6 +56,105 @@ class RuleBasedAgent(CurrentRuleBasedAgent):
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
+    def _full_receive_cover_royal_wait_pass_action(
+        self, state, player: str, actions: List[Action]
+    ) -> Optional[Action]:
+        """Keep a proven score while waiting for a better natural receive.
+
+        Only our hand, public piece counts and visible hand sizes are used.
+        With four cards and no two-card enemy, every player can spend at most
+        one further pair before we next act. Cover every possible returned
+        piece, then prove the follow-up against the conservative public pool.
+        Unknown or losing branches cannot replace the established finish.
+        """
+        established = super()._full_receive_cover_royal_wait_pass_action(
+            state, player, actions
+        )
+        if established is not None:
+            return established
+
+        tracker = self._track.get(id(state))
+        hand = tuple(sorted(state.hands[player]))
+        pass_action = next((action for action in actions if action[0] == "pass"), None)
+        if (
+            tracker is None
+            or state.phase != "receive"
+            or state.attacker is None
+            or self._same_team(state.attacker, player)
+            or len(hand) != 4
+            or int(tracker.get("my_attack_count", 0)) != 2
+            or not any(piece in ("8", "9") for piece in hand)
+            or pass_action is None
+        ):
+            return None
+
+        enemy_sizes = [len(state.hands[seat]) for seat in "ABCD"
+                       if not self._same_team(seat, player)]
+        if min(enemy_sizes) <= 2:
+            return None
+        pool = self._public_unknown_piece_pool(state, player, tracker)
+        if pool is None or not any(
+            piece not in ("8", "9")
+            and not self._forced_win_external_receivers(pool, piece)
+            for piece in hand
+        ):
+            return None
+
+        proven_receives = []
+        for action in actions:
+            if action[0] != "receive":
+                continue
+            result = self._forced_win_result_after_receive_action(state, player, action)
+            if result.status == ForcedWinStatus.PROVEN and result.minimum_score is not None:
+                proven_receives.append((result, action))
+        if not proven_receives:
+            return None
+        baseline, receive_action = max(
+            proven_receives, key=lambda item: self._forced_win_preference_key(item[0])
+        )
+        floor, _expected, ceiling = self._forced_win_preference_key(baseline)
+
+        branches = []
+        memo = {}
+        for piece, count in sorted(pool.items()):
+            if count <= 0:
+                continue
+            after_attack = pool.copy()
+            after_attack[piece] -= 1
+            result = self._forced_win_resolve_external_return(
+                hand, after_attack, returned_attack=piece,
+                king_used=int(getattr(state, "king_block_used", 0)) > 0,
+                had_both_kings=bool(state.had_both_kings.get(player, False)),
+                depth=min(12, int(getattr(self, "EXACT_FORCED_WIN_MAX_DEPTH", 18))),
+                external_cards_used=0,
+                minimum_enemy_hand=min(enemy_sizes) - 2,
+                memo=memo,
+            )
+            if (
+                result.status != ForcedWinStatus.PROVEN
+                or result.minimum_score is None
+                or float(result.minimum_score) < floor
+            ):
+                return None
+            branches.append({"incoming": piece, "minimum_score": float(result.minimum_score)})
+        if not branches or max(branch["minimum_score"] for branch in branches) <= ceiling:
+            return None
+
+        target = max(branch["minimum_score"] for branch in branches)
+        tracker["last_royal_wait_comparison"] = {
+            "source": "public_information", "selected": "pass",
+            "receive_action": receive_action, "receive_minimum_score": floor,
+            "wait_minimum_score": min(branch["minimum_score"] for branch in branches),
+            "wait_target_score": target, "branches": branches,
+        }
+        # The existing prefix protects a publicly proven pass from later
+        # sampled search and neural tie-breaking, as for the original wait.
+        self._set_decision_reason("score_fallback")
+        self._set_score_fallback_detail(
+            f"pass_full_receive_cover_public_route_safe_{int(floor)}_target_{int(target)}"
+        )
+        return pass_action
+
     def _initial_upside_forced_win_plan(
         self,
         state,

@@ -10865,7 +10865,7 @@ async def set_player_name(game_id: str, req: NameRequest):
     }
 
 
-PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice"})
+PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice", "sorry", "surprised"})
 REWARD_CHAT_STAMP_IDS = frozenset({"weekly_champion"})
 
 

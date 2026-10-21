@@ -18,7 +18,7 @@ function element() {
   };
 }
 
-async function check(member, gid, roomCount, lobbyCount = 4) {
+async function check(member, gid, roomCount, lobbyCount = 6) {
   const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element(), memberKifuParking: element(), researchKifuPanel: element(), researchKifuAutoSave: element() };
   const context = vm.createContext({
     document: {
@@ -48,19 +48,19 @@ async function check(member, gid, roomCount, lobbyCount = 4) {
 }
 
 (async () => {
-  await check(null, "main", 4);
+  await check(null, "main", 6);
   const paid = { paid_active: true, must_change_password: false, paid_until: null };
   await check(paid, "main", 10, 10);
-  await check({ ...paid, must_change_password: true }, "main", 4);
-  await check({ ...paid, paid_active: false }, "main", 4);
-  await check({ ...paid, paid_until: "2000-01-01" }, "main", 4);
+  await check({ ...paid, must_change_password: true }, "main", 6);
+  await check({ ...paid, paid_active: false }, "main", 6);
+  await check({ ...paid, paid_until: "2000-01-01" }, "main", 6);
   await check({ paid_active: false, is_operator: true, must_change_password: false }, "main", 11, 11);
   await check(null, "private", 10);
   await check(null, "debug", 10);
   const context = await check(paid, "main", 10, 10);
   context.fetch = async () => ({ ok: true, json: async () => ({ member: null }) });
   await context.goitaMembers.refresh();
-  assert.equal(context.document.getElementById("chatStampPicker").children.length, 4);
-  assert.equal(context.document.getElementById("lobbyChatStampPicker").children.length, 4);
+  assert.equal(context.document.getElementById("chatStampPicker").children.length, 6);
+  assert.equal(context.document.getElementById("lobbyChatStampPicker").children.length, 6);
   console.log("Member stamp UI: 9 scenarios passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
