@@ -12,6 +12,7 @@
     "通常再生": "Standard playback",
     "対局時の間隔で再生": "Replay recorded intervals",
     "この棋譜には時間情報がありません。": "This game record has no timing information.",
+    "0.5倍速": "0.5× speed",
     "1倍速": "1× speed",
     "2倍速": "2× speed",
     "4倍速": "4× speed",

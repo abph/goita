@@ -3949,20 +3949,25 @@
     .research-kifu-pass-overlay {
       position: relative;
       z-index: 7;
-      display: grid;
-      place-items: center;
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      align-items: center;
+      justify-content: center;
       pointer-events: none;
     }
     .research-kifu-pass-badge {
       display: inline-block;
-      padding: 2px 4px;
+      flex: 0 0 auto;
+      padding: 3px 6px;
       border: 1px solid rgba(90, 80, 65, 0.45);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.88);
+      border-radius: 2px;
+      background: #fff;
       color: #51483b;
-      font-size: clamp(11px, 3cqw, 15px);
+      font-size: clamp(16px, 5cqw, 26px);
       font-weight: 900;
-      line-height: 1.3;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
       white-space: nowrap;
     }
     .research-kifu-piece {
@@ -6747,7 +6752,7 @@
               <option value="recorded">対局時の間隔で再生</option>
             </select>
             <select id="researchKifuReplaySpeed" aria-label="再生速度">
-              <option value="1">1倍速</option><option value="2">2倍速</option><option value="4">4倍速</option>
+              <option value="0.5">0.5倍速</option><option value="1" selected>1倍速</option><option value="2">2倍速</option><option value="4">4倍速</option>
             </select>
             <button id="researchKifuReplayPause" type="button" onclick="pauseResearchKifuReplay()" disabled>一時停止</button>
             <button id="researchKifuReplayNext" type="button" onclick="advanceResearchKifuReplay()" disabled>次の手へ</button>
@@ -12814,27 +12819,20 @@ function createResearchKifuPiece(piece, seat, options = {}) {
 }
 
 function createResearchKifuPassMarker(seat) {
-    const fragment = document.createDocumentFragment();
+    const marker = document.createElement("span");
+    marker.className = "research-kifu-pass-overlay";
     const positions = RESEARCH_KIFU_SLOTS[seat].attack.slice(1, 3);
-    const text = Array.from(uiText("パス"));
-    const midpoint = Math.ceil(text.length / 2);
-    const parts = [text.slice(0, midpoint).join(""), text.slice(midpoint).join("")];
-    positions.forEach(([column, row], index) => {
-        const marker = document.createElement("span");
-        marker.className = "research-kifu-pass-overlay";
-        marker.style.gridColumn = String(column);
-        marker.style.gridRow = String(row);
-        marker.dataset.seat = seat;
-        if (index === 0) marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
-        else marker.setAttribute("aria-hidden", "true");
-        const badge = document.createElement("span");
-        badge.className = `research-kifu-pass-badge seat-${seat}`;
-        badge.setAttribute("data-i18n-ignore", "");
-        badge.textContent = parts[index];
-        marker.appendChild(badge);
-        fragment.appendChild(marker);
-    });
-    return fragment;
+    const columns = positions.map(position => position[0]);
+    const rows = positions.map(position => position[1]);
+    marker.style.gridColumn = `${Math.min(...columns)} / ${Math.max(...columns) + 1}`;
+    marker.style.gridRow = `${Math.min(...rows)} / ${Math.max(...rows) + 1}`;
+    marker.dataset.seat = seat;
+    marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
+    const badge = document.createElement("span");
+    badge.className = `research-kifu-pass-badge seat-${seat}`;
+    badge.textContent = uiText("パス");
+    marker.appendChild(badge);
+    return marker;
 }
 
 function renderResearchKifuBoard(payload, options = {}) {
@@ -13139,7 +13137,7 @@ async function toggleResearchKifuReplay() {
     const token = ++researchKifuReplayToken;
     const recorded = document.getElementById("researchKifuReplayMode")?.value === "recorded";
     const speedValue = Number(document.getElementById("researchKifuReplaySpeed")?.value || 1);
-    const speed = [1, 2, 4].includes(speedValue) ? speedValue : 1;
+    const speed = [0.5, 1, 2, 4].includes(speedValue) ? speedValue : 1;
     researchKifuReplayRunning = true;
     researchKifuReplayPaused = false;
     researchKifuReplayAdvance = false;
