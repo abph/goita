@@ -49,6 +49,15 @@ const payload = {moves:[['0','し','銀'],['1','パス',''],['2','銀',''],['2',
 (async () => {
   const h = harness(payload);
   assert.deepEqual(h.frames().map(f=>f.recordedWait), [2.3,0,30,45,1]);
+  assert.deepEqual(h.frames()[2].latestAction, {seat:'B',kind:'pass',target:null});
+  for (let seat=0; seat<4; seat++) {
+    const rows=[[String(seat),'し','銀'],[String(seat),'馬','金'],[String(seat),'パス',''],[String((seat+1)%4),'パス','']];
+    const frames=h.context.researchKifuReplayFrames({moves:rows});
+    assert.deepEqual(JSON.parse(JSON.stringify(frames[4].latestAction)),
+      {seat:'ABCD'[seat],kind:'pass',target:{kind:'attack',index:1}}, 'pass overlays that seat\'s most recently placed piece');
+    assert.equal(frames[5].latestAction.seat,'ABCD'[(seat+1)%4], 'consecutive passes replace the previous pass marker');
+    assert.equal(frames[5].latestAction.target,null);
+  }
   assert.match(h.context.researchKifuDownloadText({payload}), /move_times: \[2.3,30,45,1\]/);
   assert.match(h.context.researchKifuDownloadText({payload}), /"1","パス",""/);
   const run = h.context.toggleResearchKifuReplay();
