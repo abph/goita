@@ -14,11 +14,18 @@ cases:
       - それ以外は一度パスする
     forbidden:
       - 後ろの味方が香を持つ可能性だけで先に受ける
+    experimental_ai2_continuation:
+      - 香を受けた後の攻め1・2・3と最後の上がりを、伏せ駒も消費して比較する
+      - 王か玉を使わせる筋、公開情報から通る攻め、相方が示した攻め筋への引き継ぎを評価する
+      - 途中で受けられた場合は、公開された敵の攻めを受け直す駒も消費して計画を組み直す
+      - 全員パスを仮定した攻め順は確定上がりとして扱わず、見通しが弱ければ探索の受け評価を割り引く
+      - 確定上がりを優先し、現在の手駒と公開情報が変わるたびに再評価する
     reason: 香は連打とだましの両方があり、味方の反応を見る価値が高い
     regression:
       state: covered
       tests:
         - tests/test_receive_strategy_module.py
+        - tests/test_kyosha_three_attack_plan.py
 
   - id: KYO-002
     status: confirmed

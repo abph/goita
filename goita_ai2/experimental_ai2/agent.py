@@ -20,13 +20,14 @@ from goita_ai2.current_ai.forced_win_planner import (
     ForcedWinWinner,
 )
 from goita_ai2.neural_policy import NeuralPolicyModel, live_state_payload
+from goita_ai2.experimental_ai2.kyosha_continuation import KyoshaContinuationMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(CurrentRuleBasedAgent):
+class RuleBasedAgent(KyoshaContinuationMixin, CurrentRuleBasedAgent):
     """Keep the current AI decision unless its own scores show a close tie."""
 
     _shared_neural_model: Optional[NeuralPolicyModel] = None

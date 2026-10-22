@@ -7506,6 +7506,13 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return `保留确定获得${royalWait[1]}分的路线并跳过，留下王或玉争取${royalWait[2]}分。已根据公开信息检查下一次所有可能的进攻。`;
         return `${royalWait[1]}点の上がりを確保したままパスし、王か玉を残して${royalWait[2]}点を狙う。次に来得る全種類の攻めを公開情報で確認。`;
     }
+    const kyoshaPlan = String(detail || "").match(/^pass_kyosha_three_attack_plan_([1-9]+)_penalty_(\d+)$/);
+    if(kyoshaPlan) {
+        const attacks = [...kyoshaPlan[1]].map(piece => gameLogCandidatePieceLabel(piece, language)).join("→");
+        if(language === "en") return `Pass the lance after reviewing ${attacks}. The continuation and recovery after interception are too weak to justify receiving (uncertainty adjustment ${kyoshaPlan[2]}). This outline is conditional.`;
+        if(language === "zh") return `评估${attacks}的后续路线后跳过香。连续进攻及被接住后重新接牌的前景不足以支持接香（不确定性调整${kyoshaPlan[2]}）。该路线以条件成立为前提。`;
+        return `香を受けた後の${attacks}を検討したが、攻めの継続・受けられた後の立て直しの見通しが弱いためパス（不確実性の補正${kyoshaPlan[2]}）。攻め順は条件付きの見通し。`;
+    }
     const shiPackage = String(detail || "").match(/^shi_package_final_attack_enemy_map_(\d+)_expected_(\d+)_distribution_A(\d+)_B(\d+)_C(\d+)_D(\d+)$/);
     if(shiPackage) {
         const expected = (Number(shiPackage[2]) / 100).toFixed(2);
