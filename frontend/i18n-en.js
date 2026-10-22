@@ -5,6 +5,17 @@
  */
 (() => {
   const exact = Object.freeze({
+    "再生方法": "Playback mode",
+    "再生速度": "Playback speed",
+    "通常再生": "Standard playback",
+    "対局時の間隔で再生": "Replay recorded intervals",
+    "この棋譜には時間情報がありません。": "This game record has no timing information.",
+    "1倍速": "1× speed",
+    "2倍速": "2× speed",
+    "4倍速": "4× speed",
+    "一時停止": "Pause",
+    "再開": "Resume",
+    "次の手へ": "Next move",
     "ランキングへの加算は、元の対局より良ければ＋10点、同じなら0点、悪ければ−10点です。": "Ranking points: +10 for a better result than the original game, 0 for the same result, and −10 for a worse result.",
     "ランキングへの加算": "Ranking Points",
     "同じ棋譜に別の方法で挑戦済みのため、ランキングには加算しません。": "This game was already completed through the other mode, so this attempt does not add ranking points.",

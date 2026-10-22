@@ -3849,6 +3849,9 @@
       border-color: #a94132;
       color: #9a2c20;
     }
+    .research-kifu-replay-options { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
+    .research-kifu-replay-options select { width:auto; max-width:100%; padding:5px; }
+    .research-kifu-replay-options button { margin:0; padding:5px 8px; }
     .shared-kifu-stage {
       display: none;
       position: relative;
@@ -6701,6 +6704,17 @@
             <button id="researchKifuShareButton" type="button" onclick="shareSelectedResearchKifu()" hidden>棋譜をみんなに見せる</button>
             <button id="researchKifuApplyButton" type="button" onclick="applySelectedResearchKifu()">この配牌で対局</button>
           </div>
+          <div class="research-kifu-replay-options">
+            <select id="researchKifuReplayMode" aria-label="再生方法">
+              <option value="normal">通常再生</option>
+              <option value="recorded">対局時の間隔で再生</option>
+            </select>
+            <select id="researchKifuReplaySpeed" aria-label="再生速度">
+              <option value="1">1倍速</option><option value="2">2倍速</option><option value="4">4倍速</option>
+            </select>
+            <button id="researchKifuReplayPause" type="button" onclick="pauseResearchKifuReplay()" disabled>一時停止</button>
+            <button id="researchKifuReplayNext" type="button" onclick="advanceResearchKifuReplay()" disabled>次の手へ</button>
+          </div>
           <div id="researchKifuDetailStatus" class="settings-status" aria-live="polite"></div>
         </div>
       </div>
@@ -8577,6 +8591,8 @@ let researchKifuSelectionMode = false;
 let selectedResearchKifuIds = new Set();
 let researchKifuReplayToken = 0;
 let researchKifuReplayRunning = false;
+let researchKifuReplayPaused = false;
+let researchKifuReplayAdvance = false;
 let sharedKifu = null;
 let dismissedSharedKifuToken = "";
 let sharedKifuCanStop = false;
@@ -12875,13 +12891,14 @@ function researchKifuReplayFrames(payload) {
         : (Array.isArray(payload.game) ? payload.game : []);
     const completedRows = [];
     const frames = [];
+    const moveTimes = researchKifuMoveTimes(payload);
     let lastAttackSeat = null;
     const counts = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
         seat,
         {receive: 0, attack: 0},
     ]));
 
-    sourceRows.forEach(sourceRow => {
+    sourceRows.forEach((sourceRow, sourceIndex) => {
         if (!Array.isArray(sourceRow) || sourceRow.length < 3) return;
         const row = [String(sourceRow[0]), String(sourceRow[1] || ""), String(sourceRow[2] || "")];
         const seat = RESEARCH_KIFU_SEATS[Number(row[0])];
@@ -12896,6 +12913,7 @@ function researchKifuReplayFrames(payload) {
                 latestAction: null,
                 label: researchKifuMoveLabel(row),
                 delay: 520,
+                recordedWait: moveTimes?.[sourceIndex] ?? null,
             });
             return;
         }
@@ -12914,6 +12932,7 @@ function researchKifuReplayFrames(payload) {
                     ? researchKifuFaceDownLabel(seat, receive)
                     : researchKifuMoveLabel([row[0], receive, ""]),
                 delay: 620,
+                recordedWait: moveTimes?.[sourceIndex] ?? null,
             });
         }
 
@@ -12931,6 +12950,7 @@ function researchKifuReplayFrames(payload) {
                 latestAction: {seat, kind: "attack", index: attackIndex},
                 label: researchKifuMoveLabel([row[0], "", attack]),
                 delay: 760,
+                recordedWait: receive && moveTimes?.[sourceIndex] != null ? 0 : (moveTimes?.[sourceIndex] ?? null),
             });
         }
     });
@@ -12952,11 +12972,30 @@ function updateResearchKifuReplayControls(label = "棋譜再生") {
         replayButton.classList.toggle("is-playing", researchKifuReplayRunning);
     }
     if (applyButton) applyButton.disabled = researchKifuReplayRunning;
+    const pause = document.getElementById("researchKifuReplayPause");
+    const next = document.getElementById("researchKifuReplayNext");
+    const mode = document.getElementById("researchKifuReplayMode");
+    const speed = document.getElementById("researchKifuReplaySpeed");
+    const timed = researchKifuMoveTimes(selectedResearchKifu?.payload || {}) !== null;
+    if (pause) {
+        pause.disabled = !researchKifuReplayRunning;
+        pause.textContent = uiText(researchKifuReplayPaused ? "再開" : "一時停止");
+    }
+    if (next) next.disabled = !researchKifuReplayRunning;
+    if (mode) {
+        mode.disabled = researchKifuReplayRunning || !timed;
+        mode.title = timed ? "" : uiText("この棋譜には時間情報がありません。");
+        mode.querySelector('option[value="recorded"]').disabled = !timed;
+        if (!timed) mode.value = "normal";
+    }
+    if (speed) speed.disabled = researchKifuReplayRunning;
 }
 
 function stopResearchKifuReplay({restoreFinal = true, clearStatus = false} = {}) {
     researchKifuReplayToken += 1;
     researchKifuReplayRunning = false;
+    researchKifuReplayPaused = false;
+    researchKifuReplayAdvance = false;
     updateResearchKifuReplayControls("棋譜再生");
     if (restoreFinal && selectedResearchKifu?.payload) {
         renderResearchKifuBoard(selectedResearchKifu.payload);
@@ -12965,6 +13004,33 @@ function stopResearchKifuReplay({restoreFinal = true, clearStatus = false} = {})
         const status = document.getElementById("researchKifuDetailStatus");
         if (status) status.textContent = "";
     }
+}
+
+function pauseResearchKifuReplay() {
+    if (!researchKifuReplayRunning) return;
+    researchKifuReplayPaused = !researchKifuReplayPaused;
+    updateResearchKifuReplayControls("停止");
+}
+
+function advanceResearchKifuReplay() {
+    if (researchKifuReplayRunning) researchKifuReplayAdvance = true;
+}
+
+async function waitResearchKifuReplay(milliseconds, token) {
+    let remaining = milliseconds;
+    let previous = performance.now();
+    while (token === researchKifuReplayToken && researchKifuReplayRunning) {
+        if (researchKifuReplayAdvance) {
+            researchKifuReplayAdvance = false;
+            return true;
+        }
+        const now = performance.now();
+        if (!researchKifuReplayPaused) remaining -= now - previous;
+        previous = now;
+        if (!researchKifuReplayPaused && remaining <= 0) return true;
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return false;
 }
 
 async function toggleResearchKifuReplay() {
@@ -12985,24 +13051,31 @@ async function toggleResearchKifuReplay() {
     }
 
     const token = ++researchKifuReplayToken;
+    const recorded = document.getElementById("researchKifuReplayMode")?.value === "recorded";
+    const speedValue = Number(document.getElementById("researchKifuReplaySpeed")?.value || 1);
+    const speed = [1, 2, 4].includes(speedValue) ? speedValue : 1;
     researchKifuReplayRunning = true;
+    researchKifuReplayPaused = false;
+    researchKifuReplayAdvance = false;
     updateResearchKifuReplayControls("停止");
     renderResearchKifuBoard(payload, {rows: [], finished: false});
     if (status) status.textContent = uiText("棋譜を再生しています。");
-    await new Promise(resolve => setTimeout(resolve, 620));
-
+    let normalWait = 620;
     for (const frame of frames) {
-        if (token !== researchKifuReplayToken || !researchKifuReplayRunning) return;
+        const wait = recorded && frame.recordedWait != null ? frame.recordedWait * 1000 : normalWait;
+        if (!await waitResearchKifuReplay(wait / speed, token)) return;
         renderResearchKifuBoard(payload, {
             rows: frame.rows,
             finished: false,
             latestAction: frame.latestAction,
         });
         if (status) status.textContent = frame.label;
-        await new Promise(resolve => setTimeout(resolve, frame.delay));
+        normalWait = frame.delay;
     }
+    if (!await waitResearchKifuReplay(760 / speed, token)) return;
     if (token !== researchKifuReplayToken || !researchKifuReplayRunning) return;
     researchKifuReplayRunning = false;
+    researchKifuReplayPaused = false;
     renderResearchKifuBoard(payload);
     updateResearchKifuReplayControls("もう一度再生");
     if (status) status.textContent = uiText("再生が終了しました。");
@@ -13262,7 +13335,8 @@ function researchKifuDownloadText(record) {
     const names = payload.player_names || {};
     const hands = payload.hand || {};
     const score = payload.score_after || {};
-    const moves = Array.isArray(payload.game)
+    const moveTimes = researchKifuMoveTimes(payload);
+    const moves = moveTimes ? payload.moves : Array.isArray(payload.game)
         ? payload.game
         : (Array.isArray(payload.moves) ? payload.moves : []);
     const seats = ["A", "B", "C", "D"];
@@ -13279,6 +13353,7 @@ function researchKifuDownloadText(record) {
         `     p3: ${researchKifuYamlValue(hands.p3 || "")}`,
         `   uchidashi: ${Number(payload.uchidashi || 0)}`,
         `   score: [${Number(score.AC || 0)},${Number(score.BD || 0)}]`,
+        ...(moveTimes ? [`   move_times: ${JSON.stringify(moveTimes)}`] : []),
         "   game:",
     );
     moves.forEach(row => {
@@ -13288,6 +13363,14 @@ function researchKifuDownloadText(record) {
         );
     });
     return `${lines.join("\n")}\n`;
+}
+
+function researchKifuMoveTimes(payload) {
+    const times = payload.move_times;
+    if (!Array.isArray(payload.moves) || !Array.isArray(times) || times.length !== payload.moves.length) return null;
+    if (!times.some(value => value != null)) return null;
+    return times.every(value => value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 604800))
+        ? times : null;
 }
 
 function researchKifuDownloadFilename(record) {

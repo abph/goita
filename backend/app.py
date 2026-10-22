@@ -78,7 +78,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
-from backend import vrc_solo_playback, vrc_solo_players
+from backend import vrc_solo_playback, vrc_solo_players, kifu_timing
 from backend.vrc_solo_chat import VrcSoloChat
 from backend.balanced_deal import is_balanced_rank_deal, is_wardna_balanced_deal
 from backend.analytics_store import AnalyticsStore, resolve_analytics_path
@@ -927,6 +927,7 @@ def _apply_deal_mode_to_unstarted_game(game: Dict[str, Any], mode: str) -> None:
     game["board"] = _new_board_snapshot()
     game["log"] = []
     game["kifu_moves"] = []
+    kifu_timing.reset(game)
     game["ai_board_explanations"] = []
     game["last_public_action"] = None
     game["reveal_hands"] = False
@@ -2253,7 +2254,16 @@ def _parse_research_kifu_text(kifu_text: str, *, score_is_before=False) -> Dict[
         f"p{index}": _hand_to_kifu_string(hands[seat])
         for index, seat in enumerate(ALL_SEATS)
     }
+    timing = {}
+    for line in lines[hand_start:game_start]:
+        match = re.fullmatch(r"\s*move_times:\s*(.*?)\s*", line)
+        if match:
+            try:
+                timing["move_times"] = kifu_timing.validate_times(json.loads(match.group(1)), len(raw_moves))
+            except (ValueError, TypeError) as error:
+                raise ValueError("棋譜の時間情報が正しくありません") from error
     return {
+        **timing,
         "version": 1,
         "round_index": 1,
         "dealer": dealer,
@@ -2318,6 +2328,7 @@ def _research_kifu_snapshot(game: Dict[str, Any], state: GoitaState) -> Dict[str
         for seat in ALL_SEATS
     }
     return {
+        **kifu_timing.saved_times(game),
         "version": 1,
         "round_index": int(game.get("round_count", 1)),
         "dealer": dealer,
@@ -2472,6 +2483,7 @@ def _cancel_turn_timeout_task(game_id: str) -> None:
 
 
 def _reset_turn_deadline(game: Dict[str, Any]) -> Tuple[int, Optional[float], Optional[str]]:
+    kifu_timing.begin(game)
     token = int(game.get("turn_timer_token", 0)) + 1
     game["turn_timer_token"] = token
     game["turn_started_at"] = None
@@ -3448,6 +3460,7 @@ def _record_public_action(
     player: str,
     action: Tuple[str, Optional[str], Optional[str]],
 ) -> None:
+    kifu_timing.record(game)
     action_type, _, _ = action
     game["last_public_action"] = {
         "player": player,
@@ -3881,6 +3894,8 @@ def _create_game_obj(
         "init_hands": hands,
         "dealer": dealer,
         "kifu_moves": [],
+        "kifu_move_times": [],
+        "kifu_clock": None,
         "human_seats": {}, 
         "ai_seats": [],
         "player_names": {p: "" for p in ALL_SEATS},
@@ -4005,6 +4020,7 @@ def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
 
 def _set_reset_start_state(game: Dict[str, Any], auto_start: bool) -> None:
     game["is_started"] = bool(auto_start)
+    kifu_timing.begin(game)
     if auto_start:
         game["log"].append(f"Game start. dealer={game.get('dealer', 'A')}")
 
@@ -4668,6 +4684,7 @@ def _create_practice_replay_game(
     replay["board"] = _new_board_snapshot()
     replay["log"] = [f"Practice replay start. dealer={dealer}"]
     replay["kifu_moves"] = []
+    kifu_timing.reset(replay)
     replay["ai_board_explanations"] = []
     replay["last_public_action"] = None
     replay["reveal_hands"] = False
@@ -4725,6 +4742,9 @@ def _create_practice_replay_game(
             )
     if replay["state"].finished:
         raise HTTPException(status_code=409, detail="The selected practice scene is unavailable.")
+    # The reconstructed prefix did not happen now; never invent its timings.
+    kifu_timing.reset(replay)
+    kifu_timing.begin(replay)
     return replay
 
 
@@ -5800,6 +5820,7 @@ def _apply_agent_turn(
     if not acts:
         return {"status": "no_legal_actions"}
 
+    kifu_timing.begin(game)
     agent = agents[player]
     current_ai = _normalize_ai_profile(game.get("ai_profile")) in {
         "current",
@@ -7018,6 +7039,7 @@ def _create_vrc_solo_game(
     game["vrc_last_request"] = None
     game["action_state_nonce"] = secrets.token_hex(24)
     VRC_WEB.configure(game, room_id, session, mode, previous)
+    kifu_timing.begin(game)
     VRC_CHAT.carry(game, previous)
     vrc_solo_playback.start(game)
     GAMES[game_id] = game
@@ -9169,6 +9191,7 @@ async def start_game(game_id: str, requester: str = "W", client_id: str = ""):
     
     game["shared_kifu"] = None
     game["is_started"] = True
+    kifu_timing.begin(game)
     dealer = game.get("dealer", "A")
     game["log"].append(f"Game start. dealer={dealer}")
     if gathering_table:
@@ -11604,7 +11627,10 @@ def get_kifu_yaml(game_id: str, anonymous: bool = True, client_id: str = ""):
         )
     init_hands: Dict[str, List[Any]] = game.get("init_hands", {})
     dealer: str = game.get("dealer", "A")
-    moves: List[List[str]] = _compress_kifu_moves(game.get("kifu_moves", []))
+    timing = kifu_timing.saved_times(game)
+    moves: List[List[str]] = (
+        game.get("kifu_moves", []) if timing else _compress_kifu_moves(game.get("kifu_moves", []))
+    )
     configured_names: Dict[str, str] = game.get("player_names", {})
     
     score = [int(game.get("total_team_score", {}).get("AC", 0)), int(game.get("total_team_score", {}).get("BD", 0))]
@@ -11634,6 +11660,7 @@ def get_kifu_yaml(game_id: str, anonymous: bool = True, client_id: str = ""):
         f'     p3: "{h["p3"]}"',
         f"   uchidashi: {uchidashi}",
         f"   score: [{score[0]},{score[1]}]",
+        *(["   move_times: " + json.dumps(timing["move_times"], ensure_ascii=False)] if timing else []),
         "   game:",
     ]
     for row in moves:
