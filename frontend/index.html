@@ -3984,10 +3984,10 @@
       transform: translateY(3px);
     }
     .research-kifu-piece.team-b span { color: #b62020; }
-    .research-kifu-piece.seat-A { transform: rotate(0deg); }
-    .research-kifu-piece.seat-B { transform: rotate(-90deg); }
-    .research-kifu-piece.seat-C { transform: rotate(180deg); }
-    .research-kifu-piece.seat-D { transform: rotate(90deg); }
+    .research-kifu-piece.seat-A, .research-kifu-pass-badge.seat-A { transform: rotate(0deg); }
+    .research-kifu-piece.seat-B, .research-kifu-pass-badge.seat-B { transform: rotate(-90deg); }
+    .research-kifu-piece.seat-C, .research-kifu-pass-badge.seat-C { transform: rotate(180deg); }
+    .research-kifu-piece.seat-D, .research-kifu-pass-badge.seat-D { transform: rotate(90deg); }
     .research-kifu-piece.is-replay-new {
       --replay-end-opacity: 1;
       animation: research-kifu-piece-arrive 360ms ease-out both;
@@ -12814,20 +12814,27 @@ function createResearchKifuPiece(piece, seat, options = {}) {
 }
 
 function createResearchKifuPassMarker(seat) {
-    const marker = document.createElement("span");
-    marker.className = "research-kifu-pass-overlay";
+    const fragment = document.createDocumentFragment();
     const positions = RESEARCH_KIFU_SLOTS[seat].attack.slice(1, 3);
-    const columns = positions.map(position => position[0]);
-    const rows = positions.map(position => position[1]);
-    marker.style.gridColumn = `${Math.min(...columns)} / ${Math.max(...columns) + 1}`;
-    marker.style.gridRow = `${Math.min(...rows)} / ${Math.max(...rows) + 1}`;
-    marker.dataset.seat = seat;
-    marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
-    const badge = document.createElement("span");
-    badge.className = "research-kifu-pass-badge";
-    badge.textContent = uiText("パス");
-    marker.appendChild(badge);
-    return marker;
+    const text = Array.from(uiText("パス"));
+    const midpoint = Math.ceil(text.length / 2);
+    const parts = [text.slice(0, midpoint).join(""), text.slice(midpoint).join("")];
+    positions.forEach(([column, row], index) => {
+        const marker = document.createElement("span");
+        marker.className = "research-kifu-pass-overlay";
+        marker.style.gridColumn = String(column);
+        marker.style.gridRow = String(row);
+        marker.dataset.seat = seat;
+        if (index === 0) marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
+        else marker.setAttribute("aria-hidden", "true");
+        const badge = document.createElement("span");
+        badge.className = `research-kifu-pass-badge seat-${seat}`;
+        badge.setAttribute("data-i18n-ignore", "");
+        badge.textContent = parts[index];
+        marker.appendChild(badge);
+        fragment.appendChild(marker);
+    });
+    return fragment;
 }
 
 function renderResearchKifuBoard(payload, options = {}) {
