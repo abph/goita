@@ -31,10 +31,17 @@ cases:
     forbidden:
       - しで受けた後に単発の馬・香・金を出す
     reason: 4しを持ち、味方のし攻めに賛成であることを明確に伝える
+    experimental_ai2_later_approval:
+      - 初期3しでも、別の駒で攻めた後なら初回の賛同を比較する
+      - 相方がしを2回続け、さらにしを持つという公開情報に基づく推定がある
+      - まだ賛同を伝えておらず、し受けしの後も受け用のしを1枚以上残せる
+      - 自分主導のし攻めや現在の有力な連続攻め、確定上がりを優先する
+      - 実際にしを受けてしを返したときだけ賛同済みにし、その後の同じ合図は繰り返さない
     regression:
       state: covered
       tests:
         - tests/test_attack_strategy_module.py::test_four_shi_ally_approval_returns_shi_over_middle_pair_plan
+        - tests/test_first_three_shi_approval.py
 
   - id: SHI-003
     status: confirmed
