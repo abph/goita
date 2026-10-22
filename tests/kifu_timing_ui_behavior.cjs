@@ -49,20 +49,20 @@ const payload = {moves:[['0','し','銀'],['1','パス',''],['2','銀',''],['2',
 (async () => {
   const h = harness(payload);
   assert.deepEqual(h.frames().map(f=>f.recordedWait), [2.3,0,30,45,1]);
-  assert.deepEqual(h.frames()[2].latestAction, {seat:'B',kind:'pass',target:null});
+  assert.deepEqual(h.frames()[2].latestAction, {seat:'B',kind:'pass'});
   for (let seat=0; seat<4; seat++) {
     const rows=[[String(seat),'し','銀'],[String(seat),'馬','金'],[String(seat),'パス',''],[String((seat+1)%4),'パス','']];
     const frames=h.context.researchKifuReplayFrames({moves:rows});
     assert.deepEqual(JSON.parse(JSON.stringify(frames[4].latestAction)),
-      {seat:'ABCD'[seat],kind:'pass',target:{kind:'attack',index:1}}, 'pass overlays that seat\'s most recently placed piece');
+      {seat:'ABCD'[seat],kind:'pass'}, 'pass identifies the player independently of their placed pieces');
     assert.equal(frames[5].latestAction.seat,'ABCD'[(seat+1)%4], 'consecutive passes replace the previous pass marker');
-    assert.equal(frames[5].latestAction.target,null);
   }
   assert.match(h.context.researchKifuDownloadText({payload}), /move_times: \[2.3,30,45,1\]/);
   assert.match(h.context.researchKifuDownloadText({payload}), /"1","パス",""/);
   const run = h.context.toggleResearchKifuReplay();
   await h.advance(2250);
   assert.equal(h.board.length,1,'no piece is shown before its recorded action time');
+  assert.equal(h.board[0].options.hideHands,true,'unused hands are hidden from the first replay frame');
   await h.advance(50);
   assert.equal(h.board.length,3,'combined block and attack are simultaneous');
   assert.equal(h.board.at(-1).now,2300);
@@ -82,6 +82,8 @@ const payload = {moves:[['0','し','銀'],['1','パス',''],['2','銀',''],['2',
   assert.equal(h.board.length,5,'the 45-second interval belongs before the receive');
   await h.advance(2000);
   await run;
+  assert.ok(h.board.slice(0,-1).every(frame=>frame.options.hideHands===true),'unused hands stay hidden throughout playback');
+  assert.equal(h.board.at(-1).options,undefined,'normal final board is restored when playback finishes');
   assert.equal(h.running(),false);
   assert.equal(h.nodes.researchKifuReplayPause.disabled,true);
 

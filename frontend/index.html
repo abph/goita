@@ -3947,8 +3947,7 @@
       border: 1px dashed rgba(139, 90, 43, 0.38);
     }
     .research-kifu-pass-overlay {
-      position: absolute;
-      inset: 0;
+      position: relative;
       z-index: 7;
       display: grid;
       place-items: center;
@@ -12814,9 +12813,14 @@ function createResearchKifuPiece(piece, seat, options = {}) {
     return element;
 }
 
-function createResearchKifuPassMarker(seat, inline = false) {
+function createResearchKifuPassMarker(seat) {
     const marker = document.createElement("span");
-    marker.className = inline ? "research-kifu-pass-inline" : "research-kifu-pass-overlay";
+    marker.className = "research-kifu-pass-overlay";
+    const positions = RESEARCH_KIFU_SLOTS[seat].attack.slice(1, 3);
+    const columns = positions.map(position => position[0]);
+    const rows = positions.map(position => position[1]);
+    marker.style.gridColumn = `${Math.min(...columns)} / ${Math.max(...columns) + 1}`;
+    marker.style.gridRow = `${Math.min(...rows)} / ${Math.max(...rows) + 1}`;
     marker.dataset.seat = seat;
     marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
     const badge = document.createElement("span");
@@ -12838,9 +12842,6 @@ function renderResearchKifuBoard(payload, options = {}) {
     const winner = isFinished ? String(payload.winner || "") : "";
     const latestAction = options.latestAction || null;
     const passSeat = !isFinished && latestAction?.kind === "pass" ? latestAction.seat : null;
-    const passTarget = latestAction?.target;
-    const passOnPiece = passSeat && passTarget
-        && finalState.board[passSeat]?.[passTarget.kind]?.[passTarget.index];
 
     RESEARCH_KIFU_SEATS.forEach(seat => {
         ["receive", "attack"].forEach(kind => {
@@ -12848,6 +12849,7 @@ function renderResearchKifuBoard(payload, options = {}) {
                 slotMap.set(`${column},${row}`, {seat, kind, index});
             });
         });
+        if (options.hideHands) return;
         const remaining = [...finalState.remaining[seat]];
         const slots = [
             ...RESEARCH_KIFU_SLOTS[seat].receive.map((position, index) => ({position, kind: "receive", index})),
@@ -12883,9 +12885,6 @@ function renderResearchKifuBoard(payload, options = {}) {
                 const seatText = document.createElement("span");
                 seatText.textContent = labelSeat;
                 heading.appendChild(seatText);
-                if (passSeat === labelSeat && !passOnPiece) {
-                    heading.appendChild(createResearchKifuPassMarker(labelSeat, true));
-                }
                 if (isSelf) {
                     const badge = document.createElement("span");
                     badge.className = "research-kifu-self-badge";
@@ -12938,10 +12937,6 @@ function renderResearchKifuBoard(payload, options = {}) {
                             cell.appendChild(number);
                         }
                     }
-                    if (passSeat === slot.seat && passOnPiece
-                        && passTarget.kind === slot.kind && passTarget.index === slot.index) {
-                        cell.appendChild(createResearchKifuPassMarker(slot.seat));
-                    }
                 } else if (hiddenMap.has(key)) {
                     const hidden = hiddenMap.get(key);
                     cell.appendChild(createResearchKifuPiece(hidden.piece, hidden.seat, {hidden: true}));
@@ -12951,6 +12946,9 @@ function renderResearchKifuBoard(payload, options = {}) {
         }
     }
 
+    if (RESEARCH_KIFU_SEATS.includes(passSeat)) {
+        container.appendChild(createResearchKifuPassMarker(passSeat));
+    }
     const score = document.createElement("div");
     score.className = "research-kifu-center-score";
     const round = document.createElement("strong");
@@ -12973,7 +12971,6 @@ function researchKifuReplayFrames(payload) {
     const completedRows = [];
     const frames = [];
     const moveTimes = researchKifuMoveTimes(payload);
-    const lastPlaced = {};
     let lastAttackSeat = null;
     const counts = Object.fromEntries(RESEARCH_KIFU_SEATS.map(seat => [
         seat,
@@ -12992,7 +12989,7 @@ function researchKifuReplayFrames(payload) {
             completedRows.push(row);
             frames.push({
                 rows: completedRows.map(item => [...item]),
-                latestAction: {seat, kind: "pass", target: lastPlaced[seat] || null},
+                latestAction: {seat, kind: "pass"},
                 label: researchKifuMoveLabel(row),
                 delay: 520,
                 recordedWait: moveTimes?.[sourceIndex] ?? null,
@@ -13007,7 +13004,6 @@ function researchKifuReplayFrames(payload) {
             completedRows.push([row[0], receive, ""]);
             const receiveIndex = counts[seat].receive;
             counts[seat].receive += 1;
-            lastPlaced[seat] = {kind: "receive", index: receiveIndex};
             frames.push({
                 rows: completedRows.map(item => [...item]),
                 latestAction: {seat, kind: "receive", index: receiveIndex},
@@ -13027,7 +13023,6 @@ function researchKifuReplayFrames(payload) {
             }
             const attackIndex = counts[seat].attack;
             counts[seat].attack += 1;
-            lastPlaced[seat] = {kind: "attack", index: attackIndex};
             lastAttackSeat = seat;
             frames.push({
                 rows: completedRows.map(item => [...item]),
@@ -13142,7 +13137,7 @@ async function toggleResearchKifuReplay() {
     researchKifuReplayPaused = false;
     researchKifuReplayAdvance = false;
     updateResearchKifuReplayControls("停止");
-    renderResearchKifuBoard(payload, {rows: [], finished: false});
+    renderResearchKifuBoard(payload, {rows: [], finished: false, hideHands: true});
     if (status) status.textContent = uiText("棋譜を再生しています。");
     let normalWait = 620;
     for (const frame of frames) {
@@ -13151,6 +13146,7 @@ async function toggleResearchKifuReplay() {
         renderResearchKifuBoard(payload, {
             rows: frame.rows,
             finished: false,
+            hideHands: true,
             latestAction: frame.latestAction,
         });
         if (status) status.textContent = frame.label;
