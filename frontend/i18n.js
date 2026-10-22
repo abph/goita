@@ -9,6 +9,8 @@
   const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label"];
 
   const ZH_EXACT = Object.freeze({
+    "幅を広げる": "加宽窗口",
+    "元の幅に戻す": "恢复宽度",
     "再生方法": "播放方式",
     "再生速度": "播放速度",
     "通常再生": "常规播放",

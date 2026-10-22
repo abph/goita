@@ -3400,6 +3400,22 @@
       line-height: 1;
       cursor: pointer;
     }
+    .settings-modal-close.member-page-width-toggle {
+      display: none;
+      right: 54px;
+      font-size: 24px;
+    }
+    @media (min-width: 702px) {
+      .member-page-mode .member-page-width-toggle { display: block; }
+      .member-page-mode .modal-content > h3 { padding-right: 80px; }
+      .member-page-mode .modal-content.member-page-wide {
+        width: min(1200px, calc(100vw - 48px));
+        max-width: none;
+      }
+      .member-page-mode .member-page-wide #researchKifuBoard {
+        --research-cell: min(62px, calc((100vw - 144px) / 8));
+      }
+    }
     @media (max-width: 701px) {
       .settings-modal-content {
         width: calc(100% - 24px);
@@ -6073,6 +6089,7 @@
 
 <div id="lobbySettingsModal" class="modal-overlay" onclick="closeLobbySettings(event)">
   <div class="modal-content lobby-admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="lobbySettingsTitle" onclick="event.stopPropagation()">
+    <button class="settings-modal-close member-page-width-toggle" data-member-page-width type="button" onclick="toggleMemberPageWidth('lobbySettingsModal')" aria-label="幅を広げる" title="幅を広げる" aria-pressed="false">□</button>
     <button class="settings-modal-close" type="button" onclick="closeLobbySettings()" aria-label="トップページ設定を閉じる" title="閉じる">×</button>
     <h3 id="lobbySettingsTitle">⚙️ トップページ設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
@@ -6247,6 +6264,7 @@
 
 <div id="settingsModal" class="modal-overlay">
   <div class="modal-content settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="roomSettingsTitle">
+    <button class="settings-modal-close member-page-width-toggle" data-member-page-width type="button" onclick="toggleMemberPageWidth('settingsModal')" aria-label="幅を広げる" title="幅を広げる" aria-pressed="false">□</button>
     <button class="settings-modal-close" type="button" onclick="closeSettings()" aria-label="設定を閉じる" title="閉じる">×</button>
     <h3 id="roomSettingsTitle">⚙️ 設定</h3>
     <div class="settings-tabs" role="tablist" aria-label="設定の種類">
@@ -10592,9 +10610,28 @@ function openScoreAttackMemberRegistration() {
     window.goitaMembers?.requestRegistration();
 }
 
+function syncMemberPageWidthButton(modalId) {
+    const modal = document.getElementById(modalId);
+    const button = modal?.querySelector("[data-member-page-width]");
+    if (!button) return;
+    const wide = modal.querySelector(".modal-content").classList.contains("member-page-wide");
+    button.textContent = wide ? "❐" : "□";
+    button.title = uiText(wide ? "元の幅に戻す" : "幅を広げる");
+    button.setAttribute("aria-label", button.title);
+    button.setAttribute("aria-pressed", String(wide));
+}
+
+function toggleMemberPageWidth(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal?.classList.contains("member-page-mode") || !window.matchMedia("(min-width: 702px)").matches) return;
+    modal.querySelector(".modal-content").classList.toggle("member-page-wide");
+    syncMemberPageWidthButton(modalId);
+}
+
 function showLobbySettingsTab(tab) {
     const isMember = tab === "member";
     document.getElementById("lobbySettingsModal").classList.toggle("member-page-mode", isMember);
+    syncMemberPageWidthButton("lobbySettingsModal");
     document.getElementById("lobbySettingsTitle").textContent = uiText(isMember ? "マイページ" : "⚙️ トップページ設定");
     document.getElementById("lobbyPersonalSettingsPanel").classList.toggle("active", !isMember);
     document.getElementById("lobbyMemberPanel").classList.toggle("active", isMember);
@@ -11471,6 +11508,7 @@ function showSettingsTab(tabName) {
     if (isMatch && (settingTargetGid !== gid || !isCurrentClientHost())) return;
     const isPersonal = !isMatch && !isManagement && !isMember;
     document.getElementById("settingsModal").classList.toggle("member-page-mode", isMember);
+    syncMemberPageWidthButton("settingsModal");
     document.getElementById("roomSettingsTitle").textContent = uiText(isMember ? "マイページ" : "⚙️ 設定");
     document.getElementById("memberSettingsPanel").classList.toggle("active", isMember);
     if (isMember) window.goitaMembers?.refresh({reloadLibrary: true, root: document.getElementById("memberSettingsPanel")});

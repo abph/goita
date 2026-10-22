@@ -5,6 +5,8 @@
  */
 (() => {
   const exact = Object.freeze({
+    "幅を広げる": "Widen window",
+    "元の幅に戻す": "Restore width",
     "再生方法": "Playback mode",
     "再生速度": "Playback speed",
     "通常再生": "Standard playback",
