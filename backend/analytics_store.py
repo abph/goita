@@ -8,6 +8,7 @@ or raw IP addresses, so gameplay and social relationships cannot enter it.
 from __future__ import annotations
 
 import json
+from collections import Counter
 import re
 import sqlite3
 import threading
@@ -945,4 +946,145 @@ class AnalyticsStore:
             "countries": [dict(row) for row in country_rows],
             "recent_sessions": recent,
             "database_bytes": self.path.stat().st_size if self.path.exists() else 0,
+        }
+
+    def export_usage(
+        self, days: int = 30, *, start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> dict[str, Any]:
+        """Export all selected visits, replacing persistent IDs within this file.
+
+        Include visits started in the period and visits with events in it.
+        Only events inside the JST range are included; duration is clipped to
+        that range. Two bulk reads avoid the recent-session limit and N+1 reads.
+        """
+        since, until, period_start, period_end = analytics_utc_bounds(
+            days=days, start_date=start_date, end_date=end_date,
+        )
+        self._ensure_schema()
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN")
+            rows = connection.execute("""
+                SELECT s.session_id, s.analytics_id, s.started_at, s.last_seen,
+                       s.ended_at, s.device, s.language, v.first_seen
+                FROM analytics_sessions s
+                LEFT JOIN analytics_visitors v ON v.analytics_id = s.analytics_id
+                WHERE (s.started_at >= ? AND s.started_at < ?)
+                   OR s.session_id IN (
+                       SELECT session_id FROM analytics_events
+                       WHERE occurred_at >= ? AND occurred_at < ?
+                   )
+                ORDER BY s.started_at, s.session_id
+            """, (since, until, since, until)).fetchall()
+            users: dict[str, dict[str, Any]] = {}
+            sessions: dict[str, dict[str, Any]] = {}
+            start = datetime.fromisoformat(since)
+            end = datetime.fromisoformat(until)
+            for row in rows:
+                raw_user = str(row["analytics_id"])
+                if raw_user not in users:
+                    users[raw_user] = {
+                        "visitor_number": f"visitor_{len(users) + 1:04d}",
+                        "new_in_period": since <= str(row["first_seen"] or "") < until,
+                        "sessions": 0, "sessions_started_in_period": 0,
+                        "duration_seconds_in_period": 0.0,
+                        "event_counts": Counter(), "room_entries": Counter(),
+                        "devices": set(), "languages": set(),
+                    }
+                user = users[raw_user]
+                duration = max(0.0, (
+                    min(datetime.fromisoformat(row["last_seen"]), end)
+                    - max(datetime.fromisoformat(row["started_at"]), start)
+                ).total_seconds())
+                session = {
+                    "session_number": f"session_{len(sessions) + 1:06d}",
+                    "visitor_number": user["visitor_number"],
+                    "started_at": str(row["started_at"]),
+                    "last_seen": str(row["last_seen"]),
+                    "ended_at": str(row["ended_at"] or ""),
+                    "started_in_period": since <= row["started_at"] < until,
+                    "duration_seconds_in_period": round(duration, 1),
+                    "device": row["device"] if row["device"] in ALLOWED_DEVICES else "unknown",
+                    "language": row["language"] if row["language"] in ALLOWED_LANGUAGES else "other",
+                    "events": [],
+                }
+                sessions[str(row["session_id"])] = session
+                user["sessions"] += 1
+                user["sessions_started_in_period"] += int(session["started_in_period"])
+                user["duration_seconds_in_period"] += duration
+                user["devices"].add(session["device"])
+                user["languages"].add(session["language"])
+            event_counts: Counter = Counter()
+            room_entries: Counter = Counter()
+            host_starts = joined_starts = pair_games = 0
+            for row in connection.execute("""
+                SELECT session_id, occurred_at, event_name, room_type, properties_json
+                FROM analytics_events
+                WHERE occurred_at >= ? AND occurred_at < ?
+                ORDER BY occurred_at, id
+            """, (since, until)):
+                session = sessions.get(str(row["session_id"]))
+                if session is None or row["event_name"] not in ALLOWED_EVENTS:
+                    continue
+                try:
+                    properties = _safe_properties(json.loads(row["properties_json"]))
+                except (TypeError, json.JSONDecodeError):
+                    properties = {}
+                event = {"occurred_at": str(row["occurred_at"]),
+                         "event": str(row["event_name"]),
+                         "room_type": row["room_type"] if row["room_type"] in ALLOWED_ROOM_TYPES else "none",
+                         "properties": properties}
+                session["events"].append(event)
+                event_counts[event["event"]] += 1
+                if event["event"] == "room_enter":
+                    room_entries[event["room_type"]] += 1
+                if event["event"] == "game_started":
+                    host_starts += int(properties.get("role") == "host")
+                    joined_starts += int(properties.get("role") == "joined")
+                    pair_games += int(properties.get("pair_practice") is True)
+
+        numbered_users = {user["visitor_number"]: user for user in users.values()}
+        for session in sessions.values():
+            user = numbered_users[session["visitor_number"]]
+            for event in session["events"]:
+                user["event_counts"][event["event"]] += 1
+                if event["event"] == "room_enter":
+                    user["room_entries"][event["room_type"]] += 1
+        for user in users.values():
+            user["duration_seconds_in_period"] = round(user["duration_seconds_in_period"], 1)
+            user["devices"] = sorted(user["devices"])
+            user["languages"] = sorted(user["languages"])
+            user["event_counts"] = dict(user["event_counts"])
+            user["room_entries"] = dict(user["room_entries"])
+            user["game_started"] = user["event_counts"].get("game_started", 0)
+            user["game_completed"] = user["event_counts"].get("game_completed", 0)
+        new_users = sum(user["new_in_period"] for user in users.values())
+        count = len(sessions)
+        started = event_counts.get("game_started", 0)
+        completed = event_counts.get("game_completed", 0)
+        return {
+            "format": "sorou-goita-usage", "schema_version": 1,
+            "exported_at": _utc_now_text(), "timezone": "Asia/Tokyo",
+            "period_start": period_start.isoformat(), "period_end": period_end.isoformat(),
+            "notes": [
+                "同じ分析用IDには、このファイル内で同じ匿名利用者番号を付与しています。別の出力との番号の一致は保証しません。",
+                "利用者番号はブラウザー単位です。人物や会員、表示名を識別するものではありません。",
+                "期間は日本時間、日時はUTC表記です。期間内に開始または操作のあった訪問を含み、操作履歴と滞在時間は期間内に限定します。",
+                "期間をまたぐ訪問を含むため、sessions_started_in_periodが管理画面の訪問数に対応します。",
+                "部屋は種別までで、AIとごいたAなど個別の部屋は識別できません。",
+            ],
+            "summary": {
+                "visitors": len(users), "new_visitors": new_users,
+                "returning_visitors": len(users) - new_users,
+                "new_visitor_rate": round(new_users / len(users) * 100, 1) if users else 0.0,
+                "sessions": count,
+                "sessions_started_in_period": sum(s["started_in_period"] for s in sessions.values()),
+                "average_duration_seconds": round(sum(s["duration_seconds_in_period"] for s in sessions.values()) / count, 1) if count else 0.0,
+                "game_started": started, "game_completed": completed,
+                "completion_rate": round(completed / started * 100, 1) if started else 0.0,
+                "host_game_starts": host_starts, "joined_game_starts": joined_starts,
+                "pair_practice_games": pair_games,
+                "event_counts": dict(event_counts), "room_entries": dict(room_entries),
+            },
+            "visitors": list(users.values()), "sessions": list(sessions.values()),
         }

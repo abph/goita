@@ -714,6 +714,7 @@
             <input id="analyticsEndDate" type="date" aria-label="集計終了日">
           </div>
           <button id="analyticsRefresh" class="button" type="button">更新</button>
+          <button id="analyticsExport" class="button" type="button">利用状況を出力</button>
         </div>
         <div id="analyticsStatus" class="status" aria-live="polite"></div>
         <div id="metricGrid" class="metric-grid"></div>
@@ -2503,22 +2504,56 @@
       }).join("") || '<p class="muted">まだセッション記録がありません。</p>';
     }
 
+    function analyticsRangeParams() {
+      const days = document.getElementById("analyticsDays").value;
+      const params = new URLSearchParams();
+      if (days === "custom") {
+        const startDate = document.getElementById("analyticsStartDate").value;
+        const endDate = document.getElementById("analyticsEndDate").value;
+        if (!startDate || !endDate) throw new Error("開始日と終了日を指定してください。");
+        if (startDate > endDate) throw new Error("終了日は開始日以降にしてください。");
+        params.set("start_date", startDate);
+        params.set("end_date", endDate);
+      } else {
+        params.set("days", days);
+      }
+      return params;
+    }
+
+    async function exportAnalytics() {
+      const button = document.getElementById("analyticsExport");
+      const status = document.getElementById("analyticsStatus");
+      button.disabled = true;
+      status.textContent = "利用状況を出力しています...";
+      let url;
+      try {
+        const params = analyticsRangeParams();
+        const data = await api(`/admin/api/analytics/export?${params.toString()}`);
+        const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`],
+          {type: "application/json;charset=utf-8"});
+        url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `goita-usage-${data.period_start}-${data.period_end}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        status.textContent = `${data.period_start} 〜 ${data.period_end}：${data.visitors.length}件の匿名利用者・${data.sessions.length}件の訪問を出力しました。`;
+      } catch (error) {
+        if (error.status === 401) showLogin();
+        status.textContent = error.message;
+      } finally {
+        if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+        button.disabled = false;
+      }
+    }
+
     async function loadAnalytics() {
       const status = document.getElementById("analyticsStatus");
       status.textContent = "読み込んでいます...";
       try {
-        const days = document.getElementById("analyticsDays").value;
-        const params = new URLSearchParams({recent_limit: "100"});
-        if (days === "custom") {
-          const startDate = document.getElementById("analyticsStartDate").value;
-          const endDate = document.getElementById("analyticsEndDate").value;
-          if (!startDate || !endDate) throw new Error("開始日と終了日を指定してください。");
-          if (startDate > endDate) throw new Error("終了日は開始日以降にしてください。");
-          params.set("start_date", startDate);
-          params.set("end_date", endDate);
-        } else {
-          params.set("days", days);
-        }
+        const params = analyticsRangeParams();
+        params.set("recent_limit", "100");
         const data = await api(`/admin/api/analytics?${params.toString()}`);
         renderAnalytics(data);
         status.textContent = `${data.period_start} 〜 ${data.period_end} の集計`;
@@ -2763,6 +2798,7 @@
       loadAnalytics();
       loadMemoryStatus();
     });
+    document.getElementById("analyticsExport").addEventListener("click", exportAnalytics);
     document.getElementById("memoryRefresh").addEventListener("click", () => loadMemoryStatus());
     document.getElementById("memoryCleanup").addEventListener("click", cleanupUnusedMemory);
     document.getElementById("serverRestart").addEventListener("click", () => {

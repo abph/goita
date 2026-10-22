@@ -8946,6 +8946,27 @@ def admin_analytics(
     return payload
 
 
+@app.get("/admin/api/analytics/export")
+def admin_analytics_export(
+    request: Request, days: int = 30,
+    start_date: Optional[date] = None, end_date: Optional[date] = None,
+):
+    _require_site_admin(request)
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(400, "開始日と終了日を両方指定してください")
+    try:
+        payload = ANALYTICS_STORE.export_usage(
+            days=days, start_date=start_date, end_date=end_date,
+        )
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    filename = f"goita-usage-{payload['period_start']}-{payload['period_end']}.json"
+    return JSONResponse(payload, headers={
+        "Cache-Control": "no-store",
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    })
+
+
 @app.get("/admin/api/survey")
 def admin_survey(request: Request, campaign_id: str = "", limit: int = 100, offset: int = 0):
     _require_site_admin(request)
