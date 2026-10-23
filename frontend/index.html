@@ -4020,6 +4020,12 @@
       filter: none;
     }
     .research-kifu-piece.is-hidden { background: #f6f2e8; }
+    .research-kifu-piece.is-concealed {
+      background: #dfbf83;
+      opacity: 1;
+      filter: none;
+    }
+    .research-kifu-piece.is-replay-new.is-concealed { --replay-end-opacity: 1; }
     .research-kifu-piece.is-final-attack {
       background: linear-gradient(135deg, #f7e1a0, #f1c40f);
       outline: 3px solid #b74a18;
@@ -12813,7 +12819,12 @@ function createResearchKifuPiece(piece, seat, options = {}) {
     if (options.finalAttack) element.classList.add("is-final-attack");
     if (options.replayNew) element.classList.add("is-replay-new");
     const value = document.createElement("span");
-    value.textContent = piece;
+    if (options.faceDown && options.concealFaceDown) {
+        element.classList.add("is-concealed");
+        element.setAttribute("aria-label", uiText("伏せ駒"));
+    } else {
+        value.textContent = piece;
+    }
     element.appendChild(value);
     return element;
 }
@@ -12930,6 +12941,7 @@ function renderResearchKifuBoard(payload, options = {}) {
                         && latestAction.index === slot.index;
                     cell.appendChild(createResearchKifuPiece(piece, slot.seat, {
                         faceDown: slot.kind === "receive" && finalState.faceDownReceives.has(`${slot.seat}:${slot.index}`),
+                        concealFaceDown: options.hideHands === true,
                         finalAttack: isFinalAttack,
                         replayNew: isReplayNew,
                     }));
@@ -13041,11 +13053,11 @@ function researchKifuReplayFrames(payload) {
     return frames;
 }
 
-function researchKifuFaceDownLabel(seat, piece) {
+function researchKifuFaceDownLabel(seat, _piece) {
     const language = currentUiLanguage();
-    if (language === "zh") return `${seat}: 伏下${piece}`;
-    if (language === "en") return `${seat}: place ${piece} face down`;
-    return `${seat}: ${piece}を伏せる`;
+    if (language === "zh") return `${seat}: 伏下棋子`;
+    if (language === "en") return `${seat}: place a piece face down`;
+    return `${seat}: 駒を伏せる`;
 }
 
 function updateResearchKifuReplayControls(label = "棋譜再生") {

@@ -9,6 +9,7 @@
   const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label"];
 
   const ZH_EXACT = Object.freeze({
+    "伏せ駒": "背面朝上的棋子",
     "幅を広げる": "加宽窗口",
     "元の幅に戻す": "恢复宽度",
     "再生方法": "播放方式",

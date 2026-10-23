@@ -5,6 +5,7 @@
  */
 (() => {
   const exact = Object.freeze({
+    "伏せ駒": "Face-down piece",
     "幅を広げる": "Widen window",
     "元の幅に戻す": "Restore width",
     "再生方法": "Playback mode",

@@ -49,6 +49,7 @@ const payload = {moves:[['0','し','銀'],['1','パス',''],['2','銀',''],['2',
 (async () => {
   const h = harness(payload);
   assert.deepEqual(h.frames().map(f=>f.recordedWait), [2.3,0,30,45,1]);
+  assert.equal(h.frames()[0].label, 'A: 駒を伏せる', 'replay status must not disclose a face-down piece');
   assert.deepEqual(h.frames()[2].latestAction, {seat:'B',kind:'pass'});
   for (let seat=0; seat<4; seat++) {
     const rows=[[String(seat),'し','銀'],[String(seat),'馬','金'],[String(seat),'パス',''],[String((seat+1)%4),'パス','']];
