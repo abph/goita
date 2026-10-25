@@ -7568,6 +7568,14 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const plannedBlockReserve = String(detail || "").match(/^plan_block_surplus_([2-7])_reserve_(\d+)_needed_(\d+)_width_(\d+)$/);
+    if(plannedBlockReserve) {
+        const [, piece, remaining, attacks, width] = plannedBlockReserve;
+        const label = gameLogCandidatePieceLabel(piece, language);
+        if(language === "en") return `Plan to fold a surplus ${label} and attack with ${label}, keeping ${remaining} copies for ${attacks} further attacks and ${width} receiving types. The projected finish is no lower than with another fold, assuming the attacks complete a full lap. This is a conditional plan, not a forced-win proof.`;
+        if(language === "zh") return `计划盖伏多余的${label}并用${label}进攻，仍保留${remaining}枚供之后${attacks}次进攻，并保留${width}种接牌能力。在进攻无人接牌而转回的假设下，预计终局得分不低于盖伏其他牌。这是有条件的计划，并非必胜证明。`;
+        return `余分な${label}を伏せて${label}で攻める計画。残り${attacks}回の攻め用に${remaining}枚を残し、${width}種類の受けを保つ。攻めが一巡すると仮定した上がり点の見通しも、別の駒を伏せる場合に劣らない。条件付きの計画であり、確定上がりではない。`;
+    }
     const shiBlockReserve = String(detail || "").match(/^block_shi_keep_receivers_reserve_(\d+)_needed_(\d+)$/);
     if(shiBlockReserve) {
         const [, remaining, attacks] = shiBlockReserve;
