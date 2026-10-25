@@ -7568,6 +7568,13 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const shiBlockReserve = String(detail || "").match(/^block_shi_keep_receivers_reserve_(\d+)_needed_(\d+)$/);
+    if(shiBlockReserve) {
+        const [, remaining, attacks] = shiBlockReserve;
+        if(language === "en") return `Folding and attacking with shi leaves ${remaining} shi for ${attacks} future attacks. Preserve other receiving pieces and alternative attacks rather than stockpiling more shi. Future shi receives require additional pieces; this is not a forced-win proof.`;
+        if(language === "zh") return `盖伏并打出一枚「し」后，仍有${remaining}枚可用于之后${attacks}次进攻，因此保留其他接牌种类及转换进攻的选择。之后用「し」接牌还需另外消耗，并非必胜证明。`;
+        return `しを伏せてしで攻めても、残り${attacks}回の攻め用にしが${remaining}枚残るため、他の受け駒と攻めの切り替えを残す。今後しで受ける分は別に必要で、確定上がりではない。`;
+    }
     const beliefEndgame = String(detail || "").match(/^belief_endgame_worlds_(\d+)_win_(\d+)_danger_(\d+)$/);
     if(beliefEndgame) {
         const [, samples, wins, danger] = beliefEndgame;
