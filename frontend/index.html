@@ -7568,6 +7568,13 @@ function localizeGameLogAiDetail(detail, language) {
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
     };
     if(labels[detail]) return labels[detail];
+    const beliefEndgame = String(detail || "").match(/^belief_endgame_worlds_(\d+)_win_(\d+)_danger_(\d+)$/);
+    if(beliefEndgame) {
+        const [, samples, wins, danger] = beliefEndgame;
+        if(language === "en") return `Compare ${samples} public-information hand samples, including the follow-up attack and the next opponent's immediate finish. Team wins in ${wins}% of the samples; immediate-loss risk ${danger}%. These are sample estimates, not a forced-win proof.`;
+        if(language === "zh") return `比较依据公开信息生成的${samples}个手牌样本，包含接牌后的进攻和下一个对手立即获胜的危险。己方在样本中获胜的比例为${wins}%，立即输棋的比例为${danger}%。这是样本估计，并非必胜证明。`;
+        return `公開情報から作った${samples}標本で、受けた後の攻めと直後の敵方の上がりを比較。標本内の自チーム上がり率${wins}%、直後の失点危険${danger}%。標本上の推定であり、確定上がりではない。`;
+    }
     const royalWait = String(detail || "").match(/^pass_full_receive_cover_public_route_safe_(\d+)_target_(\d+)$/);
     if(royalWait) {
         if(language === "en") return `Keep the guaranteed ${royalWait[1]}-point finish and pass, preserving the royal for a possible ${royalWait[2]}-point finish. Every possible next attack was checked using public information.`;
