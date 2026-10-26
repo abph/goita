@@ -180,8 +180,8 @@ DEBUG_GID = "debug"
 DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = 3.0
 PRIVATE_A_GID = "room-gold-01"
 KANAZAWA_TEAM_ROOM_GID = "room-bronze-03"
-KANAZAWA_TEAM_ROOM_PASSWORD = "saitamakyuusi"
-KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD = "imakyuusi"
+KANAZAWA_TEAM_ROOM_PASSWORD = "tokyomeijin"
+KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD = "meijinmade"
 KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD = "saitama1011"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 DEFAULT_LOBBY_ADMIN_PASSWORD = "admin-lobby"
@@ -4454,12 +4454,14 @@ def _apply_room_management_settings(
 def _migrate_kanazawa_team_room_passwords(
     stored_rooms: Dict[str, Dict[str, Any]],
 ) -> bool:
-    """Rotate the former shared URL credentials once in persisted settings."""
+    """Rotate former shared/paused URL credentials once in persisted settings."""
 
     settings = stored_rooms.get(KANAZAWA_TEAM_ROOM_GID)
     if not isinstance(settings, dict):
         return False
-    if settings.get("password") != KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD:
+    if settings.get("password") not in (
+        KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD, "saitamakyuusi"
+    ):
         return False
     settings["password"] = KANAZAWA_TEAM_ROOM_PASSWORD
     # The new plain default is used until an administrator changes it again.
