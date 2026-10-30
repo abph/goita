@@ -6227,6 +6227,10 @@
               <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。</p>
             </div>
             <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckAutoPassWhenUnable" style="width:auto;"> 受けられないとき、自動でパスする</label>
+              <p class="settings-help-text">受ける手段がないとき、約1秒後にパスします。チュートリアルでは作動しません。</p>
+            </div>
+            <div class="settings-row">
               <label><input type="checkbox" id="lobbyCheckAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
             </div>
             <div class="settings-row">
@@ -6393,6 +6397,10 @@
           <div id="beginnerSupportSettingRow" class="settings-row">
             <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
             <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。</p>
+          </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkAutoPassWhenUnable" style="width:auto;"> 受けられないとき、自動でパスする</label>
+            <p class="settings-help-text">受ける手段がないとき、約1秒後にパスします。チュートリアルでは作動しません。</p>
           </div>
           <div class="settings-row">
             <label><input type="checkbox" id="checkAutoRevealOwnHand" style="width:auto;"> 終局後に自分の手札を自動で公開する</label>
@@ -7267,8 +7275,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261020d"></script>
-<script src="/static/i18n-en.js?v=20261020d"></script>
-<script src="/static/i18n.js?v=20261020d"></script>
+<script src="/static/i18n-en.js?v=20261030a"></script>
+<script src="/static/i18n.js?v=20261030a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
@@ -8864,6 +8872,7 @@ function loadPersonalSettings() {
             enableCVoice: saved.enableCVoice === true,
             enableAnalytics: saved.enableAnalytics !== false,
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
+            autoPassWhenUnable: saved.autoPassWhenUnable === true,
             showAiThinkingBreakdown: saved.showAiThinkingBreakdown === true,
             autoRevealOwnHand: saved.autoRevealOwnHand === true
                 || (saved.autoRevealOwnHand === undefined && saved.autoRevealOwnAndAiHands === true),
@@ -8892,6 +8901,7 @@ function loadPersonalSettings() {
             enableCVoice: false,
             enableAnalytics: true,
             enableBeginnerSupport: false,
+            autoPassWhenUnable: false,
             showAiThinkingBreakdown: false,
             autoRevealOwnHand: false,
             autoRevealAiHands: true,
@@ -9027,6 +9037,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyCheckEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("lobbyCheckEnableAnalytics").checked = personalSettings.enableAnalytics !== false;
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    document.getElementById("lobbyCheckAutoPassWhenUnable").checked = personalSettings.autoPassWhenUnable === true;
     document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
     document.getElementById("lobbyCheckAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
     document.getElementById("lobbyCheckAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
@@ -9184,11 +9195,14 @@ function saveLobbyPersonalSettings() {
         enableCVoice: document.getElementById("lobbyCheckEnableCVoice").checked,
         enableAnalytics: document.getElementById("lobbyCheckEnableAnalytics").checked,
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
+        autoPassWhenUnable: document.getElementById("lobbyCheckAutoPassWhenUnable").checked,
         showAiThinkingBreakdown: document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked,
         autoRevealOwnHand: document.getElementById("lobbyCheckAutoRevealOwnHand").checked,
         autoRevealAiHands: document.getElementById("lobbyCheckAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
     };
+    cancelAutomaticPass();
+    syncAutomaticPass();
     applyPersonalSettingsAppearance();
     try {
         localStorage.setItem(PERSONAL_SETTINGS_KEY, JSON.stringify(personalSettings));
@@ -9431,6 +9445,10 @@ let latestBeginnerRecommendation = null;
 let beginnerRecommendationKey = "";
 let pending = null;
 let legalActionsRetryTimer = null;
+let automaticPassTimer = null;
+let automaticPassTimerKey = "";
+let automaticPassAttemptKey = "";
+let confirmedLegalActionsKey = "";
 let refreshRequestSequence = 0;
 let actionSubmission = null;
 let immediateActionFeedback = null;
@@ -9758,6 +9776,7 @@ document.addEventListener("pointerdown", unlockAudio, { once: true });
 document.addEventListener("keydown", unlockAudio, { once: true });
 
 function connectWS(targetGid) {
+    cancelAutomaticPass(true);
     stopSocketHeartbeat();
     if (socket) {
         socket.onclose = null;
@@ -9790,6 +9809,7 @@ function connectWS(targetGid) {
             if (data.type === "member_kifu_auto") {
                 window.goitaMembers?.automaticKifuResult(data);
             } else if (data.type === "update") {
+                if(data.action_token && data.action_token !== latestState?.action_token) cancelAutomaticPass(true);
                 if (currentWsGid === "lobby") {
                     fetchRoomList();
                 } else {
@@ -9811,6 +9831,7 @@ function connectWS(targetGid) {
     };
 
     socket.onclose = (event) => {
+        cancelAutomaticPass(true);
         stopSocketHeartbeat();
         if (isPersonalScoreRoom(targetGid) && [4001,4403].includes(event.code)) { void leaveExpiredScoreRoom(); return; }
         console.log("WebSocket disconnected. 3秒後に再接続します...");
@@ -9868,6 +9889,7 @@ function forceDisablePreset() {
 }
 
 function setAutoPlayEnabled(on){
+    cancelAutomaticPass();
     autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom() && !isVrcSoloRoom();
     if(!autoPlayEnabled){
         pending = null;
@@ -9888,6 +9910,7 @@ async function toggleAutoPlay(){
         pending = null;
         await refresh();
     }
+    syncAutomaticPass();
 }
 
 function isMainRoomId(roomId) {
@@ -11613,6 +11636,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("checkEnableCVoice").checked = personalSettings.enableCVoice === true;
     document.getElementById("checkEnableAnalytics").checked = personalSettings.enableAnalytics !== false;
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
+    document.getElementById("checkAutoPassWhenUnable").checked = personalSettings.autoPassWhenUnable === true;
     document.getElementById("checkShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
     document.getElementById("checkAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
     document.getElementById("checkAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
@@ -11960,11 +11984,14 @@ async function savePersonalSettings() {
         enableCVoice: document.getElementById("checkEnableCVoice").checked,
         enableAnalytics: document.getElementById("checkEnableAnalytics").checked,
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
+        autoPassWhenUnable: document.getElementById("checkAutoPassWhenUnable").checked,
         showAiThinkingBreakdown: document.getElementById("checkShowAiThinkingBreakdown").checked,
         autoRevealOwnHand: document.getElementById("checkAutoRevealOwnHand").checked,
         autoRevealAiHands: document.getElementById("checkAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
     };
+    cancelAutomaticPass();
+    syncAutomaticPass();
     latestBeginnerRecommendation = null;
     beginnerRecommendationKey = "";
     applyPersonalSettingsAppearance();
@@ -17170,6 +17197,7 @@ function clearImmediatePass(phys){
 }
 
 function cancelImmediateAction(){
+  cancelAutomaticPass(true);
   if(actionSubmission) clearImmediatePass(actionSubmission.phys);
   actionSubmission = null;
   immediateActionFeedback = null;
@@ -17194,6 +17222,8 @@ function rememberImmediateFeedback(state){
 async function submitAction(actionObj, usedSlots = []){
   if(actionIsPending() || isProcessingCpu || !latestState?.is_started || latestState.finished || isSpectator() || latestState.turn !== mySeat) return false;
   const base = latestState;
+  automaticPassAttemptKey = automaticPassContextKey(base);
+  cancelAutomaticPass(true);
   const action = {...actionObj};
   const submission = {
     room: gid, seat: mySeat, phys: getSeatToPhys()[mySeat],
@@ -18092,6 +18122,55 @@ async function confirmResetAllSeats(){
   }
 }
 
+function automaticPassContextKey(state){
+  return state?.action_token ? `${legalActionsContextKey(state)}|${state.action_token}` : "";
+}
+
+function cancelAutomaticPass(invalidateLegal = false){
+  if(automaticPassTimer !== null) clearTimeout(automaticPassTimer);
+  automaticPassTimer = null;
+  automaticPassTimerKey = "";
+  if(invalidateLegal) confirmedLegalActionsKey = "";
+}
+
+function automaticPassAction(){
+  const state = latestState;
+  if(personalSettings.autoPassWhenUnable !== true || currentWsGid !== gid || isSpectator()
+      || !state?.is_started || state.finished || state.tutorial_mode || state.turn !== mySeat
+      || state.phase !== "receive" || state.current_attack == null
+      || autoPlayEnabled || isProcessingCpu || actionIsPending()
+      || !Array.isArray(state.owned_human_seats) || !state.owned_human_seats.includes(mySeat)
+      || seatIsAi(state, mySeat)) return null;
+  const key = automaticPassContextKey(state);
+  // An empty, failed, local, or previous-turn legal-action response is never
+  // evidence that no receive exists. Royals are included by the server.
+  if(!key || confirmedLegalActionsKey !== key || latestLegal.length !== 1
+      || latestLegal[0]?.action_type !== "pass") return null;
+  return latestLegal[0];
+}
+
+function syncAutomaticPass(){
+  const action = automaticPassAction();
+  if(!action){ cancelAutomaticPass(); return; }
+  const key = automaticPassContextKey(latestState);
+  // Repeated refreshes for chat/notifications must not restart the one-second
+  // wait. Failed submissions also must not become a perpetual retry loop.
+  if(automaticPassAttemptKey === key) return;
+  if(automaticPassTimer !== null && automaticPassTimerKey === key) return;
+  cancelAutomaticPass();
+  automaticPassTimerKey = key;
+  automaticPassTimer = setTimeout(async () => {
+    automaticPassTimer = null;
+    automaticPassTimerKey = "";
+    const currentAction = automaticPassAction();
+    if(!currentAction || automaticPassContextKey(latestState) !== key) return;
+    automaticPassAttemptKey = key;
+    // Use the normal path for animation, sound, kifu timing and stale-token
+    // protection; this is the same pass as a manual button press.
+    await submitAction(currentAction);
+  }, 1000);
+}
+
 function legalActionsContextKey(state){
   if(!state) return "";
   const hand = Array.isArray(state.hands?.[mySeat]) ? state.hands[mySeat].join("") : "";
@@ -18259,6 +18338,7 @@ async function refreshFromState(confirmedState = null){
     }
   }catch(error){
     console.warn("State request failed; retrying shortly.", error);
+    cancelAutomaticPass(true);
     scheduleLegalActionsRetry();
     return;
   }
@@ -18273,6 +18353,7 @@ async function refreshFromState(confirmedState = null){
     lastSeat = mySeat;
   }
   const seatOwnershipLost = ownershipSupported && !isSpectator() && !ownedHumanSeats.includes(mySeat);
+  if(seatOwnershipLost) cancelAutomaticPass(true);
   const movedSeat = seatOwnershipLost && ownedHumanSeats.length === 1 ? ownedHumanSeats[0] : "";
   if(movedSeat){
     pending = null;
@@ -18292,6 +18373,7 @@ async function refreshFromState(confirmedState = null){
     }
   }
   latestState = state;
+  syncAutomaticPass();
   window.goitaVrcCoop?.render?.(state);
   syncDebugTraceMenu?.();
   if (isGatheringRoomId(gid)) {
@@ -18431,8 +18513,10 @@ async function refreshFromState(confirmedState = null){
   if(requestSequence !== refreshRequestSequence) return;
   if(legalActionsMatchState(state, fetchedLegal)){
     latestLegal = fetchedLegal;
+    confirmedLegalActionsKey = automaticPassContextKey(state);
     clearLegalActionsRetry();
   }else{
+    cancelAutomaticPass(true);
     if(localFollowupActions.length > 0){
       latestLegal = localFollowupActions;
     }else if(previousLegalContext !== nextLegalContext){
@@ -18440,6 +18524,7 @@ async function refreshFromState(confirmedState = null){
     }
     scheduleLegalActionsRetry();
   }
+  syncAutomaticPass();
   renderBoard(state);
   renderHands(state);
   renderActions();

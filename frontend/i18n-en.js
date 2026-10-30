@@ -711,6 +711,8 @@
     "モノクロ": "Monochrome",
     "必殺技（かかりごたえ等）の演出を有効にする": "Enable special move effects (such as kakarigotae)",
     "初心者サポートを有効にする": "Enable Beginner Support",
+    "受けられないとき、自動でパスする": "Automatically pass when you cannot receive",
+    "受ける手段がないとき、約1秒後にパスします。チュートリアルでは作動しません。": "Passes after about one second when you have no legal receive. Disabled during the tutorial.",
     "AIの思考時間の内訳を表示する": "Show AI thinking-time breakdown",
     "終局後に自分の手札を自動で公開する": "Automatically reveal your hand after each round",
     "終局後にAIの手札を自動で公開する": "Automatically reveal AI hands after each round",
