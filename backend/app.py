@@ -92,6 +92,7 @@ from backend.regional_ads import (
     normalize_ads as normalize_regional_ads,
     select_ads as select_regional_ads,
 )
+from backend.twipla_import import import_event as import_twipla_event
 from backend.member_store import MemberError, MemberStore, resolve_member_path
 from backend.member_api import MEMBER_COOKIE, MemberInput, PrivateRoute, create_member_router, require_member_origin
 from backend.private_kifu_archive import archive_path, parse_archive, save_archive, MAX_ARCHIVE_BYTES
@@ -8870,6 +8871,13 @@ def _regional_ad_admin_payload() -> Dict[str, Any]:
 def admin_regional_ads(request: Request):
     _require_site_admin(request)
     return _regional_ad_admin_payload()
+
+
+@app.post("/admin/api/regional-ads/import-twipla")
+def admin_import_twipla_ad(request: Request, payload: Dict[str, Any] = Body(...)):
+    _require_site_admin(request)
+    # Import is a read operation: saving/publishing still uses the existing form.
+    return JSONResponse(import_twipla_event(payload.get("url")), headers={"Cache-Control": "no-store"})
 
 
 @app.put("/admin/api/regional-ads")

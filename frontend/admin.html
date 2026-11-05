@@ -595,6 +595,14 @@
         <section class="panel">
           <h3 class="subheading">広告の編集</h3>
           <form id="regionalAdForm">
+            <fieldset>
+              <legend>ツイプラから取り込む</legend>
+              <div class="field"><label for="regionalAdTwiplaUrl">イベントURL</label><input id="regionalAdTwiplaUrl" type="url" maxlength="2048" placeholder="https://twipla.jp/events/747979"></div>
+              <button id="regionalAdTwiplaImport" class="button" type="button">情報を取得</button>
+              <p class="muted">イベント名・日時・会場を取得し、下の編集欄に反映します。内容と対象地方を確認してから保存してください。次回イベントへの自動更新は行いません。</p>
+              <div id="regionalAdTwiplaStatus" class="status" role="status" aria-live="polite"></div>
+              <p id="regionalAdTwiplaEvent" class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere" hidden></p>
+            </fieldset>
             <div class="field"><label for="regionalAdTitle">見出し</label><input id="regionalAdTitle" type="text" maxlength="40" required></div>
             <div class="field"><label for="regionalAdMessage">本文</label><textarea id="regionalAdMessage" maxlength="200" required></textarea></div>
             <div class="field"><label for="regionalAdUrl">リンク先URL（任意）</label><input id="regionalAdUrl" type="url" maxlength="2048" placeholder="https://example.com/"></div>
@@ -873,6 +881,7 @@
     let regionalAds = [];
     let regionalAdMetrics = {};
     let editingRegionalAdId = "";
+    let twiplaImportSequence = 0;
     const regionalAdRegions = ["北海道", "東北", "関東", "中部", "関西", "中国", "四国", "九州", "沖縄"];
     const regionalAdSurfaceLabels = {public_room:"公開部屋", score_attack:"スコアアタック"};
     const regionalAdBackgrounds = {
@@ -889,6 +898,12 @@
     }
     function regionalAdDateIso(value) { return value ? `${value}:00+09:00` : ""; }
     function resetRegionalAdForm(ad = null) {
+      twiplaImportSequence++;
+      regionalAdField("TwiplaUrl").value = /^https?:\/\/(?:www\.)?twipla\.jp\/events\/\d+\/?(?:[?#].*)?$/.test(ad?.url || "") ? ad.url : "";
+      regionalAdField("TwiplaStatus").textContent = "";
+      regionalAdField("TwiplaEvent").textContent = "";
+      regionalAdField("TwiplaEvent").hidden = true;
+      regionalAdField("TwiplaImport").disabled = false;
       editingRegionalAdId = ad?.id || "";
       regionalAdField("Title").value = ad?.title || "";
       regionalAdField("Message").value = ad?.message || "";
@@ -902,6 +917,50 @@
       document.querySelectorAll('#regionalAdTargets input').forEach(input => { input.checked = !!ad?.regions?.includes(input.value); });
       const surfaces = ad?.surfaces || (ad ? ["public_room"] : ["public_room", "score_attack"]);
       document.querySelectorAll('#regionalAdSurfaces input').forEach(input => { input.checked = surfaces.includes(input.value); });
+    }
+    async function importRegionalAdFromTwipla() {
+      const button = regionalAdField("TwiplaImport");
+      const status = regionalAdField("TwiplaStatus");
+      const url = regionalAdField("TwiplaUrl").value.trim();
+      if (!url) { status.textContent = "ツイプラのイベントURLを入力してください。"; return; }
+      const sequence = ++twiplaImportSequence;
+      button.disabled = true;
+      regionalAdField("TwiplaEvent").textContent = "";
+      regionalAdField("TwiplaEvent").hidden = true;
+      status.textContent = "イベント情報を取得しています...";
+      try {
+        const data = await api("/admin/api/regional-ads/import-twipla", {method:"POST", body:JSON.stringify({url})});
+        if (sequence !== twiplaImportSequence) return;
+        if (regionalAdField("TwiplaUrl").value.trim() !== url) {
+          status.textContent = "URLが変更されたため反映しませんでした。情報を再取得してください。";
+          return;
+        }
+        const draft = data.draft;
+        regionalAdField("Title").value = draft.title;
+        regionalAdField("Message").value = draft.message;
+        regionalAdField("Url").value = draft.url;
+        regionalAdField("StartsAt").value = regionalAdDateInput(draft.starts_at);
+        regionalAdField("EndsAt").value = regionalAdDateInput(draft.ends_at);
+        regionalAdField("Enabled").checked = false;
+        const event = data.event;
+        const preview = regionalAdField("TwiplaEvent");
+        preview.textContent = [
+          `元のイベント名：${event.title}`,
+          `開催：${regionalAdDateInput(event.starts_at).replace("T", " ") || "未取得"} ～ ${regionalAdDateInput(event.ends_at).replace("T", " ") || "終了時刻未取得"}`,
+          `会場：${event.venue || "未取得"}`,
+        ].join("\n");
+        preview.hidden = false;
+        status.textContent = [
+          "編集欄に反映しました。まだ保存・掲載していません。日時・本文・対象地方を確認し、掲載する場合は「掲載を有効にする」を選んで保存してください。",
+          ...(data.warnings || []),
+        ].join("\n");
+      } catch (error) {
+        if (sequence !== twiplaImportSequence) return;
+        status.textContent = error.message;
+        if (error.status === 401) showLogin();
+      } finally {
+        if (sequence === twiplaImportSequence) button.disabled = false;
+      }
     }
     function renderRegionalAdCarouselSets() {
       const target = document.getElementById("regionalAdCarouselSets");
@@ -2725,6 +2784,7 @@
     resetRegionalAdForm();
     document.getElementById("regionalAdNew").addEventListener("click", () => resetRegionalAdForm());
     document.getElementById("regionalAdCancel").addEventListener("click", () => resetRegionalAdForm());
+    document.getElementById("regionalAdTwiplaImport").addEventListener("click", importRegionalAdFromTwipla);
     document.getElementById("regionalAdRefresh").addEventListener("click", loadRegionalAds);
     document.getElementById("regionalAdPositionSave").addEventListener("click", async () => {
       const status = document.getElementById("regionalAdStatus");
