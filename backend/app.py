@@ -4838,7 +4838,14 @@ def _auto_save_member_round(game):
 
 def _save_trace_result(game):
     if game.get("trace_attempt_id") and game.get("current_round_finished"):
-        get_trace_store().finish(game["trace_attempt_id"], game["total_team_score"])
+        # Trace continuation intentionally ignores hidden human blocks. The
+        # bonus requires the entire actual sequence, including those blocks
+        # and all passes, to match the normalized source moves exactly.
+        expected_moves = game.get("trace_moves")
+        exact_sequence = bool(expected_moves) and game.get("kifu_moves") == expected_moves
+        get_trace_store().finish(
+            game["trace_attempt_id"], game["total_team_score"], exact_sequence=exact_sequence,
+        )
 
 
 _KIFU_ARCHIVE_CACHE: Optional[Dict[str, Any]] = None

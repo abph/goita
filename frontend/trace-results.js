@@ -148,7 +148,9 @@ async function openTraceResult(attemptId = '') {
     traceElement('traceActualScore').textContent = scoreLabel(data.actual);
     traceElement('traceOriginalScore').textContent = scoreLabel(data.original);
     traceElement('traceImprovement').textContent = `元の対局との差　${traceSigned(data.improvement)}`;
-    if (data.selection_mode === 'divergent' || data.ranking_counted === false) {
+    const exactBonus = Number(data.exact_match_bonus || 0) > 0 && data.ranking_counted !== false;
+    traceElement('traceRankingPointsLabel').textContent = uiText(exactBonus ? '手順一致ボーナス' : 'ランキングへの加算');
+    if (exactBonus || data.selection_mode === 'divergent' || data.ranking_counted === false) {
       traceElement('traceRankingPoints').textContent = uiText(traceSigned(data.ranking_points));
       traceElement('traceRankingNotCounted').hidden = data.ranking_counted !== false;
       traceElement('traceRankingContribution').hidden = false;

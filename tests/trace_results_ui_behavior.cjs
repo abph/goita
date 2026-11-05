@@ -192,6 +192,17 @@ const path = require('node:path');
     assert.equal(await page.locator('#traceActualScore').textContent(),'AC：30点');
     assert.equal(await page.locator('#traceOriginalScore').textContent(),'AC：30点');
     assert.equal(await page.locator('#traceImprovement').textContent(),'元の対局との差　±0点');
+    result.ranking_counted=true; result.ranking_points=10; result.exact_match_bonus=10;
+    await page.evaluate(()=>openTraceResult('practice'));
+    assert.equal(await page.locator('#traceImprovement').textContent(),'元の対局との差　±0点');
+    assert.equal(await page.locator('#traceRankingContribution').isVisible(),true);
+    assert.equal(await page.locator('#traceRankingPointsLabel').textContent(),'手順一致ボーナス');
+    assert.equal(await page.locator('#traceRankingPoints').textContent(),'+10点');
+    for (const [language,label] of [['en','Matching-sequence bonus'],['zh','棋谱一致奖励']]) {
+      await page.evaluate(language=>goitaI18n.setLanguage(language,{dispatch:false}),language);
+      assert.equal(await page.locator('#traceRankingPointsLabel').textContent(),label);
+    }
+    await page.evaluate(()=>goitaI18n.setLanguage('ja',{dispatch:false}));
     await page.screenshot({path:path.join(__dirname,'../.codex_deps/score-result-simple-desktop.png')});
     await page.setViewportSize({width:390,height:700});
     const size=await page.locator('#traceResultModal .modal-content').boundingBox();
@@ -212,6 +223,14 @@ const path = require('node:path');
     assert.ok(calls.every(call => call.headers['x-goita-member']==='1'));
     await page.evaluate(() => {gid='main'; syncTraceResult({trace_mode:true,finished:true,trace_attempt_id:'other'});});
     assert.equal(await page.locator('#traceResultModal').isVisible(),false);
+    await page.route('**/api/score-attack/rankings**',route=>route.fulfill({json:{
+      start_date:'2026-11-01',end_date:'2026-11-01',total:1,
+      ranking:[{rank:1,name:'再現できた人',score:20,games:2}],
+    }}));
+    await page.evaluate(()=>openScoreRankings('daily'));
+    assert.match(await page.locator('#scoreRankingsRows tr').first().textContent(),/\+20点.*2局/);
+    assert.match(await page.locator('#scoreRankingsNote').textContent(),/完全に一致.*＋10点.*伏せ駒/);
+    assert.match(await page.locator('#scoreRankingsNote').textContent(),/手順が異なる同点は0点/);
     assert.deepEqual(errors,[]);
     console.log('TRACE_RESULTS_UI_OK: compact scores, ranking, top back navigation, private replay, retry, history, mobile, debug-only');
   } finally {await browser.close();}

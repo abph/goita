@@ -30,7 +30,7 @@ _PERIOD_RESULTS_SQL = """WITH completed_results AS (
 ), counted_results AS (
     SELECT *, CASE WHEN selection_mode='divergent' THEN
         CASE WHEN improvement>0 THEN 10 WHEN improvement<0 THEN -10 ELSE 0 END
-        ELSE improvement END AS ranking_points
+        ELSE improvement END + exact_match_bonus AS ranking_points
     FROM completed_results WHERE selection_mode=scoring_mode
 )"""
 
@@ -117,6 +117,10 @@ class TraceStore:
                 db.execute("ALTER TABLE trace_attempts ADD COLUMN audit_reported_at REAL")
             if "selection_mode" not in columns:
                 db.execute("ALTER TABLE trace_attempts ADD COLUMN selection_mode TEXT NOT NULL DEFAULT 'random'")
+            if "exact_match_bonus" not in columns:
+                # Old results have no verified move comparison. Never infer a
+                # reproduction bonus merely from their zero score difference.
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN exact_match_bonus INTEGER NOT NULL DEFAULT 0")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_sessions WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
@@ -219,7 +223,7 @@ class TraceStore:
                 )
             return {"candidate_id": candidate, "already_reported": already}
 
-    def finish(self, attempt_id, actual):
+    def finish(self, attempt_id, actual, *, exact_sequence=False):
         with self.db() as db:
             row = db.execute("SELECT a.*, c.payload FROM trace_attempts a JOIN trace_challenges c ON c.id=a.challenge WHERE a.id=?", (attempt_id,)).fetchone()
             if row is None or row["finished"] is not None:
@@ -228,9 +232,13 @@ class TraceStore:
             before, after = payload["score_before"], payload["score_after"]
             ac, bd = int(actual["AC"]) - before["AC"], int(actual["BD"]) - before["BD"]
             original_margin = (after["AC"] - before["AC"]) - (after["BD"] - before["BD"])
+            bonus = 10 if (exact_sequence is True
+                           and ac == after["AC"] - before["AC"]
+                           and bd == after["BD"] - before["BD"]) else 0
             now = self.clock()
-            db.execute("UPDATE trace_attempts SET finished=?, expires=?, actual_ac=?, actual_bd=?, improvement=? WHERE id=? AND finished IS NULL",
-                       (now, now + RETENTION if row["expires"] is not None else None, ac, bd, ac - bd - original_margin, attempt_id))
+            db.execute("UPDATE trace_attempts SET finished=?, expires=?, actual_ac=?, actual_bd=?, improvement=?, exact_match_bonus=? WHERE id=? AND finished IS NULL",
+                       (now, now + RETENTION if row["expires"] is not None else None,
+                        ac, bd, ac - bd - original_margin, bonus, attempt_id))
 
     def read(self, owner, attempt_id, *, original=False, mode="best"):
         if mode not in ("all", "best", "first"):
@@ -267,6 +275,7 @@ class TraceStore:
                     "selection_mode": row["selection_mode"], "comparison": comparison,
                     "ranking_counted": contribution is not None,
                     "ranking_points": contribution["ranking_points"] if contribution is not None else 0,
+                    "exact_match_bonus": row["exact_match_bonus"] if contribution is not None else 0,
                     "mode": mode, "attempt_no": row["attempt_no"], "challenge_label": f"課題{number:03d}",
                     "is_best": row["improvement"] == best_score,
                     "guest": bool(row["guest"]), "expires_at": row["expires"],

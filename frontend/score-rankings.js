@@ -83,8 +83,11 @@ async function openScoreRankings(period = 'daily') {
       : '日ごとの加算点を、マイナスの日は0点として合計します。今日の分は対戦結果に応じて変わります。'
     : '今日終了した対戦の加算点を合計します。';
   const conversionNote = document.createElement('span');
-  conversionNote.textContent = '結果が分かれた棋譜への挑戦は、プラスなら＋10点、同じなら0点、マイナスなら−10点に換算します。';
+  conversionNote.textContent = '結果が分かれた棋譜への挑戦は、プラスなら＋10点、マイナスなら−10点、手順が異なる同点は0点に換算します。';
   element('scoreRankingsNote').append(document.createTextNode(' '), conversionNote);
+  const bonusNote = document.createElement('span');
+  bonusNote.textContent = '元の棋譜と手順・得点が完全に一致すると、ランキングに＋10点を加算します。伏せ駒も一致の対象です。';
+  element('scoreRankingsNote').append(document.createTextNode(' '), bonusNote);
   element('scoreRankingsPeriod').textContent = '';
   element('scoreRankingsStatus').textContent = 'ランキングを読み込んでいます。';
   element('scoreRankingsRows').replaceChildren();

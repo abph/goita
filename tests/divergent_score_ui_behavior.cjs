@@ -79,6 +79,28 @@ for (const file of ['kifu-files.js','trace-results.js','score-rankings.js']) {
   await context.openTraceResult('normal-attempt');
   assert.equal(element('traceComparison').hidden, true); // Never retain stale comparisons.
   assert.equal(element('traceRankingContribution').hidden, true);
+  result.improvement = 0;
+  result.actual = result.original;
+  result.ranking_points = 10;
+  result.exact_match_bonus = 10;
+  await context.openTraceResult('exact-match');
+  assert.equal(element('traceImprovement').textContent, '元の対局との差　±0点');
+  assert.equal(element('traceRankingContribution').hidden, false);
+  assert.equal(element('traceRankingPointsLabel').textContent, '手順一致ボーナス');
+  assert.equal(element('traceRankingPoints').textContent, '+10点');
+  result.selection_mode = 'divergent';
+  await context.openTraceResult('divergent-exact-match');
+  assert.equal(element('traceRankingPointsLabel').textContent, '手順一致ボーナス');
+  result.ranking_counted = false;
+  result.ranking_points = 0;
+  result.exact_match_bonus = 0;
+  await context.openTraceResult('excluded-mode');
+  assert.equal(element('traceRankingPointsLabel').textContent, 'ランキングへの加算');
+  assert.equal(element('traceRankingPoints').textContent, '±0点');
+  result.ranking_counted = true;
+  result.selection_mode = 'random';
+  await context.openTraceResult('equal-score-different-sequence');
+  assert.equal(element('traceRankingContribution').hidden, true);
   response = {ok:true,json:async()=>({start_date:'2026-10-20',end_date:'2026-10-26',total:1,
     ranking:[{rank:1,name:'Player',score:10,games:1}]})};
   for (const period of ['daily','weekly','weekly_previous']) {
