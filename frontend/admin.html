@@ -260,11 +260,32 @@
     .regional-ad-preview { margin-top:10px; padding:12px; border:1px solid var(--line); background:#fff; white-space:pre-wrap; }
     .regional-ad-preview-item { padding:10px; border:1px solid var(--line); border-radius:5px; }
     .regional-ad-background-chip { display:inline-block; min-width:54px; padding:4px 7px; border:1px solid #b9c2cb; border-radius:5px; text-align:center; font-size:12px; }
-    .regional-ad-metrics { min-width:170px; font-size:12px; line-height:1.65; }
-    .regional-ad-metrics strong { display:block; font-size:13px; }
-    .regional-ad-metrics details { margin-top:4px; color:var(--muted); }
-    .regional-ad-metrics summary { cursor:pointer; }
-    .regional-ad-metrics-list { margin-top:4px; white-space:nowrap; }
+    .regional-ad-switcher, .ad-report-periods { display:flex; flex-wrap:wrap; gap:8px; }
+    .regional-ad-switcher [aria-pressed="true"], .ad-report-periods [aria-pressed="true"] { border-color:var(--accent); background:#eaf5ef; color:var(--accent); }
+    #regionalAdSettingsPanel[hidden], #regionalAdReportPanel[hidden], #regionalAdReportDetail[hidden] { display:none !important; }
+    #regionalAdReportSummary { grid-template-columns:repeat(3,minmax(0,1fr)); margin:14px 0; }
+    .ad-report-note { font-size:12px; line-height:1.7; }
+    .ad-report-table { width:100%; min-width:580px; }
+    .ad-report-table td:not(:first-child), .ad-report-table th:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
+    .ad-report-table td:nth-child(2), .ad-report-table th:nth-child(2) { text-align:center; }
+    .ad-report-sort, .ad-report-open { border:0; background:none; color:inherit; padding:6px 0; font:inherit; }
+    .ad-report-sort { font-weight:700; }
+    .ad-report-open { color:var(--accent); text-align:left; text-decoration:underline; text-underline-offset:3px; overflow-wrap:anywhere; }
+    .ad-report-table tr.is-selected { background:#f0f7f3; }
+    .ad-report-detail { border-top:1px solid var(--line); margin-top:20px; padding-top:4px; }
+    .ad-report-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .ad-report-chart { min-width:0; margin:0; padding:12px; border:1px solid var(--line); border-radius:5px; }
+    .ad-report-chart figcaption { font-weight:700; margin-bottom:4px; }
+    .ad-report-chart svg { display:block; width:100%; height:auto; }
+    .ad-report-breakdowns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .ad-report-breakdowns > div { min-width:0; }
+    .ad-report-daily summary { cursor:pointer; margin-top:14px; }
+    .ad-report-browsers { padding:10px 12px; background:var(--surface); line-height:1.7; margin:12px 0; }
+    @media (max-width:700px) {
+      .ad-report-charts, .ad-report-breakdowns { grid-template-columns:1fr; }
+      #regionalAdReportSummary .metric { padding:9px; min-height:78px; }
+      #regionalAdReportSummary .metric-value { font-size:20px; overflow-wrap:anywhere; }
+    }
     .score-audit-seat-label { z-index: 2; display: flex; align-items: center; justify-content: center; border: 2px solid #8b5a2b; background: #f4efdf; color: #b00000; font-size: clamp(14px, 2.8vw, 21px); font-weight: 900; }
     .score-audit-seat-label.is-winner { border-color: #c24f16; box-shadow: 0 0 8px rgb(194 79 22 / 42%); }
     .score-audit-seat-label.seat-A .score-audit-seat-content { transform: rotate(0deg); }
@@ -576,15 +597,50 @@
       <section id="regionalAdsView" class="view">
         <section class="panel">
           <h2 class="section-heading">地域別広告</h2>
+          <div class="regional-ad-switcher" aria-label="広告の表示切り替え">
+            <button id="regionalAdShowReport" class="button" type="button" aria-pressed="true">広告の実績</button>
+            <button id="regionalAdShowSettings" class="button" type="button" aria-pressed="false">広告の設定</button>
+          </div>
+        </section>
+        <section id="regionalAdReportPanel" class="panel">
+          <div class="analytics-toolbar"><h3 class="section-heading" style="margin:0;margin-right:auto">広告の実績</h3><button id="regionalAdReportRefresh" class="button" type="button">実績を更新</button></div>
+          <div class="ad-report-periods" aria-label="広告の集計期間">
+            <button class="button" data-ad-period="7" type="button" aria-pressed="false">直近7日</button>
+            <button class="button" data-ad-period="30" type="button" aria-pressed="true">直近30日</button>
+            <button class="button" data-ad-period="all" type="button" aria-pressed="false">全期間</button>
+          </div>
+          <p id="regionalAdReportRange" class="muted"></p>
+          <div id="regionalAdReportStatus" class="status" role="status" aria-live="polite"></div>
+          <div id="regionalAdReportSummary" class="metric-grid"></div>
+          <p class="muted ad-report-note">表示回数には画面外での表示処理も含まれ、自動スライド分は含みません。クリック率＝クリック数÷表示回数です。登録中の広告（掲載終了分も含む）を集計しています。</p>
+          <p class="muted">広告名を押すと、日別・表示場所別・地方別の実績を確認できます。見出しを押すと並べ替えられます。</p>
+          <div class="table-scroll"><table class="ad-report-table"><thead><tr>
+            <th scope="col" data-ad-sort="title"><button class="ad-report-sort" type="button">広告名</button></th>
+            <th scope="col" data-ad-sort="status"><button class="ad-report-sort" type="button">状態</button></th>
+            <th scope="col" data-ad-sort="impressions" aria-sort="descending"><button class="ad-report-sort" type="button">表示回数 ▼</button></th>
+            <th scope="col" data-ad-sort="clicks"><button class="ad-report-sort" type="button">クリック数</button></th>
+            <th scope="col" data-ad-sort="click_rate"><button class="ad-report-sort" type="button">クリック率</button></th>
+          </tr></thead><tbody id="regionalAdReportRows"></tbody></table></div>
+          <section id="regionalAdReportDetail" class="ad-report-detail" hidden>
+            <h3 id="regionalAdReportDetailTitle" class="subheading"></h3>
+            <p id="regionalAdReportBrowsers" class="ad-report-browsers"></p>
+            <div id="regionalAdReportCharts" class="ad-report-charts"></div>
+            <details class="ad-report-daily"><summary>日別データを表で見る</summary><div id="regionalAdReportDaily" class="table-scroll"></div></details>
+            <div class="ad-report-breakdowns"><div><h4 class="subheading">表示場所別</h4><div id="regionalAdReportSurfaces" class="table-scroll"></div></div><div><h4 class="subheading">地方別</h4><div id="regionalAdReportRegions" class="table-scroll"></div></div></div>
+            <p class="muted ad-report-note">表示場所別の記録がない過去分は、全体の実績だけに含まれます。</p>
+          </section>
+        </section>
+        <div id="regionalAdSettingsPanel" hidden>
+        <section class="panel">
+          <h3 class="section-heading">広告の設定</h3>
           <p class="muted">公開部屋の既存のお知らせとは別枠です。接続地域を地方に変換し、該当広告がなければ全国共通広告を表示します。同じ期間・同じ地方・同じ表示場所には広告を3件まで登録でき、1つの枠内で順番に表示します。</p>
-          <p class="muted">実績欄では、広告ごとの表示回数・閲覧ブラウザー数（概算）・クリック回数・クリック率と、表示場所別・地方別・直近30日の日別内訳を確認できます。閲覧ブラウザー数は機能導入後の初回表示から集計します。同じ広告は1ブラウザーにつき1日3回まで表示します。</p>
           <div class="regional-ad-actions">
             <div class="field" style="margin:0"><label for="regionalAdPosition">広告枠の表示位置</label><select id="regionalAdPosition"><option value="top">上の方</option><option value="bottom">下の方</option></select></div>
             <button id="regionalAdPositionSave" class="button primary" type="button">表示位置を保存</button>
           </div>
           <div id="regionalAdStatus" class="status" role="status" aria-live="polite"></div>
           <div class="regional-ad-actions"><button id="regionalAdNew" class="button primary" type="button">広告を追加</button><button id="regionalAdRefresh" class="button" type="button">一覧を更新</button></div>
-          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>背景色</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>実績</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>広告名</th><th>背景色</th><th>対象地方</th><th>表示場所</th><th>掲載期間</th><th>状態</th><th>操作</th></tr></thead><tbody id="regionalAdRows"></tbody></table></div>
         </section>
         <section class="panel">
           <h3 class="subheading">横スライド広告セット</h3>
@@ -626,6 +682,7 @@
           </div>
           <div id="regionalAdPreview" class="regional-ad-preview" aria-live="polite">地域を選ぶと表示内容を確認できます。</div>
         </section>
+        </div>
       </section>
 
       <section id="surveyView" class="view">
@@ -999,15 +1056,9 @@
       document.getElementById("regionalAdRows").innerHTML = regionalAds.map(ad => {
         const state = !ad.enabled ? "停止中" : now < Date.parse(ad.starts_at) ? "開始前" : now >= Date.parse(ad.ends_at) ? "終了" : "掲載中";
         const background = regionalAdBackground(ad.background_theme);
-        const metrics = regionalAdMetrics[ad.id] || {impressions:0, measured_impressions:0, viewers:0, clicks:0, click_rate:0, impressions_per_viewer:0, regions:[], daily:[]};
-        const surfaceLines = (metrics.surfaces || []).map(item => `${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}：累計表示 ${Number(item.impressions || 0).toLocaleString()}回／計測開始後 ${Number(item.measured_impressions || 0).toLocaleString()}回・閲覧ブラウザー ${Number(item.viewers || 0).toLocaleString()}／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "表示場所別の実績はありません。";
-        const regionLines = (metrics.regions || []).map(item => `${escapeHtml(item.region)}：累計表示 ${Number(item.impressions || 0).toLocaleString()}回／計測開始後 ${Number(item.measured_impressions || 0).toLocaleString()}回・閲覧ブラウザー ${Number(item.viewers || 0).toLocaleString()}／クリック ${Number(item.clicks || 0).toLocaleString()}回（${Number(item.click_rate || 0).toFixed(1)}%）`).join("<br>") || "地方別の実績はありません。";
-        const dailyLines = (metrics.daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || "直近30日の実績はありません。";
-        const surfaceDailyLines = (metrics.surface_daily || []).map(item => `${escapeHtml(item.date)}・${escapeHtml(regionalAdSurfaceLabels[item.surface] || item.surface)}・${escapeHtml(item.region)}：${Number(item.impressions || 0).toLocaleString()} / ${Number(item.clicks || 0).toLocaleString()}`).join("<br>") || dailyLines;
-        const metricCell = `<div class="regional-ad-metrics"><strong>累計表示 ${Number(metrics.impressions || 0).toLocaleString()}回</strong><span>計測開始後 ${Number(metrics.measured_impressions || 0).toLocaleString()}回／閲覧ブラウザー ${Number(metrics.viewers || 0).toLocaleString()}（概算）／1ブラウザー ${Number(metrics.impressions_per_viewer || 0).toFixed(1)}回</span><br><span>クリック ${Number(metrics.clicks || 0).toLocaleString()}回／CTR ${Number(metrics.click_rate || 0).toFixed(1)}%</span><details><summary>表示場所別・地方別・直近30日</summary><div class="regional-ad-metrics-list">${surfaceLines}<hr>${regionLines}<hr>${surfaceDailyLines}</div></details></div>`;
         const surfaces = ad.surfaces || ["public_room"];
-        return `<tr><td>${escapeHtml(ad.title)}</td><td><span class="regional-ad-background-chip" style="background:${background.color}">${background.label}</span></td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td>${metricCell}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
-      }).join("") || '<tr><td colspan="8">広告はまだありません。</td></tr>';
+        return `<tr><td>${escapeHtml(ad.title)}</td><td><span class="regional-ad-background-chip" style="background:${background.color}">${background.label}</span></td><td>${escapeHtml(ad.regions.length ? ad.regions.join("・") : "全国共通")}</td><td>${escapeHtml(surfaces.map(item => regionalAdSurfaceLabels[item] || item).join("・"))}</td><td>${escapeHtml(regionalAdDateInput(ad.starts_at))} 〜 ${escapeHtml(regionalAdDateInput(ad.ends_at))}</td><td>${state}</td><td><button class="button regional-ad-edit" type="button" data-id="${escapeHtml(ad.id)}">編集</button> <button class="button danger regional-ad-delete" type="button" data-id="${escapeHtml(ad.id)}">削除</button></td></tr>`;
+      }).join("") || '<tr><td colspan="7">広告はまだありません。</td></tr>';
       renderRegionalAdCarouselSets();
     }
     async function loadRegionalAds() {
@@ -2845,7 +2896,7 @@
         loadAnalytics();
         loadMemoryStatus();
       }
-      if (name === "regionalAds") loadRegionalAds();
+      if (name === "regionalAds") { loadRegionalAds(); window.goitaAdReport?.open(); }
       if (name === "survey") loadSurvey();
       if (name === "scoreAudit") loadScoreAudit();
       if (name === "aiMetrics") loadResponseMetrics();
@@ -2987,5 +3038,6 @@
     })();
   </script>
   <script defer src="/static/admin-members.js?v=20260915a"></script>
+  <script defer src="/static/admin-ad-report.js?v=20261105a"></script>
 </body>
 </html>

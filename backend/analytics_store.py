@@ -516,8 +516,10 @@ class AnalyticsStore:
         *,
         recent_days: int = 30,
         now: Optional[datetime] = None,
+        period_days: Optional[int] = None,
+        include_all_days: bool = False,
     ) -> dict[str, dict[str, Any]]:
-        """Return all-time totals with regional and recent daily breakdowns."""
+        """Return totals and breakdowns; optional periods use Japanese dates."""
 
         requested_ids = []
         for value in ad_ids or []:
@@ -543,11 +545,22 @@ class AnalyticsStore:
             "FROM regional_ad_daily_metrics"
         )
         parameters: list[Any] = []
+        conditions: list[str] = []
         if requested_ids:
-            query += " WHERE ad_id IN ({})".format(
+            conditions.append("ad_id IN ({})".format(
                 ",".join("?" for _ in requested_ids)
-            )
+            ))
             parameters.extend(requested_ids)
+        if period_days is not None:
+            period_start = (current.astimezone(JAPAN_TIMEZONE).date()
+                            - timedelta(days=max(1, min(365, int(period_days))) - 1)).isoformat()
+            conditions.append("metric_date >= ?")
+            parameters.append(period_start)
+        if period_days is not None or include_all_days:
+            conditions.append("metric_date <= ?")
+            parameters.append(current.astimezone(JAPAN_TIMEZONE).date().isoformat())
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        query += where
         query += " ORDER BY metric_date DESC, region"
         with closing(self._connect()) as connection:
             rows = connection.execute(query, parameters).fetchall()
@@ -556,10 +569,7 @@ class AnalyticsStore:
                 "measured_impressions "
                 "FROM regional_ad_surface_daily_metrics"
             )
-            if requested_ids:
-                surface_query += " WHERE ad_id IN ({})".format(
-                    ",".join("?" for _ in requested_ids)
-                )
+            surface_query += where
             surface_query += " ORDER BY metric_date DESC, surface, region"
             surface_rows = connection.execute(surface_query, parameters).fetchall()
 
@@ -610,7 +620,7 @@ class AnalyticsStore:
             region_metrics["clicks"] += clicks
             region_metrics["viewers"] += viewers
             region_metrics["measured_impressions"] += measured_impressions
-            if str(row["metric_date"]) >= cutoff:
+            if include_all_days or str(row["metric_date"]) >= cutoff:
                 metrics["daily"].append({
                     "date": str(row["metric_date"]),
                     "region": region,
@@ -648,7 +658,7 @@ class AnalyticsStore:
             surface_metrics["clicks"] += clicks
             surface_metrics["viewers"] += viewers
             surface_metrics["measured_impressions"] += measured_impressions
-            if str(row["metric_date"]) >= cutoff:
+            if include_all_days or str(row["metric_date"]) >= cutoff:
                 metrics["surface_daily"].append({
                     "date": str(row["metric_date"]),
                     "region": str(row["region"]),

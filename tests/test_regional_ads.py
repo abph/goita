@@ -264,10 +264,10 @@ def test_regional_ad_frontend_reports_and_admin_displays_metrics() -> None:
     assert "surface_viewer_first: exposure.surfaceViewerFirst" in script
     assert 'recordMetric(link.dataset.adId, "click", currentSurface, true)' in script
     assert '"/api/regional-ad/metric"' in script
-    assert "表示場所別・地方別・直近30日" in admin
+    assert "日別・表示場所別・地方別の実績" in admin
     assert 'value="score_attack"' in admin
-    assert "CTR" in admin
-    assert "閲覧ブラウザー" in admin
+    assert "クリック率" in admin
+    assert "閲覧ブラウザー" in (ROOT / "frontend" / "admin-ad-report.js").read_text(encoding="utf-8")
     assert "regionalAdMetrics" in admin
     assert ".regional-ad strong { display:block; font-size:12px; }" in index
     assert ".regional-ad p { margin:4px 0 0; font-size:13px;" in index
