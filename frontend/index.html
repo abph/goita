@@ -7675,8 +7675,14 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return `Use the learned policy to break a close Current AI choice (Current AI gap ${match[1]}, neural gap ${match[2]})`;
         return `現AIの候補が僅差（差${match[1]}）のため学習結果で比較（ニューラル差${match[2]}）`;
     }
-    match = String(detail || "").match(/^safe_(\d+)_target_(\d+)_chance_(\d+)_risk_(\d+)$/);
+    match = String(detail || "").match(/^safe_(\d+)_target_(\d+)_chance_(\d+)_risk_(\d+)(?:_public_response_([3-7]))?$/);
     if(match) {
+        if(match[5]) {
+            const piece = gameLogCandidatePieceLabel(match[5], language);
+            if(language === "zh") return `根据对手跳过或用王或玉接牌的行动，推测对手不太可能持有${piece}，争取${match[2]}分（确定路线${match[1]}分；样本成功率${match[3]}%，估计失败风险${match[4]}%；并非确定获胜）`;
+            if(language === "en") return `Opponent passes or royal receives suggest they are less likely to hold ${piece}; pursue ${match[2]} points over a guaranteed ${match[1]} (sample success ${match[3]}%, estimated failure risk ${match[4]}%; not a proven win)`;
+            return `敵方のパスや王か玉での受けから${piece}を持たない可能性を考慮し、確定${match[1]}点と比較して${match[2]}点を狙う（標本上の到達率${match[3]}%、推定失敗率${match[4]}%。確定上がりではない）`;
+        }
         if(language === "zh") return `与确定获得${match[1]}分的走法比较后，选择争取${match[2]}分（成功机会${match[3]}%，推测失败风险${match[4]}%）`;
         if(language === "en") return `After comparing with the guaranteed ${match[1]}-point finish, pursue ${match[2]} points (chance: ${match[3]}%, estimated failure risk: ${match[4]}%)`;
         return `確定${match[1]}点の手と比較し、${match[2]}点を狙う（上振れ確率${match[3]}%、推定失敗率${match[4]}%）`;
