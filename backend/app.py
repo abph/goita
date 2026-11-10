@@ -2683,6 +2683,7 @@ class DebugAutoNextRoundRequest(BaseModel):
     enabled: bool = False
     auto_new_game: bool = False
     dictionary_narrowing: Optional[bool] = None
+    final_shi_risk: Optional[bool] = None
 
 class SettingsUpdateRequest(BaseModel):
     admin_password: str
@@ -2922,6 +2923,8 @@ def _schedule_ai_background_search(
     target_seats = set(ordered_seats[:1])
     for seat in ai_seats:
         agent = agents.get(seat) if isinstance(agents, dict) else None
+        if isinstance(agent, ExperimentalAI2RuleBasedAgent):
+            agent.final_shi_risk = bool(game.get("debug_final_shi_risk", False))
         prefetch = getattr(agent, "prefetch_next_turn", None)
         retain = getattr(agent, "retain_background_search_for_action", None)
         cancel = getattr(agent, "cancel_background_search", None)
@@ -3825,6 +3828,9 @@ def _state_public_view(
             game_id == DEBUG_GID
             and game_obj.get("debug_dictionary_narrowing", False)
         ),
+        "debug_final_shi_risk": bool(
+            game_id == DEBUG_GID and game_obj.get("debug_final_shi_risk", False)
+        ),
         "turn_time_limit_seconds": _normalize_turn_time_limit(
             game_obj.get("turn_time_limit_seconds", 0)
         ),
@@ -3919,6 +3925,7 @@ def _create_game_obj(
         "debug_auto_next_round": False,
         "debug_auto_new_game": False,
         "debug_dictionary_narrowing": False,
+        "debug_final_shi_risk": False,
         "is_started": False,
         "total_team_score": {"AC": 0, "BD": 0},
         "round_count": 1,
@@ -5833,6 +5840,8 @@ def _apply_agent_turn(
 
     kifu_timing.begin(game)
     agent = agents[player]
+    if isinstance(agent, ExperimentalAI2RuleBasedAgent):
+        agent.final_shi_risk = bool(game.get("debug_final_shi_risk", False))
     current_ai = _normalize_ai_profile(game.get("ai_profile")) in {
         "current",
         "experimental_ai2",
@@ -9583,6 +9592,11 @@ async def update_debug_auto_next_round(
         game["debug_dictionary_narrowing"] = bool(
             req.dictionary_narrowing
         )
+    if req.final_shi_risk is not None and req.final_shi_risk != game.get("debug_final_shi_risk", False):
+        game["debug_final_shi_risk"] = req.final_shi_risk
+        for agent in game.get("agents", {}).values():
+            if isinstance(agent, ExperimentalAI2RuleBasedAgent):
+                agent.cancel_background_search()
     if game["debug_auto_next_round"] or game["debug_auto_new_game"]:
         _schedule_debug_auto_next_round(game_id)
     else:
@@ -9595,6 +9609,7 @@ async def update_debug_auto_next_round(
         "debug_dictionary_narrowing": bool(
             game.get("debug_dictionary_narrowing", False)
         ),
+        "debug_final_shi_risk": bool(game.get("debug_final_shi_risk", False)),
     }
 
 
@@ -9766,6 +9781,7 @@ async def reset_game(
     new_game["debug_auto_next_round"] = debug_auto_next_round
     new_game["debug_auto_new_game"] = debug_auto_new_game
     new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
+    new_game["debug_final_shi_risk"] = bool(old_game.get("debug_final_shi_risk", False))
     new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
     new_game["deal_mode"] = deal_mode
@@ -9924,6 +9940,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
+        new_game["debug_final_shi_risk"] = bool(old_game.get("debug_final_shi_risk", False))
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -9965,6 +9982,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["debug_auto_next_round"] = debug_auto_next_round
         new_game["debug_auto_new_game"] = debug_auto_new_game
         new_game["debug_dictionary_narrowing"] = debug_dictionary_narrowing
+        new_game["debug_final_shi_risk"] = bool(old_game.get("debug_final_shi_risk", False))
         new_game["turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["next_turn_time_limit_seconds"] = turn_time_limit_seconds
         new_game["deal_mode"] = deal_mode
@@ -10163,6 +10181,7 @@ def _fresh_empty_room(game_id: str, old_game: Dict[str, Any]) -> Dict[str, Any]:
         "debug_auto_next_round",
         "debug_auto_new_game",
         "debug_dictionary_narrowing",
+        "debug_final_shi_risk",
         "turn_time_limit_seconds",
         "next_turn_time_limit_seconds",
     ):

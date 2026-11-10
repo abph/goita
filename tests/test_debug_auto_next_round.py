@@ -38,10 +38,12 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
                     client_id=client_id,
                     enabled=True,
                     dictionary_narrowing=True,
+                    final_shi_risk=True,
                 ),
             )
             assert saved["debug_auto_next_round"] is True
             assert saved["debug_dictionary_narrowing"] is True
+            assert saved["debug_final_shi_risk"] is True
             await asyncio.sleep(0.05)
 
             next_game = app_module.GAMES[game_id]
@@ -52,6 +54,7 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
             assert next_game["total_team_score"] == {"AC": 40, "BD": 30}
             assert next_game["debug_auto_next_round"] is True
             assert next_game["debug_dictionary_narrowing"] is True
+            assert next_game["debug_final_shi_risk"] is True
 
             next_game["state"].finished = True
             next_game["state"].winner = "A"
@@ -81,6 +84,7 @@ def test_debug_room_advances_after_delay_and_stops_at_match_end() -> None:
             assert restarted_game["debug_auto_next_round"] is True
             assert restarted_game["debug_auto_new_game"] is True
             assert restarted_game["debug_dictionary_narrowing"] is True
+            assert restarted_game["debug_final_shi_risk"] is True
         finally:
             app_module._cancel_debug_auto_next_round_task(game_id)
             app_module.DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = previous_delay

@@ -6492,8 +6492,8 @@
 
       <details id="debugAutoNextRoundDetails" class="settings-disclosure" open style="display:none;">
         <summary>
-          <span class="when-closed">▶ 自動進行を開く</span>
-          <span class="when-open">▼ 自動進行を閉じる</span>
+          <span class="when-closed">▶ 自動進行・AI検証を開く</span>
+          <span class="when-open">▼ 自動進行・AI検証を閉じる</span>
         </summary>
         <div class="settings-disclosure-content">
           <div class="settings-row">
@@ -6505,6 +6505,14 @@
           <div class="settings-row">
             <label><input type="checkbox" id="checkDebugDictionaryNarrowing" style="width:auto;" onchange="saveDebugAutoNextRoundSetting()"> 汎用・戦術辞書で探索候補を絞る（試験中）</label>
           </div>
+          <div class="settings-row">
+            <label for="debugFinalShiStyle">強化中AI2：終盤のし攻め</label>
+            <select id="debugFinalShiStyle" onchange="saveDebugAutoNextRoundSetting()">
+              <option value="safe">安全思考（受けて上がる幅を残す）</option>
+              <option value="risk">リスク思考（一巡後の得点を優先）</option>
+            </select>
+          </div>
+          <div class="small">直前のしが一巡し、敵方にしが残っている可能性があるときの伏せ駒の選び方です。</div>
           <div class="small">局終了から3秒後に、勝者を親として自動開始します。新規ゲームでは得点を0に戻します。</div>
           <div class="small">戦術辞書は15件以上・支持率90%以上の同種受けを優先し、深さ3で安全条件を満たした場合だけ、以降の探索を有力な2候補に絞ります。</div>
           <div id="debugAutoNextRoundStatus" class="settings-status" aria-live="polite"></div>
@@ -7612,6 +7620,14 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return `Pass the lance after reviewing ${attacks}. The continuation and recovery after interception are too weak to justify receiving (uncertainty adjustment ${kyoshaPlan[2]}). This outline is conditional.`;
         if(language === "zh") return `评估${attacks}的后续路线后跳过香。连续进攻及被接住后重新接牌的前景不足以支持接香（不确定性调整${kyoshaPlan[2]}）。该路线以条件成立为前提。`;
         return `香を受けた後の${attacks}を検討したが、攻めの継続・受けられた後の立て直しの見通しが弱いためパス（不確実性の補正${kyoshaPlan[2]}）。攻め順は条件付きの見通し。`;
+    }
+    const finalShi = String(detail || "").match(/^shi_package_continuation_(safe|risk)_enemy_(\d+)_cover_([1-9]+|none)_finish_(\d+)$/);
+    if(finalShi) {
+        const safe = finalShi[1] === "safe";
+        const cover = finalShi[3] === "none" ? "" : [...finalShi[3]].map(piece => gameLogCandidatePieceLabel(piece, language)).join("・");
+        if(language === "en") return `The previous shi went around; estimated opposing shi: ${finalShi[2]}. Play the last shi. ${safe ? "Favor coverage" : "Favor scoring"}: ${cover || "no covered return"}; ${finalShi[4]} points if all pass.`;
+        if(language === "zh") return `上一次“し”无人接牌，推测对手剩余${finalShi[2]}枚“し”。第三次打出最后一枚“し”。${safe ? "优先保留接牌范围" : "优先争取高分"}：${cover || "无可接的反攻"}；若全员跳过，可得${finalShi[4]}分。`;
+        return `前のしが一巡し、敵方の残りしは推定${finalShi[2]}枚。最後のしで攻める。${safe ? "安全思考：受け幅を優先" : "リスク思考：一巡後の得点を優先"}。受けて上がれる候補：${cover || "なし"}。全員パスなら${finalShi[4]}点。`;
     }
     const shiPackage = String(detail || "").match(/^shi_package_final_attack_enemy_map_(\d+)_expected_(\d+)_distribution_A(\d+)_B(\d+)_C(\d+)_D(\d+)$/);
     if(shiPackage) {
@@ -11702,16 +11718,19 @@ function syncDebugAutoNextRoundControls() {
     const checkbox = document.getElementById("checkDebugAutoNextRound");
     const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
     const narrowingCheckbox = document.getElementById("checkDebugDictionaryNarrowing");
-    if (!details || !checkbox || !newGameCheckbox || !narrowingCheckbox || debugAutoNextRoundSaving) return;
+    const finalShiStyle = document.getElementById("debugFinalShiStyle");
+    if (!details || !checkbox || !newGameCheckbox || !narrowingCheckbox || !finalShiStyle || debugAutoNextRoundSaving) return;
     const targetGid = settingTargetGid || gid;
     const isDebugRoom = targetGid === DEBUG_GID;
     details.style.display = isDebugRoom ? "block" : "none";
     checkbox.checked = isDebugRoom && latestState?.debug_auto_next_round === true;
     newGameCheckbox.checked = isDebugRoom && latestState?.debug_auto_new_game === true;
     narrowingCheckbox.checked = isDebugRoom && latestState?.debug_dictionary_narrowing === true;
+    finalShiStyle.value = isDebugRoom && latestState?.debug_final_shi_risk === true ? "risk" : "safe";
     checkbox.disabled = !isDebugRoom || !isCurrentClientHost();
     newGameCheckbox.disabled = !isDebugRoom || !isCurrentClientHost();
     narrowingCheckbox.disabled = !isDebugRoom || !isCurrentClientHost();
+    finalShiStyle.disabled = !isDebugRoom || !isCurrentClientHost();
 }
 
 async function saveDebugAutoNextRoundSetting() {
@@ -11724,16 +11743,19 @@ async function saveDebugAutoNextRoundSetting() {
     const checkbox = document.getElementById("checkDebugAutoNextRound");
     const newGameCheckbox = document.getElementById("checkDebugAutoNewGame");
     const narrowingCheckbox = document.getElementById("checkDebugDictionaryNarrowing");
+    const finalShiStyle = document.getElementById("debugFinalShiStyle");
     const status = document.getElementById("debugAutoNextRoundStatus");
-    if (!checkbox || !newGameCheckbox || !narrowingCheckbox || !status) return;
+    if (!checkbox || !newGameCheckbox || !narrowingCheckbox || !finalShiStyle || !status) return;
 
     const enabled = checkbox.checked === true;
     const autoNewGame = newGameCheckbox.checked === true;
     const dictionaryNarrowing = narrowingCheckbox.checked === true;
+    const finalShiRisk = finalShiStyle.value === "risk";
     debugAutoNextRoundSaving = true;
     checkbox.disabled = true;
     newGameCheckbox.disabled = true;
     narrowingCheckbox.disabled = true;
+    finalShiStyle.disabled = true;
     status.textContent = uiText("保存しています...");
     try {
         const response = await fetch(`${API}/games/${targetGid}/debug_auto_next_round`, {
@@ -11745,6 +11767,7 @@ async function saveDebugAutoNextRoundSetting() {
                 enabled,
                 auto_new_game: autoNewGame,
                 dictionary_narrowing: dictionaryNarrowing,
+                final_shi_risk: finalShiRisk,
             }),
         });
         if (!response.ok) throw new Error("Failed to save automatic next rounds.");
@@ -11753,12 +11776,9 @@ async function saveDebugAutoNextRoundSetting() {
             latestState.debug_auto_next_round = saved.debug_auto_next_round === true;
             latestState.debug_auto_new_game = saved.debug_auto_new_game === true;
             latestState.debug_dictionary_narrowing = saved.debug_dictionary_narrowing === true;
+            latestState.debug_final_shi_risk = saved.debug_final_shi_risk === true;
         }
-        status.textContent = uiText(
-            enabled || autoNewGame || dictionaryNarrowing
-                ? "デバッグ設定を保存しました。"
-                : "デバッグ設定を停止しました。"
-        );
+        status.textContent = uiText("デバッグ設定を保存しました。");
     } catch (error) {
         console.error("Automatic next round save error:", error);
         status.textContent = uiText("保存できませんでした。");
