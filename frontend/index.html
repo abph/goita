@@ -7621,6 +7621,20 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return `评估${attacks}的后续路线后跳过香。连续进攻及被接住后重新接牌的前景不足以支持接香（不确定性调整${kyoshaPlan[2]}）。该路线以条件成立为前提。`;
         return `香を受けた後の${attacks}を検討したが、攻めの継続・受けられた後の立て直しの見通しが弱いためパス（不確実性の補正${kyoshaPlan[2]}）。攻め順は条件付きの見通し。`;
     }
+    const limitedShiReceive = String(detail || "").match(/^receive_limited_shi_support_([01])_followup_([2-7])$/);
+    if(limitedShiReceive) {
+        const piece = gameLogCandidatePieceLabel(limitedShiReceive[2], language);
+        if(language === "en") return `Only ${limitedShiReceive[1]} shi remain. Receive and plan ${piece} to show limited support for the partner's shi attack; a continuation was checked.`;
+        if(language === "zh") return `自己只剩${limitedShiReceive[1]}枚“し”。接牌后计划出${piece}，向搭档表示难以继续配合“し”攻势，并已检查后续进攻。`;
+        return `自分のしは${limitedShiReceive[1]}枚。受けた後の${piece}と後続の攻めを確認し、相方のし攻めに協力が難しいことを伝えるため受ける。`;
+    }
+    const limitedShiAttack = String(detail || "").match(/^attack_limited_shi_support_([2-7])$/);
+    if(limitedShiAttack) {
+        const piece = gameLogCandidatePieceLabel(limitedShiAttack[1], language);
+        if(language === "en") return `Continue the receive plan with ${piece}, signalling limited shi support to the partner. This does not claim that no shi remain.`;
+        if(language === "zh") return `按接牌时的计划出${piece}，向搭档表示难以继续配合“し”攻势，并非断言没有“し”。`;
+        return `受けるときに確認した${piece}の攻めを実行し、相方にし攻めへの協力が難しいと伝える。しが0枚という断定ではない。`;
+    }
     const finalShi = String(detail || "").match(/^shi_package_continuation_(safe|risk)_enemy_(\d+)_cover_([1-9]+|none)_finish_(\d+)$/);
     if(finalShi) {
         const safe = finalShi[1] === "safe";
