@@ -114,6 +114,8 @@ const pieceGeometry = createPieceGeometry();
 const highlightGeometry = new THREE.RingGeometry(0.43, 0.52, 32);
 const pieceMaterials = new Map();
 const pieceTextMaterials = new Map();
+const moveNumberMaterials = new Map();
+const moveNumberGeometry = new THREE.PlaneGeometry(0.38, 0.38);
 const highlightMaterials = new Map();
 const labelDisposables = [];
 const PHYS_ROTATION = {
@@ -1109,6 +1111,30 @@ function pieceTextMaterial(label, englishLabel, color, opacity) {
   return material;
 }
 
+function moveNumberMaterial(number) {
+  if(moveNumberMaterials.has(number)) return moveNumberMaterials.get(number);
+  const surface = document.createElement("canvas");
+  surface.width = surface.height = 96;
+  const context = surface.getContext("2d");
+  context.beginPath();
+  context.arc(48, 48, 44, 0, Math.PI * 2);
+  context.fillStyle = "#fff";
+  context.fill();
+  context.lineWidth = 5;
+  context.strokeStyle = "#222";
+  context.stroke();
+  context.fillStyle = "#111";
+  context.font = "700 57px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(number), 48, 50);
+  const material = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(surface), transparent: true, depthTest: false,
+  });
+  moveNumberMaterials.set(number, material);
+  return material;
+}
+
 function createPieceObject(piece) {
   const root = new THREE.Group();
   if (piece.thoughtKey) root.userData.aiThoughtKey = String(piece.thoughtKey);
@@ -1130,6 +1156,12 @@ function createPieceObject(piece) {
   mesh.castShadow = !isSmallScreen();
   mesh.receiveShadow = true;
   flat.add(mesh);
+  if(Number.isInteger(piece.moveNumber) && piece.moveNumber >= 1 && piece.moveNumber <= 16) {
+    const badge = new THREE.Mesh(moveNumberGeometry, moveNumberMaterial(piece.moveNumber));
+    badge.position.set(0, 0.52, 0.23);
+    badge.renderOrder = 12;
+    flat.add(badge);
+  }
 
   if ((!piece.hidden || piece.ownHidden) && piece.label) {
     const textPlane = new THREE.Mesh(

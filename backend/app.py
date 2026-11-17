@@ -111,6 +111,7 @@ from backend.member_kifu_auto import save_connected_round, send_save_result
 from backend.member_kifu_api import create_member_kifu_router, grant_kifu_room_access, require_kifu_room_access
 from backend.retire_room_kifu import retire_room_kifu
 from backend.ai_review_report import build_review_snapshot, log_turn_numbers
+from backend.board_move_numbers import board_attack_numbers
 from backend.vrc_solo_lease import LeaseError, default_store as _vrc_default_lease_store
 from backend.vrc_solo_web import VrcSoloWeb
 from backend.ai_benchmark_store import (
@@ -182,8 +183,9 @@ DEBUG_GID = "debug"
 DEBUG_AUTO_NEXT_ROUND_DELAY_SECONDS = 3.0
 PRIVATE_A_GID = "room-gold-01"
 KANAZAWA_TEAM_ROOM_GID = "room-bronze-03"
-KANAZAWA_TEAM_ROOM_PASSWORD = "tokyomeijin"
-KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD = "meijinmade"
+KANAZAWA_TEAM_ROOM_PASSWORD = "forhaisin"
+KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD = "onlyhaisin"
+KANAZAWA_TEAM_ROOM_NAME = "配信用ルーム"
 KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD = "saitama1011"
 DEFAULT_DEBUG_ROOM_PASSWORD = "goita-debug"
 DEFAULT_LOBBY_ADMIN_PASSWORD = "admin-lobby"
@@ -197,7 +199,7 @@ PRIVATE_ROOM_DEFINITIONS = (
         "gid": KANAZAWA_TEAM_ROOM_GID,
         "pass": KANAZAWA_TEAM_ROOM_PASSWORD,
         "admin": KANAZAWA_TEAM_ROOM_ADMIN_PASSWORD,
-        "owner": "金沢大会チーム埼玉",
+        "owner": KANAZAWA_TEAM_ROOM_NAME,
     },
     {"gid": "room-copper-04", "pass": None, "admin": "admin-d", "owner": "プライベートD"},
     {"gid": "room-iron-05", "pass": None, "admin": "admin-e", "owner": "プライベートE"},
@@ -3764,6 +3766,7 @@ def _state_public_view(
         "face_down_pieces": face_down_pieces_view,
         "scores": scores,
         "board_public": board_view,
+        "board_attack_numbers": board_attack_numbers(game_obj.get("kifu_moves", []) if is_started else []),
         "ai_board_explanations": _visible_ai_board_explanations(
             game_obj,
             state,
@@ -4463,19 +4466,23 @@ def _apply_room_management_settings(
 def _migrate_kanazawa_team_room_passwords(
     stored_rooms: Dict[str, Dict[str, Any]],
 ) -> bool:
-    """Rotate former shared/paused URL credentials once in persisted settings."""
+    """Repurpose the existing URL-only room once, preserving later edits."""
 
     settings = stored_rooms.get(KANAZAWA_TEAM_ROOM_GID)
     if not isinstance(settings, dict):
         return False
-    if settings.get("password") not in (
-        KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD, "saitamakyuusi"
+    migrated = False
+    if settings.get("owner_name") == "金沢大会チーム埼玉":
+        settings["owner_name"] = KANAZAWA_TEAM_ROOM_NAME
+        migrated = True
+    if settings.get("password") in (
+        KANAZAWA_TEAM_ROOM_LEGACY_PASSWORD, "saitamakyuusi", "tokyomeijin"
     ):
-        return False
-    settings["password"] = KANAZAWA_TEAM_ROOM_PASSWORD
-    # The new plain default is used until an administrator changes it again.
-    settings["admin_password_hash"] = ""
-    return True
+        settings["password"] = KANAZAWA_TEAM_ROOM_PASSWORD
+        # Use the new admin default until an administrator changes it again.
+        settings["admin_password_hash"] = ""
+        migrated = True
+    return migrated
 
 
 def _load_persisted_room_management_settings() -> None:

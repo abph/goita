@@ -248,11 +248,28 @@ function drawScene() {
   drawWoodBoard();
 
   latestSnapshot.pieces.forEach(drawPiece);
+  latestSnapshot.pieces.forEach(drawMoveNumber);
 
   if (!latestSnapshot.backgroundOnly) {
     drawCenterPanel(latestSnapshot);
     drawSeatLabels(latestSnapshot);
   }
+}
+
+function drawMoveNumber(piece) {
+  if(!Number.isInteger(piece.moveNumber) || piece.moveNumber < 1 || piece.moveNumber > 16) return;
+  context.save();
+  context.translate(GRID_ORIGIN + (piece.col - 0.5) * CELL, GRID_ORIGIN + (piece.row - 0.5) * CELL);
+  context.rotate(PIECE_ROTATION[piece.phys] || 0);
+  context.beginPath();
+  context.arc(0, -CELL / 2, 8, 0, Math.PI * 2);
+  context.fillStyle = "#fff";
+  context.fill();
+  context.strokeStyle = "#222";
+  context.lineWidth = 1;
+  context.stroke();
+  drawPixelText(piece.moveNumber, 0, -CELL / 2, {size: 10, color: "#111"});
+  context.restore();
 }
 
 function render(snapshot) {

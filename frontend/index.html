@@ -70,6 +70,29 @@
       width: fit-content;
       max-width: 100%;
     }
+    .board-move-number-anchor {
+      position: relative;
+      z-index: 8;
+      pointer-events: none;
+      min-width: 0;
+      min-height: 0;
+    }
+    .board-move-number {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: clamp(15px, calc(var(--cell) * 0.35), 22px);
+      height: clamp(15px, calc(var(--cell) * 0.35), 22px);
+      border: 1px solid #343434;
+      border-radius: 50%;
+      background: #fff;
+      color: #111;
+      font: 700 clamp(10px, calc(var(--cell) * 0.2), 13px)/1 sans-serif;
+    }
+    .board-move-number.phys-A { top: calc(var(--gap) / -2); left: 50%; transform: translate(-50%, -50%); }
+    .board-move-number.phys-B { top: 50%; left: calc(var(--gap) / -2); transform: translate(-50%, -50%) rotate(-90deg); }
+    .board-move-number.phys-C { bottom: calc(var(--gap) / -2); left: 50%; transform: translate(-50%, 50%) rotate(180deg); }
+    .board-move-number.phys-D { top: 50%; right: calc(var(--gap) / -2); transform: translate(50%, -50%) rotate(90deg); }
     .board-3d {
       display: none;
       position: relative;
@@ -6223,6 +6246,10 @@
               <label><input type="checkbox" id="lobbyCheckShowAiThinkingBreakdown" style="width:auto;"> AIの思考時間の内訳を表示する</label>
             </div>
             <div class="settings-row">
+              <label><input type="checkbox" id="lobbyCheckShowBoardMoveNumbers" style="width:auto;"> 盤面に手順番号を表示する</label>
+              <p class="settings-help-text">パスを除いた順番で、伏せ・受けと攻めの間に番号を表示します。</p>
+            </div>
+            <div class="settings-row">
               <label><input type="checkbox" id="lobbyCheckEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
               <p class="settings-help-text">おすすめの駒と、簡単な理由を表示します。</p>
             </div>
@@ -6393,6 +6420,10 @@
           </div>
           <div class="settings-row">
             <label><input type="checkbox" id="checkShowAiThinkingBreakdown" style="width:auto;"> AIの思考時間の内訳を表示する</label>
+          </div>
+          <div class="settings-row">
+            <label><input type="checkbox" id="checkShowBoardMoveNumbers" style="width:auto;"> 盤面に手順番号を表示する</label>
+            <p class="settings-help-text">パスを除いた順番で、伏せ・受けと攻めの間に番号を表示します。</p>
           </div>
           <div id="beginnerSupportSettingRow" class="settings-row">
             <label><input type="checkbox" id="checkEnableBeginnerSupport" style="width:auto;"> 初心者サポートを有効にする</label>
@@ -7285,20 +7316,20 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261101a"></script>
-<script src="/static/i18n.js?v=20261101a"></script>
+<script src="/static/i18n-en.js?v=20261117a"></script>
+<script src="/static/i18n.js?v=20261117a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20260906c").catch((error) => {
+  import("/static/board3d.js?v=20261117a").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20261015a").catch((error) => {
+  import("/static/boardPixel.js?v=20261117a").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -8912,6 +8943,7 @@ function loadPersonalSettings() {
             enableBeginnerSupport: saved.enableBeginnerSupport === true,
             autoPassWhenUnable: saved.autoPassWhenUnable === true,
             showAiThinkingBreakdown: saved.showAiThinkingBreakdown === true,
+            showBoardMoveNumbers: saved.showBoardMoveNumbers === true,
             autoRevealOwnHand: saved.autoRevealOwnHand === true
                 || (saved.autoRevealOwnHand === undefined && saved.autoRevealOwnAndAiHands === true),
             autoRevealAiHands: saved.autoRevealAiHands !== false,
@@ -8941,6 +8973,7 @@ function loadPersonalSettings() {
             enableBeginnerSupport: false,
             autoPassWhenUnable: false,
             showAiThinkingBreakdown: false,
+            showBoardMoveNumbers: false,
             autoRevealOwnHand: false,
             autoRevealAiHands: true,
             boardViewMode: "2d",
@@ -9077,6 +9110,7 @@ function syncLobbyPersonalSettingsControls() {
     document.getElementById("lobbyCheckEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("lobbyCheckAutoPassWhenUnable").checked = personalSettings.autoPassWhenUnable === true;
     document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
+    document.getElementById("lobbyCheckShowBoardMoveNumbers").checked = personalSettings.showBoardMoveNumbers === true;
     document.getElementById("lobbyCheckAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
     document.getElementById("lobbyCheckAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
     setLobbyBoardViewControl(personalSettings.boardViewMode);
@@ -9235,6 +9269,7 @@ function saveLobbyPersonalSettings() {
         enableBeginnerSupport: document.getElementById("lobbyCheckEnableBeginnerSupport").checked,
         autoPassWhenUnable: document.getElementById("lobbyCheckAutoPassWhenUnable").checked,
         showAiThinkingBreakdown: document.getElementById("lobbyCheckShowAiThinkingBreakdown").checked,
+        showBoardMoveNumbers: document.getElementById("lobbyCheckShowBoardMoveNumbers").checked,
         autoRevealOwnHand: document.getElementById("lobbyCheckAutoRevealOwnHand").checked,
         autoRevealAiHands: document.getElementById("lobbyCheckAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("lobbyBoardViewMode").value),
@@ -9257,6 +9292,7 @@ function saveLobbyPersonalSettings() {
     }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
+    if(latestState) renderBoard(latestState);
     renderLobbyWelcomeName();
 }
 
@@ -9991,8 +10027,8 @@ function isVrcSoloRoom() {
 }
 
 const DIRECT_ACCESS_PRIVATE_ROOMS = new Map([
-    ["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
-    ["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}],
+    ["saitama-team", {roomId: "room-bronze-03", roomName: "配信用ルーム"}],
+    ["room-bronze-03", {roomId: "room-bronze-03", roomName: "配信用ルーム"}],
 ]);
 
 function directPrivateRoomRequestFromUrl() {
@@ -11676,6 +11712,7 @@ function syncPersonalSettingsControls() {
     document.getElementById("checkEnableBeginnerSupport").checked = personalSettings.enableBeginnerSupport === true;
     document.getElementById("checkAutoPassWhenUnable").checked = personalSettings.autoPassWhenUnable === true;
     document.getElementById("checkShowAiThinkingBreakdown").checked = personalSettings.showAiThinkingBreakdown === true;
+    document.getElementById("checkShowBoardMoveNumbers").checked = personalSettings.showBoardMoveNumbers === true;
     document.getElementById("checkAutoRevealOwnHand").checked = personalSettings.autoRevealOwnHand === true;
     document.getElementById("checkAutoRevealAiHands").checked = personalSettings.autoRevealAiHands !== false;
     setBoardViewControl(effectiveBoardViewMode(settingTargetGid || gid));
@@ -12028,6 +12065,7 @@ async function savePersonalSettings() {
         enableBeginnerSupport: document.getElementById("checkEnableBeginnerSupport").checked,
         autoPassWhenUnable: document.getElementById("checkAutoPassWhenUnable").checked,
         showAiThinkingBreakdown: document.getElementById("checkShowAiThinkingBreakdown").checked,
+        showBoardMoveNumbers: document.getElementById("checkShowBoardMoveNumbers").checked,
         autoRevealOwnHand: document.getElementById("checkAutoRevealOwnHand").checked,
         autoRevealAiHands: document.getElementById("checkAutoRevealAiHands").checked,
         boardViewMode: normalizeBoardViewMode(document.getElementById("boardViewMode").value),
@@ -12056,6 +12094,7 @@ async function savePersonalSettings() {
     }
     refreshChatNoticeVisibility();
     if(latestState) renderGameLog(latestState.log || []);
+    if(latestState) renderBoard(latestState);
     renderLobbyWelcomeName();
 }
 
@@ -16654,6 +16693,30 @@ function buildRevealedBoardHandMap(state, physToSeat, pendingReceive){
   return out;
 }
 
+function boardMoveNumber(state, seat, index) {
+  if(personalSettings.showBoardMoveNumbers !== true) return null;
+  const number = state.board_attack_numbers?.[seat]?.[index];
+  return Number.isInteger(number) && number > 0 && number <= 16 ? number : null;
+}
+
+function appendBoardMoveNumber(board, state, slot, col, row) {
+  if(slot?.kind !== "A" || state.board_public?.[slot.p]?.attack?.[slot.idx] == null) return;
+  const number = boardMoveNumber(state, slot.p, slot.idx);
+  if(number === null) return;
+  const anchor = document.createElement("div");
+  anchor.className = "board-move-number-anchor";
+  anchor.style.gridColumn = String(col);
+  anchor.style.gridRow = String(row);
+  const badge = document.createElement("span");
+  badge.className = `board-move-number phys-${slot.phys}`;
+  badge.textContent = String(number);
+  badge.dataset.seat = slot.p;
+  badge.dataset.index = String(slot.idx);
+  badge.setAttribute("aria-label", `${uiText("手順番号")} ${number}`);
+  anchor.appendChild(badge);
+  board.appendChild(anchor);
+}
+
 function buildBoard3DSnapshot(state) {
   const physToSeat = getPhysToSeat();
   const slotMap = buildSlotMap(physToSeat);
@@ -16713,6 +16776,7 @@ function buildBoard3DSnapshot(state) {
       ai: seatIsAi(state, slot.p),
       current: slot.p === currentAttacker && slot.idx === currentAttackIndex && !state.finished,
       thoughtKey,
+      moveNumber: kindKey === "attack" && boardPiece ? boardMoveNumber(state, slot.p, slot.idx) : null,
     });
   }
 
@@ -17222,6 +17286,11 @@ function projectImmediateAction(state, seat, action){
   }
   if(type === "attack" || type === "attack_after_block"){
     if(!place("attack", action.attack)) return null;
+    if(projected.board_attack_numbers){
+      const index = row.attack.filter(piece => piece != null).length - 1;
+      const numbers = Object.values(projected.board_attack_numbers).flat();
+      projected.board_attack_numbers[seat][index] = Math.max(0, ...numbers.filter(Number.isInteger)) + 1;
+    }
     projected.current_attack = action.attack;
     projected.attacker = seat;
   }
@@ -17725,6 +17794,7 @@ function renderBoard(state){
         }
       }
       board.appendChild(div);
+      appendBoardMoveNumber(board, state, slot, col, row);
     }
   }
 

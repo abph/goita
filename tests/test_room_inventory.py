@@ -101,21 +101,21 @@ def test_legacy_meeting_room_name_is_migrated() -> None:
     assert game["owner_name"] == "どこかの集会室"
 
 
-def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
+def test_private_c_defaults_to_streaming_room() -> None:
     room_definition = app_module.PRIVATE_ROOM_DEFINITIONS[2]
 
     assert app_module.LOBBY_ROOM_SETTINGS["private_room_count"] == 4
     assert room_definition == {
         "gid": "room-bronze-03",
-        "pass": "tokyomeijin",
-        "admin": "meijinmade",
-        "owner": "金沢大会チーム埼玉",
+        "pass": "forhaisin",
+        "admin": "onlyhaisin",
+        "owner": "配信用ルーム",
     }
 
     room = app_module.GAMES[room_definition["gid"]]
-    assert room["password"] == "tokyomeijin"
-    assert room["admin_password"] == "meijinmade"
-    assert room["owner_name"] == "金沢大会チーム埼玉"
+    assert room["password"] == "forhaisin"
+    assert room["admin_password"] == "onlyhaisin"
+    assert room["owner_name"] == "配信用ルーム"
     assert room["hidden_from_lobby"] is True
     assert room_definition["gid"] in app_module.DIRECT_ACCESS_PRIVATE_ROOM_IDS
     assert room_definition["gid"] not in app_module.LOBBY_PRIVATE_ROOM_IDS
@@ -125,22 +125,22 @@ def test_private_c_defaults_to_kanazawa_team_saitama_room() -> None:
 
     listed_ids = {room["game_id"] for room in app_module.list_rooms()["rooms"]}
     assert room_definition["gid"] not in listed_ids
-    assert app_module.verify_password(room_definition["gid"], "tokyomeijin") == {"ok": True}
-    for password in ("saitamakyuusi", "saitama1011"):
+    assert app_module.verify_password(room_definition["gid"], "forhaisin") == {"ok": True}
+    for password in ("tokyomeijin", "saitamakyuusi", "saitama1011"):
         with pytest.raises(HTTPException) as old_password_error:
             app_module.verify_password(room_definition["gid"], password)
         assert old_password_error.value.status_code == 401
-    assert app_module._room_admin_password_matches(room, "meijinmade") is True
-    for password in ("imakyuusi", "1011made"):
+    assert app_module._room_admin_password_matches(room, "onlyhaisin") is True
+    for password in ("meijinmade", "imakyuusi", "1011made"):
         assert app_module._room_admin_password_matches(room, password) is False
 
     html = (app_module.FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
-    assert '["saitama-team", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
-    assert '["room-bronze-03", {roomId: "room-bronze-03", roomName: "金沢大会チーム埼玉"}]' in html
+    assert '["saitama-team", {roomId: "room-bronze-03", roomName: "配信用ルーム"}]' in html
+    assert '["room-bronze-03", {roomId: "room-bronze-03", roomName: "配信用ルーム"}]' in html
     assert "autoEnterDirectPrivateRoomFromUrl" in html
 
 
-@pytest.mark.parametrize("old_password", ["saitama1011", "saitamakyuusi"])
+@pytest.mark.parametrize("old_password", ["saitama1011", "saitamakyuusi", "tokyomeijin"])
 def test_kanazawa_team_saved_passwords_are_rotated_once(old_password) -> None:
     old_hash = app_module.hash_admin_password("old-admin")
     stored_rooms = {
@@ -153,6 +153,7 @@ def test_kanazawa_team_saved_passwords_are_rotated_once(old_password) -> None:
 
     assert app_module._migrate_kanazawa_team_room_passwords(stored_rooms) is True
     settings = stored_rooms[app_module.KANAZAWA_TEAM_ROOM_GID]
+    assert settings["owner_name"] == "配信用ルーム"
     assert settings["password"] == app_module.KANAZAWA_TEAM_ROOM_PASSWORD
     assert settings["admin_password_hash"] == ""
     assert app_module._migrate_kanazawa_team_room_passwords(stored_rooms) is False
@@ -166,17 +167,17 @@ def test_kanazawa_team_rotation_survives_restart_and_keeps_later_admin_change(tm
     original_settings = app_module._room_management_settings(game)
     path = tmp_path / "room-settings.json"
     monkeypatch.setattr(app_module, "ROOM_SETTINGS_PATH", path)
-    old_settings = dict(original_settings, password="saitamakyuusi",
-                        admin_password_hash=app_module.hash_admin_password("imakyuusi"))
+    old_settings = dict(original_settings, owner_name="金沢大会チーム埼玉", password="tokyomeijin",
+                        admin_password_hash=app_module.hash_admin_password("meijinmade"))
     assert save_room_settings(path, {game_id: old_settings})
     try:
         app_module._load_persisted_room_management_settings()
-        assert app_module.verify_password(game_id, "tokyomeijin") == {"ok": True}
-        assert app_module.verify_admin(game_id, "meijinmade")["ok"] is True
-        for password in ("imakyuusi", "1011made"):
+        assert app_module.verify_password(game_id, "forhaisin") == {"ok": True}
+        assert app_module.verify_admin(game_id, "onlyhaisin")["ok"] is True
+        for password in ("meijinmade", "imakyuusi", "1011made"):
             assert not app_module._room_admin_password_matches(game, password)
         stored = load_room_settings(path)[game_id]
-        assert stored["password"] == "tokyomeijin"
+        assert stored["password"] == "forhaisin"
         assert stored["admin_password_hash"] == ""
         assert stored["owner_name"] == original_settings["owner_name"]
         assert stored["ai_profile"] == original_settings["ai_profile"]
@@ -188,10 +189,37 @@ def test_kanazawa_team_rotation_survives_restart_and_keeps_later_admin_change(tm
         assert save_room_settings(path, {game_id: stored})
         app_module._load_persisted_room_management_settings()
         assert app_module.verify_admin(game_id, "later-admin-password")["ok"] is True
-        assert not app_module._room_admin_password_matches(game, "meijinmade")
+        assert not app_module._room_admin_password_matches(game, "onlyhaisin")
         assert load_room_settings(path)[game_id]["admin_password_hash"] == new_hash
     finally:
         app_module._apply_room_management_settings(game_id, game, original_settings)
+
+
+def test_streaming_room_name_migration_preserves_updated_credentials():
+    room_id = app_module.KANAZAWA_TEAM_ROOM_GID
+    custom_hash = app_module.hash_admin_password("later-admin-password")
+    settings = {
+        "owner_name": "金沢大会チーム埼玉", "password": "forhaisin",
+        "admin_password_hash": custom_hash, "ai_profile": "experimental_ai2",
+    }
+    assert app_module._migrate_kanazawa_team_room_passwords({room_id: settings}) is True
+    assert settings["owner_name"] == "配信用ルーム"
+    assert settings["password"] == "forhaisin"
+    assert settings["admin_password_hash"] == custom_hash
+    assert settings["ai_profile"] == "experimental_ai2"
+    assert app_module._migrate_kanazawa_team_room_passwords({room_id: settings}) is False
+
+
+def test_streaming_room_migration_preserves_later_room_management_changes():
+    settings = {
+        "owner_name": "後から変更した部屋", "password": "later-entry-password",
+        "admin_password_hash": app_module.hash_admin_password("later-admin-password"),
+    }
+    before = dict(settings)
+    assert app_module._migrate_kanazawa_team_room_passwords(
+        {app_module.KANAZAWA_TEAM_ROOM_GID: settings}
+    ) is False
+    assert settings == before
 
 
 def test_lobby_shows_configured_main_rooms_and_two_private_rooms() -> None:
