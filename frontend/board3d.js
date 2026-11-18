@@ -1383,9 +1383,6 @@ function rebuildLabels(snapshot) {
     const sprite = createTextSprite(label, {
       color: isTurn ? "#b00000" : "#302014",
       fontSize: rawName.length > 6 ? 44 : 53,
-      background: isTurn ? "rgba(255, 250, 236, 0.96)" : undefined,
-      borderColor: isTurn ? "#b00000" : undefined,
-      borderWidth: 8,
       maxTextWidth: 464,
     });
     sprite.position.set(...position);

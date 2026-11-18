@@ -230,18 +230,6 @@ function drawSeatLabel(snapshot, phys, x, y, align = "center") {
   const size = name ? 11 : 13;
   const weight = isTurn ? "900" : "700";
   const maxWidth = align === "center" ? 284 : 84;
-  if (isTurn) {
-    context.save();
-    context.font = `${weight} ${size}px "MS Gothic", "Yu Gothic", sans-serif`;
-    const width = Math.min(context.measureText(label).width, maxWidth);
-    const left = align === "right" ? x - width : align === "left" ? x : x - width / 2;
-    context.fillStyle = palette.center;
-    context.fillRect(snap(left - 4), y - 11, snap(width + 8), 22);
-    context.strokeStyle = palette.turn;
-    context.lineWidth = 2;
-    context.strokeRect(snap(left - 4), y - 11, snap(width + 8), 22);
-    context.restore();
-  }
   drawPixelText(label, x, y, {
     size,
     color: isTurn ? palette.turn : palette.text,

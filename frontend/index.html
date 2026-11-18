@@ -580,12 +580,6 @@
       box-shadow: none;
       z-index: 10;
     }
-    .combo-label.is-turn .board-player-name {
-      outline: 2px solid currentColor;
-      outline-offset: 4px;
-      border-radius: 2px;
-      background: rgba(255, 250, 236, 0.96);
-    }
     .board-player-name { flex: 0 0 auto; }
     .combo-label.combo-side {
       font-size: clamp(10px, 2.5vw, 15px);
@@ -7364,12 +7358,12 @@
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20261118b").catch((error) => {
+  import("/static/board3d.js?v=20261118c").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20261118b").catch((error) => {
+  import("/static/boardPixel.js?v=20261118c").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
