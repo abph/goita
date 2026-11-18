@@ -317,6 +317,7 @@ CHAT_STAMPS = {
     "nice": "ナイス！",
     "sorry": "ごめん！",
     "surprised": "えっ！？",
+    "next": "次いこう",
     "happy": "やった！",
     "leave_it": "あとはまかせた！",
     "got_me": "やられた！",
@@ -10975,7 +10976,7 @@ async def set_player_name(game_id: str, req: NameRequest):
     }
 
 
-PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice", "sorry", "surprised"})
+PUBLIC_CHAT_STAMP_IDS = frozenset({"greeting", "thanks", "thinking", "nice", "sorry", "surprised", "next"})
 REWARD_CHAT_STAMP_IDS = frozenset({"weekly_champion"})
 
 

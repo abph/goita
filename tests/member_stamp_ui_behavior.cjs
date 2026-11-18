@@ -10,15 +10,16 @@ const memberScript = fs.readFileSync(path.join(root, "frontend/member.js"), "utf
 function element() {
   return {
     children: [],
+    attributes: {},
     replaceChildren() { this.children = []; },
-    setAttribute() {},
+    setAttribute(key, value) { this.attributes[key] = value; },
     appendChild(child) { this.children.push(child); },
     append(...children) { this.children.push(...children); },
     addEventListener() {},
   };
 }
 
-async function check(member, gid, roomCount, lobbyCount = 6) {
+async function check(member, gid, roomCount, lobbyCount = 7) {
   const pickers = { chatStampPicker: element(), lobbyChatStampPicker: element(), memberKifuParking: element(), researchKifuPanel: element(), researchKifuAutoSave: element() };
   const context = vm.createContext({
     document: {
@@ -44,23 +45,26 @@ async function check(member, gid, roomCount, lobbyCount = 6) {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(pickers.chatStampPicker.children.length, roomCount);
   assert.equal(pickers.lobbyChatStampPicker.children.length, lobbyCount);
+  for(const picker of [pickers.chatStampPicker, pickers.lobbyChatStampPicker]) {
+    assert(picker.children.some(button => button.attributes['data-stamp-id'] === 'next'));
+  }
   return context;
 }
 
 (async () => {
-  await check(null, "main", 6);
+  await check(null, "main", 7);
   const paid = { paid_active: true, must_change_password: false, paid_until: null };
-  await check(paid, "main", 10, 10);
-  await check({ ...paid, must_change_password: true }, "main", 6);
-  await check({ ...paid, paid_active: false }, "main", 6);
-  await check({ ...paid, paid_until: "2000-01-01" }, "main", 6);
-  await check({ paid_active: false, is_operator: true, must_change_password: false }, "main", 11, 11);
-  await check(null, "private", 10);
-  await check(null, "debug", 10);
-  const context = await check(paid, "main", 10, 10);
+  await check(paid, "main", 11, 11);
+  await check({ ...paid, must_change_password: true }, "main", 7);
+  await check({ ...paid, paid_active: false }, "main", 7);
+  await check({ ...paid, paid_until: "2000-01-01" }, "main", 7);
+  await check({ paid_active: false, is_operator: true, must_change_password: false }, "main", 12, 12);
+  await check(null, "private", 11);
+  await check(null, "debug", 11);
+  const context = await check(paid, "main", 11, 11);
   context.fetch = async () => ({ ok: true, json: async () => ({ member: null }) });
   await context.goitaMembers.refresh();
-  assert.equal(context.document.getElementById("chatStampPicker").children.length, 6);
-  assert.equal(context.document.getElementById("lobbyChatStampPicker").children.length, 6);
+  assert.equal(context.document.getElementById("chatStampPicker").children.length, 7);
+  assert.equal(context.document.getElementById("lobbyChatStampPicker").children.length, 7);
   console.log("Member stamp UI: 9 scenarios passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

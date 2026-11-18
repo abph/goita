@@ -529,6 +529,7 @@
     "えっ！？": "What!?",
     "やった！": "Yes!",
     "あとはまかせた！": "The rest is up to you!",
+    "次いこう": "Let's play the next round",
     "やられた！": "You got me!",
     "ごいたのしい！": "Goita is fun!",
     "チャットを入力": "Type a chat message",

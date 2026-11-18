@@ -62,7 +62,7 @@ def login_operator(client, store):
 @pytest.mark.parametrize("room", ["main", "lobby"])
 def test_public_extra_stamps_require_membership_but_free_stamps_do_not(stamp_env, room):
     client, store = stamp_env
-    free_stamps = {"greeting", "thanks", "thinking", "nice", "sorry", "surprised"}
+    free_stamps = {"greeting", "thanks", "thinking", "nice", "sorry", "surprised", "next"}
     paid_stamps = {"happy", "leave_it", "got_me", "goita_fun"}
     assert app_module.PUBLIC_CHAT_STAMP_IDS == free_stamps
     for stamp in free_stamps:
