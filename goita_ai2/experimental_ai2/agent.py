@@ -29,13 +29,14 @@ from goita_ai2.experimental_ai2.public_response_inference import PublicResponseI
 from goita_ai2.experimental_ai2.upside_search import UpsideSearchMixin
 from goita_ai2.experimental_ai2.final_shi_continuation import FinalShiContinuationMixin
 from goita_ai2.experimental_ai2.shi_support_change import ShiSupportChangeMixin
+from goita_ai2.experimental_ai2.live_plan_review import LivePlanReviewMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
+class RuleBasedAgent(LivePlanReviewMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
                      PlannedBlockReserveMixin, BeliefEndgameMixin, FirstShiApprovalMixin,
                      ShiBlockReserveMixin, KyoshaContinuationMixin, CurrentRuleBasedAgent):
     """Keep the current AI decision unless its own scores show a close tie."""
@@ -528,6 +529,14 @@ class RuleBasedAgent(ShiSupportChangeMixin, FinalShiContinuationMixin, PublicRes
         return best(non_royal)
 
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
+        previous_state_id = getattr(self, "_live_plan_review_state_id", None)
+        self._live_plan_review_state_id = id(state)
+        try:
+            return self._select_action_with_neural_tiebreak(state, player, actions)
+        finally:
+            self._live_plan_review_state_id = previous_state_id
+
+    def _select_action_with_neural_tiebreak(self, state, player: str, actions: List[Action]) -> Action:
         # The current AI still evaluates the position so proven wins and other
         # exact guards remain available. Keep a clean tracker snapshot because
         # its chosen move may be replaced by the learned human policy.

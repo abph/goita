@@ -1,0 +1,40 @@
+schema_version: 1
+category: live_plan_review
+cases:
+  - id: LIVE-PLAN-001
+    status: confirmed
+    title: 公開行動のたびに現在の攻め案を軽く再評価する
+    classification: event_driven_plan_review
+    priority: high
+    conditions:
+      - 強化中AI2が誰かの受け・攻め・伏せ攻め・パスを観測した
+    required:
+      - 公開情報の更新後に現在の攻め案を再評価する
+      - 自分の手番が来るまで評価を保留しない
+      - 初期の攻め案と現在の攻め案を分けて保持する
+      - 敵が予定していた駒を出しても必ず中止せず継続案とも比較する
+      - 他人の実際の手駒や伏せ駒の中身を参照しない
+    reason: 誰かの打ち方で攻めの見込みが変わるため、計画の有効性を随時確認する
+    regression:
+      state: covered
+      tests:
+        - tests/test_live_plan_review.py
+  - id: LIVE-PLAN-002
+    status: confirmed
+    title: 軽い見直しで確定判断を上書きしたり重い探索を始めたりしない
+    classification: bounded_plan_hint
+    priority: high
+    conditions:
+      - 公開行動による現在の攻め案の軽い見直しを行う
+    required:
+      - 候補は最大3案、各案は最大4回の自分の攻めに限定する
+      - この処理から先読み探索・確定証明・ニューラル推論・バックグラウンドジョブを起動しない
+      - 仮案を確定上がりとして扱わない
+      - 仮案は通常の分岐付き候補評価へ渡し、行動を強制しない
+      - 確定した計画と明示的な戦術テンプレートを保持する
+      - 説明には再評価の提案と実際の決定理由を区別して記録する
+    reason: 手番中のAIの判断を妨げず、公開情報に応じて計画を更新する
+    regression:
+      state: covered
+      tests:
+        - tests/test_live_plan_review.py
