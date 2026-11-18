@@ -2304,6 +2304,22 @@
       overscroll-behavior-y: contain;
       -webkit-overflow-scrolling: touch;
     }
+    .chat-people-splitter { display: none; }
+    .chat-people-splitter button {
+      width: 36px;
+      height: 22px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: #76502e;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .chat-people-splitter button:hover { background: rgba(139, 90, 43, 0.1); }
+    .chat-people-splitter button:disabled { opacity: 0.3; cursor: default; }
+    .lobby-recruiting-label { margin-left: 4px; color: #39704c; white-space: nowrap; }
     .room-chat-people .lobby-person-row {
       display: block;
       padding: 1px;
@@ -2842,7 +2858,7 @@
         width: var(--chat-panel-width);
         display: grid !important;
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+        grid-template-rows: minmax(0, var(--chat-people-fr, 1fr)) 24px minmax(0, var(--chat-messages-fr, 1fr)) auto;
       }
       .play-layout .chat-panel.chat-people-visible {
         flex-basis: var(--chat-panel-width);
@@ -2859,13 +2875,24 @@
       #chatPanel.chat-people-visible .chat-content,
       #lobbyChatPanel.chat-people-visible .chat-content {
         grid-column: 1;
-        grid-row: 2;
+        grid-row: 3;
         min-height: 0;
+      }
+      #chatPanel.chat-people-visible .chat-people-splitter,
+      #lobbyChatPanel.chat-people-visible .chat-people-splitter {
+        display: flex;
+        grid-column: 1;
+        grid-row: 2;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: #f4efdf;
+        border-bottom: 1px solid #d1ab75;
       }
       #chatPanel.chat-people-visible .chat-form,
       #lobbyChatPanel.chat-people-visible .chat-form {
         grid-column: 1;
-        grid-row: 3;
+        grid-row: 4;
       }
     }
     @media (min-width: 1150px) {
@@ -5764,6 +5791,10 @@
     <aside id="lobbyChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
       <div id="lobbyChatPeopleList" class="room-chat-people-list"></div>
     </aside>
+    <div class="chat-people-splitter" role="group" aria-label="プレイヤーリストとチャットの高さ調整">
+      <button type="button" data-people-adjust="up" onclick="adjustChatPeopleShare(-10)" title="チャットを広げる" aria-label="チャットを広げる">▲</button>
+      <button type="button" data-people-adjust="down" onclick="adjustChatPeopleShare(10)" title="プレイヤーリストを広げる" aria-label="プレイヤーリストを広げる">▼</button>
+    </div>
     <div class="chat-header">
       <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'lobby')" onclick="closeChatPanel('lobby')" aria-label="閉じる"><span class="chat-close-label">閉じる</span><span aria-hidden="true">×</span></button>
     </div>
@@ -5987,6 +6018,10 @@
           <aside id="roomChatPeople" class="room-chat-people" aria-label="このサイトにいる人">
             <div id="roomChatPeopleList" class="room-chat-people-list"></div>
           </aside>
+          <div class="chat-people-splitter" role="group" aria-label="プレイヤーリストとチャットの高さ調整">
+            <button type="button" data-people-adjust="up" onclick="adjustChatPeopleShare(-10)" title="チャットを広げる" aria-label="チャットを広げる">▲</button>
+            <button type="button" data-people-adjust="down" onclick="adjustChatPeopleShare(10)" title="プレイヤーリストを広げる" aria-label="プレイヤーリストを広げる">▼</button>
+          </div>
           <div class="chat-header">
             <button class="chat-close" type="button" onpointerdown="closeChatPanelOnPointerDown(event, 'room')" onclick="closeChatPanel('room')" aria-label="閉じる"><span class="chat-close-label">閉じる</span><span aria-hidden="true">×</span></button>
           </div>
@@ -7241,7 +7276,7 @@
       position:static;
       display:grid !important;
       grid-template-columns:minmax(0,1fr);
-      grid-template-rows:minmax(190px,1fr) minmax(0,1fr) auto;
+      grid-template-rows:minmax(0,var(--chat-people-fr,1fr)) 24px minmax(0,var(--chat-messages-fr,1fr)) auto;
       width:100%;
       box-sizing:border-box;
       height:100%;
@@ -7276,14 +7311,14 @@
     }
     .gathering-waiting-room .gathering-chat-slot .chat-content {
       grid-column:1;
-      grid-row:2;
+      grid-row:3;
       min-height:0;
       overflow:hidden;
     }
     .gathering-waiting-room .gathering-chat-slot .chat-messages { min-height:0; max-height:100%; overflow-y:auto; }
     .gathering-waiting-room .gathering-chat-slot .chat-form {
       grid-column:1;
-      grid-row:3;
+      grid-row:4;
       min-width:0;
       max-width:100%;
       box-sizing:border-box;
@@ -7350,8 +7385,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261118a"></script>
-<script src="/static/i18n.js?v=20261118a"></script>
+<script src="/static/i18n-en.js?v=20261118d"></script>
+<script src="/static/i18n.js?v=20261118d"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
@@ -15369,11 +15404,34 @@ window.addEventListener("resize", () => {
 function formatLobbyPersonLocation(person){
   const location = uiText(String(person?.location || "トップページ"));
   const seat = String(person?.seat || "").toUpperCase();
-  if(!seat) return location;
-  const language = currentUiLanguage();
-  if(language === "en") return `${location} · Seat ${seat}`;
-  if(language === "zh") return `${location}・${seat}座位`;
-  return `${location}・${seat}席`;
+  if(person?.location === "スコアアタック") return location;
+  const status = seat ? "在席中" : person?.role === "spectator" ? "観戦中" : "";
+  if(!status) return location;
+  return `${location}${currentUiLanguage() === "en" ? " · " : "・"}${uiText(status)}`;
+}
+
+const CHAT_PEOPLE_SHARE_KEY = "goita_chat_people_share_v1";
+let chatPeopleShare = 50;
+
+function applyChatPeopleShare(){
+  document.documentElement.style.setProperty("--chat-people-fr", `${chatPeopleShare}fr`);
+  document.documentElement.style.setProperty("--chat-messages-fr", `${100 - chatPeopleShare}fr`);
+  document.querySelectorAll('[data-people-adjust="up"]').forEach(button => button.disabled = chatPeopleShare <= 20);
+  document.querySelectorAll('[data-people-adjust="down"]').forEach(button => button.disabled = chatPeopleShare >= 80);
+}
+
+function restoreChatPeopleShare(){
+  try{
+    const saved = Number(localStorage.getItem(CHAT_PEOPLE_SHARE_KEY));
+    if(Number.isFinite(saved) && saved >= 20 && saved <= 80) chatPeopleShare = saved;
+  }catch(_error){}
+  applyChatPeopleShare();
+}
+
+function adjustChatPeopleShare(delta){
+  chatPeopleShare = Math.max(20, Math.min(80, chatPeopleShare + delta));
+  applyChatPeopleShare();
+  try{ localStorage.setItem(CHAT_PEOPLE_SHARE_KEY, String(chatPeopleShare)); }catch(_error){}
 }
 
 function renderLobbyPeople(sitePeople){
@@ -15423,6 +15481,12 @@ function buildSitePeopleFragment(sitePeople){
       const location = document.createElement("span");
       location.className = "lobby-person-location";
       location.textContent = formatLobbyPersonLocation(person);
+      if(person?.role === "player" && person?.public_room_status === "recruiting"){
+        const recruiting = document.createElement("span");
+        recruiting.className = "lobby-recruiting-label";
+        recruiting.textContent = `［${uiText("募集中")}］`;
+        location.appendChild(recruiting);
+      }
       row.append(identity, location);
       fragment.appendChild(row);
     });
@@ -19103,6 +19167,7 @@ window.addEventListener("beforeunload", () => {
 });
 
 window.addEventListener("load", async ()=>{
+  restoreChatPeopleShare();
   setupLobbyPieceBackground();
   initializeChatStampPickers();
   setupDesktopRoomChatHeightSync();

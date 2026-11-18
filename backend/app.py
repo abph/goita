@@ -7668,6 +7668,19 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                     "role": "player" if seat else "spectator",
                     "seat": seat,
                 }
+                if is_main_room:
+                    # Public AI seats can be claimed by humans, so only human seats make a table full.
+                    human_count = len(_human_seat_set(game))
+                    public_room_closed = GATHERING_EVENT_SETTINGS["enabled"] and (
+                        connected_game_id in GATHERING_HUMAN_PUBLIC_ROOM_IDS
+                        or connected_game_id == MEETING_ROOM_GID
+                    )
+                    person["public_room_status"] = (
+                        "closed" if public_room_closed
+                        else "full" if human_count == 4
+                        else "recruiting" if human_count > 0
+                        else "empty"
+                    )
                 visible_icon = (
                     ""
                     if private_name_is_hidden
@@ -7704,7 +7717,8 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
         viewer_location = viewer_game_id or "lobby"
         main_room_order = {
-            room_id: index for index, room_id in enumerate(MAIN_ROOM_NAMES)
+            room_id: index
+            for index, room_id in enumerate([*MAIN_ROOM_NAMES, *GATHERING_TABLE_IDS])
         }
         private_room_order = {
             room_id: index for index, room_id in enumerate(PRIVATE_ROOM_NAMES)
@@ -7713,7 +7727,7 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
 
         def presence_sort_key(
             entry: Tuple[int, str, Dict[str, Any]],
-        ) -> Tuple[int, int, str, int, str]:
+        ) -> Tuple[int, int, int, str, int, str]:
             _priority, location_id, person = entry
             if location_id == viewer_location:
                 location_group = 0
@@ -7741,7 +7755,22 @@ def list_rooms(viewer_game_id: str = "", client_id: str = ""):
                 person_order = 4
             else:
                 person_order = 5
+            if person.get("tag") in {"ai_practice", "spectator"}:
+                presence_group = 3
+            elif (
+                person.get("role") == "player"
+                and person.get("public_room_status") == "recruiting"
+            ):
+                presence_group = 0
+            elif (
+                person.get("role") == "player"
+                and person.get("public_room_status") == "full"
+            ):
+                presence_group = 2
+            else:
+                presence_group = 1
             return (
+                presence_group,
                 location_group,
                 room_order,
                 str(person.get("location", "")),

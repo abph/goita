@@ -34,7 +34,7 @@ def test_room_and_lobby_chat_have_people_sidebars_and_refresh_them():
 
 def test_every_desktop_chat_stacks_people_above_messages():
     assert "@media (min-width: 702px) and (max-width: 1099px)" not in HTML
-    assert "grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;" in HTML
+    assert "grid-template-rows: minmax(0, var(--chat-people-fr, 1fr)) 24px minmax(0, var(--chat-messages-fr, 1fr)) auto;" in HTML
     assert "border-bottom: 2px solid #d1ab75;" in HTML
     assert "flex-basis: calc(var(--chat-panel-width) + var(--chat-people-width));" not in HTML
     assert "grid-template-columns: var(--chat-people-width) minmax(0, 1fr);" not in HTML

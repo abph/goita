@@ -5,6 +5,12 @@
  */
 (() => {
   const exact = Object.freeze({
+    "在席中": "Seated",
+    "観戦中": "Spectating",
+    "募集中": "Open to players",
+    "プレイヤーリストとチャットの高さ調整": "Adjust player list and chat heights",
+    "チャットを広げる": "Expand chat",
+    "プレイヤーリストを広げる": "Expand player list",
     "伏せ駒": "Face-down piece",
     "幅を広げる": "Widen window",
     "元の幅に戻す": "Restore width",

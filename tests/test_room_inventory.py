@@ -715,6 +715,7 @@ def test_room_list_returns_named_site_presence_without_client_ids() -> None:
             "location": app_module.MAIN_ROOM_NAMES[game_id],
             "role": "player",
             "seat": "B",
+            "public_room_status": "recruiting",
         } in people
         assert "lobby-person" not in str(people)
         assert "room-person" not in str(people)
@@ -802,12 +803,12 @@ def test_site_presence_prioritizes_the_viewers_location_and_seat_order() -> None
         assert [person["name"] for person in people] == [
             "同室A",
             "同室B",
+            "別室C",
             "同室観戦",
             "ロビー",
-            "別室C",
             "＊＊＊＊",
         ]
-        assert [person["seat"] for person in people[:3]] == ["A", "B", ""]
+        assert [person["seat"] for person in people[:3]] == ["A", "B", "C"]
     finally:
         app_module.manager.client_connections.clear()
         app_module.manager.client_connections.update(old_connections)
