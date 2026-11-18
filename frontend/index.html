@@ -55,6 +55,34 @@
     .board-wrap.practice-round-board {
       border-style: dotted;
     }
+    .round-start-banner {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      z-index: 30;
+      transform: translateY(-50%);
+      box-sizing: border-box;
+      padding: 18px 12px;
+      text-align: center;
+      color: #fffdf6;
+      background: rgba(55, 43, 30, 0.91);
+      border-top: 1px solid rgba(255, 237, 196, 0.6);
+      border-bottom: 1px solid rgba(255, 237, 196, 0.6);
+      pointer-events: none;
+      animation: round-start-fade 2s ease both;
+    }
+    .round-start-banner[hidden],
+    body.shared-kifu-board-active .round-start-banner { display: none; }
+    .round-start-title { font-size: clamp(22px, 4vw, 30px); font-weight: 700; }
+    .round-start-dealer { margin-top: 6px; font-size: clamp(14px, 3vw, 18px); overflow-wrap: anywhere; }
+    @keyframes round-start-fade {
+      0%, 100% { opacity: 0; }
+      10%, 80% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .round-start-banner { animation: none; }
+    }
     .board-wrap.tutorial-round-board {
       border-style: dotted;
       border-color: #3f7a62;
@@ -5897,6 +5925,10 @@
       <div class="play-layout">
         <div class="play-main-column">
           <div class="board-wrap">
+            <div id="roundStartBanner" class="round-start-banner" role="status" aria-live="polite" aria-atomic="true" data-i18n-ignore hidden>
+              <div id="roundStartTitle" class="round-start-title"></div>
+              <div id="roundStartDealer" class="round-start-dealer"></div>
+            </div>
             <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
             <button id="tutorialExitButton" class="practice-exit-button" type="button" onclick="returnToLobby()" aria-label="チュートリアルを終了する" title="チュートリアルを終了する">×</button>
             <div id="board" class="board"></div>
@@ -7317,8 +7349,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261117b"></script>
-<script src="/static/i18n.js?v=20261117b"></script>
+<script src="/static/i18n-en.js?v=20261118a"></script>
+<script src="/static/i18n.js?v=20261118a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
@@ -9530,6 +9562,50 @@ let immediateActionFeedback = null;
 const earlyPassLogKeys = new Set();
 let isGameStarted = false; 
 let activeRoomId = null;
+let roundStartObservation = null;
+let roundStartBannerTimer = null;
+
+function hideRoundStartBanner(resetObservation = false){
+    clearTimeout(roundStartBannerTimer);
+    roundStartBannerTimer = null;
+    const banner = document.getElementById("roundStartBanner");
+    if(banner) banner.hidden = true;
+    if(resetObservation) roundStartObservation = null;
+}
+
+function syncRoundStartBanner(state){
+    const round = Number(state.round_count || 1);
+    const special = !!(state.practice_replay_active || state.tutorial_mode);
+    const previous = roundStartObservation;
+    const sameContext = previous?.room === gid && previous.special === special;
+    const sameRound = sameContext && previous.round === round;
+    let hasStarted = sameRound && previous.hasStarted;
+    // The first snapshot is a baseline: joining/reconnecting is not a round start.
+    if(!sameContext) hasStarted = !!(state.is_started || state.finished);
+    if(sameRound && previous.finished && !state.is_started && !state.finished) hasStarted = false;
+    const starting = sameContext && !hasStarted && state.is_started === true && !state.finished;
+    roundStartObservation = {
+        room: gid, round, special, finished: !!state.finished,
+        hasStarted: !!(hasStarted || state.is_started || state.finished),
+    };
+    if(!sameContext || !sameRound || special || state.finished || !state.is_started){
+        hideRoundStartBanner();
+    }
+    if(!starting || special || document.body.classList.contains("shared-kifu-board-active")) return;
+    const banner = document.getElementById("roundStartBanner");
+    if(!banner) return;
+    const seat = /^[ABCD]$/.test(state.dealer) ? state.dealer : "-";
+    const name = String(state.player_names?.[seat] || "");
+    document.getElementById("roundStartTitle").textContent = uiText(`第${round}局　開始`);
+    document.getElementById("roundStartDealer").textContent = `${uiText("親")}：${seat}${name ? `（${name}）` : ""}`;
+    // Restart the fade only for a new round, never for normal state updates.
+    banner.hidden = true;
+    void banner.offsetWidth;
+    banner.hidden = false;
+    playNextRoundSound();
+    clearTimeout(roundStartBannerTimer);
+    roundStartBannerTimer = setTimeout(() => hideRoundStartBanner(), 2000);
+}
 let chatOpen = false;
 let lobbyChatOpen = false;
 let initialLobbyChatAutoOpenHandled = false;
@@ -10170,6 +10246,7 @@ async function tryJoinRoom(targetGid, isPrivate) {
 }
 
 async function enterRoom(targetGid, roomName) {
+    hideRoundStartBanner(true);
     window.goitaSoloDiscord?.reset?.();
     cancelImmediateAction();
     document.body.classList.remove("tutorial-room");
@@ -10276,6 +10353,7 @@ async function autoEnterDirectPrivateRoomFromUrl(request) {
 }
 
 async function returnToLobby() {
+    hideRoundStartBanner(true);
     window.goitaSoloDiscord?.reset?.();
     if (isGatheringRoomId(gid) && latestGatheringEvent?.joined) {
         try { await gatheringApi("leave"); } catch (_error) {}
@@ -18073,9 +18151,6 @@ async function startNewGame(keepScore = false){
       nextRoundButton.textContent = uiText("配牌中...");
     }
   }
-  if(keepScore){
-      playNextRoundSound();
-  }
   if (cpuTimer) {
       clearTimeout(cpuTimer);
       cpuTimer = null;
@@ -18610,6 +18685,7 @@ async function refreshFromState(confirmedState = null){
 
   renderBoard(state);
   playNewPieceSoundsAfterBoardRender(state, currentLogCount);
+  syncRoundStartBanner(state);
 
   const localFollowupActions = localFollowupAttackActions(state);
   if(previousLegalContext !== nextLegalContext) latestLegal = localFollowupActions;
