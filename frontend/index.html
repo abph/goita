@@ -580,6 +580,13 @@
       box-shadow: none;
       z-index: 10;
     }
+    .combo-label.is-turn .board-player-name {
+      outline: 2px solid currentColor;
+      outline-offset: 4px;
+      border-radius: 2px;
+      background: rgba(255, 250, 236, 0.96);
+    }
+    .board-player-name { flex: 0 0 auto; }
     .combo-label.combo-side {
       font-size: clamp(10px, 2.5vw, 15px);
       line-height: 1;
@@ -7357,12 +7364,12 @@
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20261117a").catch((error) => {
+  import("/static/board3d.js?v=20261118b").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20261117a").catch((error) => {
+  import("/static/boardPixel.js?v=20261118b").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -17754,8 +17761,10 @@ function renderBoard(state){
           
           div.classList.add("combo-label");
           if (phys === "B" || phys === "D") div.classList.add("combo-side");
-          if (state.turn === seat && state.is_started && !state.finished) {
+          const isTurn = state.turn === seat && state.is_started && !state.finished;
+          if (isTurn) {
             div.classList.add("is-turn");
+            div.setAttribute("aria-current", "true");
           }
 
           div.style.gridColumn = pos.gridColumn;
@@ -17772,11 +17781,12 @@ function renderBoard(state){
           
           const displayName = names[seat] ? sanitizeName(names[seat]) : "";
           const nameText = document.createElement("span");
+          nameText.className = "board-player-name";
           const speakingSuffix = voiceChatIsSpeaking(seat) ? " 🎙" : "";
           if(displayName && !/^プレイヤー[ABCD]$/.test(displayName)){
             nameText.setAttribute("data-i18n-ignore", "");
           }
-          nameText.textContent = `${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
+          nameText.textContent = `${isTurn ? "▶ " : ""}${displayName ? `${seat}: ${displayName}` : seat}${speakingSuffix}`;
           const playerIcon = buildPlayerIcon(playerIcons[seat]);
           if(playerIcon) inner.appendChild(playerIcon);
           inner.appendChild(nameText);

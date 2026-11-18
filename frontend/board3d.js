@@ -1249,7 +1249,11 @@ function createTextSprite(text, options = {}) {
   const lines = String(text).split("\n");
   const lineHeight = options.lineHeight || 62;
   const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, index) => context.fillText(line, width / 2, startY + index * lineHeight));
+  lines.forEach((line, index) => {
+    const y = startY + index * lineHeight;
+    if (options.maxTextWidth) context.fillText(line, width / 2, y, options.maxTextWidth);
+    else context.fillText(line, width / 2, y);
+  });
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -1374,11 +1378,15 @@ function rebuildLabels(snapshot) {
     const countdown = snapshot.turn === seat && snapshot.turnTimeLabel
       ? `  ${snapshot.turnTimeLabel}`
       : "";
-    const label = `${seat}${rawName ? `: ${rawName}` : ""}${thinking}${speaking}${countdown}`;
     const isTurn = snapshot.turn === seat && snapshot.isStarted && !snapshot.finished;
+    const label = `${isTurn ? "▶ " : ""}${seat}${rawName ? `: ${rawName}` : ""}${thinking}${speaking}${countdown}`;
     const sprite = createTextSprite(label, {
       color: isTurn ? "#b00000" : "#302014",
       fontSize: rawName.length > 6 ? 44 : 53,
+      background: isTurn ? "rgba(255, 250, 236, 0.96)" : undefined,
+      borderColor: isTurn ? "#b00000" : undefined,
+      borderWidth: 8,
+      maxTextWidth: 464,
     });
     sprite.position.set(...position);
     sprite.scale.set(2.35, 0.66, 1);

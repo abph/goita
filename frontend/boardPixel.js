@@ -94,7 +94,8 @@ function drawPixelText(text, x, y, options = {}) {
   context.textAlign = align;
   context.textBaseline = baseline;
   context.font = `${weight} ${size}px "MS Gothic", "Yu Gothic", sans-serif`;
-  context.fillText(String(text), snap(x), snap(y));
+  if (options.maxWidth) context.fillText(String(text), snap(x), snap(y), options.maxWidth);
+  else context.fillText(String(text), snap(x), snap(y));
   context.restore();
 }
 
@@ -224,13 +225,29 @@ function drawSeatLabel(snapshot, phys, x, y, align = "center") {
   const countdown = snapshot.turn === seat && snapshot.turnTimeLabel
     ? ` ${snapshot.turnTimeLabel}`
     : "";
-  const label = `${seat}${name ? `:${name}` : ""}${thinking}${speaking}${countdown}`;
   const isTurn = snapshot.isStarted && !snapshot.finished && snapshot.turn === seat;
+  const label = `${isTurn ? "▶ " : ""}${seat}${name ? `:${name}` : ""}${thinking}${speaking}${countdown}`;
+  const size = name ? 11 : 13;
+  const weight = isTurn ? "900" : "700";
+  const maxWidth = align === "center" ? 284 : 84;
+  if (isTurn) {
+    context.save();
+    context.font = `${weight} ${size}px "MS Gothic", "Yu Gothic", sans-serif`;
+    const width = Math.min(context.measureText(label).width, maxWidth);
+    const left = align === "right" ? x - width : align === "left" ? x : x - width / 2;
+    context.fillStyle = palette.center;
+    context.fillRect(snap(left - 4), y - 11, snap(width + 8), 22);
+    context.strokeStyle = palette.turn;
+    context.lineWidth = 2;
+    context.strokeRect(snap(left - 4), y - 11, snap(width + 8), 22);
+    context.restore();
+  }
   drawPixelText(label, x, y, {
-    size: name ? 11 : 13,
+    size,
     color: isTurn ? palette.turn : palette.text,
     align,
-    weight: isTurn ? "900" : "700",
+    weight,
+    maxWidth,
   });
 }
 
