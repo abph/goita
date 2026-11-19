@@ -17,7 +17,7 @@ def isolated_dictionary(monkeypatch):
     monkeypatch.setattr(stores, "_GENERIC_RESPONSE_PATTERN_STORE", stores.GenericResponsePatternStore())
 
 
-def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None, observer="D"):
+def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None, observer="D", think_previous=False):
     seats = {s: "ABCD"[(i + rotate) % 4] for i, s in enumerate("ABCD")}
     pieces = {"2": piece, piece: "2"}
     convert = lambda p: pieces.get(p, p)
@@ -46,6 +46,10 @@ def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None
         kind, block, attack = action[0], convert(action[1]), convert(action[2])
         move = kind, block, attack
         assert move in state.legal_actions(actor)
+        if think_previous and actor == player:
+            # Exercise the real earlier decisions, including their prediction
+            # caches. Merely notifying the public actions missed this failure.
+            assert agent.select_action(state, player, state.legal_actions(player)) == move
         if kind == "pass": state.apply_pass(actor)
         elif kind == "receive": state.apply_receive(actor, block)
         elif kind == "attack": state.apply_attack(actor, attack)
@@ -180,9 +184,35 @@ def test_actual_hidden_contents_do_not_change_the_inferred_comparison():
     assert results[0] == results[1]
 
 
-def test_deeper_timeout_keeps_a_complete_rescue_cycle_and_the_paired_rook(monkeypatch):
+@pytest.mark.parametrize("rotate", range(4))
+def test_earlier_own_thinking_cannot_change_the_critical_rescue_candidate_pool(rotate):
+    comparisons = []
+    for warm in (False, True):
+        stores._GENERIC_RESPONSE_PATTERN_STORE = stores.GenericResponsePatternStore()
+        state, agent, player, _ = position(rotate=rotate, think_previous=warm)
+        assert agent.select_action(state, player, state.legal_actions(player)) == ("receive", "8", None)
+        review = agent._track[id(state)]["last_late_receive_comparison"]
+        assert review["sampling_source"] == "fresh_current_public_information"
+        comparisons.append({k: review[k] for k in ("sampling_seed", "routes", "pass_value", "receive_value", "effective_samples")})
+        state.apply_receive(player, "8")
+        agent.on_public_action(state, player, ("receive", "8", None))
+        assert agent.select_action(state, player, state.legal_actions(player)) == ("attack", None, "7")
+    assert comparisons[0] == comparisons[1]
+
+
+def test_rescue_audit_does_not_consume_the_speculative_prediction_pool(monkeypatch):
+    state, agent, player, _ = position(think_previous=True)
+    monkeypatch.setattr(agent, "_timed_search_sample_states",
+                        lambda *args: pytest.fail("critical comparison reused speculative pool"))
+    review = agent._compare_late_receive_routes(state, player, state.legal_actions(player))
+    assert review["chosen"] == (("receive", "8", None), ("attack", None, "7"))
+    assert review["sampling_source"] == "fresh_current_public_information"
+
+
+@pytest.mark.parametrize("warm", [False, True])
+def test_deeper_timeout_keeps_a_complete_rescue_cycle_and_the_paired_rook(monkeypatch, warm):
     from goita_ai2.current_ai.information_set_search import InformationSetSearchDeadline
-    state, agent, player, _ = position()
+    state, agent, player, _ = position(think_previous=warm)
     search = agent._information_set_search_bundle
     def limited(*args, **kwargs):
         if len(args[10]) == 1 and args[5] == 9:

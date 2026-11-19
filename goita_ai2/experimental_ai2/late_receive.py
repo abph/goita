@@ -446,7 +446,16 @@ class LateReceiveMixin:
         completed = None
         stop_reason = None
         try:
-            samples = self._timed_search_sample_states(state, player, tracker, self.LATE_RECEIVE_ROUTE_SAMPLES)
+            if rescue:
+                # Audit this critical pass/receive choice independently of the
+                # speculative pools rolled forward during earlier decisions.
+                # All routes still share one posterior-weighted candidate set.
+                attempt["sampling_source"] = "fresh_current_public_information"
+                attempt["sampling_seed"] = f"{self._timed_search_public_seed(state, player, tracker):016x}"
+                samples = self._timed_search_generate_sample_states(
+                    state, player, tracker, self.LATE_RECEIVE_ROUTE_SAMPLES)
+            else:
+                samples = self._timed_search_sample_states(state, player, tracker, self.LATE_RECEIVE_ROUTE_SAMPLES)
             information_set, worlds = self._information_set_search_worlds(state, player, tracker, samples)
             attempt["samples"] = len(worlds)
             if len(worlds) < 8:

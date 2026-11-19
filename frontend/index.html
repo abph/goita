@@ -8041,6 +8041,10 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         const pass = Number(review.pass_value).toFixed(1);
         const receive = Number(review.receive_value).toFixed(1);
         if(review.context === "ally_reach_rescue") {
+            if(review.sampling_source === "fresh_current_public_information") {
+                progress += language === "en" ? "Samples generated independently from the current public information. "
+                    : language === "zh" ? "根据当前公开信息独立生成手牌样本。" : "判定時の公開情報から独立に生成した標本を使用。";
+            }
             const inference = review.middle_signal_inference || {};
             const signals = inference.signals || {};
             const pieces = [...new Set(Object.values(signals).filter(s => s.role === "ally_echo").map(s => s.piece))];

@@ -19,13 +19,14 @@ for(const language of ['ja','en','zh']) {
   assert.ok(!rescue.includes('ally_reach_rescue_') && !rescueFollowup.includes('ally_reach_rescue_'));
   assert.match(rescue,language==='ja'?/確定上がりではない/:language==='en'?/not a guaranteed win/:/并非必胜证明/);
   const rescueValues=context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
-    late_receive_comparison:{context:'ally_reach_rescue',pass_value:35000,receive_value:43000,
+    late_receive_comparison:{context:'ally_reach_rescue',sampling_source:'fresh_current_public_information',pass_value:35000,receive_value:43000,
       middle_signal_inference:{observer:'D',own_initial_counts:{'2':0},signals:{C:{piece:'2',role:'ally_echo'}},
         preferred_initial_counts:{A:{'2':2},B:{'2':1},C:{'2':1}}},
       ally_reach_interception:{unchecked_next_attack_mass:0.2}}
   })),language,'receive');
   assert.ok(rescueValues.includes('35000.0') && rescueValues.includes('43000.0') && rescueValues.includes('20%'));
   assert.match(rescueValues,language==='ja'?/呼応/:language==='en'?/partner echoes/:/响应队友/);
+  assert.match(rescueValues,language==='ja'?/独立に生成/:language==='en'?/independently/:/独立生成/);
   assert.ok(!rescueValues.includes('NaN') && !rescueValues.includes('undefined'));
   for(const piece of ['2','3','4','5']) {
     const pair=context.localizeGameLogAiDetail(`receive_enemy_first_shared_pair_${piece}`,language);
