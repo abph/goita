@@ -7680,6 +7680,14 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    const sharedPair = String(detail || "").match(/^(receive|pass)_enemy_first_shared_pair_([2-5])$/);
+    if(sharedPair) {
+        const piece = gameLogCandidatePieceLabel(sharedPair[2], language);
+        const receive = sharedPair[1] === "receive";
+        if(language === "en") return `The opponent's first ${piece} suggests a pair, and we also started with two. Compare receiving while keeping one and an available attack against passing, removing the blanket weak-hand bias. Chose ${receive ? "receive" : "pass"}. The opponent's pair is inferred, not known.`;
+        if(language === "zh") return `对手首攻${piece}暗示持有两枚，自己初始也有两枚。保留一枚接牌并能继续进攻，与跳过比较，去除仅因弱手而偏向跳过的补正。选择${receive ? "接牌" : "跳过"}。对手两枚是推测，并非已知。`;
+        return `敵の初手の${piece}から2枚持ちを推測し、自分も初期2枚持ち。1枚を残して受け、攻められる筋とパスを、弱い手という理由だけの補正を外して比較し、${receive ? "受けを選択" : "パスを選択"}。敵の2枚持ちは推定であり、確定情報ではない。`;
+    }
     if(String(detail || "").endsWith("_budget_limited")) {
         const completed = localizeGameLogAiDetail(String(detail).replace(/_budget_limited$/, ""), language);
         if(language === "en") return `${completed} The deeper comparison reached its time or node limit; these are the last fully compared depth's results.`;
@@ -8022,6 +8030,18 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         if(language === "en") return `[${progress}Paired route values: pass ${pass}, best receive-and-attack ${receive}. Full-lap estimate from the uncalibrated action model: ${estimate}%. In ${forced}% of weighted samples nobody can receive before the attacker acts again; this is a lower bound within the samples, not the overall full-lap probability.]`;
         if(language === "zh") return `[${progress}路线评价：跳过${pass}，最佳接牌及进攻${receive}。未经校准的行动模型估计转回比例约${estimate}%。加权样本中${forced}%没有其他人能接牌，是样本内转回比例的下限，并非整体转回概率。]`;
         return `[${progress}受けと攻めの比較値：パス${pass}、最良の受け・攻め${receive}。未校正の行動モデルによる1巡の推定${estimate}%。他家が受けられず1巡する標本の重み${forced}%は、標本内の下限であり、1巡する確率全体ではない。]`;
+    }
+    if(snapshot?.opening_shared_pair) {
+        const review = snapshot.opening_shared_pair;
+        const values = (review.scores || []).map(item => {
+            const action = item.action || [];
+            const label = action[0] === "pass" ? (language === "en" ? "pass" : language === "zh" ? "跳过" : "パス")
+                : (language === "en" ? "receive " : language === "zh" ? "接 " : "受け：") + gameLogCandidatePieceLabel(action[1], language);
+            return `${label} ${Number(item.score).toFixed(1)}`;
+        }).join(" / ");
+        if(language === "en") return `[Ordinary response values after removing the weak initial-hand bias: ${values}. These are heuristic scores, not win probabilities.]`;
+        if(language === "zh") return `[去除初始弱手补正后的常规判断值：${values}。这是策略评价值，并非胜率。]`;
+        return `[初期手駒が弱いという補正を外した通常の受け判断値：${values}。戦術上の評価値であり、勝率ではない。]`;
     }
     const isBlockComparison = candidateKind === "receive"
         && snapshot?.chosen?.block
