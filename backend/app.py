@@ -3555,6 +3555,14 @@ ROYAL_TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[s
     (2, "D", ("pass", None, None)),
     (3, "A", ("receive", "4", None)),
     (3, "A", ("attack", None, "8")),
+    (3, "B", ("pass", None, None)),
+    (3, "C", ("pass", None, None)),
+    (3, "D", ("pass", None, None)),
+    (3, "A", ("attack_after_block", "1", "3")),
+    (3, "B", ("pass", None, None)),
+    (3, "C", ("pass", None, None)),
+    (3, "D", ("pass", None, None)),
+    (3, "A", ("attack_after_block", "1", "3")),
 ]
 
 

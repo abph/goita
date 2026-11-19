@@ -141,6 +141,8 @@ def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
                 ("pass", None, None),
                 ("receive", "4", None),
                 ("attack", None, "8"),
+                ("attack_after_block", "1", "3"),
+                ("attack_after_block", "1", "3"),
             ]
             for action in expected_human_actions:
                 legal = app_module.get_legal_actions(
@@ -155,6 +157,9 @@ def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
                 ]
                 await app_module.step(room_id, _step_request(client_id, action))
                 game = app_module.GAMES[room_id]
+                if action == ("attack", None, "8"):
+                    assert not game["tutorial_completed"]
+                    assert not game["state"].finished
                 if not game["state"].finished and game["state"].turn != "A":
                     result = await app_module.cpu_step(room_id)
                     assert result["status"] == "ok"
@@ -162,7 +167,11 @@ def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
             game = app_module.GAMES[room_id]
             assert game["tutorial_completed"] is True
             assert game["state"].finished is True
-            assert game["state"].winner is None
+            assert game["state"].winner == "A"
+            assert game["state"].hands["A"] == []
+            attacks = [a[2] for _, p, a in app_module.ROYAL_TUTORIAL_SCRIPT
+                       if p == "A" and a[0] in ("attack", "attack_after_block")]
+            assert attacks == ["5", "8", "3", "3"]
             assert game["total_team_score"] == {"AC": 0, "BD": 0}
             assert game["last_completed_kifu"] is None
             view = app_module.get_state(room_id, viewer="A", client_id=client_id)
@@ -237,3 +246,15 @@ def test_tutorial_frontend_entry_and_guide_are_present() -> None:
     assert "state.tutorial_mode" in html
     assert "if(state.tutorial_mode){" in html
     assert "return actions.length === 1" in html
+
+
+@pytest.mark.parametrize("step, expected", [
+    (1, ("receive", "9", None)),
+    (2, ("pass", None, None)),
+    (3, ("receive", "4", None)),
+])
+def test_royal_tutorial_can_resume_before_its_extended_finish(step, expected):
+    game = app_module._create_tutorial_game("royal-resume", start_step=step, chapter="royal")
+    assert app_module._tutorial_expected_action(game, "A") == expected
+    assert not game["tutorial_completed"]
+    assert not game["state"].finished

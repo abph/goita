@@ -4520,13 +4520,11 @@
     .tutorial-guide-actions .tutorial-primary { background: #3f8064; color: #fff; border-color: #2e624c; }
     body.tutorial-room .top-controls,
     body.tutorial-room .game-header-actions,
-    body.tutorial-room #chatPanel,
-    body.tutorial-room #chatToggle,
+    body.tutorial-room .auto-play,
     body.tutorial-room #hostControlsPanel,
     body.tutorial-room #handRevealPanel,
     body.tutorial-room #logCard,
     body.tutorial-room #memberAutoKifuNotice { display: none !important; }
-    body.tutorial-room #tutorialExitButton { display: grid; }
     body.tutorial-room .game-content-layout { display: block; }
     body.tutorial-room .game-content-main { max-width: 1040px; margin: 0 auto; }
     @media (max-width: 700px) {
@@ -5903,30 +5901,29 @@
     <p id="tutorialInstruction" aria-live="polite"></p>
     <p id="tutorialDetail" class="tutorial-guide-detail"></p>
     <div id="tutorialRoyalExplanation" class="tutorial-royal-explanation" hidden>
-      <h3>王か玉の使い方</h3>
-      <h4>王か玉で受ける</h4>
+      <h3>王（玉）の使い方</h3>
+      <h4>王（玉）で受ける</h4>
       <ul>
         <li>馬・銀・金・飛・角を受けられます。</li>
         <li>同じ種類の駒を持っていなくても受けられます。</li>
-        <li>王か玉でも、しと香は受けられません。</li>
+        <li>王（玉）でも、しと香は受けられません。</li>
       </ul>
-      <h4>王か玉で攻めるための条件</h4>
+      <h4>王（玉）で攻めるための条件</h4>
       <ul>
-        <li>誰かが王か玉を受けに使った後</li>
+        <li>誰かが王（玉）を受けに使った後</li>
         <li>最初から王と玉の両方を持っていた場合</li>
-        <li>王か玉を出すことで上がれる場合</li>
+        <li>王（玉）を出すことで上がれる場合</li>
       </ul>
       <h4>得点</h4>
       <ul>
-        <li>王か玉で上がると50点です。</li>
+        <li>王（玉）で上がると50点です。</li>
         <li>最後の2枚が王と玉で、片方を伏せ、もう片方で上がると100点です。</li>
       </ul>
     </div>
     <div class="tutorial-guide-actions">
       <button id="tutorialRestartButton" type="button" onclick="restartTutorial()">最初からやり直す</button>
-      <button id="tutorialRoyalButton" class="tutorial-primary" type="button" onclick="startRoyalTutorial()" hidden>王か玉を盤面で練習する</button>
+      <button id="tutorialRoyalButton" class="tutorial-primary" type="button" onclick="startRoyalTutorial()" hidden>王（玉）を盤面で練習する</button>
       <button id="tutorialAiPracticeButton" class="tutorial-primary" type="button" onclick="finishTutorialToAi()" hidden>AIと練習する</button>
-      <button type="button" onclick="returnToLobby()">チュートリアルを終了する</button>
     </div>
   </section>
 
@@ -5961,7 +5958,6 @@
               <div id="roundStartDealer" class="round-start-dealer"></div>
             </div>
             <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
-            <button id="tutorialExitButton" class="practice-exit-button" type="button" onclick="returnToLobby()" aria-label="チュートリアルを終了する" title="チュートリアルを終了する">×</button>
             <div id="board" class="board"></div>
             <div id="board3d" class="board-3d" aria-hidden="true">
               <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
@@ -7384,8 +7380,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261118d"></script>
-<script src="/static/i18n.js?v=20261118d"></script>
+<script src="/static/i18n-en.js?v=20261119tutorial"></script>
+<script src="/static/i18n.js?v=20261119tutorial"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
@@ -10203,7 +10199,7 @@ function forceDisablePreset() {
 
 function setAutoPlayEnabled(on){
     cancelAutomaticPass();
-    autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom() && !isVrcSoloRoom();
+    autoPlayEnabled = !!on && !isSpectator() && !isPersonalScoreRoom() && !isVrcSoloRoom() && !latestState?.tutorial_mode;
     if(!autoPlayEnabled){
         pending = null;
     }
@@ -10709,7 +10705,7 @@ function tutorialCopy(state) {
             14: ["4. 攻めを続ける", "全員がパスすると攻め手に戻ります。しを伏せ、飛で攻めましょう。"],
             19: ["5. 上がる", "相手の角を、手駒の角で受けましょう。残り2枚です。"],
             20: ["5. 上がる", "最後に金で攻めると手駒がなくなり、上がりです。"],
-            done: ["基本操作編クリア！", "上がることができました。続いて、王か玉の特別な使い方を確認しましょう。"],
+            done: ["基本操作編クリア！", "上がることができました。続いて、王（玉）の特別な使い方を確認しましょう。"],
             detail: "正しい駒を緑色の枠で表示しています。この局の得点と棋譜は保存されません。",
         },
         zh: {
@@ -10739,13 +10735,15 @@ function tutorialCopy(state) {
     };
     const royalCopies = {
         ja: {
-            waiting: ["案内役が手を進めています", "次の王か玉の練習場面を準備しています。"],
-            3: ["1. 王か玉で受ける", "飛は王で受けられます。手駒の王を選びましょう。"],
+            waiting: ["案内役が手を進めています", "次の王（玉）の練習場面を準備しています。"],
+            3: ["1. 王（玉）で受ける", "飛は王で受けられます。手駒の王を選びましょう。"],
             4: ["1. 受けた後に攻める", "王で受けた後は、自分が攻めます。金を選びましょう。"],
-            9: ["2. しと香は受けられない", "王か玉でも香は受けられません。パスを選びましょう。"],
-            13: ["3. 王か玉で攻める", "銀を銀で受けて、攻める番にしましょう。"],
-            14: ["3. 王か玉で攻める", "この局では最初から王と玉の両方を持っていました。条件を満たしているので、玉で攻められます。"],
-            done: ["王か玉の練習クリア！", "王か玉の受け方、受けられない駒、攻められる条件を確認できました。"],
+            9: ["2. しと香は受けられない", "王（玉）でも香は受けられません。パスを選びましょう。"],
+            13: ["3. 王（玉）で攻める", "銀を銀で受けて、攻める番にしましょう。"],
+            14: ["3. 王（玉）で攻める", "この局では最初から王と玉の両方を持っていました。条件を満たしているので、玉で攻められます。"],
+            18: ["3. 攻めを続ける", "玉が1巡しました。しを伏せて、3つ目の攻めに馬を出しましょう。"],
+            22: ["3. 馬で上がる", "馬が1巡しました。最後のしを伏せて、馬で上がりましょう。"],
+            done: ["王（玉）の練習クリア！", "王（玉）の使い方を確認し、馬で上がることができました。"],
             detail: "正しい操作を緑色の枠で表示しています。この練習の得点と棋譜は保存されません。",
         },
         zh: {
@@ -10755,7 +10753,9 @@ function tutorialCopy(state) {
             9: ["2. 不能接し与香", "即使用王或玉也不能接香。请选择跳过。"],
             13: ["3. 用王或玉进攻", "先用银接住银，让自己获得进攻权。"],
             14: ["3. 用王或玉进攻", "本局起手同时持有王和玉，已经满足条件，因此可以用玉进攻。"],
-            done: ["王或玉练习完成！", "你已经确认了王或玉的接牌方法、不能接的棋子以及进攻条件。"],
+            18: ["3. 继续进攻", "玉已转回。请伏下一枚し，第三次进攻出马。"],
+            22: ["3. 用马和牌", "马已转回。请伏下最后的し，用马和牌。"],
+            done: ["王或玉练习完成！", "你已学习王或玉的用法，并用马和牌。"],
             detail: "正确操作会显示绿色边框。本练习不计分，也不会保存棋谱。",
         },
         en: {
@@ -10765,7 +10765,9 @@ function tutorialCopy(state) {
             9: ["2. Pawns and Lances cannot be received", "A King or Gyoku cannot receive a Lance. Select Pass."],
             13: ["3. Attack with the King or Gyoku", "Receive the Silver with your Silver to take the attack turn."],
             14: ["3. Attack with the King or Gyoku", "You were dealt both the King and Gyoku in this round, so the condition is met. Attack with Gyoku."],
-            done: ["King or Gyoku practice complete!", "You practiced receiving, the pieces they cannot receive, and the conditions for attacking."],
+            18: ["3. Continue attacking", "Gyoku has returned after everyone passed. Hide a Pawn and play a Knight for your third attack."],
+            22: ["3. Finish with a Knight", "The Knight has returned after everyone passed. Hide your last Pawn and go out with the Knight."],
+            done: ["King or Gyoku practice complete!", "You learned how to use the King or Gyoku and went out with a Knight."],
             detail: "The correct action is outlined in green. This practice does not add points or save a game record.",
         },
     };
@@ -10805,11 +10807,11 @@ function syncTutorialUI(state) {
     document.getElementById("tutorialRoyalButton").hidden = !(
         chapter === "basic" && state.tutorial_completed
     );
-    document.getElementById("tutorialAiPracticeButton").hidden = !state.tutorial_completed;
+    document.getElementById("tutorialAiPracticeButton").hidden = !(chapter === "royal" && state.tutorial_completed);
 }
 
 async function startTutorial(chapter = "basic", stayInRoom = false) {
-    if (tutorialStarting) return;
+    if (tutorialStarting) return false;
     tutorialStarting = true;
     chapter = tutorialChapter(chapter);
     const status = document.getElementById("lobbyFeatureGuideStatus");
@@ -10838,14 +10840,26 @@ async function startTutorial(chapter = "basic", stayInRoom = false) {
         } else {
             await enterRoom(data.game_id, data.room_name || "ごいたチュートリアル");
         }
+        return true;
     } catch (error) {
         if (status) {
             status.textContent = uiText(error?.message || "チュートリアルを開始できませんでした。");
             status.hidden = false;
         }
+        return false;
     } finally {
         tutorialStarting = false;
     }
+}
+
+async function autoEnterTutorialFromUrl() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("tutorial") !== "1") return false;
+    // Consume the entry request so returning to the lobby stays on the lobby.
+    // Other parameters, including attribution and language, remain intact.
+    url.searchParams.delete("tutorial");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    return await startTutorial();
 }
 
 async function startRoyalTutorial() {
@@ -18232,7 +18246,7 @@ function renderHands(state) {
       autoBtn.classList.toggle("active", !isSpectatorRow && autoPlayEnabled);
       autoBtn.disabled = actionIsPending() || isSpectatorRow || state.finished || !state.is_started;
       if(!isSpectatorRow) autoBtn.onclick = toggleAutoPlay;
-      if (!state.vrc_web) passBtnWrap.appendChild(autoBtn);
+      if (!state.vrc_web && !state.tutorial_mode) passBtnWrap.appendChild(autoBtn);
 
       rowDiv.appendChild(passBtnWrap);
     }
@@ -19196,7 +19210,7 @@ function scheduleAutomaticTurn(state){
           refresh();
         }
       }, 1000);
-    }else if(autoPlayEnabled && state.turn === mySeat && !isSpectator()){
+    }else if(autoPlayEnabled && !state.tutorial_mode && state.turn === mySeat && !isSpectator()){
       isProcessingCpu = true;
       pending = null;
       scheduleAiThinking(state.turn);
@@ -19361,6 +19375,7 @@ window.addEventListener("load", async ()=>{
 
   window.onMemberSessionReady();
 
+  if (await autoEnterTutorialFromUrl()) return;
   if (sessionStorage.getItem("goitaScoreRoomOpen") === "1" && await enterScoreAttackRoom()) return;
   connectWS("lobby");
   await fetchRoomList();
