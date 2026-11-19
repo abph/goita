@@ -12,6 +12,21 @@ const context=vm.createContext({});
 vm.runInContext(['localizeGameLogAiDetail','localizeGameLogAttackCandidates','gameLogCandidatePieceLabel']
   .map(extract).join('\n'),context);
 for(const language of ['ja','en','zh']) {
+  const rescue=context.localizeGameLogAiDetail('ally_reach_rescue_routes_depth_10_samples_48_receive_attack_7',language);
+  const rescueFollowup=context.localizeGameLogAiDetail('ally_reach_rescue_followup_7',language);
+  const rescueLimited=context.localizeGameLogAiDetail('ally_reach_rescue_routes_depth_6_samples_48_pass_budget_limited',language);
+  assert.ok(rescue && rescueFollowup && rescueLimited);
+  assert.ok(!rescue.includes('ally_reach_rescue_') && !rescueFollowup.includes('ally_reach_rescue_'));
+  assert.match(rescue,language==='ja'?/確定上がりではない/:language==='en'?/not a guaranteed win/:/并非必胜证明/);
+  const rescueValues=context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
+    late_receive_comparison:{context:'ally_reach_rescue',pass_value:35000,receive_value:43000,
+      middle_signal_inference:{observer:'D',own_initial_counts:{'2':0},signals:{C:{piece:'2',role:'ally_echo'}},
+        preferred_initial_counts:{A:{'2':2},B:{'2':1},C:{'2':1}}},
+      ally_reach_interception:{unchecked_next_attack_mass:0.2}}
+  })),language,'receive');
+  assert.ok(rescueValues.includes('35000.0') && rescueValues.includes('43000.0') && rescueValues.includes('20%'));
+  assert.match(rescueValues,language==='ja'?/呼応/:language==='en'?/partner echoes/:/响应队友/);
+  assert.ok(!rescueValues.includes('NaN') && !rescueValues.includes('undefined'));
   for(const piece of ['2','3','4','5']) {
     const pair=context.localizeGameLogAiDetail(`receive_enemy_first_shared_pair_${piece}`,language);
     const pass=context.localizeGameLogAiDetail(`pass_enemy_first_shared_pair_${piece}`,language);

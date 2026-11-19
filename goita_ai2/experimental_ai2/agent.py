@@ -32,13 +32,14 @@ from goita_ai2.experimental_ai2.shi_support_change import ShiSupportChangeMixin
 from goita_ai2.experimental_ai2.live_plan_review import LivePlanReviewMixin
 from goita_ai2.experimental_ai2.late_receive import LateReceiveMixin
 from goita_ai2.experimental_ai2.opening_pair_receive import OpeningPairReceiveMixin
+from goita_ai2.experimental_ai2.middle_signal_inference import MiddleSignalInferenceMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(LivePlanReviewMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
+class RuleBasedAgent(LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
                      PlannedBlockReserveMixin, BeliefEndgameMixin, FirstShiApprovalMixin,
                      ShiBlockReserveMixin, KyoshaContinuationMixin, CurrentRuleBasedAgent):
     """Keep the current AI decision unless its own scores show a close tie."""

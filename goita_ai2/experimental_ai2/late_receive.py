@@ -22,6 +22,7 @@ class LateReceiveMixin:
     LATE_RECEIVE_ROUTE_SAMPLES = 48
     LATE_RECEIVE_ROUTE_DEPTH = 10
     LATE_RECEIVE_ROUTE_FIRST_DEPTH = 6
+    ALLY_RESCUE_FIRST_DEPTH = 8
     LATE_RECEIVE_ROUTE_SECONDS = 2.0
     LATE_RECEIVE_ROUTE_MARGIN = 200.0
 
@@ -32,6 +33,61 @@ class LateReceiveMixin:
             and not self._same_team(state.attacker, player)
             and int(tracker.get("enemy_attack_counts", {}).get(state.attacker, 0)) >= 2
         )
+
+    def _is_ally_reach_rescue_position(self, state, player, tracker):
+        """A ready ally's attack can be intercepted before it returns to them."""
+        return bool(tracker and state.phase == "receive"
+                    and state.attacker == self._ally_of(player)
+                    and state.current_attack in ("3", "4", "5", "6", "7")
+                    and len(state.hands[state.attacker]) == 2
+                    and 2 <= len(state.hands[state.next_player(player)]) <= 4
+                    and len(state.hands[player]) in (4, 6, 8))
+
+    @staticmethod
+    def _rotate_receive_evidence(value, mapping):
+        """Rename seats/teams in public evidence without changing any pieces."""
+        if isinstance(value, str):
+            return mapping.get(value, value)
+        if isinstance(value, dict):
+            result = {LateReceiveMixin._rotate_receive_evidence(k, mapping):
+                      LateReceiveMixin._rotate_receive_evidence(v, mapping) for k, v in value.items()}
+            return Counter(result) if isinstance(value, Counter) else result
+        if isinstance(value, (tuple, list, set)):
+            return type(value)(LateReceiveMixin._rotate_receive_evidence(v, mapping) for v in value)
+        return value
+
+    def _compare_rotated_ally_rescue(self, state, player, actions, budget_seconds):
+        """Sample in a player-relative frame so seat labels cannot change draws."""
+        started = time.perf_counter()
+        offset = (3 - "ABCD".index(player)) % 4
+        mapping = {s: "ABCD"[(i + offset) % 4] for i, s in enumerate("ABCD")}
+        for team in ("AC", "BD"):
+            mapping[team] = "".join(sorted(mapping[s] for s in team))
+        inverse = {v: k for k, v in mapping.items()}
+        rotate = lambda value: self._rotate_receive_evidence(value, mapping)
+        canonical = copy.copy(state)
+        canonical.__dict__ = rotate(copy.deepcopy(vars(state)))
+        for field in ("hands", "face_down_hidden", "had_both_kings"):
+            setattr(canonical, field, {s: getattr(canonical, field)[s] for s in "ABCD"})
+        predictions = getattr(self, "_prediction_rollforward_states", [])
+        worker = copy.deepcopy(self, {id(predictions): []})
+        worker.me = "D"
+        tracker = rotate(copy.deepcopy(self._track[id(state)]))
+        worker._track = {id(canonical): tracker}
+        worker._my_initial_hands_by_state_id = {id(canonical): list(self._get_my_initial_hand(state))}
+        worker._neural_public_history_by_state_id = {
+            id(canonical): rotate(self._neural_public_history_by_state_id.get(id(state), []))}
+        worker._refresh_public_piece_inference_impl(canonical, tracker, reason="relative_receive_frame")
+        remaining = min(self.LATE_RECEIVE_ROUTE_SECONDS,
+                        self.LATE_RECEIVE_ROUTE_SECONDS if budget_seconds is None else budget_seconds)
+        remaining = max(0.0, remaining - (time.perf_counter() - started))
+        result = worker._compare_late_receive_routes(canonical, "D", actions, remaining)
+        self._late_receive_comparison_attempt = self._rotate_receive_evidence(
+            worker._late_receive_comparison_attempt, inverse)
+        if result is not None:
+            result = self._rotate_receive_evidence(result, inverse)
+            result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
+        return result
 
     def _score_receive_phase(self, state, player, action_type, block):
         value = super()._score_receive_phase(state, player, action_type, block)
@@ -136,8 +192,17 @@ class LateReceiveMixin:
         return max(finishes, key=lambda final: final.team_score.get(team, 0))
 
     def _late_other_action_distribution(self, state, actor, tracker):
+        actions = state.legal_actions(actor)
+        if ((getattr(self, "_late_receive_route_context", None) or {}).get("ally_rescue")
+                and state.next_player(actor) == state.attacker
+                and not self._same_team(actor, state.attacker)
+                and len(state.hands[state.attacker]) == 2
+                and any(move[0] == "receive" for move in actions)):
+            # This last defender can see that passing lets the enemy finish
+            # immediately. Forecast a receive attempt, without a fixed pass tax.
+            actions = [move for move in actions if move[0] != "pass"]
         scored = sorted(((self._late_other_action_value(state, actor, action, tracker), action)
-                         for action in state.legal_actions(actor)), reverse=True)[:2]
+                         for action in actions), reverse=True)[:2]
         if not scored:
             return []
         peak = scored[0][0]
@@ -298,6 +363,28 @@ class LateReceiveMixin:
             estimated_return += world.probability * probability
         return rows, round(forced_return, 6), round(estimated_return, 6)
 
+    def _ally_reach_interception_forecast(self, state, player, worlds):
+        enemy = state.next_player(player)
+        threatens = 0.0
+        for world in worlds:
+            cursor = self._timed_search_apply(world.state, player, ("pass", None, None))
+            for receive in cursor.legal_actions(enemy):
+                if receive[0] != "receive":
+                    continue
+                after = self._timed_search_apply(cursor, enemy, receive)
+                for attack in after.legal_actions(enemy):
+                    final = self._timed_search_apply(after, enemy, attack)
+                    if (final.finished or (len(final.hands[enemy]) == 2
+                            and not self._forced_win_receive_options(final.hands[player], attack[2])
+                            and not self._forced_win_receive_options(final.hands[state.attacker], attack[2]))):
+                        threatens += world.probability
+                        break
+                else:
+                    continue
+                break
+        return {"enemy": enemy, "unchecked_next_attack_mass": round(threatens, 6),
+                "source": "weighted_hypothetical_hands", "proven": False}
+
     def _late_royal_reserve_wait_available(self, state, player, tracker, actions):
         hand = tuple(state.hands[player])
         royals = [piece for piece in hand if piece in ("8", "9")]
@@ -319,15 +406,19 @@ class LateReceiveMixin:
     def _compare_late_receive_routes(self, state, player, actions, budget_seconds=None):
         self._late_receive_comparison_attempt = None
         tracker = self._track.get(id(state))
-        if (not self.TIME_SEARCH_ENABLED or not self._is_late_enemy_receive(state, player, tracker)
+        rescue = self._is_ally_reach_rescue_position(state, player, tracker)
+        if (not self.TIME_SEARCH_ENABLED
+                or not (rescue or self._is_late_enemy_receive(state, player, tracker))
                 or getattr(self, "_time_search_cancel_event", None) is not None
-                or len(state.hands[player]) != 4
-                or not any(piece in ("8", "9") for piece in state.hands[player])
+                or (not rescue and (len(state.hands[player]) != 4
+                                    or not any(piece in ("8", "9") for piece in state.hands[player])))
                 or ("pass", None, None) not in actions
                 or not any(action[0] == "receive" for action in actions)
-                or any(len(state.hands[seat]) <= 2 for seat in "ABCD"
-                       if not self._same_team(seat, player))):
+                or (not rescue and any(len(state.hands[seat]) <= 2 for seat in "ABCD"
+                                       if not self._same_team(seat, player)))):
             return None
+        if rescue and player != "D":
+            return self._compare_rotated_ally_rescue(state, player, actions, budget_seconds)
         routes = [(("pass", None, None),)]
         for receive in actions:
             if receive[0] == "receive":
@@ -338,6 +429,7 @@ class LateReceiveMixin:
         started = time.perf_counter()
         attempt = {"source": "weighted_public_information_routes", "proven": False,
                    "status": "incomplete", "applied": False, "completed_depths": [],
+                   "context": "ally_reach_rescue" if rescue else "late_enemy_receive",
                    "target_depth": self.LATE_RECEIVE_ROUTE_DEPTH, "samples": 0}
         self._late_receive_comparison_attempt = attempt
         budget = min(self.LATE_RECEIVE_ROUTE_SECONDS, self.TIME_SEARCH_HARD_MAX_SECONDS,
@@ -347,7 +439,8 @@ class LateReceiveMixin:
             return None
         deadline = started + budget
         stats = {"nodes": 0, "max_nodes": min(60000, int(self.TIME_SEARCH_MAX_NODES))}
-        context = {"bridge_cache": {}, "bridge_hits": 0, "bridge_scores": set(), "next_world_index": 1000000}
+        context = {"bridge_cache": {}, "bridge_hits": 0, "bridge_scores": set(), "next_world_index": 1000000,
+                   "ally_rescue": rescue}
         previous = getattr(self, "_late_receive_route_context", None)
         self._late_receive_route_context = context
         completed = None
@@ -371,7 +464,11 @@ class LateReceiveMixin:
                 route_children[route] = tuple(children)
             # Finish a cheaper, fully paired comparison first. A deeper timeout
             # must not discard it or mix scores from different horizons/routes.
-            depths = sorted({min(self.LATE_RECEIVE_ROUTE_FIRST_DEPTH, self.LATE_RECEIVE_ROUTE_DEPTH),
+            # A rescue offer can be intercepted and returned before reaching
+            # the ready ally. Complete that extra receive/attack cycle before
+            # using a shallower result, particularly after spending our royal.
+            first_depth = self.ALLY_RESCUE_FIRST_DEPTH if rescue else self.LATE_RECEIVE_ROUTE_FIRST_DEPTH
+            depths = sorted({min(first_depth, self.LATE_RECEIVE_ROUTE_DEPTH),
                              self.LATE_RECEIVE_ROUTE_DEPTH})
             for depth in depths:
                 values, world_values = {}, {}
@@ -394,7 +491,12 @@ class LateReceiveMixin:
                 attempt["stop_reason"] = stop_reason or "time_limit"
                 return None
             depth, values, world_values = completed
-            hypotheses, forced_return, estimated_return = self._late_receive_hypotheses(state, player, tracker, worlds)
+            if rescue:
+                hypotheses, forced_return, estimated_return = [], None, None
+                forecast = self._ally_reach_interception_forecast(state, player, worlds)
+            else:
+                hypotheses, forced_return, estimated_return = self._late_receive_hypotheses(state, player, tracker, worlds)
+                forecast = None
         except InformationSetSearchCancelled:
             attempt["stop_reason"] = "cancelled"
             return None  # Public-state cancellation invalidates every iteration.
@@ -421,14 +523,18 @@ class LateReceiveMixin:
         # confidence interval or a percentage chance of winning a real game.
         dispersion_band = 2.0 * math.sqrt(variance / max(1.0, effective_samples))
         reserve_wait = bool(
-            information_set.confidence >= 0.5 and effective_samples >= 8
+            not rescue and information_set.confidence >= 0.5 and effective_samples >= 8
             and abs(pass_value - receive_value) <= dispersion_band
             and self._late_royal_reserve_wait_available(state, player, tracker, actions))
         if reserve_wait:
             best = routes[0]
+        summary = (self._middle_signal_summary(tracker)
+                   if rescue and hasattr(self, "_middle_signal_summary") else None)
         return {**attempt, "status": "budget_limited" if stop_reason else "completed",
                 "stop_reason": stop_reason,
                 "attacker": state.attacker,
+                "middle_signal_inference": summary,
+                "ally_reach_interception": forecast,
                 "chosen": best, "margin": abs(pass_value - receive_value),
                 "pass_value": round(pass_value, 3), "receive_value": round(receive_value, 3),
                 "selection_basis": "royal_reserve_within_sample_dispersion" if reserve_wait else "paired_route_value",
@@ -457,9 +563,11 @@ class LateReceiveMixin:
 
     def _select_action_with_measurement(self, state, player, actions):
         previous = getattr(self, "_late_receive_deferred_records", None)
-        eligible = (self._is_late_enemy_receive(state, player, self._track.get(id(state)))
-                    and len(state.hands[player]) == 4
-                    and any(piece in ("8", "9") for piece in state.hands[player]))
+        tracker = self._track.get(id(state))
+        eligible = (self._is_ally_reach_rescue_position(state, player, tracker)
+                    or (self._is_late_enemy_receive(state, player, tracker)
+                        and len(state.hands[player]) == 4
+                        and any(piece in ("8", "9") for piece in state.hands[player])))
         self._late_receive_deferred_records = [] if eligible else previous
         try:
             chosen = self._select_late_receive_action(state, player, actions)
@@ -485,9 +593,10 @@ class LateReceiveMixin:
             chosen = pending["action"]
             self._commit_timed_search_action(state, player, chosen)
             self._set_decision_reason("time_search")
-            self._set_score_fallback_detail(f"late_receive_followup_{chosen[2]}")
-            self.last_rule_search_authority = "strong"
             comparison = tracker.get("last_late_receive_comparison", {})
+            prefix = "ally_reach_rescue" if comparison.get("context") == "ally_reach_rescue" else "late_receive"
+            self._set_score_fallback_detail(f"{prefix}_followup_{chosen[2]}")
+            self.last_rule_search_authority = "strong"
             self.last_attack_candidate_scores = [
                 {"action": row["actions"][1], "score": row["value"],
                  "candidate_role": "paired_receive_followup"}
@@ -535,8 +644,9 @@ class LateReceiveMixin:
             for action, value in root_values.items()
         ]
         self._set_decision_reason("time_search")
+        prefix = "ally_reach_rescue" if comparison.get("context") == "ally_reach_rescue" else "late_receive"
         self._set_score_fallback_detail(
-            f"late_receive_routes_depth_{comparison['depth']}_samples_{comparison['samples']}_"
+            f"{prefix}_routes_depth_{comparison['depth']}_samples_{comparison['samples']}_"
             f"{'pass' if len(route) == 1 else 'receive_attack_' + str(route[1][2])}"
             f"{'_reserve_uncertain' if comparison.get('selection_basis') == 'royal_reserve_within_sample_dispersion' else ''}"
             f"{'_budget_limited' if comparison.get('status') == 'budget_limited' else ''}")
@@ -547,6 +657,6 @@ class LateReceiveMixin:
         super()._finalize_attack_candidate_snapshot(actions, chosen)
         tracker = self._track.get(getattr(self, "_live_plan_review_state_id", None), {})
         comparison = tracker.get("last_late_receive_comparison")
-        if comparison and (self.last_score_fallback_detail.startswith("late_receive_")
+        if comparison and (self.last_score_fallback_detail.startswith(("late_receive_", "ally_reach_rescue_"))
                            or getattr(self, "_late_receive_comparison_attempt", None) is not None):
             self.last_attack_candidate_snapshot["late_receive_comparison"] = copy.deepcopy(comparison)

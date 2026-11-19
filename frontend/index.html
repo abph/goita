@@ -7680,6 +7680,21 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    const rescue = String(detail || "").match(/^ally_reach_rescue_routes_depth_(\d+)_samples_(\d+)_(pass|receive_attack_([1-9]))$/);
+    if(rescue) {
+        const [,depth,samples,choice,piece] = rescue;
+        const attack = piece ? gameLogCandidatePieceLabel(piece, language) : "";
+        if(language === "en") return `Across ${samples} weighted hands at depth ${depth}, compare passing the ready ally's attack into a possible enemy interception with receiving and each follow-up offer to the ally. Chose ${choice === "pass" ? "pass" : `receive then attack with ${attack}`}. These are inferred routes, not a guaranteed win.`;
+        if(language === "zh") return `用${samples}个加权手牌样本、深度${depth}，比较跳过听牌队友的进攻后被对手接牌的危险，与接牌后各种进攻向队友传牌的路线。选择${choice === "pass" ? "跳过" : `接牌后用${attack}进攻`}。这是推测路线，并非必胜证明。`;
+        return `リーチした相方の攻めをパスして敵に受けられる危険と、自分が受けて各駒を相方へ届ける筋を、${samples}標本・深さ${depth}で比較し、${choice === "pass" ? "パスを選択" : `受けて${attack}で攻める方を選択`}。想定手駒に基づく推定であり、確定上がりではない。`;
+    }
+    const rescueFollowup = String(detail || "").match(/^ally_reach_rescue_followup_([1-9])$/);
+    if(rescueFollowup) {
+        const piece = gameLogCandidatePieceLabel(rescueFollowup[1], language);
+        if(language === "en") return `Continue the paired rescue route with ${piece}, changing the attack to offer a finishing chance to the ally.`;
+        if(language === "zh") return `继续刚才比较的救援路线，用${piece}改变进攻，为队友创造获胜机会。`;
+        return `直前に受けと一組で比較した${piece}を攻め、攻め駒を変えて相方の上がり機会を作る。`;
+    }
     const sharedPair = String(detail || "").match(/^(receive|pass)_enemy_first_shared_pair_([2-5])$/);
     if(sharedPair) {
         const piece = gameLogCandidatePieceLabel(sharedPair[2], language);
@@ -8025,6 +8040,22 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         }
         const pass = Number(review.pass_value).toFixed(1);
         const receive = Number(review.receive_value).toFixed(1);
+        if(review.context === "ally_reach_rescue") {
+            const inference = review.middle_signal_inference || {};
+            const signals = inference.signals || {};
+            const pieces = [...new Set(Object.values(signals).filter(s => s.role === "ally_echo").map(s => s.piece))];
+            const allocations = pieces.map(piece => {
+                const label = gameLogCandidatePieceLabel(piece, language);
+                return ["A","B","C","D"].map(seat => {
+                    const counts = seat === inference.observer ? inference.own_initial_counts : inference.preferred_initial_counts?.[seat];
+                    return `${seat}${label}${Number(counts?.[piece] || 0)}`;
+                }).join(" / ");
+            }).join("; ");
+            const threat = Math.round(Number(review.ally_reach_interception?.unchecked_next_attack_mass || 0) * 100);
+            if(language === "en") return `[${progress}Paired route values: pass ${pass}, best receive-and-attack ${receive}. Representative initial allocation (${allocations}); opening claims and partner echoes are distinguished. In ${threat}% of weighted samples the enemy can receive and finish or use a next attack our team cannot receive. These are model estimates, not measured win probabilities.]`;
+            if(language === "zh") return `[${progress}路线评价：跳过${pass}，最佳接牌及进攻${receive}。初始配牌的代表候选（${allocations}），区分首攻主张与响应队友。${threat}%的加权样本中，对手能接牌后获胜或打出己方无法接住的下一次进攻。这是模型估计，并非实测胜率。]`;
+            return `[${progress}受けと攻めの比較値：パス${pass}、最良の受け・攻め${receive}。初期配分の代表候補（${allocations}）は、初手の主張と相方への呼応を区別して更新。敵が受けて上がる、またはこちら側が受けられない次の攻めへ進める標本の重み${threat}%。いずれもモデル上の推定であり、実測の勝率ではない。]`;
+        }
         const forced = Math.round(Number(review.forced_round_return_mass || 0) * 100);
         const estimate = Math.round(Number(review.round_return_estimate || 0) * 100);
         if(language === "en") return `[${progress}Paired route values: pass ${pass}, best receive-and-attack ${receive}. Full-lap estimate from the uncalibrated action model: ${estimate}%. In ${forced}% of weighted samples nobody can receive before the attacker acts again; this is a lower bound within the samples, not the overall full-lap probability.]`;

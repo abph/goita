@@ -27,7 +27,8 @@ class OpeningPairReceiveMixin:
                        if not self._same_team(seat, player))):
             return None
         model = tracker.get("public_hand_models", {}).get(attacker, {})
-        if model.get("first_attack") != piece or model.get("strategy_broken"):
+        if (model.get("first_attack") != piece or model.get("strategy_broken")
+                or model.get("first_attack_role") == "ally_echo"):
             return None
         axes = self._initial_hand_axes_for_state(state, player)
         if self._strategy_rank_from_axes(axes) not in ("C", "D", "E", "F", "X"):
