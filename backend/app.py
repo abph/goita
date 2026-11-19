@@ -2998,6 +2998,7 @@ def _format_ai_attack_candidates(agent: Any) -> str:
         snapshot.get("alternatives")
         or snapshot.get("block_alternatives")
         or (snapshot.get("chosen") or {}).get("block")
+        or snapshot.get("late_receive_comparison")
     ):
         return ""
     payload = urllib.parse.quote(

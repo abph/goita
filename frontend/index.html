@@ -7681,6 +7681,26 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    const lateReceive = String(detail || "").match(/^late_receive_routes_depth_(\d+)_samples_(\d+)_(pass|receive_attack_([1-9]))(_reserve_uncertain)?$/);
+    if(lateReceive) {
+        const [, depth, samples, choice, attack, reserve] = lateReceive;
+        const followup = attack ? gameLogCandidatePieceLabel(attack, language) : "";
+        if(reserve) {
+            if(language === "en") return `Compared pass and receive-and-attack routes at depth ${depth} across ${samples} weighted hands. Their value difference is within sample dispersion. Keep the last royal because there is no repeat attack after spending it, all possible next pieces remain receivable, and natural receives can lead to a royal attack. This is a strategic preference under uncertainty, not a guaranteed win.`;
+            if(language === "zh") return `用${samples}个加权手牌样本、深度${depth}比较跳过及接牌进攻。评价差在样本波动范围内，使用最后的王或玉后没有连续进攻，而保留后仍可接住下一次所有可能的棋子，并有普通接牌后用王或玉进攻的路线，因此选择保留。这是不确定情况下的策略选择，并非必胜证明。`;
+            return `公開情報で重み付けした${samples}標本・深さ${depth}で受けと攻めを比較。評価差が標本のばらつきの範囲内で、最後の王か玉を使った後に繰り返せる攻めがない。温存すれば次の全種類に受けが残り、通常受けから王か玉で攻める筋もあるためパス。推定が不確かな中での戦術的な選択であり、確定上がりではない。`;
+        }
+        if(language === "en") return `Compared passing with receiving and each follow-up attack at depth ${depth} across ${samples} weighted public-information hands. Includes the opponent's next attack, the two cards left, and a possible natural receive followed by a royal attack. Chose ${choice === "pass" ? "pass" : `receive then attack with ${followup}`}. This is a sampled estimate, not a guaranteed win.`;
+        if(language === "zh") return `用${samples}个依据公开信息加权的手牌样本、深度${depth}，比较跳过与接牌后的各种进攻，并考虑对手下一次进攻、剩余两张牌，以及用普通棋子接牌后再用王或玉进攻的路线。选择${choice === "pass" ? "跳过" : `接牌后用${followup}进攻`}。这是样本估计，并非必胜证明。`;
+        return `公開情報で重み付けした${samples}標本・深さ${depth}で、パスと受けた後の各攻めを比較。敵の次の攻めと残り2枚、通常の駒で受けて王か玉で攻める筋を含め、${choice === "pass" ? "パスを選択" : `受けて${followup}で攻める方を選択`}。標本上の推定であり、確定上がりではない。`;
+    }
+    const lateFollowup = String(detail || "").match(/^late_receive_followup_([1-9])$/);
+    if(lateFollowup) {
+        const piece = gameLogCandidatePieceLabel(lateFollowup[1], language);
+        if(language === "en") return `Attack with ${piece}, continuing the paired receive-and-attack route just compared. Replan when the public position changes.`;
+        if(language === "zh") return `继续刚才一起比较的接牌及进攻路线，用${piece}进攻。公开局面变化时重新评估。`;
+        return `直前に受けと一組で比較した${piece}の攻めを継続。公開局面が変わった場合は再検討する。`;
+    }
     const labels = {
         ...GAME_LOG_AI_DETAIL_LABELS.ja,
         ...(GAME_LOG_AI_DETAIL_LABELS[language] || {}),
@@ -7966,6 +7986,16 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         snapshot = JSON.parse(decodeURIComponent(String(payload || "")));
     } catch (_error) {
         return "";
+    }
+    if(snapshot?.late_receive_comparison) {
+        const review = snapshot.late_receive_comparison;
+        const pass = Number(review.pass_value).toFixed(1);
+        const receive = Number(review.receive_value).toFixed(1);
+        const forced = Math.round(Number(review.forced_round_return_mass || 0) * 100);
+        const estimate = Math.round(Number(review.round_return_estimate || 0) * 100);
+        if(language === "en") return `[Paired route values: pass ${pass}, best receive-and-attack ${receive}. Full-lap estimate from the uncalibrated action model: ${estimate}%. In ${forced}% of weighted samples nobody can receive before the attacker acts again; this is a lower bound within the samples, not the overall full-lap probability.]`;
+        if(language === "zh") return `[路线评价：跳过${pass}，最佳接牌及进攻${receive}。未经校准的行动模型估计转回比例约${estimate}%。加权样本中${forced}%没有其他人能接牌，是样本内转回比例的下限，并非整体转回概率。]`;
+        return `[受けと攻めの比較値：パス${pass}、最良の受け・攻め${receive}。未校正の行動モデルによる1巡の推定${estimate}%。他家が受けられず1巡する標本の重み${forced}%は、標本内の下限であり、1巡する確率全体ではない。]`;
     }
     const isBlockComparison = candidateKind === "receive"
         && snapshot?.chosen?.block
