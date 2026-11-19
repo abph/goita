@@ -574,6 +574,8 @@ class LateReceiveMixin:
         previous = getattr(self, "_late_receive_deferred_records", None)
         tracker = self._track.get(id(state))
         eligible = (self._is_ally_reach_rescue_position(state, player, tracker)
+                    or (hasattr(self, "_last_team_lance_context")
+                        and self._last_team_lance_context(state, player, actions) is not None)
                     or (self._is_late_enemy_receive(state, player, tracker)
                         and len(state.hands[player]) == 4
                         and any(piece in ("8", "9") for piece in state.hands[player])))

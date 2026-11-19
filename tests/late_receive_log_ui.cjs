@@ -12,6 +12,18 @@ const context=vm.createContext({});
 vm.runInContext(['localizeGameLogAiDetail','localizeGameLogAttackCandidates','gameLogCandidatePieceLabel']
   .map(extract).join('\n'),context);
 for(const language of ['ja','en','zh']) {
+  for(const enemy of ['A','B','C','D']) {
+    const reserve=context.localizeGameLogAiDetail(`pass_preserve_last_team_lance_enemy_${enemy}`,language);
+    assert.ok(reserve.includes(enemy) && !reserve.includes('pass_preserve_'));
+    assert.match(reserve,language==='ja'?/最後の香/:language==='en'?/last lance/:/最后一枚/);
+    assert.match(reserve,language==='ja'?/確定上がりではない/:language==='en'?/not a forced-win proof/:/并非必胜证明/);
+  }
+  const reserveSummary=context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
+    lance_reserve:{enemy:'A',enemy_hand_count:4,attacker:'C',attacker_hand_count:6,
+      followups:[{attack:'3'},{attack:'4'},{attack:'5'},{attack:'7'}]}
+  })),language,'receive');
+  assert.ok(reserveSummary.includes('A') && reserveSummary.includes('C') && reserveSummary.includes('4') && reserveSummary.includes('6'));
+  assert.ok(!reserveSummary.includes('undefined') && !reserveSummary.includes('NaN'));
   const rescue=context.localizeGameLogAiDetail('ally_reach_rescue_routes_depth_10_samples_48_receive_attack_7',language);
   const rescueFollowup=context.localizeGameLogAiDetail('ally_reach_rescue_followup_7',language);
   const rescueLimited=context.localizeGameLogAiDetail('ally_reach_rescue_routes_depth_6_samples_48_pass_budget_limited',language);

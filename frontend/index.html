@@ -7680,6 +7680,13 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    const lanceReserve = String(detail || "").match(/^pass_preserve_last_team_lance_enemy_([ABCD])$/);
+    if(lanceReserve) {
+        const enemy = lanceReserve[1];
+        if(language === "en") return `Keep the team's last lance receiver against ${enemy}'s inferred remaining lance. A royal cannot receive a lance. The current attacker is still on attack one, and receiving leaves no strong continuation, so pass and preserve the stop. This is a safety preference, not a forced-win proof.`;
+        if(language === "zh") return `保留己方最后一枚可接香的棋子，防备推测中${enemy}剩余的香。王或玉不能接香。当前对手仍是第一次进攻，接牌后没有强力续攻，因此跳过并保留防守。这是安全策略，并非必胜证明。`;
+        return `${enemy}に残ると推定した香を止める、自分側の最後の香を温存。王か玉では香を受けられず、現在の攻め手はまだ1枚目の攻め。受けた後の強い継続を確認できないため、パスして対応の余地を残す。推定に基づく安全判断であり、確定上がりではない。`;
+    }
     const rescue = String(detail || "").match(/^ally_reach_rescue_routes_depth_(\d+)_samples_(\d+)_(pass|receive_attack_([1-9]))$/);
     if(rescue) {
         const [,depth,samples,choice,piece] = rescue;
@@ -8077,6 +8084,13 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         if(language === "en") return `[Ordinary response values after removing the weak initial-hand bias: ${values}. These are heuristic scores, not win probabilities.]`;
         if(language === "zh") return `[去除初始弱手补正后的常规判断值：${values}。这是策略评价值，并非胜率。]`;
         return `[初期手駒が弱いという補正を外した通常の受け判断値：${values}。戦術上の評価値であり、勝率ではない。]`;
+    }
+    if(snapshot?.lance_reserve) {
+        const review = snapshot.lance_reserve;
+        const attacks = (review.followups || []).map(row => gameLogCandidatePieceLabel(row.attack, language)).join(" / ");
+        if(language === "en") return `[Lance reserve: ${review.enemy} has ${review.enemy_hand_count} cards; the current attacker ${review.attacker} has ${review.attacker_hand_count}. Compared receive-and-attack continuations (${attacks}); retained the last lance stop. Hand contents are inferred from public information.]`;
+        if(language === "zh") return `[保留香：${review.enemy}剩${review.enemy_hand_count}张，当前进攻者${review.attacker}剩${review.attacker_hand_count}张。比较接牌后的进攻（${attacks}），保留最后的香防守。手牌内容依据公开信息推测。]`;
+        return `[香の温存：${review.enemy}は残り${review.enemy_hand_count}枚、現在の攻め手${review.attacker}は残り${review.attacker_hand_count}枚。受けた後の各攻め（${attacks}）を比較し、最後の香の受けを残した。手駒の内容は公開情報からの推定。]`;
     }
     const isBlockComparison = candidateKind === "receive"
         && snapshot?.chosen?.block

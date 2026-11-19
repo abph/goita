@@ -3000,6 +3000,7 @@ def _format_ai_attack_candidates(agent: Any) -> str:
         or (snapshot.get("chosen") or {}).get("block")
         or snapshot.get("late_receive_comparison")
         or snapshot.get("opening_shared_pair")
+        or snapshot.get("lance_reserve")
     ):
         return ""
     payload = urllib.parse.quote(
