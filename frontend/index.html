@@ -7681,6 +7681,12 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    if(String(detail || "").endsWith("_budget_limited")) {
+        const completed = localizeGameLogAiDetail(String(detail).replace(/_budget_limited$/, ""), language);
+        if(language === "en") return `${completed} The deeper comparison reached its time or node limit; these are the last fully compared depth's results.`;
+        if(language === "zh") return `${completed} 更深的比较达到时间或节点限制，采用最后完成全部候选比较的深度结果。`;
+        return `${completed} より深い比較は時間・計算量の上限に達したため、全候補を比較し終えた深さの結果を採用。`;
+    }
     const lateReceive = String(detail || "").match(/^late_receive_routes_depth_(\d+)_samples_(\d+)_(pass|receive_attack_([1-9]))(_reserve_uncertain)?$/);
     if(lateReceive) {
         const [, depth, samples, choice, attack, reserve] = lateReceive;
@@ -7989,13 +7995,34 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
     }
     if(snapshot?.late_receive_comparison) {
         const review = snapshot.late_receive_comparison;
+        if(review.status === "incomplete") {
+            const reasons = {
+                ja: {time_limit: "時間制限", node_limit: "計算量の上限", cancelled: "局面変更による中断", insufficient_worlds: "想定手駒の標本不足", evaluation_error: "比較計算のエラー"},
+                en: {time_limit: "time limit", node_limit: "node limit", cancelled: "public-state cancellation", insufficient_worlds: "too few hypothetical hands", evaluation_error: "comparison error"},
+                zh: {time_limit: "时间限制", node_limit: "节点限制", cancelled: "局面变化中断", insufficient_worlds: "假设手牌样本不足", evaluation_error: "比较计算错误"},
+            };
+            const reason = (reasons[language] || reasons.ja)[review.stop_reason] || review.stop_reason;
+            if(language === "en") return `[Extra receive/pass comparison incomplete (${reason}). Kept the original decision; partial route values were discarded.]`;
+            if(language === "zh") return `[追加接牌/跳过比较未完成（${reason}）。保留原判断，未使用部分路线的评估值。]`;
+            return `[追加の受け・パス比較は未完了（${reason}）。元の判断を維持し、一部の候補だけの計算値は使用していない。]`;
+        }
+        let progress = "";
+        if(review.status === "budget_limited") {
+            progress = language === "en" ? `All routes completed at depth ${review.depth}; deeper search reached its time or node limit. `
+                : language === "zh" ? `全部路线完成到深度${review.depth}，更深的搜索达到时间或节点限制。`
+                : `全候補を深さ${review.depth}まで比較。より深い探索は時間・計算量の上限で終了。`;
+        }
+        if(review.applied === false) {
+            progress += language === "en" ? "Comparison not adopted; kept the original decision. "
+                : language === "zh" ? "未采用比较结果，保留原判断。" : "比較結果は採用せず、元の判断を維持。";
+        }
         const pass = Number(review.pass_value).toFixed(1);
         const receive = Number(review.receive_value).toFixed(1);
         const forced = Math.round(Number(review.forced_round_return_mass || 0) * 100);
         const estimate = Math.round(Number(review.round_return_estimate || 0) * 100);
-        if(language === "en") return `[Paired route values: pass ${pass}, best receive-and-attack ${receive}. Full-lap estimate from the uncalibrated action model: ${estimate}%. In ${forced}% of weighted samples nobody can receive before the attacker acts again; this is a lower bound within the samples, not the overall full-lap probability.]`;
-        if(language === "zh") return `[路线评价：跳过${pass}，最佳接牌及进攻${receive}。未经校准的行动模型估计转回比例约${estimate}%。加权样本中${forced}%没有其他人能接牌，是样本内转回比例的下限，并非整体转回概率。]`;
-        return `[受けと攻めの比較値：パス${pass}、最良の受け・攻め${receive}。未校正の行動モデルによる1巡の推定${estimate}%。他家が受けられず1巡する標本の重み${forced}%は、標本内の下限であり、1巡する確率全体ではない。]`;
+        if(language === "en") return `[${progress}Paired route values: pass ${pass}, best receive-and-attack ${receive}. Full-lap estimate from the uncalibrated action model: ${estimate}%. In ${forced}% of weighted samples nobody can receive before the attacker acts again; this is a lower bound within the samples, not the overall full-lap probability.]`;
+        if(language === "zh") return `[${progress}路线评价：跳过${pass}，最佳接牌及进攻${receive}。未经校准的行动模型估计转回比例约${estimate}%。加权样本中${forced}%没有其他人能接牌，是样本内转回比例的下限，并非整体转回概率。]`;
+        return `[${progress}受けと攻めの比較値：パス${pass}、最良の受け・攻め${receive}。未校正の行動モデルによる1巡の推定${estimate}%。他家が受けられず1巡する標本の重み${forced}%は、標本内の下限であり、1巡する確率全体ではない。]`;
     }
     const isBlockComparison = candidateKind === "receive"
         && snapshot?.chosen?.block

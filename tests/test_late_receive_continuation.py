@@ -9,6 +9,9 @@ from goita_ai2.experimental_ai2 import RuleBasedAgent
 from goita_ai2.current_ai.agent import RuleBasedAgent as CurrentAgent
 from goita_ai2.current_ai.endgame import ForcedWinStatus
 from goita_ai2.current_ai import generic_response_store as stores
+from goita_ai2.current_ai.information_set_search import (
+    InformationSetSearchCancelled, InformationSetSearchDeadline, InformationSetSearchOutcome,
+)
 from goita_ai2.state import GoitaState
 
 
@@ -237,3 +240,82 @@ def test_extra_route_comparison_does_not_run_in_background(monkeypatch):
     agent._time_search_cancel_event = threading.Event()
     monkeypatch.setattr(agent, "_timed_search_sample_states", lambda *args: pytest.fail("extra background search"))
     assert agent._compare_late_receive_routes(state, seat, state.legal_actions(seat)) is None
+
+
+@pytest.mark.parametrize("limit", ["time_limit", "node_limit"])
+def test_deeper_partial_results_never_replace_the_completed_paired_comparison(monkeypatch, limit):
+    state, agent, seat = position()
+    # Establish the fully compared shallow values on the same weighted worlds.
+    agent.LATE_RECEIVE_ROUTE_DEPTH = 6
+    complete = agent._compare_late_receive_routes(state, seat, state.legal_actions(seat))
+    agent.LATE_RECEIVE_ROUTE_DEPTH = 10
+    search = agent._information_set_search_bundle
+
+    def limited_search(*args, **kwargs):
+        depth, history = args[5], args[10]
+        if len(history) == 1 and depth == 9:
+            # A completed pass-only score from the deeper iteration must not leak.
+            return InformationSetSearchOutcome(1e9, tuple((w.index, 1e9) for w in args[1]), 0)
+        if len(history) == 2 and depth == 8 and history[0][1] == "receive":
+            raise InformationSetSearchDeadline(limit)
+        return search(*args, **kwargs)
+
+    monkeypatch.setattr(agent, "_information_set_search_bundle", limited_search)
+    result = agent._compare_late_receive_routes(state, seat, state.legal_actions(seat))
+    assert result["status"] == "budget_limited" and result["stop_reason"] == limit
+    assert result["depth"] == 6 and result["completed_depths"] == [6]
+    assert result["target_depth"] == 10
+    assert result["routes"] == complete["routes"]
+    assert result["chosen"] == complete["chosen"] == (("pass", None, None),)
+    assert result["pass_value"] == complete["pass_value"]
+    assert result["receive_value"] == complete["receive_value"]
+    assert agent._late_receive_route_context is None
+
+
+def test_server_timeout_keeps_completed_pass_and_logs_the_actual_depth(monkeypatch):
+    state, agent, seat = position()
+    search = agent._information_set_search_bundle
+
+    def limited_search(*args, **kwargs):
+        if len(args[10]) == 1 and args[5] == 9:
+            raise InformationSetSearchDeadline("time_limit")
+        return search(*args, **kwargs)
+
+    monkeypatch.setattr(agent, "_information_set_search_bundle", limited_search)
+    assert agent.select_action(state, seat, state.legal_actions(seat)) == ("pass", None, None)
+    assert agent.last_score_fallback_detail == "late_receive_routes_depth_6_samples_48_pass_budget_limited"
+    review = agent.last_attack_candidate_snapshot["late_receive_comparison"]
+    assert review["applied"] and review["status"] == "budget_limited"
+    assert review["completed_depths"] == [6]
+    assert agent.last_rule_search_authority == "strong"
+
+
+def test_no_completed_comparison_keeps_baseline_but_exports_timeout(monkeypatch):
+    state, agent, seat = position()
+    agent.LATE_RECEIVE_ROUTE_SECONDS = 0
+    assert agent.select_action(state, seat, state.legal_actions(seat)) == ("receive", "8", None)
+    review = agent.last_attack_candidate_snapshot["late_receive_comparison"]
+    assert review["status"] == "incomplete" and not review["applied"]
+    assert review["stop_reason"] == "time_limit" and review["completed_depths"] == []
+    assert "pass_value" not in review and "receive_value" not in review
+    # A later unrelated decision must not inherit the old timeout explanation.
+    state.apply_receive(seat, "8")
+    agent.on_public_action(state, seat, ("receive", "8", None))
+    agent.select_action(state, seat, state.legal_actions(seat))
+    assert "late_receive_comparison" not in agent.last_attack_candidate_snapshot
+
+
+def test_public_state_cancellation_discards_even_completed_old_iterations(monkeypatch):
+    state, agent, seat = position()
+    search = agent._information_set_search_bundle
+
+    def cancelled_search(*args, **kwargs):
+        if len(args[10]) == 1 and args[5] == 9:
+            raise InformationSetSearchCancelled()
+        return search(*args, **kwargs)
+
+    monkeypatch.setattr(agent, "_information_set_search_bundle", cancelled_search)
+    assert agent._compare_late_receive_routes(state, seat, state.legal_actions(seat)) is None
+    assert agent._late_receive_comparison_attempt["stop_reason"] == "cancelled"
+    assert agent._late_receive_comparison_attempt["completed_depths"] == [6]
+    assert agent._late_receive_route_context is None

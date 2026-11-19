@@ -23,5 +23,18 @@ for(const language of ['ja','en','zh']) {
   const summary=context.localizeGameLogAttackCandidates(payload,language,'receive');
   assert.ok(summary.includes('40000.0') && summary.includes('45000.0') && summary.includes('25%'));
   assert.match(summary,language==='ja'?/下限/:language==='en'?/lower bound/:/下限/);
+  const limited=context.localizeGameLogAiDetail('late_receive_routes_depth_6_samples_48_pass_budget_limited',language);
+  assert.ok(limited.includes('6') && !limited.includes('late_receive_'));
+  assert.match(limited,language==='ja'?/上限/:language==='en'?/limit/:/限制/);
+  const incomplete=context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
+    late_receive_comparison:{status:'incomplete',stop_reason:'time_limit',applied:false}
+  })),language,'receive');
+  assert.match(incomplete,language==='ja'?/元の判断を維持/:language==='en'?/Kept the original/:/保留原判断/);
+  assert.ok(!incomplete.includes('NaN') && !incomplete.includes('undefined'));
+  const notAdopted=context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
+    late_receive_comparison:{status:'budget_limited',depth:6,pass_value:40000,receive_value:45000,applied:false}
+  })),language,'receive');
+  assert.ok(notAdopted.includes('6'));
+  assert.match(notAdopted,language==='ja'?/採用せず/:language==='en'?/not adopted/:/未采用/);
 }
 console.log('Late receive logs: Japanese/English/Chinese selection reasons, uncertainty, actual route values and full-lap lower bound passed');

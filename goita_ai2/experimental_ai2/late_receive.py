@@ -21,6 +21,7 @@ from goita_ai2.current_ai.information_set_search import (
 class LateReceiveMixin:
     LATE_RECEIVE_ROUTE_SAMPLES = 48
     LATE_RECEIVE_ROUTE_DEPTH = 10
+    LATE_RECEIVE_ROUTE_FIRST_DEPTH = 6
     LATE_RECEIVE_ROUTE_SECONDS = 2.0
     LATE_RECEIVE_ROUTE_MARGIN = 200.0
 
@@ -316,6 +317,7 @@ class LateReceiveMixin:
                 and sum(piece in remaining for piece in incoming) >= 2)
 
     def _compare_late_receive_routes(self, state, player, actions, budget_seconds=None):
+        self._late_receive_comparison_attempt = None
         tracker = self._track.get(id(state))
         if (not self.TIME_SEARCH_ENABLED or not self._is_late_enemy_receive(state, player, tracker)
                 or getattr(self, "_time_search_cancel_event", None) is not None
@@ -334,21 +336,30 @@ class LateReceiveMixin:
         if len(routes) < 2:
             return None
         started = time.perf_counter()
+        attempt = {"source": "weighted_public_information_routes", "proven": False,
+                   "status": "incomplete", "applied": False, "completed_depths": [],
+                   "target_depth": self.LATE_RECEIVE_ROUTE_DEPTH, "samples": 0}
+        self._late_receive_comparison_attempt = attempt
         budget = min(self.LATE_RECEIVE_ROUTE_SECONDS, self.TIME_SEARCH_HARD_MAX_SECONDS,
                      self.TIME_SEARCH_HARD_MAX_SECONDS if budget_seconds is None else max(0.0, budget_seconds))
         if budget <= 0:
+            attempt.update(stop_reason="time_limit", elapsed_ms=0)
             return None
         deadline = started + budget
         stats = {"nodes": 0, "max_nodes": min(60000, int(self.TIME_SEARCH_MAX_NODES))}
         context = {"bridge_cache": {}, "bridge_hits": 0, "bridge_scores": set(), "next_world_index": 1000000}
         previous = getattr(self, "_late_receive_route_context", None)
         self._late_receive_route_context = context
+        completed = None
+        stop_reason = None
         try:
             samples = self._timed_search_sample_states(state, player, tracker, self.LATE_RECEIVE_ROUTE_SAMPLES)
             information_set, worlds = self._information_set_search_worlds(state, player, tracker, samples)
+            attempt["samples"] = len(worlds)
             if len(worlds) < 8:
+                attempt["stop_reason"] = "insufficient_worlds"
                 return None
-            values, world_values = {}, {}
+            route_children = {}
             for route in routes:
                 children = []
                 for world in worlds:
@@ -357,19 +368,46 @@ class LateReceiveMixin:
                         child = self._timed_search_apply(child, player, action)
                     children.append(InformationSetSearchWorld(
                         world.index, child, world.probability, world.confidence))
-                history = tuple(self._information_set_observed_action(player, player, action) for action in route)
-                result = self._information_set_search_bundle(
-                    state, tuple(children), player, information_set, dict(state.team_score),
-                    self.LATE_RECEIVE_ROUTE_DEPTH - len(route), deadline, stats,
-                    InformationSetPolicy(), tracker, history,
-                    getattr(self, "_time_search_cancel_event", None), {}, {})
-                values[route] = result.value
-                world_values[route] = result.values_dict()
+                route_children[route] = tuple(children)
+            # Finish a cheaper, fully paired comparison first. A deeper timeout
+            # must not discard it or mix scores from different horizons/routes.
+            depths = sorted({min(self.LATE_RECEIVE_ROUTE_FIRST_DEPTH, self.LATE_RECEIVE_ROUTE_DEPTH),
+                             self.LATE_RECEIVE_ROUTE_DEPTH})
+            for depth in depths:
+                values, world_values = {}, {}
+                try:
+                    for route in routes:
+                        history = tuple(self._information_set_observed_action(player, player, action) for action in route)
+                        result = self._information_set_search_bundle(
+                            state, route_children[route], player, information_set, dict(state.team_score),
+                            depth - len(route), deadline, stats,
+                            InformationSetPolicy(), tracker, history,
+                            getattr(self, "_time_search_cancel_event", None), {}, {})
+                        values[route] = result.value
+                        world_values[route] = result.values_dict()
+                except InformationSetSearchDeadline as error:
+                    stop_reason = str(error) or "time_limit"
+                    break
+                completed = (depth, values, world_values)
+                attempt["completed_depths"].append(depth)
+            if completed is None:
+                attempt["stop_reason"] = stop_reason or "time_limit"
+                return None
+            depth, values, world_values = completed
             hypotheses, forced_return, estimated_return = self._late_receive_hypotheses(state, player, tracker, worlds)
-        except (InformationSetSearchDeadline, InformationSetSearchCancelled, TypeError, ValueError):
-            return None  # Partial routes are never compared with completed ones.
+        except InformationSetSearchCancelled:
+            attempt["stop_reason"] = "cancelled"
+            return None  # Public-state cancellation invalidates every iteration.
+        except InformationSetSearchDeadline as error:
+            attempt["stop_reason"] = str(error) or "time_limit"
+            return None
+        except (TypeError, ValueError):
+            attempt["stop_reason"] = "evaluation_error"
+            return None
         finally:
             self._late_receive_route_context = previous
+            attempt["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
+            attempt["nodes"] = stats["nodes"]
         best_receive = max(routes[1:], key=lambda route: values[route])
         pass_value = values[routes[0]]
         receive_value = values[best_receive]
@@ -388,7 +426,8 @@ class LateReceiveMixin:
             and self._late_royal_reserve_wait_available(state, player, tracker, actions))
         if reserve_wait:
             best = routes[0]
-        return {"source": "weighted_public_information_routes", "proven": False,
+        return {**attempt, "status": "budget_limited" if stop_reason else "completed",
+                "stop_reason": stop_reason,
                 "attacker": state.attacker,
                 "chosen": best, "margin": abs(pass_value - receive_value),
                 "pass_value": round(pass_value, 3), "receive_value": round(receive_value, 3),
@@ -396,7 +435,7 @@ class LateReceiveMixin:
                 "dispersion_band": round(dispersion_band, 3),
                 "effective_samples": round(effective_samples, 3),
                 "routes": [{"actions": list(route), "value": round(values[route], 3)} for route in routes],
-                "samples": len(worlds), "depth": self.LATE_RECEIVE_ROUTE_DEPTH,
+                "samples": len(worlds), "depth": depth,
                 "confidence": round(information_set.confidence, 6),
                 "reliable": information_set.confidence >= 0.5 and effective_samples >= 8,
                 "attacker_hypotheses": hypotheses,
@@ -438,6 +477,7 @@ class LateReceiveMixin:
 
     def _select_late_receive_action(self, state, player, actions):
         started = time.perf_counter()
+        self._late_receive_comparison_attempt = None
         tracker = self._track.get(id(state), {})
         pending = tracker.pop("pending_late_receive_route", None)
         if (pending and pending["key"] == self._late_receive_followup_key(state, player)
@@ -464,6 +504,9 @@ class LateReceiveMixin:
         with self._measure_performance("search"):
             comparison = self._compare_late_receive_routes(state, player, actions, remaining_seconds)
         if comparison is None:
+            attempt = self._late_receive_comparison_attempt
+            if attempt is not None:
+                self._track[id(state)]["last_late_receive_comparison"] = copy.deepcopy(attempt)
             return chosen
         comparison["applied"] = ((comparison.get("reliable", False)
                                   and comparison["margin"] >= self.LATE_RECEIVE_ROUTE_MARGIN)
@@ -495,7 +538,8 @@ class LateReceiveMixin:
         self._set_score_fallback_detail(
             f"late_receive_routes_depth_{comparison['depth']}_samples_{comparison['samples']}_"
             f"{'pass' if len(route) == 1 else 'receive_attack_' + str(route[1][2])}"
-            f"{'_reserve_uncertain' if comparison.get('selection_basis') == 'royal_reserve_within_sample_dispersion' else ''}")
+            f"{'_reserve_uncertain' if comparison.get('selection_basis') == 'royal_reserve_within_sample_dispersion' else ''}"
+            f"{'_budget_limited' if comparison.get('status') == 'budget_limited' else ''}")
         self.last_rule_search_authority = "strong"
         return route[0]
 
@@ -503,5 +547,6 @@ class LateReceiveMixin:
         super()._finalize_attack_candidate_snapshot(actions, chosen)
         tracker = self._track.get(getattr(self, "_live_plan_review_state_id", None), {})
         comparison = tracker.get("last_late_receive_comparison")
-        if comparison and self.last_score_fallback_detail.startswith("late_receive_"):
+        if comparison and (self.last_score_fallback_detail.startswith("late_receive_")
+                           or getattr(self, "_late_receive_comparison_attempt", None) is not None):
             self.last_attack_candidate_snapshot["late_receive_comparison"] = copy.deepcopy(comparison)
