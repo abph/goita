@@ -40,11 +40,12 @@ const people = [
       toggleLobbyChatPanel(true,false);
     },people);
     const lobby=page.locator('#lobbyChatPanel');
-    assert.match(await page.locator('#lobbyChatPeopleList').textContent(),/みんなでごいたA・在席中［募集中］/);
+    assert.match(await page.locator('#lobbyChatPeopleList').textContent(),/みんなでごいたA・在席中/);
+    assert.equal(await page.locator('#lobbyChatPeopleList .lobby-person-row').filter({hasText:'AI練習の人'}).locator('.lobby-person-location').textContent(),'AIとごいたA・在席中');
     assert.match(await page.locator('#lobbyChatPeopleList').textContent(),/みんなでごいたA・観戦中/);
     assert.match(await page.locator('#lobbyChatPeopleList').textContent(),/プライベートルーム・在席中/);
     assert.equal(await page.evaluate(()=>formatLobbyPersonLocation({location:'スコアアタック',seat:'A',role:'player'})),'スコアアタック');
-    assert.equal(await page.locator('#lobbyChatPeopleList .lobby-recruiting-label').count(),2);
+    assert.doesNotMatch(await page.locator('#lobbyChatPeopleList').textContent(),/募集中/);
     const sizes=()=>lobby.evaluate(panel=>({
       total:panel.getBoundingClientRect().height,
       people:panel.querySelector('.room-chat-people').getBoundingClientRect().height,
@@ -71,7 +72,7 @@ const people = [
     for(const [language,status,recruiting] of [['en','Spectating','Open to players'],['zh','观战中','招募中']]) {
       await page.evaluate(({language,people})=>{goitaI18n.setLanguage(language,{dispatch:false});renderLobbyPeople(people);},{language,people});
       assert.match(await page.locator('#lobbyChatPeopleList').textContent(),new RegExp(status));
-      assert.match(await page.locator('#lobbyChatPeopleList .lobby-recruiting-label').first().textContent(),new RegExp(recruiting));
+      assert.ok(!(await page.locator('#lobbyChatPeopleList').textContent()).includes(recruiting));
       assert.equal(await lobby.locator('[data-people-adjust="up"]').getAttribute('title'),language==='en'?'Expand chat':'扩大聊天区域');
     }
     await page.evaluate(people=>{goitaI18n.setLanguage('ja',{dispatch:false});renderLobbyPeople(people);},people);
@@ -83,6 +84,7 @@ const people = [
       document.getElementById('gameView').style.display='block';
       renderRoomChatPeople(people);syncDesktopRoomChatHeight();
     },people);
+    assert.doesNotMatch(await page.locator('#roomChatPeopleList').textContent(),/募集中/);
     const room=page.locator('#chatPanel');
     const oldHeight=await room.evaluate(e=>e.getBoundingClientRect().height);
     await room.locator('[data-people-adjust="down"]').click();
@@ -118,6 +120,6 @@ const people = [
     assert.ok(mobile.panel.right<=391);
     await room.screenshot({path:path.join(output,'room-mobile.png')});
     assert.deepEqual(errors,[]);
-    console.log('Player list and chat: role labels, recruiting badges, translations, height controls/limits/persistence, gathering and mobile layout passed');
+    console.log('Player list and chat: role labels without recruiting badges, translations, height controls/limits/persistence, gathering and mobile layout passed');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

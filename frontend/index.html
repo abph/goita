@@ -2319,7 +2319,6 @@
     }
     .chat-people-splitter button:hover { background: rgba(139, 90, 43, 0.1); }
     .chat-people-splitter button:disabled { opacity: 0.3; cursor: default; }
-    .lobby-recruiting-label { margin-left: 4px; color: #39704c; white-space: nowrap; }
     .room-chat-people .lobby-person-row {
       display: block;
       padding: 1px;
@@ -15538,12 +15537,6 @@ function buildSitePeopleFragment(sitePeople){
       const location = document.createElement("span");
       location.className = "lobby-person-location";
       location.textContent = formatLobbyPersonLocation(person);
-      if(person?.role === "player" && person?.public_room_status === "recruiting"){
-        const recruiting = document.createElement("span");
-        recruiting.className = "lobby-recruiting-label";
-        recruiting.textContent = `［${uiText("募集中")}］`;
-        location.appendChild(recruiting);
-      }
       row.append(identity, location);
       fragment.appendChild(row);
     });
