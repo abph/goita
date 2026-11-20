@@ -3000,7 +3000,6 @@ def _format_ai_attack_candidates(agent: Any) -> str:
         or snapshot.get("block_alternatives")
         or (snapshot.get("chosen") or {}).get("block")
         or snapshot.get("late_receive_comparison")
-        or snapshot.get("neural_royal_decision")
         or snapshot.get("opening_shared_pair")
         or snapshot.get("lance_reserve")
     ):
@@ -3066,24 +3065,6 @@ def _format_neural_shadow(agent: Any) -> str:
         and snapshot.get("block_only_disagreement")
     )
     difference_label = " / 伏せ駒のみ不一致" if hidden_block_difference else ""
-    if snapshot.get("mode") == "royal_priority":
-        selected = _trace_action_label(tuple(snapshot.get("selected_action", ())))
-        guard = snapshot.get("royal_guard")
-        if guard == "enemy_immediate_finish":
-            result = "敵の即上がりを防ぐため現AIを採用"
-        elif guard:
-            result = "確定上がり・確定維持の判断を保護して現AIを採用"
-        elif snapshot.get("applied"):
-            result = "王（玉）判断でニューラル全体第1候補を採用"
-        elif snapshot.get("match"):
-            result = "王（玉）判断でニューラルを参照・現AIと一致"
-        else:
-            result = "現AIを採用"
-        return (
-            f" [NEURAL-ROYAL:採用={selected} / ニューラル候補={recommended}"
-            f" / 現AI={rule_action}{difference_label} / {result}"
-            f" / ニューラル差={margin:.3f} / {elapsed:.1f}ms]"
-        )
     if snapshot.get("mode") == "primary":
         selected = _trace_action_label(tuple(snapshot.get("selected_action", ())))
         if snapshot.get("match"):

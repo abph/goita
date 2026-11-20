@@ -34,17 +34,16 @@ from goita_ai2.experimental_ai2.late_receive import LateReceiveMixin
 from goita_ai2.experimental_ai2.opening_pair_receive import OpeningPairReceiveMixin
 from goita_ai2.experimental_ai2.middle_signal_inference import MiddleSignalInferenceMixin
 from goita_ai2.experimental_ai2.lance_reserve import LanceReserveMixin
-from goita_ai2.experimental_ai2.royal_neural import RoyalNeuralPriorityMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
+class RuleBasedAgent(LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
                      PlannedBlockReserveMixin, BeliefEndgameMixin, FirstShiApprovalMixin,
                      ShiBlockReserveMixin, LanceReserveMixin, KyoshaContinuationMixin, CurrentRuleBasedAgent):
-    """Use neural royal decisions; retain ordinary tie-breaks and proven guards."""
+    """Keep the current AI decision unless its own scores show a close tie."""
 
     _shared_neural_model: Optional[NeuralPolicyModel] = None
     _shared_neural_error: Optional[str] = None
@@ -70,7 +69,6 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
         self.NEURAL_TIEBREAK_MIN_CURRENT_GAP = 5.0
         self.NEURAL_TIEBREAK_MAX_CURRENT_GAP = 20.0
         self.NEURAL_TIEBREAK_CURRENT_RELATIVE_GAP = 0.05
-        self.NEURAL_ROYAL_PRIORITY_ENABLED = True
         self.last_neural_shadow: Dict[str, Any] = {}
         self._neural_public_history_by_state_id: Dict[int, List[dict]] = {}
 
@@ -537,19 +535,9 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
     def select_action(self, state, player: str, actions: List[Action]) -> Action:
         previous_state_id = getattr(self, "_live_plan_review_state_id", None)
         self._live_plan_review_state_id = id(state)
-        previous_records = getattr(self, "_royal_neural_deferred_records", None)
-        defer = self.NEURAL_ROYAL_PRIORITY_ENABLED and any(
-            any(piece in ("8", "9") for piece in action[1:]) for action in actions)
-        self._royal_neural_deferred_records = [] if defer else previous_records
         try:
-            chosen = self._select_action_with_neural_tiebreak(state, player, actions)
-            if defer:
-                records = self._royal_neural_deferred_records or []
-                self._royal_neural_deferred_records = previous_records
-                self._flush_royal_neural_evidence(state, player, chosen, records)
-            return chosen
+            return self._select_action_with_neural_tiebreak(state, player, actions)
         finally:
-            self._royal_neural_deferred_records = previous_records
             self._live_plan_review_state_id = previous_state_id
 
     def _select_action_with_neural_tiebreak(self, state, player: str, actions: List[Action]) -> Action:
@@ -669,28 +657,18 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
             eligible_actions=current_comparison["eligible_actions"],
         )
         snapshot = self.last_neural_shadow
-        royal = self._royal_neural_review(
-            state, actions, rule_action, snapshot, rule_authority=rule_authority,
-            rule_reason=rule_reason, rule_detail=rule_detail,
-            immediate_finish=prevent_enemy_immediate_finish,
-            unstoppable_finish=protect_unstoppable_finish)
-        baseline_choice_status = current_comparison["status"]
-        if royal:
-            self._promote_global_neural_candidate(snapshot)
-            if not royal["guard"]:
-                current_comparison.update(status="royal_priority", eligible_actions=list(actions), gap_limit=None)
         recommended = tuple(snapshot.get("recommended_action", ()))
         neural_available = bool(snapshot.get("available")) and recommended in actions
         margin = float(snapshot.get("margin") or 0.0)
         current_comparison["selected_gap"] = snapshot.get(
             "current_score_gap"
         )
-        safety_locked = rule_authority == "proven" or bool(royal and royal["guard"])
+        safety_locked = rule_authority == "proven"
         block_only_disagreement = self._neural_block_only_disagreement(
             rule_action,
             recommended,
         )
-        required_margin = 0.0 if royal else float(self.NEURAL_TIEBREAK_MIN_NEURAL_MARGIN)
+        required_margin = float(self.NEURAL_TIEBREAK_MIN_NEURAL_MARGIN)
         current_choice_status = str(current_comparison["status"])
         confidence_deferred = bool(
             neural_available
@@ -698,18 +676,18 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
             and margin < required_margin
         )
         apply_neural = bool(
-            (self.NEURAL_ROYAL_PRIORITY_ENABLED if royal else self.NEURAL_TIEBREAK_ENABLED)
+            self.NEURAL_TIEBREAK_ENABLED
             and neural_available
             and recommended != rule_action
             and not safety_locked
-            and current_choice_status in ("close", "royal_priority")
+            and current_choice_status == "close"
             and recommended in current_comparison["eligible_actions"]
             and margin >= required_margin
         )
 
         selected = recommended if apply_neural else rule_action
         snapshot.update({
-            "mode": "royal_priority" if royal else "tiebreak",
+            "mode": "tiebreak",
             "applied": apply_neural,
             "selected_action": list(selected),
             "safety_locked": safety_locked,
@@ -731,9 +709,6 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
             "rule_reason": rule_reason,
             "rule_detail": rule_detail,
             "rule_authority": rule_authority,
-            "royal_priority_context": royal["context"] if royal else None,
-            "royal_guard": royal["guard"] if royal else None,
-            "baseline_choice_status": baseline_choice_status,
         })
         if not apply_neural:
             return rule_action
@@ -746,16 +721,13 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
         self._commit_neural_tiebreak_action(state, player, selected)
         self.last_attack_intent_comparison = None
         self.last_attack_candidate_snapshot = {}
-        self._set_decision_reason("neural_royal" if royal else "neural_tiebreak")
-        self._set_score_fallback_detail(f"royal_neural_priority_{royal['context']}" if royal else (
+        self._finalize_attack_candidate_snapshot(actions, selected)
+        self._set_decision_reason("neural_tiebreak")
+        self._set_score_fallback_detail(
             f"neural_tiebreak_current_gap_"
             f"{float(current_comparison['selected_gap'] or 0.0):.3f}_"
             f"neural_margin_{margin:.3f}"
-        ))
-        if royal:
-            self.last_rule_search_authority = "ordinary"
-            self._late_receive_comparison_attempt = None
-        self._finalize_attack_candidate_snapshot(actions, selected)
+        )
         return selected
 
     def _rule_preserves_continuation_reserve(
@@ -913,7 +885,6 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
             "pending_kyosha_receive_source",
             "pending_conditional_response_attack_piece",
             "pending_shi_insertion_attack_piece",
-            "pending_late_receive_route",
         ):
             tracker[key] = False if key == "pending_weak_hand_shi_signal" else None
 
@@ -986,9 +957,6 @@ class RuleBasedAgent(RoyalNeuralPriorityMixin, LivePlanReviewMixin, MiddleSignal
                 "rule_action": list(chosen),
                 "recommended_action": list(recommended),
                 "global_recommended_action": list(ranked[0][0]),
-                "global_margin": round(float(ranked[0][1] - ranked[1][1]), 6) if len(ranked) > 1 else 0.0,
-                "global_current_score_gap": round(current_scores[chosen] - current_scores[ranked[0][0]], 6)
-                    if chosen in current_scores and ranked[0][0] in current_scores else None,
                 "match": tuple(recommended) == tuple(chosen),
                 "margin": round(float(top_score - second_score), 6),
                 "current_score_gap": selected_gap,

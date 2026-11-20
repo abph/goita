@@ -48,9 +48,6 @@ def position(offset=0, timed=False, agent_class=RuleBasedAgent):
     state = GoitaState(hands, dealer=seats["A"])
     player = seats["D"]
     agent = agent_class()
-    # Keep the existing search regression independent of the royal-policy trial.
-    if agent_class is RuleBasedAgent:
-        agent.NEURAL_ROYAL_PRIORITY_ENABLED = False
     agent.bind_player(player)
     agent.TIME_SEARCH_ENABLED = timed
     agent.TIME_SEARCH_BACKGROUND_ENABLED = False

@@ -26,9 +26,6 @@ def position(*, rotate=0, swap_royals=False, agent_class=RuleBasedAgent):
     hands = {"A": "31827714", "B": "31443231", "C": "25161115", "D": "46259151"}
     state = GoitaState({seats[s]: [piece(p) for p in h] for s, h in hands.items()}, dealer=seats["A"])
     agent = agent_class()
-    # Exercise the route comparator itself, below the optional royal policy.
-    if agent_class is RuleBasedAgent:
-        agent.NEURAL_ROYAL_PRIORITY_ENABLED = False
     agent.TIME_SEARCH_BACKGROUND_ENABLED = False
     agent._relative_hand_rank_table = {}
     agent.bind_player(seats["A"])

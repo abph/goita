@@ -7568,7 +7568,6 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         response_dictionary: "事前に用意した応答計画",
         neural_primary: "学習した1222の判断を優先",
         neural_tiebreak: "現AIの僅差候補を学習結果で比較",
-        neural_royal: "王（玉）の判断にニューラル候補を採用",
         forced_king_third: "相手に王・玉を使わせる3枚目の攻め",
         king_order: "王・玉を使う順番の調整",
         safe_nonking_third: "王・玉を温存する安全な3枚目の攻め",
@@ -7590,7 +7589,6 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         response_dictionary: "预先准备的应对计划",
         neural_primary: "优先采用学习到的1222判断",
         neural_tiebreak: "用学习结果比较当前AI的接近候选",
-        neural_royal: "王或玉的判断采用神经网络候选",
         forced_king_third: "第三次进攻迫使对手使用王或玉",
         king_order: "调整王与玉的使用顺序",
         safe_nonking_third: "保留王或玉的安全第三次进攻",
@@ -7612,7 +7610,6 @@ const GAME_LOG_AI_REASON_LABELS = Object.freeze({
         response_dictionary: "Precomputed response plan",
         neural_primary: "Prioritize the learned 1222 decision",
         neural_tiebreak: "Use the learned policy to break a close Current AI tie",
-        neural_royal: "Use the neural choice for a royal decision",
         forced_king_third: "Third attack intended to force a King",
         king_order: "Adjust the King play order",
         safe_nonking_third: "Safe third attack that preserves the King",
@@ -7898,12 +7895,6 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "en") return `Keep both royals and attack with ${piece} because opening with a royal has no clear continuation.`;
         return `王・玉から始めても明確な攻めの続きがないため、王・玉を残して${piece}で攻める`;
     }
-    match = String(detail || "").match(/^royal_neural_priority_(receive_use_or_reserve|attack_or_block_use_or_reserve)$/);
-    if(match) {
-        if(language === "zh") return "在使用或保留王或玉的判断中，采用神经网络的全体第一候选，不限于当前AI的接近候选。这不是必胜证明。";
-        if(language === "en") return "Use the neural policy's global first choice to spend or keep a royal, without the close-score restriction. This is not a forced-win proof.";
-        return "王（玉）を使うか残すかの判断で、僅差条件を外してニューラルの全体第1候補を採用（確定上がりの証明ではありません）";
-    }
     match = String(detail || "").match(/^neural_tiebreak_current_gap_(-?[\d.]+)_neural_margin_(-?[\d.]+)$/);
     if(match) {
         if(language === "zh") return `当前AI的候选接近（差${match[1]}），用学习结果进行比较（神经网络差${match[2]}）`;
@@ -8071,11 +8062,6 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         snapshot = JSON.parse(decodeURIComponent(String(payload || "")));
     } catch (_error) {
         return "";
-    }
-    if(snapshot?.neural_royal_decision) {
-        if(language === "zh") return "王或玉的判断采用神经网络的全体第一候选。原AI的候选记录在NEURAL-ROYAL日志中；这不是必胜证明。";
-        if(language === "en") return "Use the neural policy's global first choice for this royal decision. NEURAL-ROYAL records the Current AI alternative; this is not a forced-win proof.";
-        return "王（玉）の判断でニューラルの全体第1候補を採用。現AIが選んだ手はNEURAL-ROYALに記録（確定上がりの証明ではありません）";
     }
     if(snapshot?.late_receive_comparison) {
         const review = snapshot.late_receive_comparison;
