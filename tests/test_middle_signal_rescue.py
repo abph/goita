@@ -17,7 +17,7 @@ def isolated_dictionary(monkeypatch):
     monkeypatch.setattr(stores, "_GENERIC_RESPONSE_PATTERN_STORE", stores.GenericResponsePatternStore())
 
 
-def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None, observer="D", think_previous=False):
+def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None, observer="D", think_previous=False, royal_neural=False):
     seats = {s: "ABCD"[(i + rotate) % 4] for i, s in enumerate("ABCD")}
     pieces = {"2": piece, piece: "2"}
     convert = lambda p: pieces.get(p, p)
@@ -25,6 +25,10 @@ def position(piece="2", rotate=0, agent_class=RuleBasedAgent, prefix_length=None
     state = GoitaState({seats[s]: [convert(p) for p in h] for s, h in hands.items()}, dealer=seats["A"])
     assert Counter(p for h in state.hands.values() for p in h) == Counter(PIECE_TOTALS)
     agent = agent_class()
+    # These regressions test the underlying rule/search route. The royal trial
+    # is checked separately below, including its intentional disagreement.
+    if agent_class is RuleBasedAgent:
+        agent.NEURAL_ROYAL_PRIORITY_ENABLED = royal_neural
     agent._relative_hand_rank_table = {}
     agent.TIME_SEARCH_BACKGROUND_ENABLED = False
     player = seats[observer]
@@ -169,6 +173,19 @@ def test_report_receives_with_royal_and_offers_the_rook_to_the_ready_ally(rotate
     agent.on_public_action(state, player, chosen)
     assert agent.select_action(state, player, state.legal_actions(player)) == ("attack", None, "7")
     assert agent.last_score_fallback_detail == "ally_reach_rescue_followup_7"
+
+
+def test_royal_trial_explicitly_overrides_the_unproven_rescue_route():
+    state, agent, player, _ = position(royal_neural=True)
+    chosen = agent.select_action(state, player, state.legal_actions(player))
+    assert chosen == ("pass", None, None)
+    snapshot = agent.last_neural_shadow
+    assert snapshot["rule_action"] == ["receive", "8", None]
+    assert snapshot["mode"] == "royal_priority" and snapshot["applied"]
+    assert not snapshot["safety_locked"]
+    assert agent.last_decision_reason == "neural_royal"
+    assert agent._track[id(state)].get("pending_late_receive_route") is None
+    assert "late_receive_comparison" not in agent.last_attack_candidate_snapshot
 
 
 def test_actual_hidden_contents_do_not_change_the_inferred_comparison():

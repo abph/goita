@@ -15,6 +15,30 @@ from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBase
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_royal_neural_log_distinguishes_adoption_and_protected_current_decisions():
+    from types import SimpleNamespace
+    snapshot = {
+        "available": True, "mode": "royal_priority", "applied": True,
+        "selected_action": ["pass", None, None],
+        "recommended_action": ["pass", None, None],
+        "rule_action": ["receive", "8", None], "margin": 0.01,
+    }
+    agent = SimpleNamespace(last_neural_shadow=snapshot)
+    log = app_module._format_neural_shadow(agent)
+    assert "NEURAL-ROYAL:" in log and "全体第1候補を採用" in log
+    assert "採用=パス" in log and "現AI=玉で受ける" in log
+    snapshot.update(applied=False, royal_guard="enemy_immediate_finish",
+                    selected_action=["receive", "8", None])
+    assert "敵の即上がりを防ぐ" in app_module._format_neural_shadow(agent)
+    snapshot.update(royal_guard="proven_decision")
+    assert "確定維持の判断を保護" in app_module._format_neural_shadow(agent)
+    agent.last_attack_candidate_snapshot = {
+        "decision_reason": "neural_royal",
+        "neural_royal_decision": {"selected_action": ["pass", None, None]},
+    }
+    assert "AI-CANDIDATES:" in app_module._format_ai_attack_candidates(agent)
+
+
 def test_seven_ai_profiles_are_available() -> None:
     assert app_module.DEFAULT_AI_PROFILE == "intermediate_middle3"
     assert set(app_module.AI_PROFILES) == {

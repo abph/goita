@@ -27,7 +27,7 @@ function context() {
     saveTutorialProgress() {},
     uiText: x => x,
     isAnimalTutorial: state => state?.tutorial_mode === true && ['basic','royal'].includes(state.tutorial_chapter) && state.tutorial_piece_theme === 'animals',
-    currentUiLanguage: () => 'ja', window: {goitaTutorialAnimals: {renderRoyalExplanation() {}}},
+    currentUiLanguage: () => 'ja', window: {},
     applyBoardViewMode() {}, renderTutorialAnimalLegend() {},
     tutorialCopy: () => ['title', 'instruction', 'detail'],
   });
@@ -53,14 +53,12 @@ function context() {
     assert.equal(!c.document.getElementById('tutorialAiPracticeButton').hidden, practice);
   }
   c.syncTutorialUI({tutorial_mode:true,tutorial_chapter:'basic',tutorial_piece_theme:'animals',tutorial_completed:true});
-  assert.equal(c.document.getElementById('tutorialRoyalExplanation').hidden,true);
+  assert.equal(c.document.getElementById('tutorialRoyalExplanation').hidden,false);
   assert.equal(c.document.getElementById('tutorialAnimalLegend').hidden,false);
   assert.equal(c.document.getElementById('tutorialRoyalButton').hidden,false);
-  assert.ok(c.document.getElementById('tutorialRoyalButton').textContent.includes('やまねこ'));
-  assert.equal(c.document.getElementById('tutorialAnimalRoyalExplanation').hidden,false);
+  assert.equal(c.document.getElementById('tutorialRoyalButton').textContent,'王（玉）を盤面で練習する');
   c.syncTutorialUI({tutorial_mode:true,tutorial_chapter:'royal',tutorial_piece_theme:'animals',tutorial_completed:true});
   assert.equal(c.document.getElementById('tutorialAnimalLegend').hidden,false);
-  assert.equal(c.document.getElementById('tutorialAnimalRoyalExplanation').hidden,true);
   assert.ok(c.document.getElementById('tutorialAttackButton').textContent.includes('通常の駒'));
   const royalLink = context();
   let royalRequest;
@@ -143,6 +141,18 @@ function context() {
   vm.runInContext(extract('tutorialCopy'), copy);
   for (const language of ['ja', 'en', 'zh']) {
     copy.currentUiLanguage = () => language;
+    for (const [chapter,indices] of [['basic',[0,5,9,10,14,19,20]], ['royal',[3,4,9,13,14,18,22]]]) {
+      for (const index of indices) {
+        const state = {tutorial_mode:true,tutorial_chapter:chapter,turn:'A',tutorial_action_index:index};
+        assert.deepEqual(copy.tutorialCopy({...state,tutorial_piece_theme:'animals'}),
+                         copy.tutorialCopy({...state,tutorial_piece_theme:'standard'}));
+      }
+      for (const extra of [{tutorial_completed:true},{turn:'B'}]) {
+        const state = {tutorial_mode:true,tutorial_chapter:chapter,...extra};
+        assert.deepEqual(copy.tutorialCopy({...state,tutorial_piece_theme:'animals'}),
+                         copy.tutorialCopy({...state,tutorial_piece_theme:'standard'}));
+      }
+    }
     for (const [chapter, indices] of [['attack', [0, 5, 6, 11, 12, 16]],
                                    ['cooperation', [3, 4, 9, 10, 14, 18]]]) {
       for (const index of indices) {
@@ -154,6 +164,12 @@ function context() {
       assert.ok(done[0] && done[1]);
     }
   }
+  copy.currentUiLanguage = () => 'ja';
+  const animalStart = copy.tutorialCopy({tutorial_mode:true,tutorial_piece_theme:'animals',tutorial_chapter:'basic',turn:'A',tutorial_action_index:0});
+  assert.ok(animalStart[1].includes('馬を伏せ') && animalStart[1].includes('銀で攻め'));
+  assert.ok(!animalStart[1].includes('こりす'));
+  const animalKing = copy.tutorialCopy({tutorial_mode:true,tutorial_piece_theme:'animals',tutorial_chapter:'royal',turn:'A',tutorial_action_index:3});
+  assert.ok(animalKing[1].includes('飛は王で受けられます'));
   const progress = context();
   vm.runInContext(html.slice(html.indexOf('const TUTORIAL_PROGRESS_KEYS ='), html.indexOf('let tutorialStarting =')), progress);
   const saved = new Map();

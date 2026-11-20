@@ -1,0 +1,18 @@
+version: 1
+name: 王（玉）判断のニューラル優先試験
+profile: experimental_ai2
+enabled_by: NEURAL_ROYAL_PRIORITY_ENABLED
+policy:
+  - 王か玉で受けられる局面では、受け・パスをニューラル全体第1候補で選ぶ。
+  - 攻めと伏せは、現AIとニューラルの王か玉の使用が異なる場合に対象とする。
+  - 現AIの僅差制限・通常の戦術優先・ニューラル候補差の下限は適用しない。
+  - 確定上がり・確定を維持する高得点待ち・敵の即上がり防止は現AIの判断を保護する。
+  - 王か玉を持つだけで、両候補とも使用方法が同じ場合は従来の僅差比較を維持する。
+  - モデルを利用できない場合は現AIの判断を使用する。
+  - ニューラルの評価値は学習した選択の評価であり、勝率や確定上がりの証明ではない。
+  - 採用した手と現AIの候補・理由を記録し、覆された判断を採用済みの学習資料にしない。
+validation:
+  - tests/test_royal_neural_priority.py
+  - tests/test_public_royal_wait.py
+  - tests/test_neural_policy.py
+  - tests/royal_neural_log_ui.cjs

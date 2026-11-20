@@ -39,6 +39,7 @@ for (const [piece,def] of Object.entries(animals.PIECES)) {
   assert.equal(value.children[0].src,'/static/player-icons/'+def.file);
   assert.equal(value.children[1].textContent,def.label);
   assert.ok(value.attrs.get('aria-label').includes(def.names.ja));
+  assert.ok(value.attrs.get('aria-label').startsWith(def.label));
   assert.equal(value.dataset.pieceEn,undefined);
   // Reuse a face as a back: its previous image, colour and name must disappear.
   animals.renderPiece(value,piece,def.label,{hidden:true,language:'ja'});
@@ -57,27 +58,6 @@ for (const language of ['ja','en','zh']) {
   animals.renderLegend(grid,intro,language);
   assert.equal(grid.children.length,9);
   assert.ok(intro.textContent.length > 0);
-  for (const index of [0,5,9,10,14,19,20]) {
-    const text = animals.copy({...active,tutorial_action_index:index},language);
-    assert.equal(text.length,3);
-    assert.ok(text.every(x => typeof x === 'string' && x.length > 0));
-  }
-  assert.ok(animals.copy({...active,tutorial_completed:true},language)[0]);
-  const royal = {...active,tutorial_chapter:'royal'};
-  for (const index of [3,4,9,13,14,18,22]) {
-    const text = animals.copy({...royal,tutorial_action_index:index},language);
-    assert.equal(text.length,3);
-    assert.ok(text.every(x => typeof x === 'string' && x.length > 0));
-  }
-  assert.ok(animals.copy({...royal,tutorial_completed:true},language)[0]);
-  const explanation = new Element();
-  animals.renderRoyalExplanation(explanation,language);
-  const lines = node => [node.textContent,...node.children.flatMap(lines)];
-  const all = lines(explanation).join(' ');
-  assert.ok(all.includes('50') && all.includes('100'));
-  for (const id of ['1','2','8','9']) {
-    const name = language === 'en' && id === '2' ? 'Mice' : animals.PIECES[id].names[language];
-    assert.ok(all.includes(name),`${language}: ${name}`);
-  }
+  assert.ok(grid.children[1].children[1].children[0].textContent.startsWith('香'));
 }
-console.log('Animal tutorial: nine mappings/assets, face rendering, identical concealed backs and three-language guidance passed');
+console.log('Animal tutorial: nine mappings/assets, piece-name labels, concealed backs and three-language legend passed');

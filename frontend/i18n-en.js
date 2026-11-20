@@ -371,7 +371,6 @@
     "かかりごたえを練習する": "Practice kakarigotae",
     "どうぶつチュートリアル": "Goita Tutorial — Animals",
     "駒の対応を見る": "View piece equivalents",
-    "やまねこ（こねこ）を盤面で練習する": "Practice the Wildcat and Kitten on the board",
     "通常の駒で基本的な攻め方を練習する": "Practice basic attacks with traditional pieces",
     "とりあえず対局したい": "Play a game",
     "対局したい": "Play",
