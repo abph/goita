@@ -3642,8 +3642,8 @@ def _normalize_tutorial_chapter(value: Any) -> str:
 
 def _normalize_tutorial_piece_theme(value: Any, chapter: str) -> str:
     theme = str(value or "standard")
-    if theme not in {"standard", "animals"} or (theme == "animals" and chapter != "basic"):
-        raise HTTPException(status_code=400, detail="Animal pieces are available only in the basic tutorial.")
+    if theme not in {"standard", "animals"} or (theme == "animals" and chapter not in {"basic", "royal"}):
+        raise HTTPException(status_code=400, detail="Animal pieces are available only in the basic and royal tutorials.")
     return theme
 
 

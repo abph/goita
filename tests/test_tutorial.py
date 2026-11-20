@@ -121,7 +121,8 @@ def test_tutorial_rejects_actions_outside_the_script() -> None:
     asyncio.run(scenario())
 
 
-def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
+@pytest.mark.parametrize("piece_theme", ["standard", "animals"])
+def test_royal_tutorial_practices_receive_pass_and_attack(piece_theme) -> None:
     async def scenario() -> None:
         client_id = "tutorial-royal-flow"
         room_id = app_module._tutorial_room_id(client_id)
@@ -132,12 +133,14 @@ def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
                     client_id=client_id,
                     start_step=1,
                     chapter="royal",
+                    piece_theme=piece_theme,
                 )
             )
             assert started["chapter"] == "royal"
             game = app_module.GAMES[room_id]
             assert game["dealer"] == "B"
             assert game["tutorial_chapter"] == "royal"
+            assert game["tutorial_piece_theme"] == piece_theme
             assert game["state"].turn == "A"
 
             expected_human_actions = [
@@ -181,6 +184,7 @@ def test_royal_tutorial_practices_receive_pass_and_attack() -> None:
             assert game["last_completed_kifu"] is None
             view = app_module.get_state(room_id, viewer="A", client_id=client_id)
             assert view["tutorial_chapter"] == "royal"
+            assert view["tutorial_piece_theme"] == piece_theme
             assert view["tutorial_step"] == 3
             assert view["tutorial_total_steps"] == 3
             assert view["tutorial_completed_step"] == 3
@@ -350,34 +354,34 @@ def test_attack_lessons_resume_and_restart_their_own_chapter(chapter, step):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("step", range(1, 6))
-def test_animal_basics_resume_and_keep_the_theme_on_restart(step):
+@pytest.mark.parametrize("chapter,step", [("basic",s) for s in range(1,6)] + [("royal",s) for s in range(1,4)])
+def test_animal_tutorials_resume_and_keep_the_theme_on_restart(chapter,step):
     async def scenario():
-        client_id = f"animal-resume-{step}"
+        client_id = f"animal-{chapter}-resume-{step}"
         room_id = app_module._tutorial_room_id(client_id)
         try:
             started = await app_module.start_tutorial(app_module.TutorialStartRequest(
-                client_id=client_id, start_step=step, piece_theme="animals"))
+                client_id=client_id, chapter=chapter, start_step=step, piece_theme="animals"))
             assert started["piece_theme"] == "animals"
             assert "どうぶつ" in started["room_name"]
             game = app_module.GAMES[room_id]
             assert app_module._tutorial_current_step(game) == step
             assert app_module._tutorial_expected_action(game, "A") in game["state"].legal_actions("A")
             # Older callers can omit the theme without losing the current one.
-            await app_module.restart_tutorial(room_id, app_module.TutorialStartRequest(client_id=client_id))
+            await app_module.restart_tutorial(room_id, app_module.TutorialStartRequest(client_id=client_id, chapter=chapter))
             game = app_module.GAMES[room_id]
             assert game["tutorial_piece_theme"] == "animals"
             assert app_module._tutorial_current_step(game) == 1
             # The next, non-animal chapter explicitly returns to traditional pieces.
-            await app_module.start_tutorial(app_module.TutorialStartRequest(client_id=client_id, chapter="royal"))
+            await app_module.start_tutorial(app_module.TutorialStartRequest(client_id=client_id, chapter="attack"))
             assert app_module.GAMES[room_id]["tutorial_piece_theme"] == "standard"
         finally:
             _clean_room(room_id)
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("chapter", ["royal", "attack", "cooperation"])
-def test_animal_theme_is_limited_to_basic_operations(chapter):
+@pytest.mark.parametrize("chapter", ["attack", "cooperation"])
+def test_animal_theme_is_limited_to_basic_and_royal_lessons(chapter):
     with pytest.raises(HTTPException) as error:
         app_module._create_tutorial_game("animals-not-advanced", chapter=chapter, piece_theme="animals")
     assert error.value.status_code == 400

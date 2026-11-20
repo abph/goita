@@ -26,7 +26,8 @@ function context() {
     },
     saveTutorialProgress() {},
     uiText: x => x,
-    isAnimalTutorial: state => state?.tutorial_mode === true && state.tutorial_chapter === 'basic' && state.tutorial_piece_theme === 'animals',
+    isAnimalTutorial: state => state?.tutorial_mode === true && ['basic','royal'].includes(state.tutorial_chapter) && state.tutorial_piece_theme === 'animals',
+    currentUiLanguage: () => 'ja', window: {goitaTutorialAnimals: {renderRoyalExplanation() {}}},
     applyBoardViewMode() {}, renderTutorialAnimalLegend() {},
     tutorialCopy: () => ['title', 'instruction', 'detail'],
   });
@@ -55,7 +56,22 @@ function context() {
   assert.equal(c.document.getElementById('tutorialRoyalExplanation').hidden,true);
   assert.equal(c.document.getElementById('tutorialAnimalLegend').hidden,false);
   assert.equal(c.document.getElementById('tutorialRoyalButton').hidden,false);
-  assert.ok(c.document.getElementById('tutorialRoyalButton').textContent.includes('通常の駒'));
+  assert.ok(c.document.getElementById('tutorialRoyalButton').textContent.includes('やまねこ'));
+  assert.equal(c.document.getElementById('tutorialAnimalRoyalExplanation').hidden,false);
+  c.syncTutorialUI({tutorial_mode:true,tutorial_chapter:'royal',tutorial_piece_theme:'animals',tutorial_completed:true});
+  assert.equal(c.document.getElementById('tutorialAnimalLegend').hidden,false);
+  assert.equal(c.document.getElementById('tutorialAnimalRoyalExplanation').hidden,true);
+  assert.ok(c.document.getElementById('tutorialAttackButton').textContent.includes('通常の駒'));
+  const royalLink = context();
+  let royalRequest;
+  royalLink.startTutorial = async (...args) => {royalRequest = args;};
+  vm.runInContext(extract('startRoyalTutorial'),royalLink);
+  royalLink.latestState = {tutorial_mode:true,tutorial_chapter:'basic',tutorial_piece_theme:'animals'};
+  await royalLink.startRoyalTutorial();
+  assert.deepEqual(royalRequest,['royal',true,'animals']);
+  royalLink.latestState.tutorial_piece_theme = 'standard';
+  await royalLink.startRoyalTutorial();
+  assert.deepEqual(royalRequest,['royal',true,'standard']);
   const nav = context();
   let calls = 0;
   let requestedChapter;
@@ -81,6 +97,10 @@ function context() {
   nav.startTutorial = async (chapter, stay, theme) => {requestedChapter = chapter; requestedTheme = theme; return true;};
   assert.equal(await nav.autoEnterTutorialFromUrl(), true);
   assert.equal(requestedChapter,'basic');
+  assert.equal(requestedTheme,'animals');
+  nav.window.location.href = 'https://solo.vrcgoita.com/?tutorial=animals-royal';
+  assert.equal(await nav.autoEnterTutorialFromUrl(),true);
+  assert.equal(requestedChapter,'royal');
   assert.equal(requestedTheme,'animals');
   nav.window.location.href = 'https://solo.vrcgoita.com/?tutorial=1';
   nav.startTutorial = async () => false;
@@ -109,6 +129,9 @@ function context() {
   start.storedTutorialProgress = (_chapter, theme) => theme === 'animals' ? 1 : 5;
   assert.equal(await start.startTutorial('basic',false,'animals'),true);
   assert.equal(sent.start_step,2);
+  assert.equal(sent.piece_theme,'animals');
+  assert.equal(await start.startTutorial('royal',false,'animals'),true);
+  assert.equal(sent.chapter,'royal');
   assert.equal(sent.piece_theme,'animals');
   start.fetch = async () => ({ok: false, json: async () => ({detail: 'offline'})});
   assert.equal(await start.startTutorial(), false);
@@ -141,6 +164,9 @@ function context() {
   progress.saveTutorialProgress('attack', 2);
   progress.saveTutorialProgress('cooperation', 1);
   assert.equal(progress.storedTutorialProgress('basic'), 5);
+  progress.saveTutorialProgress('royal',2,'animals');
+  assert.equal(progress.storedTutorialProgress('royal','animals'),2);
+  assert.equal(progress.storedTutorialProgress('royal'),0);
   assert.equal(progress.storedTutorialProgress('attack'), 2);
   assert.equal(progress.storedTutorialProgress('cooperation'), 1);
   assert.equal(progress.storedTutorialProgress('royal'), 0);

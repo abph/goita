@@ -22,7 +22,9 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../frontend/tutorialAnimals
 const animals = context.window.goitaTutorialAnimals;
 const active = {tutorial_mode:true,tutorial_chapter:'basic',tutorial_piece_theme:'animals',turn:'A'};
 assert.equal(animals.isActive(active),true);
-for (const state of [{...active,tutorial_mode:false},{...active,tutorial_chapter:'royal'},
+assert.equal(animals.isActive({...active,tutorial_chapter:'royal'}),true);
+for (const state of [{...active,tutorial_mode:false},{...active,tutorial_chapter:'attack'},
+                     {...active,tutorial_chapter:'cooperation'},
                      {...active,tutorial_piece_theme:'standard'},{}]) assert.equal(animals.isActive(state),false);
 const expected = ['ポッポ','コラッタ','ポニータ','ピカチュウ','ライチュウ','カイリュー','リザードン','ミュウ','ミュウツー'];
 assert.equal(Object.keys(animals.PIECES).length,9);
@@ -61,5 +63,21 @@ for (const language of ['ja','en','zh']) {
     assert.ok(text.every(x => typeof x === 'string' && x.length > 0));
   }
   assert.ok(animals.copy({...active,tutorial_completed:true},language)[0]);
+  const royal = {...active,tutorial_chapter:'royal'};
+  for (const index of [3,4,9,13,14,18,22]) {
+    const text = animals.copy({...royal,tutorial_action_index:index},language);
+    assert.equal(text.length,3);
+    assert.ok(text.every(x => typeof x === 'string' && x.length > 0));
+  }
+  assert.ok(animals.copy({...royal,tutorial_completed:true},language)[0]);
+  const explanation = new Element();
+  animals.renderRoyalExplanation(explanation,language);
+  const lines = node => [node.textContent,...node.children.flatMap(lines)];
+  const all = lines(explanation).join(' ');
+  assert.ok(all.includes('50') && all.includes('100'));
+  for (const id of ['1','2','8','9']) {
+    const name = language === 'en' && id === '2' ? 'Mice' : animals.PIECES[id].names[language];
+    assert.ok(all.includes(name),`${language}: ${name}`);
+  }
 }
 console.log('Animal tutorial: nine mappings/assets, face rendering, identical concealed backs and three-language guidance passed');
