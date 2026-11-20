@@ -18,43 +18,70 @@ function context() {
   return vm.createContext({
     URL, console,
     document: {
-      body: {classList: {toggle() {}}},
+      body: {classList: {toggle() {}, contains() {return false;}}},
       getElementById(id) {
         if (!nodes.has(id)) nodes.set(id, {hidden: true, style: {}});
         return nodes.get(id);
       },
     },
     saveTutorialProgress() {},
+    uiText: x => x,
+    isAnimalTutorial: state => state?.tutorial_mode === true && state.tutorial_chapter === 'basic' && state.tutorial_piece_theme === 'animals',
+    applyBoardViewMode() {}, renderTutorialAnimalLegend() {},
     tutorialCopy: () => ['title', 'instruction', 'detail'],
   });
 }
 (async () => {
   const c = context();
   for (const name of ['tutorialChapter', 'tutorialChapterTotal', 'syncTutorialUI']) vm.runInContext(extract(name), c);
-  for (const [chapter, completed, explain, royal, practice] of [
-    ['basic', false, false, false, false],
-    ['basic', true, true, true, false],
-    ['royal', false, false, false, false],
-    ['royal', true, false, false, true],
+  for (const [chapter, completed, explain, royal, attack, cooperation, practice] of [
+    ['basic', false, false, false, false, false, false],
+    ['basic', true, true, true, false, false, false],
+    ['royal', false, false, false, false, false, false],
+    ['royal', true, false, false, true, false, true],
+    ['attack', false, false, false, false, false, false],
+    ['attack', true, false, false, false, true, false],
+    ['cooperation', false, false, false, false, false, false],
+    ['cooperation', true, false, false, false, false, true],
   ]) {
     c.syncTutorialUI({tutorial_mode: true, tutorial_chapter: chapter, tutorial_completed: completed});
     assert.equal(!c.document.getElementById('tutorialRoyalExplanation').hidden, explain);
     assert.equal(!c.document.getElementById('tutorialRoyalButton').hidden, royal);
+    assert.equal(!c.document.getElementById('tutorialAttackButton').hidden, attack);
+    assert.equal(!c.document.getElementById('tutorialCooperationButton').hidden, cooperation);
     assert.equal(!c.document.getElementById('tutorialAiPracticeButton').hidden, practice);
   }
+  c.syncTutorialUI({tutorial_mode:true,tutorial_chapter:'basic',tutorial_piece_theme:'animals',tutorial_completed:true});
+  assert.equal(c.document.getElementById('tutorialRoyalExplanation').hidden,true);
+  assert.equal(c.document.getElementById('tutorialAnimalLegend').hidden,false);
+  assert.equal(c.document.getElementById('tutorialRoyalButton').hidden,false);
+  assert.ok(c.document.getElementById('tutorialRoyalButton').textContent.includes('通常の駒'));
   const nav = context();
   let calls = 0;
-  nav.startTutorial = async () => {calls++; return true;};
+  let requestedChapter;
+  nav.startTutorial = async chapter => {calls++; requestedChapter = chapter; return true;};
   nav.window = {location: {href: 'https://solo.vrcgoita.com/?tutorial=1&lang=en&from=vrcgoita#guide'},
     history: {replaceState(_state, _title, url) {nav.window.location.href = new URL(url, nav.window.location.href).href;}}};
   vm.runInContext(extract('autoEnterTutorialFromUrl'), nav);
   assert.equal(await nav.autoEnterTutorialFromUrl(), true);
   assert.equal(calls, 1);
+  assert.equal(requestedChapter, 'basic');
   assert.equal(nav.window.location.href, 'https://solo.vrcgoita.com/?lang=en&from=vrcgoita#guide');
   assert.equal(await nav.autoEnterTutorialFromUrl(), false);
   assert.equal(calls, 1);
   nav.window.location.href = 'https://solo.vrcgoita.com/?tutorial=0';
   assert.equal(await nav.autoEnterTutorialFromUrl(), false);
+  for (const chapter of ['royal', 'attack', 'cooperation']) {
+    nav.window.location.href = `https://solo.vrcgoita.com/?tutorial=${chapter}`;
+    assert.equal(await nav.autoEnterTutorialFromUrl(), true);
+    assert.equal(requestedChapter, chapter);
+  }
+  let requestedTheme;
+  nav.window.location.href = 'https://solo.vrcgoita.com/?tutorial=animals';
+  nav.startTutorial = async (chapter, stay, theme) => {requestedChapter = chapter; requestedTheme = theme; return true;};
+  assert.equal(await nav.autoEnterTutorialFromUrl(), true);
+  assert.equal(requestedChapter,'basic');
+  assert.equal(requestedTheme,'animals');
   nav.window.location.href = 'https://solo.vrcgoita.com/?tutorial=1';
   nav.startTutorial = async () => false;
   assert.equal(await nav.autoEnterTutorialFromUrl(), false);
@@ -79,10 +106,48 @@ function context() {
   start.storedTutorialProgress = () => 5;
   assert.equal(await start.startTutorial(), true);
   assert.equal(sent.start_step, 1);
+  start.storedTutorialProgress = (_chapter, theme) => theme === 'animals' ? 1 : 5;
+  assert.equal(await start.startTutorial('basic',false,'animals'),true);
+  assert.equal(sent.start_step,2);
+  assert.equal(sent.piece_theme,'animals');
   start.fetch = async () => ({ok: false, json: async () => ({detail: 'offline'})});
   assert.equal(await start.startTutorial(), false);
   assert.equal(start.document.getElementById('lobbyFeatureGuideStatus').textContent, 'offline');
   assert.equal(start.tutorialStarting, false);
+
+  const copy = context();
+  vm.runInContext(extract('tutorialChapter'), copy);
+  vm.runInContext(extract('tutorialCopy'), copy);
+  for (const language of ['ja', 'en', 'zh']) {
+    copy.currentUiLanguage = () => language;
+    for (const [chapter, indices] of [['attack', [0, 5, 6, 11, 12, 16]],
+                                   ['cooperation', [3, 4, 9, 10, 14, 18]]]) {
+      for (const index of indices) {
+        const result = copy.tutorialCopy({tutorial_chapter: chapter, turn: 'A', tutorial_action_index: index});
+        assert.equal(result.length, 3);
+        assert.ok(result.every(text => typeof text === 'string' && text.length > 0));
+      }
+      const done = copy.tutorialCopy({tutorial_chapter: chapter, tutorial_completed: true});
+      assert.ok(done[0] && done[1]);
+    }
+  }
+  const progress = context();
+  vm.runInContext(html.slice(html.indexOf('const TUTORIAL_PROGRESS_KEYS ='), html.indexOf('let tutorialStarting =')), progress);
+  const saved = new Map();
+  progress.localStorage = {getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value)};
+  for (const name of ['tutorialChapter', 'tutorialChapterTotal', 'tutorialProgressKey', 'storedTutorialProgress', 'saveTutorialProgress'])
+    vm.runInContext(extract(name), progress);
+  progress.saveTutorialProgress('basic', 5);
+  progress.saveTutorialProgress('attack', 2);
+  progress.saveTutorialProgress('cooperation', 1);
+  assert.equal(progress.storedTutorialProgress('basic'), 5);
+  assert.equal(progress.storedTutorialProgress('attack'), 2);
+  assert.equal(progress.storedTutorialProgress('cooperation'), 1);
+  assert.equal(progress.storedTutorialProgress('royal'), 0);
+  assert.equal(progress.storedTutorialProgress('basic', 'animals'), 0);
+  progress.saveTutorialProgress('basic', 2, 'animals');
+  assert.equal(progress.storedTutorialProgress('basic', 'animals'), 2);
+  assert.equal(progress.storedTutorialProgress('basic'), 5);
 
   const auto = context();
   Object.assign(auto, {cancelAutomaticPass() {}, isSpectator: () => false,

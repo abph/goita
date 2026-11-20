@@ -32,8 +32,10 @@ def test_english_piece_names_are_rendered_across_board_modes() -> None:
     assert 'html[lang="en"] .lobby-piece-background span::after' in html
     assert "piece.dataset.pieceEn = pieceEnglishName(label);" in html
     assert "function setPieceValue(element, piece" in html
-    assert "setPieceValue(val, piece" in html
-    assert "setPieceValue(" in html.split("function renderHands", 1)[1]
+    assert "setTutorialPieceValue(val, piece" in html
+    assert "setTutorialPieceValue(" in html.split("function renderHands", 1)[1]
+    wrapper = html.split("function setTutorialPieceValue", 1)[1].split("function tutorialChapter", 1)[0]
+    assert "setPieceValue(element, piece, label);" in wrapper
     assert 'englishLabel: currentUiLanguage() === "en"' in html
     assert "piece.englishLabel || \"\"" in board_3d
     assert "context.fillText(englishLabel, 128, 260)" in board_3d

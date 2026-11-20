@@ -4527,6 +4527,43 @@
     body.tutorial-room #memberAutoKifuNotice { display: none !important; }
     body.tutorial-room .game-content-layout { display: block; }
     body.tutorial-room .game-content-main { max-width: 1040px; margin: 0 auto; }
+    .tutorial-animal-legend { margin-top: 10px; font-size: 12px; }
+    .tutorial-animal-legend[hidden], .tutorial-animal-intro[hidden] { display: none; }
+    .tutorial-animal-legend summary { cursor: pointer; font-weight: 700; }
+    .tutorial-animal-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; margin-top: 8px; }
+    .tutorial-animal-key { display: flex; align-items: center; gap: 8px; padding: 5px; background: #fffdf7; border: 1px solid #d9d2bf; border-radius: 6px; }
+    .tutorial-animal-key-piece { flex: 0 0 38px; height: 48px; clip-path: polygon(50% 0%, 94% 16%, 98% 100%, 2% 100%, 6% 16%); display: grid; place-items: center; }
+    .tutorial-animal-key-text { display: grid; gap: 2px; line-height: 1.4; }
+    .tutorial-animal-key-text small { color: #665f55; }
+    body.tutorial-animals .tutorial-animal-piece,
+    body.tutorial-animals .hand-row-pieces .hand.tutorial-animal-piece {
+      background: var(--tutorial-piece-color);
+    }
+    body.tutorial-animals .tutorial-animal-back,
+    body.tutorial-animals .hand-row-pieces .hand.face-down {
+      background: #d7cbb1; opacity: 1; filter: none;
+    }
+    body.tutorial-animals .tutorial-animal-back .val { visibility: hidden; }
+    body.tutorial-animals .hand.disabled.tutorial-animal-piece { opacity: 0.7; }
+    body.tutorial-animals .hand.beginner-recommended.tutorial-animal-piece { outline: 3px solid #217242; outline-offset: 1px; }
+    body.tutorial-animals .val.tutorial-animal-value {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px; width: 100%; height: 100%; padding-top: 6px; transform: none;
+      line-height: 1; color: #202020; font-size: 10px;
+    }
+    body.tutorial-animals .tutorial-animal-value img {
+      width: clamp(15px, calc(var(--cell) * 0.48), 30px);
+      height: clamp(15px, calc(var(--cell) * 0.48), 30px);
+      object-fit: contain; image-rendering: pixelated;
+      background: #fff8e5; border-radius: 50%;
+    }
+    body.tutorial-animals .hand.beginner-recommended .tutorial-animal-value img {
+      outline: 3px solid #217242; outline-offset: 1px;
+    }
+    body.tutorial-animals .tutorial-animal-value span {
+      background: #fff8e5; color: #202020; border-radius: 2px; padding: 1px 3px;
+      font-size: clamp(8px, calc(var(--cell) * 0.2), 11px); font-weight: 800;
+    }
     @media (max-width: 700px) {
       .tutorial-guide { margin: 0 8px 10px; padding: 11px 12px; }
       .tutorial-guide-heading h2 { font-size: 16px; }
@@ -5900,6 +5937,11 @@
     <div class="tutorial-progress" aria-hidden="true"><div id="tutorialProgressBar" class="tutorial-progress-bar"></div></div>
     <p id="tutorialInstruction" aria-live="polite"></p>
     <p id="tutorialDetail" class="tutorial-guide-detail"></p>
+    <p id="tutorialAnimalIntro" class="tutorial-guide-detail tutorial-animal-intro" hidden></p>
+    <details id="tutorialAnimalLegend" class="tutorial-animal-legend" hidden>
+      <summary>駒の対応を見る</summary>
+      <div id="tutorialAnimalKeys" class="tutorial-animal-keys"></div>
+    </details>
     <div id="tutorialRoyalExplanation" class="tutorial-royal-explanation" hidden>
       <h3>王（玉）の使い方</h3>
       <h4>王（玉）で受ける</h4>
@@ -5923,6 +5965,8 @@
     <div class="tutorial-guide-actions">
       <button id="tutorialRestartButton" type="button" onclick="restartTutorial()">最初からやり直す</button>
       <button id="tutorialRoyalButton" class="tutorial-primary" type="button" onclick="startRoyalTutorial()" hidden>王（玉）を盤面で練習する</button>
+      <button id="tutorialAttackButton" class="tutorial-primary" type="button" onclick="startAttackTutorial()" hidden>基本的な攻め方を練習する</button>
+      <button id="tutorialCooperationButton" class="tutorial-primary" type="button" onclick="startCooperationTutorial()" hidden>かかりごたえを練習する</button>
       <button id="tutorialAiPracticeButton" class="tutorial-primary" type="button" onclick="finishTutorialToAi()" hidden>AIと練習する</button>
     </div>
   </section>
@@ -7380,8 +7424,9 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261020c"></script>
 <script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261119tutorial"></script>
-<script src="/static/i18n.js?v=20261119tutorial"></script>
+<script src="/static/i18n-en.js?v=20261120animals"></script>
+<script src="/static/i18n.js?v=20261120animals"></script>
+<script src="/static/tutorialAnimals.js?v=20261120a"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
 <script src="/static/regionalAds.js?v=20261020b"></script>
@@ -9226,7 +9271,7 @@ function setBoardViewControl(mode) {
 }
 
 function applyBoardViewMode() {
-    const boardViewsEnabled = supportsAlternateBoardViews(gid);
+    const boardViewsEnabled = supportsAlternateBoardViews(gid) && !document.body.classList.contains("tutorial-animals");
     const boardViewMode = effectiveBoardViewMode(gid);
     const sharedKifuBoardActive = document.body.classList.contains(
         "shared-kifu-board-active"
@@ -10406,7 +10451,7 @@ async function enterRoom(targetGid, roomName) {
     hideRoundStartBanner(true);
     window.goitaSoloDiscord?.reset?.();
     cancelImmediateAction();
-    document.body.classList.remove("tutorial-room");
+    document.body.classList.remove("tutorial-room", "tutorial-animals");
     const tutorialGuide = document.getElementById("tutorialGuide");
     if (tutorialGuide) tutorialGuide.hidden = true;
     if (analyticsRoomEnteredAt) {
@@ -10522,7 +10567,7 @@ async function returnToLobby() {
     closePracticeScenePicker();
     syncGatheringChatPlacement(false);
     document.body.classList.remove("personal-score-room");
-    document.body.classList.remove("tutorial-room");
+    document.body.classList.remove("tutorial-room", "tutorial-animals");
     document.body.classList.remove("gathering-room-active", "gathering-waiting-room", "gathering-table-room");
     const tutorialGuide = document.getElementById("tutorialGuide");
     if (tutorialGuide) tutorialGuide.hidden = true;
@@ -10657,37 +10702,62 @@ async function startGuidedMatch(kind) {
 const TUTORIAL_PROGRESS_KEYS = {
     basic: "goita_tutorial_progress_v1",
     royal: "goita_tutorial_royal_progress_v1",
+    attack: "goita_tutorial_attack_progress_v1",
+    cooperation: "goita_tutorial_cooperation_progress_v1",
 };
 let tutorialStarting = false;
 
-function tutorialChapter(value) {
-    return value === "royal" ? "royal" : "basic";
+function isAnimalTutorial(state) {
+    return window.goitaTutorialAnimals?.isActive(state) === true;
 }
 
-function tutorialProgressKey(chapter) {
+function animalTutorialCopy(state, language) {
+    return window.goitaTutorialAnimals.copy(state, language);
+}
+
+function renderTutorialAnimalLegend(state) {
+    window.goitaTutorialAnimals.renderLegend(
+        document.getElementById("tutorialAnimalKeys"),
+        document.getElementById("tutorialAnimalIntro"), currentUiLanguage());
+}
+
+function setTutorialPieceValue(element, piece, label, state, hidden = false) {
+    if (isAnimalTutorial(state)) {
+        window.goitaTutorialAnimals.renderPiece(element, piece, label, {hidden, language: currentUiLanguage()});
+    } else {
+        setPieceValue(element, piece, label);
+    }
+}
+
+function tutorialChapter(value) {
+    return ["basic", "royal", "attack", "cooperation"].includes(value) ? value : "basic";
+}
+
+function tutorialProgressKey(chapter, pieceTheme = "standard") {
+    if (tutorialChapter(chapter) === "basic" && pieceTheme === "animals") return "goita_tutorial_animal_progress_v1";
     return TUTORIAL_PROGRESS_KEYS[tutorialChapter(chapter)];
 }
 
 function tutorialChapterTotal(chapter) {
-    return tutorialChapter(chapter) === "royal" ? 3 : 5;
+    return {basic: 5, royal: 3, attack: 4, cooperation: 4}[tutorialChapter(chapter)];
 }
 
-function storedTutorialProgress(chapter = "basic") {
+function storedTutorialProgress(chapter = "basic", pieceTheme = "standard") {
     const total = tutorialChapterTotal(chapter);
     try {
-        const value = Number(localStorage.getItem(tutorialProgressKey(chapter)) || 0);
+        const value = Number(localStorage.getItem(tutorialProgressKey(chapter, pieceTheme)) || 0);
         return Number.isInteger(value) ? Math.max(0, Math.min(total, value)) : 0;
     } catch (_error) {
         return 0;
     }
 }
 
-function saveTutorialProgress(chapter, step) {
+function saveTutorialProgress(chapter, step, pieceTheme = "standard") {
     const total = tutorialChapterTotal(chapter);
     const normalized = Math.max(0, Math.min(total, Number(step) || 0));
-    if (normalized <= storedTutorialProgress(chapter)) return;
+    if (normalized <= storedTutorialProgress(chapter, pieceTheme)) return;
     try {
-        localStorage.setItem(tutorialProgressKey(chapter), String(normalized));
+        localStorage.setItem(tutorialProgressKey(chapter, pieceTheme), String(normalized));
     } catch (_error) {
         // Progress remains available in the current tutorial state.
     }
@@ -10695,6 +10765,7 @@ function saveTutorialProgress(chapter, step) {
 
 function tutorialCopy(state) {
     const language = currentUiLanguage();
+    if (isAnimalTutorial(state)) return animalTutorialCopy(state, language);
     const basicCopies = {
         ja: {
             waiting: ["案内役が手を進めています", "盤面の動きを見ながら、次の自分の手番を待ちましょう。"],
@@ -10771,7 +10842,78 @@ function tutorialCopy(state) {
             detail: "The correct action is outlined in green. This practice does not add points or save a game record.",
         },
     };
-    const copies = tutorialChapter(state?.tutorial_chapter) === "royal" ? royalCopies : basicCopies;
+    const attackCopies = {
+        ja: {
+            waiting: ["相手の受け方を見てみましょう", "馬で受けるか、王（玉）を使うか。その反応を見て、次の馬につなげます。"],
+            0: ["1. 3枚の馬で攻める", "馬が3枚あります。馬で攻めを続け、敵の馬や王（玉）を使わせる方針です。しを伏せ、1枚目の馬で攻めましょう。"],
+            5: ["2. 2枚目の馬につなげる", "Bは馬で受け、銀を出しました。こちらはまだ馬が2枚あります。まず銀を銀で受けましょう。"],
+            6: ["2. 馬を繰り返す目的", "Bに馬を1枚使わせました。残りの馬で攻め、今度は敵の王（玉）に受けを迫りましょう。"],
+            11: ["3. 王を使わせた後も続ける", "Bが王で受け、金を出しました。馬の攻めで王を使わせることができました。金を金で受けましょう。"],
+            12: ["3. 3枚目の馬で攻める", "残していた3枚目の馬を出しましょう。1枚ごとに別の駒へ変えず、馬の攻めを続けます。"],
+            16: ["4. 攻めを上がりにつなげる", "馬が1巡しました。最後の2枚はしとしです。しを伏せ、しで上がりましょう。"],
+            done: ["3枚の馬の練習クリア！", "馬を繰り返して敵の馬と王を使わせ、上がりにつなげました。次は、相方の攻めに同じ駒で応える「かかりごたえ」を練習しましょう。"],
+            detail: "同じ駒で攻めを続ける練習です。実戦では相手の反応に合わせて見直します。得点と棋譜は保存されません。",
+        },
+        zh: {
+            waiting: ["观察对手如何接牌", "观察对手用马还是王或玉接牌，再衔接下一枚马。"],
+            0: ["1. 用三枚马连续进攻", "你有三枚马。连续用马进攻，让对手消耗马和王或玉。请伏下し，用第一枚马进攻。"],
+            5: ["2. 衔接第二枚马", "B用马接牌后出了银。你还有两枚马。先用银接住银。"],
+            6: ["2. 连续出马的目的", "B已经用掉一枚马。再用马进攻，迫使对手考虑用王或玉接牌。"],
+            11: ["3. 对手使用王后继续进攻", "B用王接牌后出了金。马的进攻成功消耗了王。请用金接住金。"],
+            12: ["3. 打出第三枚马", "请打出保留的第三枚马，继续马的进攻。"],
+            16: ["4. 将进攻转为和牌", "马已转回。最后两枚都是し。请伏下一枚し，再用し和牌。"],
+            done: ["三枚马练习完成！", "你连续用马进攻，消耗对手的马与王并成功和牌。接下来练习用同种棋子呼应队友的进攻。"],
+            detail: "本节练习连续使用同种棋子进攻。实战中应根据对手反应调整。本练习不计分，也不保存棋谱。",
+        },
+        en: {
+            waiting: ["Watch the opponent's response", "See whether they receive with a Horse or a King, then continue your Horse attack."],
+            0: ["1. Attack with three Horses", "You have three Horses. Plan to keep attacking with them to draw out enemy Horses and Kings. Hide a Pawn and attack with your first Horse."],
+            5: ["2. Set up your second Horse", "B received with a Horse and attacked with Silver. You still have two Horses. Receive the Silver with your Silver."],
+            6: ["2. Why repeat the Horse?", "B has spent a Horse. Attack with another Horse to pressure an enemy King or Gyoku to receive."],
+            11: ["3. Continue after drawing out the King", "B received with the King and attacked with Gold. Your Horse attack drew out the King. Receive with Gold."],
+            12: ["3. Attack with your third Horse", "Play the third Horse you kept, continuing the same attack rather than switching pieces each time."],
+            16: ["4. Turn the attack into a finish", "Everyone passed the Horse. Your final two pieces are Pawns. Hide one and go out with the other."],
+            done: ["Three-Horse practice complete!", "You repeated Horses to draw out the enemy Horse and King, then went out. Next, practice echoing your partner's attack with the same kind of piece."],
+            detail: "Practice repeating an attack. In real games, adjust to the opponents' responses. No points or game records are saved.",
+        },
+    };
+    const cooperationCopies = {
+        ja: {
+            waiting: ["相方と相手の動きを見ましょう", "相方が馬で攻め、Dが王で受けました。同じ馬で応えて協力する場面を練習します。"],
+            3: ["1. 相方の馬に応える準備", "Aの相方はCです。Cが最初に馬で攻めました。自分にも馬が2枚あります。Dの銀を銀で受け、同じ馬で応える準備をしましょう。"],
+            4: ["1. 馬でかかりごたえ", "相方が示した駒と同じ駒を、自分も攻めに出して応えるのが「かかりごたえ」です。馬を出して、自分も馬を持っているとCに伝えましょう。"],
+            9: ["2. 二人の馬で王（玉）を使わせる", "Cの馬にはDが王を、自分の馬にはBが玉を使いました。相方と同じ駒で攻め、敵の受け駒を使わせることができました。金を金で受けましょう。"],
+            10: ["2. 馬の攻めを続ける", "手駒に残したもう1枚の馬で攻めましょう。自分と相方に馬が集まっているため、敵は馬で受けにくくなっています。"],
+            14: ["3. 相方とつくった攻めを上がりへ", "馬が1巡しました。敵が王と玉を使った後なので、別の攻めにもつなげやすくなりました。しを伏せ、飛で攻めましょう。"],
+            18: ["4. 相方と協力して上がる", "飛が1巡しました。しを伏せ、しで上がりましょう。自分が上がると相方のCも勝ちです。"],
+            done: ["かかりごたえの練習クリア！", "相方と同じ馬で応え、馬を持っていることを伝えて協力しました。かかりごたえは、相方の駒を受けることではなく、相方が示した駒を自分の攻めでも出すことです。"],
+            detail: "同じ駒を持つことを攻めで相方に伝える練習です。この練習の得点と棋譜は保存されません。",
+        },
+        zh: {
+            waiting: ["观察队友与对手的行动", "队友用马进攻，D用王接牌。这次练习用同样的马回应队友。"],
+            3: ["1. 准备回应队友的马", "A的队友是C。C首攻出了马，你也有两枚马。请用银接住D的银，准备以马回应。"],
+            4: ["1. 用马呼应队友", "自己进攻时打出队友已示出的同种棋子，称为“かかりごたえ”。请出马，让C知道你也有马。"],
+            9: ["2. 合力消耗王与玉", "D用王接了C的马，B用玉接了你的马。两人用同种棋子进攻，消耗了对手的接牌棋子。请用金接住金。"],
+            10: ["2. 继续马的进攻", "请打出保留的另一枚马。你和队友持有多枚马，对手较难用马接牌。"],
+            14: ["3. 将合作进攻转为和牌", "马已转回。对手用掉了王和玉，较容易衔接其他进攻。请伏下し，用飞进攻。"],
+            18: ["4. 与队友合作和牌", "飞已转回。请伏下し，用し和牌。你和牌时，队友C也获胜。"],
+            done: ["呼应队友的练习完成！", "你用同样的马回应队友，传达自己也有马。“かかりごたえ”是在自己进攻时打出队友示出的同种棋子，并非接住队友的牌。"],
+            detail: "本节练习用进攻向队友传达自己持有同种棋子。本练习不计分，也不会保存棋谱。",
+        },
+        en: {
+            waiting: ["Watch your partner and opponents", "Your partner attacked with a Horse, and D received with the King. Practice responding with a Horse of your own."],
+            3: ["1. Prepare to echo your partner's Horse", "C is A's partner. C opened with a Horse, and you hold two Horses too. Receive D's Silver with your Silver to prepare a Horse response."],
+            4: ["1. Echo with a Horse: kakarigotae", "Kakarigotae means attacking with the same kind of piece your partner has shown. Play a Horse to tell C that you hold Horses too."],
+            9: ["2. Draw out both enemy Kings together", "D used the King on C's Horse; B used Gyoku on yours. Repeating the same piece as a team drew out their receivers. Receive the Gold with Gold."],
+            10: ["2. Continue the Horse attack", "Play your remaining Horse. You and your partner hold many of the Horses, making it harder for the enemies to receive with one."],
+            14: ["3. Turn cooperation into a finish", "Everyone passed the Horse. With the enemy King and Gyoku spent, you can follow up with another attack. Hide a Pawn and play the Rook."],
+            18: ["4. Go out as a team", "Everyone passed the Rook. Hide a Pawn and go out with the other. When you win, your partner C wins too."],
+            done: ["Kakarigotae practice complete!", "You echoed your partner's Horse to show you held Horses too. Kakarigotae means attacking with the kind of piece your partner showed, rather than receiving your partner's attack."],
+            detail: "Practice communicating a shared piece through your own attack. No points or game records are saved.",
+        },
+    };
+    const copies = {basic: basicCopies, royal: royalCopies, attack: attackCopies,
+                    cooperation: cooperationCopies}[tutorialChapter(state?.tutorial_chapter)];
     const copy = copies[language] || copies.ja;
     if (state?.tutorial_completed) return [...copy.done, copy.detail];
     if (state?.turn !== "A") return [...copy.waiting, copy.detail];
@@ -10782,7 +10924,11 @@ function tutorialCopy(state) {
 
 function syncTutorialUI(state) {
     const active = state?.tutorial_mode === true;
+    const animals = isAnimalTutorial(state);
+    const changedAnimalView = document.body.classList.contains("tutorial-animals") !== animals;
     document.body.classList.toggle("tutorial-room", active);
+    document.body.classList.toggle("tutorial-animals", animals);
+    if (changedAnimalView) applyBoardViewMode();
     const guide = document.getElementById("tutorialGuide");
     if (!guide) return;
     guide.hidden = !active;
@@ -10792,7 +10938,10 @@ function syncTutorialUI(state) {
     const total = Number(state.tutorial_total_steps || tutorialChapterTotal(chapter));
     const step = Math.max(1, Math.min(total, Number(state.tutorial_step || 1)));
     const completedStep = Math.max(0, Math.min(total, Number(state.tutorial_completed_step || 0)));
-    saveTutorialProgress(chapter, completedStep);
+    saveTutorialProgress(chapter, completedStep, state.tutorial_piece_theme);
+    document.getElementById("tutorialAnimalIntro").hidden = !animals;
+    document.getElementById("tutorialAnimalLegend").hidden = !animals;
+    if (animals) renderTutorialAnimalLegend(state);
     const [title, instruction, detail] = tutorialCopy(state);
     document.getElementById("tutorialGuideTitle").textContent = title;
     document.getElementById("tutorialInstruction").textContent = instruction;
@@ -10802,18 +10951,23 @@ function syncTutorialUI(state) {
         : `${step} / ${total}`;
     document.getElementById("tutorialProgressBar").style.width = `${(state.tutorial_completed ? total : completedStep) / total * 100}%`;
     document.getElementById("tutorialRoyalExplanation").hidden = !(
-        chapter === "basic" && state.tutorial_completed
+        chapter === "basic" && state.tutorial_completed && !animals
     );
     document.getElementById("tutorialRoyalButton").hidden = !(
         chapter === "basic" && state.tutorial_completed
     );
-    document.getElementById("tutorialAiPracticeButton").hidden = !(chapter === "royal" && state.tutorial_completed);
+    document.getElementById("tutorialRoyalButton").textContent = uiText(animals
+        ? "通常の駒で王（玉）を練習する" : "王（玉）を盤面で練習する");
+    document.getElementById("tutorialAttackButton").hidden = !(chapter === "royal" && state.tutorial_completed);
+    document.getElementById("tutorialCooperationButton").hidden = !(chapter === "attack" && state.tutorial_completed);
+    document.getElementById("tutorialAiPracticeButton").hidden = !(["royal", "cooperation"].includes(chapter) && state.tutorial_completed);
 }
 
-async function startTutorial(chapter = "basic", stayInRoom = false) {
+async function startTutorial(chapter = "basic", stayInRoom = false, pieceTheme = "standard") {
     if (tutorialStarting) return false;
     tutorialStarting = true;
     chapter = tutorialChapter(chapter);
+    pieceTheme = chapter === "basic" && pieceTheme === "animals" ? "animals" : "standard";
     const status = document.getElementById("lobbyFeatureGuideStatus");
     if (status) {
         status.textContent = uiText("チュートリアルを準備しています...");
@@ -10822,12 +10976,12 @@ async function startTutorial(chapter = "basic", stayInRoom = false) {
     try {
         enableBeginnerSupportFromGuide();
         const total = tutorialChapterTotal(chapter);
-        const saved = storedTutorialProgress(chapter);
+        const saved = storedTutorialProgress(chapter, pieceTheme);
         const startStep = saved > 0 && saved < total ? saved + 1 : 1;
         const response = await fetch(`${API}/tutorial/start`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({client_id: clientId, start_step: startStep, chapter}),
+            body: JSON.stringify({client_id: clientId, start_step: startStep, chapter, piece_theme: pieceTheme}),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.game_id) throw new Error(data?.detail || "チュートリアルを開始できませんでした。");
@@ -10854,16 +11008,26 @@ async function startTutorial(chapter = "basic", stayInRoom = false) {
 
 async function autoEnterTutorialFromUrl() {
     const url = new URL(window.location.href);
-    if (url.searchParams.get("tutorial") !== "1") return false;
+    const requested = url.searchParams.get("tutorial");
+    const chapter = requested === "1" || requested === "animals" ? "basic" : requested;
+    if (!["basic", "royal", "attack", "cooperation"].includes(chapter)) return false;
     // Consume the entry request so returning to the lobby stays on the lobby.
     // Other parameters, including attribution and language, remain intact.
     url.searchParams.delete("tutorial");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-    return await startTutorial();
+    return await startTutorial(chapter, false, requested === "animals" ? "animals" : "standard");
 }
 
 async function startRoyalTutorial() {
     await startTutorial("royal", true);
+}
+
+async function startAttackTutorial() {
+    await startTutorial("attack", true);
+}
+
+async function startCooperationTutorial() {
+    await startTutorial("cooperation", true);
 }
 
 async function restartTutorial() {
@@ -10875,11 +11039,12 @@ async function restartTutorial() {
         const response = await fetch(`${API}/games/${gid}/tutorial/restart`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({client_id: clientId, start_step: 1, chapter}),
+            body: JSON.stringify({client_id: clientId, start_step: 1, chapter,
+                                  piece_theme: latestState.tutorial_piece_theme || "standard"}),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data?.detail || "チュートリアルをやり直せませんでした。");
-        try { localStorage.setItem(tutorialProgressKey(chapter), "0"); } catch (_error) {}
+        try { localStorage.setItem(tutorialProgressKey(chapter, latestState.tutorial_piece_theme), "0"); } catch (_error) {}
         pending = null;
         resetLogAudioSync(0);
         fixedHandMemory = {};
@@ -18056,16 +18221,16 @@ function renderBoard(state){
           }
           const val=document.createElement("div");
           val.className="val";
+          div.appendChild(val);
 
           if(kindKey==="receive"){
             const hidden = isPendingReceive || isHiddenReceive;
             const hiddenLabel = isOwnHidden ? pieceToLabel(piece) : "";
-            setPieceValue(val, piece, (hidden && !isRevealedHidden) ? hiddenLabel : pieceToLabel(piece));
+            setTutorialPieceValue(val, piece, (hidden && !isRevealedHidden) ? hiddenLabel : pieceToLabel(piece), state, hidden);
             if(isOwnHidden) delete val.dataset.pieceEn;
           }else{
-            setPieceValue(val, piece);
+            setTutorialPieceValue(val, piece, pieceToLabel(piece), state);
           }
-          div.appendChild(val);
           if(boardPiece){
             attachAiBoardThoughtInteraction(
               div,
@@ -18192,12 +18357,12 @@ function renderHands(state) {
 
           const valDiv = document.createElement("div");
           valDiv.className = "val";
+          pieceDiv.appendChild(valDiv);
           const handLabel = isPendingHidden
             ? "伏"
             : (isFaceDown && !isUsedHidden ? "" : pieceToLabel(card));
-          setPieceValue(valDiv, card, handLabel);
+          setTutorialPieceValue(valDiv, card, handLabel, state, isFaceDown);
           if(isPendingHidden || isUsedHidden) delete valDiv.dataset.pieceEn;
-          pieceDiv.appendChild(valDiv);
 
           if(isPendingHidden && seat === mySeat && state.turn === mySeat && !state.finished){
             pieceDiv.onclick = () => onHandPieceClick(card, slot.index);

@@ -2655,6 +2655,7 @@ class TutorialStartRequest(BaseModel):
     client_id: str = Field(min_length=1, max_length=128)
     start_step: int = Field(default=1, ge=1, le=5)
     chapter: str = Field(default="basic", min_length=1, max_length=16)
+    piece_theme: Optional[Literal["standard", "animals"]] = None
 
 
 class PracticeReplayRequest(BaseModel):
@@ -3566,27 +3567,92 @@ ROYAL_TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[s
 ]
 
 
+ATTACK_TUTORIAL_HANDS: Dict[str, List[str]] = {
+    "A": ["1", "1", "1", "3", "3", "3", "4", "5"],
+    "B": ["3", "4", "9", "5", "1", "1", "2", "6"],
+    "C": ["1", "1", "2", "2", "4", "5", "7", "8"],
+    "D": ["1", "1", "1", "2", "4", "5", "6", "7"],
+}
+ATTACK_TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[str]]]] = [
+    (1, "A", ("attack_after_block", "1", "3")),
+    (1, "B", ("receive", "3", None)),
+    (1, "B", ("attack", None, "4")),
+    (1, "C", ("pass", None, None)),
+    (1, "D", ("pass", None, None)),
+    (2, "A", ("receive", "4", None)),
+    (2, "A", ("attack", None, "3")),
+    (2, "B", ("receive", "9", None)),
+    (2, "B", ("attack", None, "5")),
+    (2, "C", ("pass", None, None)),
+    (2, "D", ("pass", None, None)),
+    (3, "A", ("receive", "5", None)),
+    (3, "A", ("attack", None, "3")),
+    (3, "B", ("pass", None, None)),
+    (3, "C", ("pass", None, None)),
+    (3, "D", ("pass", None, None)),
+    (4, "A", ("attack_after_block", "1", "1")),
+]
+
+COOPERATION_TUTORIAL_HANDS: Dict[str, List[str]] = {
+    "A": ["1", "1", "1", "3", "3", "4", "5", "7"],
+    "B": ["1", "1", "1", "2", "4", "5", "5", "8"],
+    "C": ["1", "1", "2", "3", "3", "4", "6", "7"],
+    "D": ["1", "1", "2", "2", "4", "5", "6", "9"],
+}
+COOPERATION_TUTORIAL_SCRIPT: List[Tuple[int, str, Tuple[str, Optional[str], Optional[str]]]] = [
+    (1, "C", ("attack_after_block", "1", "3")),
+    (1, "D", ("receive", "9", None)),
+    (1, "D", ("attack", None, "4")),
+    (1, "A", ("receive", "4", None)),
+    (1, "A", ("attack", None, "3")),
+    (1, "B", ("receive", "8", None)),
+    (1, "B", ("attack", None, "5")),
+    (1, "C", ("pass", None, None)),
+    (1, "D", ("pass", None, None)),
+    (2, "A", ("receive", "5", None)),
+    (2, "A", ("attack", None, "3")),
+    (2, "B", ("pass", None, None)),
+    (2, "C", ("pass", None, None)),
+    (2, "D", ("pass", None, None)),
+    (3, "A", ("attack_after_block", "1", "7")),
+    (3, "B", ("pass", None, None)),
+    (3, "C", ("pass", None, None)),
+    (3, "D", ("pass", None, None)),
+    (4, "A", ("attack_after_block", "1", "1")),
+]
+
+TUTORIAL_CHAPTERS = {
+    "basic": {"hands": TUTORIAL_HANDS, "script": TUTORIAL_SCRIPT,
+              "dealer": "A", "steps": TUTORIAL_TOTAL_STEPS},
+    "royal": {"hands": ROYAL_TUTORIAL_HANDS, "script": ROYAL_TUTORIAL_SCRIPT,
+              "dealer": "B", "steps": ROYAL_TUTORIAL_TOTAL_STEPS},
+    "attack": {"hands": ATTACK_TUTORIAL_HANDS, "script": ATTACK_TUTORIAL_SCRIPT,
+               "dealer": "A", "steps": 4},
+    "cooperation": {"hands": COOPERATION_TUTORIAL_HANDS, "script": COOPERATION_TUTORIAL_SCRIPT,
+                    "dealer": "C", "steps": 4},
+}
+
+
 def _normalize_tutorial_chapter(value: Any) -> str:
     chapter = str(value or "basic").strip().lower()
-    if chapter not in {"basic", "royal"}:
+    if chapter not in TUTORIAL_CHAPTERS:
         raise HTTPException(status_code=400, detail="Unknown tutorial chapter")
     return chapter
 
 
+def _normalize_tutorial_piece_theme(value: Any, chapter: str) -> str:
+    theme = str(value or "standard")
+    if theme not in {"standard", "animals"} or (theme == "animals" and chapter != "basic"):
+        raise HTTPException(status_code=400, detail="Animal pieces are available only in the basic tutorial.")
+    return theme
+
+
 def _tutorial_script_for(game: Dict[str, Any]):
-    return (
-        ROYAL_TUTORIAL_SCRIPT
-        if game.get("tutorial_chapter") == "royal"
-        else TUTORIAL_SCRIPT
-    )
+    return TUTORIAL_CHAPTERS.get(game.get("tutorial_chapter"), TUTORIAL_CHAPTERS["basic"])["script"]
 
 
 def _tutorial_total_steps_for(game: Dict[str, Any]) -> int:
-    return (
-        ROYAL_TUTORIAL_TOTAL_STEPS
-        if game.get("tutorial_chapter") == "royal"
-        else TUTORIAL_TOTAL_STEPS
-    )
+    return TUTORIAL_CHAPTERS.get(game.get("tutorial_chapter"), TUTORIAL_CHAPTERS["basic"])["steps"]
 
 
 def _tutorial_room_id(client_id: str) -> str:
@@ -3813,6 +3879,8 @@ def _state_public_view(
         "tutorial_mode": bool(game_obj.get("tutorial_mode", False)),
         "tutorial_chapter": str(game_obj.get("tutorial_chapter", "basic"))
             if game_obj.get("tutorial_mode", False) else "",
+        "tutorial_piece_theme": str(game_obj.get("tutorial_piece_theme", "standard"))
+            if game_obj.get("tutorial_mode", False) else "",
         "tutorial_step": _tutorial_current_step(game_obj)
             if game_obj.get("tutorial_mode", False) else 0,
         "tutorial_total_steps": _tutorial_total_steps_for(game_obj)
@@ -3970,17 +4038,16 @@ def _create_tutorial_game(
     client_id: str,
     start_step: int = 1,
     chapter: str = "basic",
+    piece_theme: str = "standard",
 ) -> Dict[str, Any]:
     chapter = _normalize_tutorial_chapter(chapter)
-    total_steps = (
-        ROYAL_TUTORIAL_TOTAL_STEPS if chapter == "royal" else TUTORIAL_TOTAL_STEPS
-    )
+    piece_theme = _normalize_tutorial_piece_theme(piece_theme, chapter)
+    definition = TUTORIAL_CHAPTERS[chapter]
+    total_steps = definition["steps"]
     step = max(1, min(total_steps, int(start_step)))
-    hands = copy.deepcopy(
-        ROYAL_TUTORIAL_HANDS if chapter == "royal" else TUTORIAL_HANDS
-    )
-    dealer = "B" if chapter == "royal" else "A"
-    script = ROYAL_TUTORIAL_SCRIPT if chapter == "royal" else TUTORIAL_SCRIPT
+    hands = copy.deepcopy(definition["hands"])
+    dealer = definition["dealer"]
+    script = definition["script"]
     game = _create_game_obj(dealer=dealer, ai_profile="intermediate_middle2")
     game["state"] = GoitaState(hands=copy.deepcopy(hands), dealer=dealer)
     game["init_hands"] = copy.deepcopy(hands)
@@ -3994,11 +4061,12 @@ def _create_tutorial_game(
         "D": "案内役",
     }
     game["player_tags"] = {"A": "beginner", "B": "", "C": "", "D": ""}
-    game["owner_name"] = "ごいたチュートリアル"
+    game["owner_name"] = "どうぶつチュートリアル" if piece_theme == "animals" else "ごいたチュートリアル"
     game["hidden_from_lobby"] = True
     game["is_started"] = True
     game["tutorial_mode"] = True
     game["tutorial_chapter"] = chapter
+    game["tutorial_piece_theme"] = piece_theme
     game["tutorial_owner_client_id"] = client_id
     game["tutorial_cursor"] = 0
     game["tutorial_completed"] = False
@@ -9499,6 +9567,7 @@ async def start_tutorial(req: TutorialStartRequest):
             req.client_id,
             req.start_step,
             chapter,
+            req.piece_theme or "standard",
         )
         manager.cancel_disconnect_release(room_id, req.client_id)
     await manager.broadcast_update(room_id)
@@ -9506,9 +9575,10 @@ async def start_tutorial(req: TutorialStartRequest):
     return {
         "ok": True,
         "game_id": room_id,
-        "room_name": "ごいたチュートリアル",
+        "room_name": GAMES[room_id]["owner_name"],
         "start_step": _tutorial_current_step(GAMES[room_id]),
         "chapter": chapter,
+        "piece_theme": GAMES[room_id]["tutorial_piece_theme"],
     }
 
 
@@ -9524,7 +9594,8 @@ async def restart_tutorial(game_id: str, req: TutorialStartRequest):
         if current.get("tutorial_owner_client_id") != req.client_id:
             raise HTTPException(status_code=403, detail="This tutorial belongs to another client.")
         chapter = _normalize_tutorial_chapter(req.chapter)
-        GAMES[game_id] = _create_tutorial_game(req.client_id, 1, chapter)
+        theme = req.piece_theme or current.get("tutorial_piece_theme", "standard")
+        GAMES[game_id] = _create_tutorial_game(req.client_id, 1, chapter, theme)
         manager.cancel_disconnect_release(game_id, req.client_id)
     await manager.broadcast_update(game_id)
     return {
