@@ -1950,6 +1950,10 @@ class DecisionMixin:
 
         guaranteed_finish_receive = self._guaranteed_finish_receive_action(state, player, actions)
         if guaranteed_finish_receive is not None:
+            compared_finish = self._compare_guaranteed_receive_routes(state, player, actions)
+            if compared_finish is not None:
+                return compared_finish
+
             # A compact exact endgame may expose a safe wait whose team score is
             # higher than the direct self-finish. Compare that route before
             # committing to the guaranteed receive; otherwise keep the proven

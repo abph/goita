@@ -161,6 +161,18 @@ def test_extension_can_be_disabled():
     assert agent._forced_win_result_after_receive_action(state, actor, ("receive", "3", None)).status == ForcedWinStatus.UNKNOWN
 
 
+def test_immediate_defence_does_not_replace_an_already_proven_receive(monkeypatch):
+    state, agent, actor, _ = position()
+    legal = state.legal_actions(actor)
+    assert ("receive", "9", None) in legal
+    monkeypatch.setattr(agent, "_enemy_immediate_finish_receive_action",
+                        lambda *args: ("receive", "9", None))
+    assert agent.select_action(state, actor, legal) == ("receive", "3", None)
+    comparison = agent.last_attack_candidate_snapshot["guaranteed_receive_comparison"]
+    assert comparison["selected"] == (("receive", "3", None), ("attack", None, "9"))
+    assert agent.last_score_fallback_detail == "receive_tsume_after"
+
+
 def test_disabling_after_receiving_discards_the_pending_order():
     state, agent, actor, _ = position()
     chosen = agent.select_action(state, actor, state.legal_actions(actor))

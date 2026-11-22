@@ -8063,6 +8063,25 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
     } catch (_error) {
         return "";
     }
+    if(snapshot?.guaranteed_receive_comparison) {
+        const comparison = snapshot.guaranteed_receive_comparison;
+        const labels = language === "en"
+            ? {minimum: "guaranteed", maximum: "maximum", expected: "estimated average", pending: "estimate unavailable", pass: "Pass", receive: "Receive", attack: "attack", selected: "Chosen", floor: "higher guaranteed score", average: "higher estimated average", tie: "same guaranteed score"}
+            : language === "zh"
+                ? {minimum: "保底", maximum: "最高", expected: "预计平均", pending: "未获得估算", pass: "跳过", receive: "接", attack: "攻", selected: "选择", floor: "保底分数更高", average: "预计平均更高", tie: "保底分数相同"}
+                : {minimum: "最低保証", maximum: "最高", expected: "期待値", pending: "期待値未算出", pass: "パス", receive: "受け", attack: "攻め", selected: "採用", floor: "最低保証点が高い", average: "期待値が高い", tie: "最低保証点が同点"};
+        const piece = code => gameLogCandidatePieceLabel(code, language);
+        const route = actions => actions[0][0] === "pass" ? labels.pass
+            : `${labels.receive} ${piece(actions[0][1])} → ${labels.attack} ${piece(actions[1][2])}`;
+        const points = language === "en" ? " pt" : language === "zh" ? "分" : "点";
+        const candidates = comparison.candidates.map(candidate => {
+            const estimate = candidate.expected_score;
+            const expected = estimate == null ? labels.pending : `${labels.expected} ${Number(estimate).toFixed(1)}${points}`;
+            return `${route(candidate.actions)}（${labels.minimum} ${candidate.minimum_score}${points}、${labels.maximum} ${candidate.maximum_score}${points}、${expected}）`;
+        });
+        const reason = {minimum_score: labels.floor, expected_score: labels.average, proven_score_tiebreak: labels.tie}[comparison.basis];
+        return `${labels.selected} ${route(comparison.selected)}（${reason}）。${candidates.join(" / ")}`;
+    }
     if(snapshot?.public_receive_proof) {
         const proof = snapshot.public_receive_proof;
         const receive = gameLogCandidatePieceLabel(proof.receive, language);

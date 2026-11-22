@@ -374,6 +374,9 @@ class ReceiveStrategyMixin:
 
         return None
 
+    def _compare_guaranteed_receive_routes(self, state, player: str, actions: List[Action]) -> Optional[Action]:
+        return None
+
     def _guaranteed_finish_receive_action(
         self,
         state,

@@ -3003,6 +3003,7 @@ def _format_ai_attack_candidates(agent: Any) -> str:
         or snapshot.get("opening_shared_pair")
         or snapshot.get("lance_reserve")
         or snapshot.get("public_receive_proof")
+        or snapshot.get("guaranteed_receive_comparison")
     ):
         return ""
     payload = urllib.parse.quote(
