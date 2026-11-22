@@ -23,19 +23,18 @@ class GuaranteedReceiveComparisonMixin:
         for receive in actions:
             if receive[0] != "receive":
                 continue
-            if large_hand and receive[1] not in tracker.get("large_hand_receive_proofs", {}):
+            if large_hand:
+                proof = tracker.get("large_hand_receive_proofs", {}).get(receive[1])
+                for row in (proof or {}).get("followups", ()):
+                    yield GuaranteedRoute((receive, tuple(row["action"])),
+                                          row["minimum_score"], row["maximum_score"])
                 continue
             after = self._timed_search_apply(state, player, receive)
             seen = dict(tracker["public_seen_counts"])
             seen[receive[1]] += 1
             self._track[id(after)] = {"public_seen_counts": seen}
             try:
-                pool = self._public_unknown_piece_pool(after, player, self._track[id(after)])
                 for attack in after.legal_actions(player):
-                    if large_hand and (
-                        pool is None or self._forced_win_external_receivers(pool, attack[2])
-                    ):
-                        continue
                     proof = self._forced_win_result_after_attack_action(after, player, attack)
                     if proof.status == ForcedWinStatus.PROVEN:
                         minimum, _, maximum = self._forced_win_preference_key(proof)
@@ -47,18 +46,21 @@ class GuaranteedReceiveComparisonMixin:
         # Use the existing one-cycle coverage proof. No other seat may go
         # out before our next turn, and we must cover every public possibility.
         hand = tuple(sorted(state.hands[player]))
-        if (state.attacker is None or self._same_team(state.attacker, player)
-                or len(hand) != 4 or tracker.get("my_attack_count") != 2
-                or not any(piece in ("8", "9") for piece in hand)):
+        opening = self._active_opening_receive_plans(state, player, tracker)
+        established_endgame = (len(hand) == 4 and tracker.get("my_attack_count") == 2
+                               and any(piece in ("8", "9") for piece in hand))
+        if (state.attacker is None or (
+            not opening and (not established_endgame or self._same_team(state.attacker, player))
+        )):
             return []
         other_sizes = [len(state.hands[seat]) for seat in ALL_SEATS if seat != player]
         if min(other_sizes) <= 2:
             return []
         pool = self._public_unknown_piece_pool(state, player, tracker)
-        if pool is None or not any(
+        if pool is None or (not opening and not any(
             piece not in ("8", "9") and not self._forced_win_external_receivers(pool, piece)
             for piece in hand
-        ):
+        )):
             return []
         branches = []
         memo = {}
@@ -130,6 +132,9 @@ class GuaranteedReceiveComparisonMixin:
                             "maximum_score": route.maximum, "expected_score": estimates.get(route)}
                            for route in routes],
         }
+        opening = self._active_opening_receive_plans(state, player, tracker)
+        if opening:
+            tracker["guaranteed_receive_comparison"]["opening_receive_plans"] = opening
         tracker.pop("pending_large_hand_receive_proof", None)
         tracker["pending_inferred_endgame_attack"] = None
         if selected.actions[0] == pass_action:
@@ -241,7 +246,10 @@ class GuaranteedReceiveComparisonMixin:
             elif len(legal) == 1:
                 action = legal[0]
             elif actor == player:
-                self._track[id(current)] = {"public_seen_counts": seen}
+                self._track[id(current)] = {
+                    "public_seen_counts": seen,
+                    "round_strategy": tracker.get("round_strategy", {}),
+                }
                 try:
                     proofs = []
                     for move in legal:

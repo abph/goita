@@ -19,18 +19,20 @@ class PublicReceiveProofMixin:
         tracker = self._track.get(id(state))
         if tracker is None:
             return result
+        tracker.get("large_hand_receive_proofs", {}).pop(action[1], None)
+        prepared = self._prepared_opening_receive_attacks(state, player, tracker, action[1])
         pool = self._public_unknown_piece_pool(state, player, tracker)
         # Moving our receive piece from hand to public leaves this pool
         # unchanged. Reject ordinary positions before copying a large tracker.
         if pool is None or not any(
                 state.hands[player].count(piece) > int(piece == action[1])
-                and not self._forced_win_external_receivers(pool, piece)
+                and (piece in prepared or not self._forced_win_external_receivers(pool, piece))
                 for piece in set(state.hands[player])):
             return result
 
         # Receiving removes one card; the immediate attack removes another.
-        # Only admit an attack that *nobody* can receive under the public pool,
-        # so no new eight-card game tree or sampled win claim is introduced.
+        # Use the existing six-card proof. Include the prepared attack for a
+        # natural receive, provided it also survives the current public proof.
         after = self._apply_action_on_copy(state, player, action)
         after_tracker = copy.deepcopy(tracker)
         seen = after_tracker["public_seen_counts"]
@@ -42,24 +44,27 @@ class PublicReceiveProofMixin:
             if pool is None:
                 return result
             for followup in after.legal_actions(player):
-                if (followup[0] != "attack"
-                        or self._forced_win_external_receivers(pool, followup[2])):
+                if followup[0] != "attack":
+                    continue
+                receivable = bool(self._forced_win_external_receivers(pool, followup[2]))
+                if receivable and followup[2] not in prepared:
                     continue
                 proof = self._forced_win_result_after_attack_action(after, player, followup)
                 if proof.status == ForcedWinStatus.PROVEN and proof.minimum_score is not None:
-                    proven.append((followup, proof))
+                    proven.append((followup, proof, receivable))
         finally:
             self._track.pop(id(after), None)
         if not proven:
             return result
-        best = max((proof for _, proof in proven), key=self._forced_win_preference_key)
+        best = max((proof for _, proof, _ in proven), key=self._forced_win_preference_key)
         tracker.setdefault("large_hand_receive_proofs", {})[action[1]] = {
             "source": "public_information", "proven": True,
             "receive": action[1], "hand_size_before": len(state.hands[player]),
             "minimum_score": best.minimum_score,
             "followups": [{"action": list(move), "minimum_score": proof.minimum_score,
                            "expected_score": proof.expected_score, "maximum_score": proof.maximum_score}
-                          for move, proof in proven],
+                          for move, proof, _ in proven],
+            "prepared_attack_proven": any(receivable for _, _, receivable in proven),
         }
         return best
 

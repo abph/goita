@@ -27,11 +27,18 @@ for (const language of ['ja', 'en', 'zh']) {
         {actions: [['pass', null, null]], minimum_score: 30, maximum_score: 50, expected_score: 47.2},
         {actions: [['receive', '2', null], ['attack', null, '4']], minimum_score: 10, maximum_score: 50, expected_score: null},
       ],
+      opening_receive_plans: {
+        absolute_rank: 'S',
+        plans: [{priority: 1, minimum_score: 50, maximum_score: 100,
+          routes: [{receive: '1', attack: '4', all_pass_steps: [['1', '6'], ['2', '6'], ['9', '8']]}]}],
+      },
     },
   })), language, 'receive');
   assert.match(comparison, /30.*47\.2.*10/);
   assert.match(comparison, language === 'ja' ? /最低保証点が高い.*期待値未算出/ :
     language === 'en' ? /higher guaranteed score.*estimate unavailable/ : /保底分数更高.*未获得估算/);
+  assert.match(comparison, language === 'ja' ? /配牌時に立てた条件付きプラン.*し.*銀.*角.*角.*100/ :
+    language === 'en' ? /Conditional plans from the initial hand.*100/ : /初始手牌的条件路线.*100/);
   const opening = context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
     attack_and_block_plan: {steps: [['3', '5'], ['3', '6']], receive_reserves: ['1', '6', '7']},
   })), language, 'attack');

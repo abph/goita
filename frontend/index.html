@@ -8098,12 +8098,29 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
             return `${route(candidate.actions)}（${labels.minimum} ${candidate.minimum_score}${points}、${labels.maximum} ${candidate.maximum_score}${points}、${expected}）`;
         });
         const reason = {minimum_score: labels.floor, expected_score: labels.average, proven_score_tiebreak: labels.tie}[comparison.basis];
-        return `${labels.selected} ${route(comparison.selected)}（${reason}）。${candidates.join(" / ")}`;
+        const opening = comparison.opening_receive_plans;
+        const openingLabel = language === "en" ? "Conditional plans from the initial hand"
+            : language === "zh" ? "初始手牌的条件路线" : "配牌時に立てた条件付きプラン";
+        const plans = opening?.plans.map(plan => {
+            const example = plan.routes[0];
+            const first = route([["receive", example.receive], ["attack", null, example.attack]]);
+            const rest = example.all_pass_steps.map(([, attack]) => piece(attack)).join(" → ");
+            const score = plan.minimum_score == null
+                ? (language === "en" ? "score floor pending" : language === "zh" ? "保底分数待验证" : "最低保証点は未確認")
+                : `${labels.minimum} ${plan.minimum_score}${points}、${labels.maximum} ${plan.maximum_score}${points}`;
+            return `${plan.priority}. ${first}${rest ? ` → ${rest}` : ""}（${score}）`;
+        }).join(" / ");
+        return `${labels.selected} ${route(comparison.selected)}（${reason}）。${candidates.join(" / ")}${plans ? `｜${openingLabel}（${opening.absolute_rank}） ${plans}` : ""}`;
     }
     if(snapshot?.public_receive_proof) {
         const proof = snapshot.public_receive_proof;
         const receive = gameLogCandidatePieceLabel(proof.receive, language);
         const score = Number(proof.minimum_score);
+        if(proof.prepared_attack_proven) {
+            if(language === "en") return `Receive with ${receive}. The public proof confirms at least ${score} points, including the prepared attack and possible replies.`;
+            if(language === "zh") return `用${receive}接牌。考虑预定进攻和可能的应对，公开信息证明至少可得${score}分。`;
+            return `${receive}で受けた後、予定していた攻めが受けられる分岐も含め、公開情報から最低${score}点を確保できると確認。`;
+        }
         if(language === "en") return `Receive with ${receive}: public information proves a finish worth at least ${score} points. Even with eight cards, an unreceivable first attack leads into the existing six-card proof. No hidden opponent pieces or sampled win rates are used.`;
         if(language === "zh") return `用${receive}接牌：仅凭公开信息证明至少${score}分的必胜路线。即使有八张手牌，也通过无人能接的首攻衔接到现有六张手牌的验证，不使用对手隐藏牌或抽样胜率。`;
         return `${receive}で受けた後、公開情報だけで最低${score}点の確定上がりを確認。8枚持ちでも、誰にも受けられない最初の攻めから既存の6枚以下の確定判定につなげる。他人の非公開手駒や標本の勝率は使っていません。`;
