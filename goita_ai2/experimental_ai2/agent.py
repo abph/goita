@@ -36,13 +36,14 @@ from goita_ai2.experimental_ai2.middle_signal_inference import MiddleSignalInfer
 from goita_ai2.experimental_ai2.lance_reserve import LanceReserveMixin
 from goita_ai2.experimental_ai2.public_receive_proof import PublicReceiveProofMixin
 from goita_ai2.experimental_ai2.guaranteed_receive_comparison import GuaranteedReceiveComparisonMixin
+from goita_ai2.experimental_ai2.attack_and_block_plan import AttackAndBlockPlanMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
+class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, AttackAndBlockPlanMixin, LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
                      PlannedBlockReserveMixin, BeliefEndgameMixin, FirstShiApprovalMixin,
                      ShiBlockReserveMixin, LanceReserveMixin, KyoshaContinuationMixin, CurrentRuleBasedAgent):
     """Keep the current AI decision unless its own scores show a close tie."""
@@ -142,6 +143,14 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         )
 
     def _eight_card_shallow_plan_action(
+        self, state, player: str, actions: List[Action], *, has_non_king_attack_option: bool
+    ) -> Optional[Tuple[Action, Dict[str, object]]]:
+        baseline = self._opening_continuation_plan(
+            state, player, actions, has_non_king_attack_option=has_non_king_attack_option,
+        )
+        return self._apply_attack_and_block_plan(state, player, actions, baseline)
+
+    def _opening_continuation_plan(
         self,
         state,
         player: str,

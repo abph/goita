@@ -7721,6 +7721,11 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
 });
 
 function localizeGameLogAiDetail(detail, language) {
+    if(detail === "attack_and_block_plan_opening" || detail === "attack_and_block_plan_review") {
+        if(language === "en") return "Plan attacks and blocks together to keep useful receiving pieces.";
+        if(language === "zh") return "同时规划进攻和伏牌，保留可用于接牌的棋子。";
+        return "攻めの予定と伏せ候補を組み、受けに使える駒を残す。";
+    }
     const lanceReserve = String(detail || "").match(/^pass_preserve_last_team_lance_enemy_([ABCD])$/);
     if(lanceReserve) {
         const enemy = lanceReserve[1];
@@ -8062,6 +8067,19 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
         snapshot = JSON.parse(decodeURIComponent(String(payload || "")));
     } catch (_error) {
         return "";
+    }
+    if(snapshot?.attack_and_block_plan) {
+        const plan = snapshot.attack_and_block_plan;
+        const piece = code => gameLogCandidatePieceLabel(code, language);
+        const steps = plan.steps.map(([block, attack]) => {
+            if(language === "en") return block ? `hide ${piece(block)}, attack with ${piece(attack)}` : `attack with ${piece(attack)}`;
+            if(language === "zh") return block ? `伏${piece(block)}、攻${piece(attack)}` : `攻${piece(attack)}`;
+            return block ? `${piece(block)}を伏せて${piece(attack)}で攻める` : `${piece(attack)}で攻める`;
+        }).join(" → ");
+        const reserves = plan.receive_reserves.map(piece).join(language === "en" ? ", " : "・");
+        if(language === "en") return `Provisional attack and block plan: ${steps}. ${reserves ? `Kept for receiving: ${reserves}. ` : ""}Review after public moves.`;
+        if(language === "zh") return `进攻与伏牌的暂定计划：${steps}。${reserves ? `保留用于接牌：${reserves}。` : ""}根据公开出牌调整。`;
+        return `攻めと伏せの見通し：${steps}。${reserves ? `受けに残す駒：${reserves}。` : ""}実際の受けや攻めに応じて見直す。`;
     }
     if(snapshot?.guaranteed_receive_comparison) {
         const comparison = snapshot.guaranteed_receive_comparison;

@@ -2313,6 +2313,10 @@ class DecisionMixin:
                     f"expected_{int(round(float(continuation_proof['expected_score'])))}_"
                     f"max_{int(float(continuation_proof['maximum_score']))}"
                 )
+            elif plan.get("attack_and_block_plan"):
+                self._set_decision_reason("score_fallback")
+                stage = plan["attack_and_block_plan"]["stage"]
+                self._set_score_fallback_detail(f"attack_and_block_plan_{stage}")
             else:
                 self._set_decision_reason("score_fallback")
                 self._set_score_fallback_detail(

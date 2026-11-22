@@ -32,5 +32,10 @@ for (const language of ['ja', 'en', 'zh']) {
   assert.match(comparison, /30.*47\.2.*10/);
   assert.match(comparison, language === 'ja' ? /最低保証点が高い.*期待値未算出/ :
     language === 'en' ? /higher guaranteed score.*estimate unavailable/ : /保底分数更高.*未获得估算/);
+  const opening = context.localizeGameLogAttackCandidates(encodeURIComponent(JSON.stringify({
+    attack_and_block_plan: {steps: [['3', '5'], ['3', '6']], receive_reserves: ['1', '6', '7']},
+  })), language, 'attack');
+  assert.match(opening, language === 'ja' ? /馬を伏せて金で攻める.*受けに残す駒：し・角・飛/ :
+    language === 'en' ? /hide .*attack with .*Kept for receiving: / : /伏馬、攻金.*保留用于接牌：/);
 }
-console.log('Public receive proof and guaranteed-route comparison logs passed in all three languages');
+console.log('Receive proofs, guaranteed-route comparisons and opening plan logs passed in all three languages');

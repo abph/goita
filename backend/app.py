@@ -3004,6 +3004,7 @@ def _format_ai_attack_candidates(agent: Any) -> str:
         or snapshot.get("lance_reserve")
         or snapshot.get("public_receive_proof")
         or snapshot.get("guaranteed_receive_comparison")
+        or snapshot.get("attack_and_block_plan")
     ):
         return ""
     payload = urllib.parse.quote(
