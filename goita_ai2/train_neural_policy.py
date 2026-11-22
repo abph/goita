@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -55,6 +56,13 @@ def _safe_corrections(
 ) -> list[Dict[str, Any]]:
     """Keep risk-policy examples out of the current safety-policy model."""
     return [copy.deepcopy(dict(record)) for record in records if _correction_thinking_style(record) == "safe"]
+
+
+def correction_fingerprint(records: Sequence[Mapping[str, Any]]) -> str:
+    """Identify the exact human lessons used by a model, independent of row order."""
+    ordered = sorted(records, key=lambda record: str(record["decision_id"]))
+    payload = json.dumps(ordered, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _selected_action(record: Mapping[str, Any]):
@@ -218,6 +226,7 @@ def train_policy(
             "target_repeat": int(target_repeat),
             "correction_source_records": len(correction_sources),
             "correction_records": len(corrections),
+            "safe_corrections_sha256": correction_fingerprint(corrections),
             "risk_correction_records_excluded": len(correction_sources) - len(corrections),
             "correction_training_records": len(expanded_corrections),
             "correction_repeat": int(correction_repeat),

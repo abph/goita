@@ -8063,6 +8063,14 @@ function localizeGameLogAttackCandidates(payload, language, candidateKind = "att
     } catch (_error) {
         return "";
     }
+    if(snapshot?.public_receive_proof) {
+        const proof = snapshot.public_receive_proof;
+        const receive = gameLogCandidatePieceLabel(proof.receive, language);
+        const score = Number(proof.minimum_score);
+        if(language === "en") return `Receive with ${receive}: public information proves a finish worth at least ${score} points. Even with eight cards, an unreceivable first attack leads into the existing six-card proof. No hidden opponent pieces or sampled win rates are used.`;
+        if(language === "zh") return `用${receive}接牌：仅凭公开信息证明至少${score}分的必胜路线。即使有八张手牌，也通过无人能接的首攻衔接到现有六张手牌的验证，不使用对手隐藏牌或抽样胜率。`;
+        return `${receive}で受けた後、公開情報だけで最低${score}点の確定上がりを確認。8枚持ちでも、誰にも受けられない最初の攻めから既存の6枚以下の確定判定につなげる。他人の非公開手駒や標本の勝率は使っていません。`;
+    }
     if(snapshot?.late_receive_comparison) {
         const review = snapshot.late_receive_comparison;
         if(review.status === "incomplete") {

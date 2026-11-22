@@ -15,6 +15,21 @@ from goita_ai2.experimental_ai2 import RuleBasedAgent as ExperimentalAI2RuleBase
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_public_eight_card_receive_proof_is_exported_without_attack_alternatives():
+    import json
+    import urllib.parse
+    from types import SimpleNamespace
+
+    snapshot = {"public_receive_proof": {
+        "source": "public_information", "proven": True, "receive": "3",
+        "hand_size_before": 8, "minimum_score": 40,
+    }}
+    raw = app_module._format_ai_attack_candidates(SimpleNamespace(last_attack_candidate_snapshot=snapshot))
+    assert raw.startswith(" [AI-CANDIDATES:")
+    payload = raw.split("[AI-CANDIDATES:", 1)[1][:-1]
+    assert json.loads(urllib.parse.unquote(payload)) == snapshot
+
+
 def test_seven_ai_profiles_are_available() -> None:
     assert app_module.DEFAULT_AI_PROFILE == "intermediate_middle3"
     assert set(app_module.AI_PROFILES) == {

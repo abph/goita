@@ -34,13 +34,14 @@ from goita_ai2.experimental_ai2.late_receive import LateReceiveMixin
 from goita_ai2.experimental_ai2.opening_pair_receive import OpeningPairReceiveMixin
 from goita_ai2.experimental_ai2.middle_signal_inference import MiddleSignalInferenceMixin
 from goita_ai2.experimental_ai2.lance_reserve import LanceReserveMixin
+from goita_ai2.experimental_ai2.public_receive_proof import PublicReceiveProofMixin
 
 
 Action = Tuple[str, Optional[str], Optional[str]]
 MODEL_PATH = Path(__file__).resolve().parent / "data" / "neural_policy.json"
 
 
-class RuleBasedAgent(LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
+class RuleBasedAgent(PublicReceiveProofMixin, LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPairReceiveMixin, LateReceiveMixin, ShiSupportChangeMixin, FinalShiContinuationMixin, PublicResponseInferenceMixin, UpsideSearchMixin,
                      PlannedBlockReserveMixin, BeliefEndgameMixin, FirstShiApprovalMixin,
                      ShiBlockReserveMixin, LanceReserveMixin, KyoshaContinuationMixin, CurrentRuleBasedAgent):
     """Keep the current AI decision unless its own scores show a close tie."""
@@ -55,6 +56,7 @@ class RuleBasedAgent(LivePlanReviewMixin, MiddleSignalInferenceMixin, OpeningPai
         self.SHI_ATTACK_PACKAGE_ENABLED = True
         self.ALLY_GUARANTEED_WIN_NO_SELF_FINISH_ENABLED = True
         self.PRESERVE_PUBLIC_UNSTOPPABLE_FINISH_ENABLED = True
+        self.LARGE_HAND_RECEIVE_PUBLIC_PROOF_ENABLED = True
         # Strong opening hands have enough value to protect that the hidden
         # piece must be judged by the whole continuation, not only by its
         # immediate piece value.  Keep this experiment isolated from the saved
