@@ -134,6 +134,15 @@ def test_game_log_explains_estimated_enemy_finish_risk_in_each_language():
     ):
         assert f'receive_prevent_enemy_finish_without_ally_cover: "{localized_reason}"' in HTML
 
+
+def test_game_log_explains_reach_attack_response_review_in_each_language():
+    for localized_reason in (
+        "攻め順とパスから、敵に受けられてすぐ上がられる危険を見直す",
+        "根据此前的进攻顺序和跳过，重新评估对手接牌后立即获胜的风险",
+        "Use earlier attacks and passes to judge the risk of letting an opponent receive and go out",
+    ):
+        assert f'attack_reach_public_receive_risk: "{localized_reason}"' in HTML
+
     assert 'attack_tatewari: "縦割りを狙う攻め"' not in HTML
 
     suffix_start = HTML.index("function localizeGameLogSuffix(")
