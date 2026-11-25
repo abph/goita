@@ -125,6 +125,15 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
     ):
         assert expected in HTML
 
+
+def test_game_log_explains_estimated_enemy_finish_risk_in_each_language():
+    for localized_reason in (
+        "相方が止められずに敵が上がるおそれが高いため受ける",
+        "搭档很可能无法接牌，让对手直接获胜，因此接牌",
+        "Receive because the ally is unlikely to stop the opponent from going out",
+    ):
+        assert f'receive_prevent_enemy_finish_without_ally_cover: "{localized_reason}"' in HTML
+
     assert 'attack_tatewari: "縦割りを狙う攻め"' not in HTML
 
     suffix_start = HTML.index("function localizeGameLogSuffix(")

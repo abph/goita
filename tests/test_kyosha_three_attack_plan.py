@@ -6,6 +6,7 @@ import pytest
 
 from goita_ai2.constants import PIECE_TOTALS
 from goita_ai2.current_ai import RuleBasedAgent as CurrentAI
+from goita_ai2.decision_check import apply_action as replay_action, replay
 from goita_ai2.experimental_ai2 import RuleBasedAgent
 from goita_ai2.instruction_case_audit import apply_action
 from goita_ai2.rule_based_intermediate_middle3 import RuleBasedAgent as Middle3
@@ -14,6 +15,68 @@ from goita_ai2.state import GoitaState
 
 HANDS = {"A": list("15374111"), "B": list("33761513"),
          "C": list("11491525"), "D": list("84126422")}
+
+REACH_HANDS = {"A": "73151224", "B": "51114582", "C": "71431123", "D": "91645163"}
+REACH_HISTORY = [
+    ("A", ("attack_after_block", "1", "7")),
+    ("B", ("pass", None, None)), ("C", ("pass", None, None)), ("D", ("pass", None, None)),
+    ("A", ("attack_after_block", "3", "2")),
+    ("B", ("pass", None, None)), ("C", ("pass", None, None)), ("D", ("pass", None, None)),
+    ("A", ("attack_after_block", "5", "2")),
+]
+
+
+def reach_position(*, offset=0, before_reach=False, move_hidden_lance=False):
+    seats = {p: "ABCD"[(n + offset) % 4] for n, p in enumerate("ABCD")}
+    hands = REACH_HANDS.copy()
+    if move_hidden_lance:
+        hands["C"] = hands["C"].replace("2", "3", 1)
+        hands["D"] = hands["D"].replace("3", "2", 1)
+    history = REACH_HISTORY[:5] if before_reach else REACH_HISTORY
+    position = {
+        "initial_hands": {seats[p]: list(hand) for p, hand in hands.items()},
+        "dealer": seats["A"], "player": seats["B"],
+        "history": [{"player": seats[p], "action": action} for p, action in history],
+    }
+    agent = RuleBasedAgent()
+    agent.TIME_SEARCH_ENABLED = False
+    agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+    return replay(position, agent), agent, seats["B"], seats["D"]
+
+
+@pytest.mark.parametrize("offset", range(4))
+def test_lance_receive_stops_enemy_finish_even_with_ally_still_to_act(offset):
+    state, agent, player, ally = reach_position(offset=offset)
+    receive = agent.select_action(state, player, state.legal_actions(player))
+    assert receive == ("receive", "2", None)
+    assert agent.last_score_fallback_detail == "receive_prevent_enemy_finish_without_ally_cover"
+    assert agent.last_rule_search_authority == "strong"
+    risk = agent.last_attack_candidate_snapshot["enemy_reach_pass_risk"]
+    assert risk["ally"] == ally
+    assert 0.6 <= risk["no_ally_receive_mass"] < 1.0
+    replay_action(state, player, receive, agent)
+    assert agent.select_action(state, player, state.legal_actions(player)) == ("attack", None, "5")
+
+
+def test_lance_before_enemy_reach_still_passes():
+    state, agent, player, _ = reach_position(before_reach=True)
+    assert agent.select_action(state, player, state.legal_actions(player)) == ("pass", None, None)
+    assert "enemy_reach_pass_risk" not in agent.last_attack_candidate_snapshot
+
+
+def test_enemy_reach_cover_uses_hypothetical_hands_only():
+    state, agent, player, ally = reach_position()
+    alternate, other_agent, _, _ = reach_position(move_hidden_lance=True)
+    assert "2" not in state.hands[ally] and "2" in alternate.hands[ally]
+    assert agent._enemy_reach_pass_risk(state, player) == other_agent._enemy_reach_pass_risk(alternate, player)
+
+
+def test_lance_pass_can_stand_when_ally_is_likely_to_cover(monkeypatch):
+    state, agent, player, ally = reach_position()
+    monkeypatch.setattr(agent, "_enemy_reach_pass_risk", lambda *_: {
+        "ally": ally, "no_ally_receive_mass": 0.2,
+    })
+    assert agent.select_action(state, player, state.legal_actions(player)) == ("pass", None, None)
 
 
 def position(hands=None, offset=0):

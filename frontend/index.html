@@ -7651,6 +7651,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         enemy_later_receive: "敵の2枚目以降の攻めを受ける",
         enemy_later_receive_king: "敵の2枚目以降の攻めを王・玉で受ける",
         receive_prevent_enemy_immediate_finish: "パスすると敵の上がりが確定するため受ける",
+        receive_prevent_enemy_finish_without_ally_cover: "相方が止められずに敵が上がるおそれが高いため受ける",
         receive_win_after: "受けた後にそのまま上がれる",
         receive_tsume_after: "受けた後に上がり筋がある",
         receive_piece_count_risk: "残り枚数の推定から受ける",
@@ -7703,6 +7704,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
         enemy_later_receive: "接下对手第二次以后的进攻",
         enemy_later_receive_king: "用王或玉接下对手第二次以后的进攻",
         receive_prevent_enemy_immediate_finish: "如果跳过，对手将确定获胜，因此接牌",
+        receive_prevent_enemy_finish_without_ally_cover: "搭档很可能无法接牌，让对手直接获胜，因此接牌",
         receive_win_after: "接牌后可以直接获胜",
         receive_tsume_after: "接牌后存在获胜路线",
         attack_continuous_score: "继续使用相同棋子进攻",
@@ -7728,6 +7730,7 @@ const GAME_LOG_AI_DETAIL_LABELS = Object.freeze({
     },
     en: {
         receive_prevent_enemy_immediate_finish: "Receive because passing gives the opponent a guaranteed finish",
+        receive_prevent_enemy_finish_without_ally_cover: "Receive because the ally is unlikely to stop the opponent from going out",
         attack_tatewari: "An attack intended to force the opponent to receive with a King",
         attack_avoid_enemy_used_piece: "Avoid a piece the opponents attacked with and may still hold",
         attack_avoid_two_shi_second_signal: "Compare other attacks instead of overstating two shi to the ally",

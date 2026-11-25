@@ -25,6 +25,34 @@ class LateReceiveMixin:
     ALLY_RESCUE_FIRST_DEPTH = 8
     LATE_RECEIVE_ROUTE_SECONDS = 2.0
     LATE_RECEIVE_ROUTE_MARGIN = 200.0
+    ENEMY_REACH_PASS_RISK_MIN = 0.60
+
+    def _enemy_reach_pass_risk(self, state, player):
+        """Estimate whether the ally can stop the attack if the enemy pair passes it along."""
+        tracker = self._track.get(id(state), {})
+        attack = state.current_attack
+        ally = self._ally_of(player)
+        pool = self._public_unknown_piece_pool(state, player, tracker)
+        if pool is None:
+            return None
+        if not self._forced_win_external_receivers(pool, attack):
+            return {"source": "public_piece_counts", "attacker": state.attacker,
+                    "ally": ally, "no_ally_receive_mass": 1.0, "samples": 0}
+
+        samples = self._timed_search_generate_sample_states(state, player, tracker, 80)
+        try:
+            _, worlds = self._information_set_search_worlds(state, player, tracker, samples)
+        except ValueError:
+            return None
+        squared_mass = math.fsum(world.probability ** 2 for world in worlds)
+        if not 0 < squared_mass <= 1 / 16:
+            return None
+        # Treat every legal receive by the ally as cover. The other opponent
+        # can let their partner finish, so their ability to receive is no cover.
+        no_cover = math.fsum(world.probability for world in worlds
+                            if not self._forced_win_receive_options(world.state.hands[ally], attack))
+        return {"source": "weighted_hypothetical_hands", "attacker": state.attacker,
+                "ally": ally, "no_ally_receive_mass": no_cover, "samples": len(worlds)}
 
     def _is_late_enemy_receive(self, state, player, tracker):
         return bool(

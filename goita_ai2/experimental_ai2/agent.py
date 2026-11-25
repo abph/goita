@@ -532,10 +532,13 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         )
         if protect_shi_continuation or protect_attack_reserve:
             rule_authority = "strong"
-        forced_receive = self._enemy_immediate_finish_receive_action(
+        forced_receive, pass_risk = self._enemy_finish_receive_action(
             state,
             player,
             actions,
+            rule_action,
+            review_ally_cover=(rule_authority == "ordinary"
+                               or (rule_action[0] == "pass" and rule_authority != "proven")),
         )
         # Either legal receive stops the immediate finish. Keep a receive
         # already paired with a proven follow-up by the score comparison.
@@ -549,19 +552,30 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
                 if tracker_before is not None:
                     live_tracker = self._track.get(id(state))
                     if live_tracker is not None:
+                        search = live_tracker.get("last_time_limited_search")
                         live_tracker.clear()
                         live_tracker.update(tracker_before)
+                        if pass_risk and search:
+                            live_tracker["last_time_limited_search"] = {
+                                **search, "final_response_action": rule_action,
+                                "override_accepted": False, "selection_stage": "enemy_reach_pass_risk",
+                            }
                 self._commit_neural_tiebreak_action(
                     state,
                     player,
                     rule_action,
                 )
             rule_reason = "score_fallback"
-            rule_detail = "receive_prevent_enemy_immediate_finish"
-            rule_authority = "proven"
+            rule_detail = ("receive_prevent_enemy_finish_without_ally_cover" if pass_risk
+                           else "receive_prevent_enemy_immediate_finish")
+            rule_authority = "strong" if pass_risk else "proven"
             self._set_decision_reason(rule_reason)
             self._set_score_fallback_detail(rule_detail)
             self.last_rule_search_authority = rule_authority
+            if pass_risk:
+                self.last_attack_candidate_snapshot["enemy_reach_pass_risk"] = {
+                    **pass_risk, "selected_receive": rule_action[1],
+                }
 
         current_comparison = self._current_ai_tiebreak_candidates(
             actions,
@@ -671,26 +685,37 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
             and tracker.get("my_last_attack") == attack
         )
 
-    def _enemy_immediate_finish_receive_action(
+    def _enemy_finish_receive_action(
         self,
         state,
         player: str,
         actions: List[Action],
-    ) -> Optional[Action]:
-        """Return a receive when passing gives an enemy an immediate finish."""
+        rule_action: Action,
+        *,
+        review_ally_cover: bool,
+    ) -> Tuple[Optional[Action], Optional[dict]]:
+        """Protect both the last receive and a likely unopposed return."""
         attacker = state.attacker
         if not (
             state.phase == "receive"
             and attacker is not None
             and not self._same_team(attacker, player)
             and len(state.hands.get(attacker, ())) == 2
-            and state.next_player(player) == attacker
             and any(action[0] == "pass" for action in actions)
         ):
-            return None
+            return None, None
         receives = [action for action in actions if action[0] == "receive"]
         if not receives:
-            return None
+            return None, None
+        pass_risk = None
+        if state.next_player(player) != attacker:
+            if not review_ally_cover:
+                return None, None
+            pass_risk = self._enemy_reach_pass_risk(state, player)
+            if pass_risk is None or pass_risk["no_ally_receive_mass"] < self.ENEMY_REACH_PASS_RISK_MIN:
+                return None, None
+            if rule_action in receives:
+                return rule_action, pass_risk
         scores = {
             tuple(item.get("action", ())): float(item.get("score"))
             for item in self.last_attack_candidate_scores
@@ -699,7 +724,7 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
             and len(item.get("action")) == 3
             and item.get("score") is not None
         }
-        return max(receives, key=lambda action: scores.get(action, -math.inf))
+        return max(receives, key=lambda action: scores.get(action, -math.inf)), pass_risk
 
     def _current_ai_tiebreak_candidates(
         self,
