@@ -268,6 +268,11 @@ class MemberKifuStore:
                     json.dumps(record["tags"], ensure_ascii=False), json.dumps(record["payload"], ensure_ascii=False),
                 ))
                 saved.append(self._record(db.execute("SELECT * FROM member_kifu WHERE id = ? AND member_id = ?", (record_id, member_id)).fetchone()))
+            if saved:
+                items = ["save_kifu"]
+                if any(record["tags"] for record in records):
+                    items.append("tag_kifu")
+                self.members._record_achievements(db, member_id, items)
             return saved
 
     def save_automatic(self, token, *, round_id, seat, payload):
@@ -299,6 +304,7 @@ class MemberKifuStore:
                 "", "", json.dumps(tags, ensure_ascii=False), json.dumps(saved, ensure_ascii=False),
             ))
             db.execute("INSERT INTO member_kifu_auto_saves VALUES (?, ?)", (owner, round_id))
+            self.members._record_achievements(db, owner, ("save_kifu", "auto_save_kifu"))
             return {"status": "saved", "member_id": owner}
 
     def access(self, token, record_id, *, action="get", title="", memo="", tags=None, my_seat=None):
@@ -322,6 +328,8 @@ class MemberKifuStore:
                     json.dumps(payload, ensure_ascii=False), owner, record_id,
                 ))
                 row = db.execute("SELECT * FROM member_kifu WHERE member_id = ? AND id = ?", (owner, record_id)).fetchone()
+                if tags:
+                    self.members._record_achievements(db, owner, ["tag_kifu"])
             return self._record(row)
 
     def set_favorite(self, token, record_id, favorite):
@@ -333,6 +341,8 @@ class MemberKifuStore:
             )
             if cursor.rowcount <= 0:
                 raise MemberError(404, "棋譜が見つかりません")
+            if favorite:
+                self.members._record_achievements(db, owner, ["favorite_kifu"])
             row = db.execute(
                 "SELECT * FROM member_kifu WHERE member_id = ? AND id = ?",
                 (owner, record_id),

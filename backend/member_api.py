@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
+from backend.member_achievements import BROWSER_ACTIONS
 from backend.member_store import MemberError, MemberStore
 
 
@@ -111,7 +112,8 @@ class AutoKifuInput(MemberInput):
 
 
 def create_member_router(store: MemberStore, require_admin, *, persistent=False, force_secure=False,
-                         room_options=lambda: [], settle_rewards=lambda: None):
+                         room_options=lambda: [], settle_rewards=lambda: None,
+                         score_achievement_progress=lambda _member_id: {}):
     router = APIRouter(route_class=PrivateRoute)
 
     def token(request):
@@ -125,6 +127,7 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
         settle_rewards()
         member = store.with_usage(member)
         member["auto_save_kifu"] = False if member["must_change_password"] else store.kifu_auto_save(value)
+        member["achievement_titles"] = {} if member["must_change_password"] else store.achievement_titles(member["member_id"])
         return member
 
     def set_session(request, response, value, seconds):
@@ -167,6 +170,23 @@ def create_member_router(store: MemberStore, require_admin, *, persistent=False,
     def me(request: Request):
         settle_rewards()
         return {"member": store.with_usage(store.authenticate(token(request)))}
+
+    @router.get("/api/member/achievements")
+    def achievements(request: Request):
+        member_id = store.authenticate(token(request))["member_id"]
+        settle_rewards()
+        granted = store.record_achievements(member_id, store.retained_achievement_items(member_id),
+                                           progress=score_achievement_progress(member_id))
+        limit = store.kifu_limit(store.authenticate(token(request)))
+        return {**store.achievement_list(member_id), "granted": granted, "kifu_limit": limit}
+
+    @router.post("/api/member/achievements/{action}")
+    def browser_achievement(action: str, request: Request):
+        member_id = store.authenticate(token(request))["member_id"]
+        if action not in BROWSER_ACTIONS:
+            raise MemberError(404, "この達成項目は対局結果から判定します。")
+        granted = store.record_achievements(member_id, [action])
+        return {"granted": granted, "kifu_limit": store.kifu_limit(store.authenticate(token(request)))}
 
     @router.post("/api/member/password")
     def password(request: Request, response: Response, data: PasswordInput):

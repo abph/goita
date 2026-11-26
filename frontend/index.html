@@ -5605,9 +5605,9 @@
   <link rel="stylesheet" href="/static/dailyMove.css?v=20260731b" />
   <link rel="stylesheet" href="/static/ai-review-report.css?v=20261003a" />
   <script defer src="/static/ai-review-report.js?v=20261003a"></script>
-  <link rel="stylesheet" href="/static/member.css?v=20261008a" />
+  <link rel="stylesheet" href="/static/member.css?v=20261126a" />
   <script defer src="/static/member-room.js?v=20260906b"></script>
-  <script defer src="/static/member.js?v=20261008a"></script>
+  <script defer src="/static/member.js?v=20261126a"></script>
   <script defer src="/static/header-menu.js?v=20260904a"></script>
 </head>
 <body>
@@ -5887,6 +5887,7 @@
 
 <div id="gameView" style="display: none;">
   <p id="memberAutoKifuNotice" class="member-auto-kifu-notice" role="status" hidden></p>
+  <p id="memberAchievementNotice" class="member-auto-kifu-notice" role="status" hidden></p>
 
   <div class="game-header">
     <div class="game-header-title">
@@ -7080,6 +7081,7 @@
     <button class="settings-modal-close" type="button" onclick="closeTraceResult()" aria-label="閉じる">×</button>
     <h3 id="traceResultTitle"><button type="button" class="trace-back" onclick="openTraceHistory(traceHistoryOffset)">← スコアアタックの結果</button></h3>
     <p id="traceResultStatus" role="status" aria-live="polite"></p>
+    <p id="traceAchievementNotice" class="member-auto-kifu-notice" role="status" hidden></p>
     <div id="traceResultContent" hidden>
       <div class="trace-score-lines">
         <div class="trace-score-line"><span>今回</span><strong id="traceActualScore"></strong></div>
@@ -7448,10 +7450,10 @@
 </style>
 <script src="/static/score-rankings.js?v=20261101a"></script>
 <script src="/static/score-rooms.js?v=20260911a"></script>
-<script src="/static/kifu-files.js?v=20261020c"></script>
-<script src="/static/trace-results.js?v=20261101a"></script>
-<script src="/static/i18n-en.js?v=20261120piecenames"></script>
-<script src="/static/i18n.js?v=20261120piecenames"></script>
+<script src="/static/kifu-files.js?v=20261126a"></script>
+<script src="/static/trace-results.js?v=20261126a"></script>
+<script src="/static/i18n-en.js?v=20261127achievements"></script>
+<script src="/static/i18n.js?v=20261127achievements"></script>
 <script src="/static/tutorialAnimals.js?v=20261120piecenames"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
@@ -8962,6 +8964,7 @@ const SITE_INFO = {
             "推定した都道府県または国・地域を記録する場合があります。",
             "地域別広告では、広告ID、地方、日付ごとの表示回数とクリック回数を記録します。閲覧ブラウザー数は、ブラウザー内に初回表示済みであることだけを保存して概算し、個人やブラウザーを識別する情報はサーバーへ送りません。",
             "会員機能では、会員ID、暗号学的に保護したパスワード、ログイン情報、有料権限と有効期限を保存します。これらは利用状況の分析用IDとは結び付けません。",
+            "達成リストでは、会員ごとの達成状況と報酬を保存します。プレイヤータグに設定した称号は、他のプレイヤーにも表示されます。",
             "スコアアタックでは、挑戦履歴とランキングを提供するため、表示名、挑戦日時、得点および順位に必要な情報を保存します。ゲストの挑戦記録は30日間、会員の挑戦記録はサービスの提供中、保存期間を定めず保持する場合があります。スコアアタック中に利用者が実際に打った棋譜は、挑戦履歴やランキングの記録としては保存しません。",
             "「AIに質問」へ入力した内容は、回答を生成するためGoogleのGemini APIへ送信されます。個人情報、パスワード、秘密情報などは入力しないでください。",
             "取得した情報は、サービスの提供、改善、不具合調査および利用傾向の分析に必要な範囲で取り扱い、目的外で利用しません。",
@@ -9092,6 +9095,11 @@ const PLAYER_TAG_LABELS = Object.freeze({
     spectator: "観戦中心",
     teacher: "教えられます",
     tournament: "大会練習中",
+    score_weekly_top3: "週間入賞",
+    score_weekly_first: "週間王者",
+    score_day_50: "ごいたジャンキー",
+    score_day_100: "ごいた命",
+    score_streak_10: "ごいた無双",
 });
 const PLAYER_ICON_DEFINITIONS = Object.freeze({
     shi_sparrow: {label: "すずめ", file: "shi-sparrow-pixel.png", group: "animal"},
@@ -9125,6 +9133,23 @@ function playerTagLabel(tag) {
     const normalized = normalizePlayerTag(tag);
     return normalized ? uiText(PLAYER_TAG_LABELS[normalized]) : "";
 }
+
+window.syncAchievementTagOptions = earned => {
+    for (const id of ["lobbyPersonalPlayerTag", "personalPlayerTag"]) {
+        const select = document.getElementById(id);
+        if (!select) continue;
+        const selected = select.value;
+        select.querySelectorAll("[data-achievement-tag]").forEach(option => option.remove());
+        for (const [key, title] of Object.entries(earned)) {
+            const option = document.createElement("option");
+            option.value = key;
+            option.textContent = uiText(title);
+            option.dataset.achievementTag = "";
+            select.appendChild(option);
+        }
+        select.value = Array.from(select.options).some(option => option.value === selected) ? selected : "";
+    }
+};
 
 function buildPlayerTagBadge(tag, extraClass = "") {
     const normalized = normalizePlayerTag(tag);
@@ -9834,6 +9859,7 @@ let turnTimeLimitSaving = false;
 let dealModeSaving = false;
 let debugAutoNextRoundSaving = false;
 let latestState = null;
+let presetFilledFromRanges = false;
 let meetingPublicTableRefreshInFlight = false;
 let meetingPublicTableLastRefreshAt = 0;
 let meetingPublicTableSnapshots = [];
@@ -10329,6 +10355,7 @@ function scheduleAiThinking(seat) {
 }
 
 function forceDisablePreset() {
+    presetFilledFromRanges = false;
     const box = document.getElementById("presetEnabled");
     if (box && box.checked) {
         box.checked = false;
@@ -13788,6 +13815,7 @@ async function toggleResearchKifuReplay() {
         return;
     }
 
+    window.goitaMembers?.recordBrowserAchievement("replay_kifu");
     const token = ++researchKifuReplayToken;
     const recorded = document.getElementById("researchKifuReplayMode")?.value === "recorded";
     const speedValue = Number(document.getElementById("researchKifuReplaySpeed")?.value || 1);
@@ -14855,6 +14883,7 @@ function presetIsEnabled(){
 }
 
 function presetSetEnabled(on){
+  if(!on) presetFilledFromRanges = false;
   try{ localStorage.setItem("goita_preset_enabled", on ? "1" : "0"); }catch(e){}
   const box = document.getElementById("presetEnabled");
   if(box) box.checked = !!on;
@@ -15125,6 +15154,7 @@ function applyExactPresetFromRanges(options = {}){
   }
   presetSetEnabled(true);
   presetValidateAndClamp();
+  presetFilledFromRanges = true;
   presetRangeSetStatus(options.successMessage || "条件に合う手札を作成しました。きっちり指定の内容を確認してください。");
   if(showExact) showPresetMethod("exact");
   if(shouldScheduleApply) scheduleApplyCurrentSetup();
@@ -15248,6 +15278,7 @@ function applyKifuHandsToPreset(round, options = {}){
     parsedHands[seat] = parsed;
   }
 
+  presetFilledFromRanges = false;
   for(const [seat, hand] of Object.entries(parsedHands)){
     const counts = countPieces(hand);
     PRESET_PIECES.forEach(piece => {
@@ -15556,6 +15587,7 @@ async function resetWithPreset(dealer, keepScore, autoStart = false){
       body: JSON.stringify({
         dealer,
         preset_counts: preset,
+        preset_source: presetFilledFromRanges ? "rough" : "exact",
         requester: mySeat,
         client_id: clientId,
         keep_score: keepScore,
@@ -19021,6 +19053,7 @@ async function refreshFromState(confirmedState = null){
   }
   latestState = state;
   syncAutomaticPass();
+  window.goitaMembers?.achievementNotice(state.achievement_updates);
   window.goitaVrcCoop?.render?.(state);
   syncDebugTraceMenu?.();
   if (isGatheringRoomId(gid)) {
@@ -19600,6 +19633,7 @@ window.addEventListener("load", async ()=>{
   document.querySelectorAll("#presetGrid input.ph").forEach(inp=>{
     inp.addEventListener("input", ()=> {
       presetValidateAndClamp(inp);
+      presetFilledFromRanges = false;
       scheduleApplyCurrentSetup();
     });
   });

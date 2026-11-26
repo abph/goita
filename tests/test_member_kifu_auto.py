@@ -78,16 +78,16 @@ def test_seated_connected_opted_in_named_seat_and_dedup(library):
     assert store.list(token) == []
 
 
-def test_free_member_auto_save_uses_twenty_record_limit(library):
+def test_free_member_auto_save_includes_two_first_achievement_slots(library):
     store, members, token, other, client, game = library
     _, free_token, _ = members.register("free-auto", "free-auto-password-2026", "testclient")
     members.kifu_auto_save(free_token, True)
     payload = {"winner": "A", "gained_score": 20}
-    for index in range(20):
+    for index in range(22):
         result = store.save_automatic(free_token, round_id=f"free-{index}", seat="A", payload=payload)
         assert result["status"] == "saved"
     result = store.save_automatic(free_token, round_id="free-overflow", seat="A", payload=payload)
-    assert result == {"status": "limit", "member_id": "free-auto", "limit": 20}
+    assert result == {"status": "limit", "member_id": "free-auto", "limit": 22}
     assert members.kifu_auto_save(free_token) is False
 
 

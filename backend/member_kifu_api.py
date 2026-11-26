@@ -115,15 +115,20 @@ def create_member_kifu_router(store, snapshot, parse, *, persistent=False):
                 record_title = title[:80 - len(suffix)] + suffix
             records.append(dict(title=record_title, memo=data.memo.strip(), tags=tags, payload=payload))
         saved = store.save_many(token(request), records)
+        store.members.record_achievements(store.members.authenticate(token(request))["member_id"], ["import_kifu"])
         return {"record": saved[0], "records": saved, "count": len(saved), "persistent": persistent}
 
     @router.post("/statistics")
     def statistics(request: Request):
-        return {"statistics": store.statistics(token(request))}
+        statistics = store.statistics(token(request))
+        store.members.record_achievements(store.members.authenticate(token(request))["member_id"], ["stats_kifu"])
+        return {"statistics": statistics}
 
     @router.post("/analysis")
     def analysis(request: Request):
-        return {"analysis": store.analysis(token(request))}
+        analysis = store.analysis(token(request))
+        store.members.record_achievements(store.members.authenticate(token(request))["member_id"], ["analyze_kifu"])
+        return {"analysis": analysis}
 
     @router.post("/delete-many")
     def delete_many(request: Request, data: DeleteManyInput):

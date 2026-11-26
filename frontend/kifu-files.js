@@ -70,6 +70,7 @@ async function readKifuFile(input) {
     kifuFileElement('kifuBoardImageButton').disabled = false;
     selectKifuFileRound();
     status.textContent = `${file.name} ／ ${data.rounds.length}局`;
+    window.goitaMembers?.recordBrowserAchievement('import_kifu');
   } catch (error) {
     if (request === kifuFileRequest) status.textContent = request.signal.aborted ? '読み込みがタイムアウトしました。もう一度お試しください。' : error.message;
   } finally {
@@ -315,6 +316,7 @@ async function runBoardImageDownload(button, source, statusId) {
   try {
     await saveBoardImageSource(source, `sorou_goita_board_${boardImageTimestamp()}.jpg`);
     if (status) status.textContent = uiText('盤面画像を保存しました。');
+    window.goitaMembers?.recordBrowserAchievement('image_kifu');
   } catch (error) {
     console.error('Board image export failed:', error);
     if (status) status.textContent = uiText(error?.message === '表示できる盤面がありません。' ? error.message : '盤面画像を保存できませんでした。');

@@ -78,6 +78,7 @@ from backend.research_kifu_store import (
     resolve_research_kifu_path,
 )
 from backend.frequent_deal import is_frequent_deal
+from backend.member_achievements import TITLES as ACHIEVEMENT_TITLES, round_items as achievement_round_items
 from backend import vrc_solo_playback, vrc_solo_players, kifu_timing
 from backend.vrc_solo_chat import VrcSoloChat
 from backend.balanced_deal import is_balanced_rank_deal, is_wardna_balanced_deal
@@ -444,7 +445,14 @@ class ConnectionManager:
             key = (game_id, client_id)
             self.client_connections.setdefault(key, set()).add(websocket)
             self.client_names[key] = _sanitize_player_name(name)
-            self.client_tags[key] = _sanitize_player_tag(tag)
+            validated_tag = _sanitize_player_tag(tag, _achievement_socket_token(websocket))
+            self.client_tags[key] = validated_tag
+            game = GAMES.get(game_id)
+            tags = game.get("player_tags") if game else None
+            if isinstance(tags, dict):
+                for seat in _client_owned_human_seats(game, client_id):
+                    if tags.get(seat) in ACHIEVEMENT_TITLES:
+                        tags[seat] = validated_tag
             self.client_icons[key] = _sanitize_player_icon(icon)
             self.cancel_disconnect_release(game_id, client_id)
         if game_id != "lobby":
@@ -1084,9 +1092,16 @@ PLAYER_ICON_VALUES = frozenset({
 })
 
 
-def _sanitize_player_tag(tag: str) -> str:
+def _sanitize_player_tag(tag: str, token=None) -> str:
     normalized = (tag or "").strip().lower()
-    return normalized if normalized in PLAYER_TAG_VALUES else ""
+    if normalized in PLAYER_TAG_VALUES:
+        return normalized
+    if normalized not in ACHIEVEMENT_TITLES:
+        return ""
+    if token is None:  # Tags already verified at an input boundary.
+        return normalized
+    member_id = _achievement_member_id(token)
+    return normalized if member_id and normalized in MEMBER_STORE.achievement_titles(member_id) else ""
 
 
 def _sanitize_player_icon(icon: str) -> str:
@@ -1852,7 +1867,7 @@ def _settle_score_rewards() -> None:
     with _SCORE_REWARD_SETTLEMENT_LOCK:
         try:
             trace_store = get_trace_store()
-            previous_day = trace_store.daily_award_candidates()
+            previous_day = trace_store.daily_award_candidates(include_top_three=True)
             if previous_day["award_date"] != _SCORE_REWARD_SETTLED_DAY:
                 target_day = date.fromisoformat(previous_day["award_date"])
                 settled_value = MEMBER_STORE.daily_score_settlement_date()
@@ -1860,8 +1875,20 @@ def _settle_score_rewards() -> None:
                     date.fromisoformat(settled_value) + timedelta(days=1)
                     if settled_value else target_day
                 )
+                # The ranking may already have been settled before achievements
+                # were added. Recognize the latest closed day in either case.
+                if settlement_day > target_day:
+                    for row in previous_day["top_three"]:
+                        MEMBER_STORE.record_achievements(row["member_id"], ["score_daily_top3"])
                 while settlement_day <= target_day:
-                    daily = trace_store.daily_award_candidates(settlement_day.isoformat())
+                    daily = previous_day if settlement_day == target_day else trace_store.daily_award_candidates(
+                        settlement_day.isoformat(), include_top_three=True
+                    )
+                    for row in daily["top_three"]:
+                        items = ["score_daily_top3"]
+                        if row["rank"] == 1:
+                            items.append("score_daily_first")
+                        MEMBER_STORE.record_achievements(row["member_id"], items)
                     MEMBER_STORE.grant_daily_score_awards(
                         daily["award_date"], daily["candidates"]
                     )
@@ -1869,6 +1896,11 @@ def _settle_score_rewards() -> None:
                 _SCORE_REWARD_SETTLED_DAY = previous_day["award_date"]
             previous_week = trace_store.weekly_award_candidates()
             if previous_week["week_start"] != _SCORE_REWARD_SETTLED_WEEK:
+                for row in previous_week["candidates"]:
+                    items = ["score_weekly_top3"]
+                    if row["rank"] == 1:
+                        items.append("score_weekly_first")
+                    MEMBER_STORE.record_achievements(row["member_id"], items)
                 MEMBER_STORE.grant_weekly_score_awards(
                     previous_week["week_start"], previous_week["candidates"]
                 )
@@ -1882,6 +1914,7 @@ app.include_router(create_member_router(
     force_secure=bool(os.environ.get("RENDER")),
     room_options=lambda: _member_room_options(),
     settle_rewards=_settle_score_rewards,
+    score_achievement_progress=lambda member_id: get_trace_store().member_achievement_progress(member_id),
 ))
 app.include_router(create_survey_router(
     SURVEY_STORE,
@@ -2615,6 +2648,7 @@ class ChatAiRequest(ChatRequest):
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    preset_source: str = ""
     requester: str = Field(default="W") 
     client_id: str = ""
     keep_score: bool = Field(default=False)
@@ -3477,6 +3511,14 @@ def _record_public_action(
 ) -> None:
     kifu_timing.record(game)
     action_type, _, _ = action
+    if not game.get("kifu_moves") and not game.get("practice_replay_active") and not game.get("trace_mode"):
+        game["achievement_round_roster"] = _achievement_human_roster(game)
+        game_id = _achievement_game_id(game)
+        game["achievement_spectators"] = {
+            client for (room, client), sockets in list(manager.client_connections.items())
+            if game_id and room == game_id and sockets and client not in game["achievement_round_roster"].values()
+        }
+    game.setdefault("achievement_actors", set()).add(player)
     game["last_public_action"] = {
         "player": player,
         "type": action_type,
@@ -3714,6 +3756,10 @@ def _complete_tutorial_if_script_finished(game: Dict[str, Any]) -> None:
     if int(game.get("tutorial_cursor", 0)) < len(_tutorial_script_for(game)):
         return
     game["tutorial_completed"] = True
+    if not game.get("achievement_tutorial_checked"):
+        game["achievement_tutorial_checked"] = True
+        _grant_room_achievement(game, game.get("human_seats", {}).get("A"),
+                                ["tutorial_" + game.get("tutorial_chapter", "basic")])
     state = game.get("state")
     if state is not None and not state.finished:
         state.finished = True
@@ -3728,6 +3774,7 @@ def _state_public_view(
     viewer: str,
     game_obj: Dict[str, Any],
     client_id: str = "",
+    member_token: str = "",
 ) -> Dict[str, Any]:
     if game_obj.get("vrc_solo_room"):
         VRC_WEB.live(game_obj)
@@ -3737,6 +3784,9 @@ def _state_public_view(
         is_debug_room=bool(game_obj.get("is_debug_room", False)),
     )
     board_public = game_obj.get("board", _new_board_snapshot())
+    achievement_updates = game_obj.get("achievement_updates", {}).get(client_id, {})
+    if achievement_updates and _achievement_member_id(member_token) != achievement_updates["member_id"]:
+        achievement_updates = {}
     human_seats = game_obj.get("human_seats", {})
     owned_human_seats = _client_owned_human_seats(game_obj, client_id)
     ai_seats = _ai_seat_set(game_obj)
@@ -3870,6 +3920,7 @@ def _state_public_view(
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
+        "achievement_updates": achievement_updates,
         "practice_replay_active": bool(
             game_obj.get("practice_replay_active", False)
         ),
@@ -4111,6 +4162,8 @@ def _preserve_match_progress(new_game: dict, old_game: dict) -> None:
     new_game["last_completed_kifu"] = copy.deepcopy(
         old_game.get("last_completed_kifu")
     )
+    if "achievement_match" in old_game:
+        new_game["achievement_match"] = copy.deepcopy(old_game["achievement_match"])
 
 
 def _set_reset_start_state(game: Dict[str, Any], auto_start: bool) -> None:
@@ -4849,6 +4902,149 @@ def _create_practice_replay_game(
     return replay
 
 
+def _achievement_socket_token(connection):
+    scheme = "https" if connection.url.scheme == "wss" else "http"
+    if connection.headers.get("origin") == f"{scheme}://{connection.url.netloc}":
+        return connection.cookies.get(MEMBER_COOKIE, "")
+    return ""
+
+
+def _achievement_member_id(token):
+    if token:
+        try:
+            return MEMBER_STORE.authenticate(token)["member_id"]
+        except (MemberError, OSError, sqlite3.Error):
+            pass
+    return ""
+
+
+def _achievement_game_id(game):
+    return next((key for key, value in list(GAMES.items()) if value is game), None)
+
+
+def _achievement_room_member(game_id, client):
+    return _achievement_member_id(_achievement_room_token(game_id, client))
+
+
+def _achievement_room_token(game_id, client):
+    for socket in list(manager.client_connections.get((game_id, client), ())):
+        token = _achievement_socket_token(socket)
+        if token:
+            return token
+    return ""
+
+
+def _achievement_human_roster(game):
+    return {seat: client for seat, client in game.get("human_seats", {}).items()
+            if client and seat in ALL_SEATS and seat not in _ai_seat_set(game)}
+
+
+def _grant_room_achievement(game, client, items, *, member_id=None, marks=()):
+    if not client or (not items and not marks):
+        return
+    try:
+        owner = member_id or _achievement_room_member(_achievement_game_id(game), client)
+        if owner:
+            granted = MEMBER_STORE.record_achievements(owner, items, marks=marks)
+            if granted:
+                previous = game.setdefault("achievement_updates", {}).get(client, {})
+                items = previous.get("items", ()) if previous.get("member_id") == owner else ()
+                game["achievement_updates"][client] = {"member_id": owner, "items": [*items, *granted]}
+    except (OSError, sqlite3.Error):
+        LOGGER.warning("Could not store member achievements for the round.")
+
+
+def _record_practice_achievements(game):
+    source = game.get("practice_replay_source") or {}
+    original = source.get("moves", [])
+    actual = game.get("kifu_moves", [])
+    scene = int(game.get("practice_scene_index", 0))
+    suffix = actual[int(game.get("achievement_practice_prefix", 0)):]
+    for seat, client in _achievement_human_roster(game).items():
+        actor = str(ALL_SEATS.index(seat))
+        if not any(who == actor for who, _, _ in suffix):
+            continue
+        items = {"replay_scene" if game.get("achievement_practice_scene") else "replay_round"}
+        marks = []
+        if not scene:
+            old_first = next((piece for who, _, piece in original if who == actor and piece), None)
+            new_first = next((piece for who, _, piece in actual if who == actor and piece), None)
+            if old_first and new_first and old_first != new_first:
+                items.add("change_first_attack")
+        if game.get("achievement_practice_scene") and suffix and suffix[0][0] == actor:
+            _, receive, attack = suffix[0]
+            if receive and (receive == "パス" or not attack):
+                mark = "pass" if receive == "パス" else "receive"
+                key = hashlib.sha256(json.dumps([source, scene, seat], sort_keys=True).encode()).hexdigest()
+                marks.append(("compare_scene", key, mark))
+        _grant_room_achievement(game, client, items, marks=marks)
+
+
+def _record_game_achievements(game):
+    game_id = _achievement_game_id(game)
+    if not game_id or game.get("trace_mode") or game.get("is_debug_room"):
+        return
+    if game.get("practice_replay_active"):
+        _record_practice_achievements(game)
+        return
+    roster = _achievement_human_roster(game)
+    actors = game.get("achievement_actors", set())
+    before = game.get("achievement_round_roster", roster)
+    stable = {seat: client for seat, client in roster.items() if before.get(seat) == client}
+    match = game.setdefault("achievement_match", {
+        "roster": stable, "won": set(), "hundred_first": "", "four": len(stable) == 4,
+    })
+    match["roster"] = {seat: client for seat, client in match["roster"].items() if stable.get(seat) == client}
+    match["four"] = match["four"] and len(match["roster"]) == 4
+    winner = game["state"].winner
+    match["won"].add(winner)
+    scores = game["total_team_score"]
+    if not match["hundred_first"]:
+        match["hundred_first"] = next((team for team, points in scores.items() if points >= 100), "")
+    match_finished = game.get("match_finished")
+    public = game_id in MAIN_GIDS or bool(game.get("gathering_match"))
+    for seat, client in stable.items():
+        if seat not in actors or not (owner := _achievement_room_member(game_id, client)):
+            continue
+        other_humans = bool(set(stable) - {seat})
+        partner = PARTNER_SEAT[seat]
+        ai = bool(_ai_seat_set(game))
+        items = achievement_round_items(game, seat, ai=ai, other_humans=other_humans, public=public,
+                                       support=(seat, client) in game.get("achievement_beginner", set()))
+        marks = []
+        if game_id in GATHERING_HUMAN_PUBLIC_ROOM_IDS or game_id in {"main-e", "main-f"}:
+            marks.append(("both_public_modes", "room", "human" if game_id in GATHERING_HUMAN_PUBLIC_ROOM_IDS else "ai"))
+        if set(stable) == {seat, partner} and ai:
+            items.add("pair_practice")
+        if match_finished and match["roster"].get(seat) == client:
+            items.add("first_match")
+            if match["four"]:
+                items.add("four_human_match")
+            partner_client = match["roster"].get(partner)
+            if partner_client:
+                partner_id = _achievement_room_member(game_id, partner_client)
+                if partner_client != client and partner_id != owner:
+                    partner_key = ("member:" + partner_id) if partner_id else ("guest:" + partner_client)
+                    marks.append(("three_partners", "partner", hashlib.sha256(partner_key.encode()).hexdigest()))
+                    items.add("human_partner_match")
+            if {seat, partner} <= match["won"]:
+                items.add("both_partners_won")
+            team = "AC" if seat in "AC" else "BD"
+            opponent = "BD" if team == "AC" else "AC"
+            if game["match_winner"] == team:
+                if winner == partner:
+                    items.add("partner_match_win")
+                if match["hundred_first"] == opponent:
+                    items.add("overcome_hundred")
+                if scores[team] - scores[opponent] <= 10:
+                    items.add("close_match_win")
+                if scores[opponent] == 0:
+                    items.add("shutout")
+        _grant_room_achievement(game, client, items, member_id=owner, marks=marks)
+    for client in game.get("achievement_spectators", set()) - set(roster.values()):
+        _grant_room_achievement(game, client, ["spectate_round"])
+
+
 def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[str, Optional[str], Optional[str]], effects: List[str]):
     if state.finished and not game.get("current_round_finished"):
         game["current_round_finished"] = True
@@ -4877,6 +5073,7 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 game["log"].append(
                     f"Practice round finished. winner={winner}, score_not_added={round_score}"
                 )
+                _record_game_achievements(game)
                 return
 
             game["total_team_score"][team] += round_score
@@ -4905,6 +5102,7 @@ def _handle_round_finish(game: Dict[str, Any], state: GoitaState, action: Tuple[
                 msg = f"Round finished. winner={winner}, gained={round_score}, total_score={game['total_team_score']}"
                 game["log"].append(msg)
             game["last_completed_kifu"] = _research_kifu_snapshot(game, state)
+            _record_game_achievements(game)
             if _practice_replay_is_supported(game):
                 game["practice_replay_source"] = _practice_replay_source(game)
             try:
@@ -4936,15 +5134,20 @@ def _auto_save_member_round(game):
 
 
 def _save_trace_result(game):
-    if game.get("trace_attempt_id") and game.get("current_round_finished"):
+    if (game.get("trace_attempt_id") and game.get("current_round_finished")
+            and not game.get("trace_achievements_checked")):
         # Trace continuation intentionally ignores hidden human blocks. The
         # bonus requires the entire actual sequence, including those blocks
         # and all passes, to match the normalized source moves exactly.
         expected_moves = game.get("trace_moves")
         exact_sequence = bool(expected_moves) and game.get("kifu_moves") == expected_moves
-        get_trace_store().finish(
-            game["trace_attempt_id"], game["total_team_score"], exact_sequence=exact_sequence,
-        )
+        store = get_trace_store()
+        member_id = store.finish(game["trace_attempt_id"], game["total_team_score"],
+                                 exact_sequence=exact_sequence, winner_seat=getattr(game.get("state"), "winner", ""))
+        if member_id:
+            items = MEMBER_STORE.record_achievements(member_id, progress=store.member_achievement_progress(member_id))
+            game["trace_achievement_updates"] = {"member_id": member_id, "items": items}
+        game["trace_achievements_checked"] = True
 
 
 _KIFU_ARCHIVE_CACHE: Optional[Dict[str, Any]] = None
@@ -8351,7 +8554,7 @@ async def join_gathering(game_id: str, req: GatheringJoinRequest):
         }
         GATHERING_PARTICIPANTS[req.client_id] = item
     item["name"] = _sanitize_player_name(req.name) or "ゲスト"
-    item["tag"] = _sanitize_player_tag(req.tag)
+    item["tag"] = _sanitize_player_tag(req.tag, _achievement_room_token(game_id, req.client_id))
     item["icon"] = _sanitize_player_icon(req.icon)
     if item.get("status") in {"resting", "spectating"}:
         item["status"] = "waiting"
@@ -9644,6 +9847,9 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
             GAMES[game_id] = _create_practice_replay_game(
                 game, return_snapshot, int(scene_index)
             )
+            GAMES[game_id]["achievement_practice_scene"] = action == "scene"
+            GAMES[game_id]["achievement_practice_prefix"] = len(GAMES[game_id]["kifu_moves"])
+            GAMES[game_id].pop("achievement_updates", None)
             _arm_turn_timeout(game_id)
         elif action == "retry":
             if not active or not game.get("practice_return_snapshot"):
@@ -9654,6 +9860,8 @@ async def practice_replay(game_id: str, req: PracticeReplayRequest):
                 return_snapshot,
                 int(game.get("practice_scene_index", 0)),
             )
+            GAMES[game_id]["achievement_practice_prefix"] = len(GAMES[game_id]["kifu_moves"])
+            GAMES[game_id].pop("achievement_updates", None)
             _arm_turn_timeout(game_id)
         else:
             if not active or not game.get("practice_return_snapshot"):
@@ -10035,6 +10243,7 @@ async def reset_game_config(game_id: str, body: ResetConfigBody):
         new_game["board"] = _new_board_snapshot()
         new_game["log"] = []
         new_game["init_hands"] = hands
+        new_game["achievement_preset"] = "rough" if body.preset_source == "rough" else "exact"
         new_game["dealer"] = dealer
         new_game["kifu_moves"] = []
         new_game["password"] = password
@@ -10614,9 +10823,14 @@ def trace_result(game_id: str, attempt_id: str, request: Request, response: Resp
     store = get_trace_store()
     owner, _ = store.identity(request, response, MEMBER_STORE)
     game = GAMES.get(game_id, {})
-    if game.get("trace_attempt_id") == attempt_id:
+    current = game.get("trace_attempt_id") == attempt_id
+    if current:
         _save_trace_result(game)
-    return store.read(owner, attempt_id, mode=mode)
+    result = store.read(owner, attempt_id, mode=mode)
+    updates = game.get("trace_achievement_updates", {}) if current else {}
+    if updates.get("items") and owner == "member:" + updates.get("member_id", ""):
+        result["achievement_updates"] = updates["items"]
+    return result
 
 
 @trace_router.get("/games/{game_id}/trace_results/{attempt_id}/original")
@@ -11070,7 +11284,7 @@ async def set_player_name(game_id: str, req: NameRequest):
     name = _sanitize_player_name(req.name)
     if game.get("vrc_solo_room") and not name:
         name = "サイトのプレイヤー"
-    tag = _sanitize_player_tag(req.tag)
+    tag = _sanitize_player_tag(req.tag, _achievement_room_token(game_id, req.client_id))
     icon = _sanitize_player_icon(req.icon)
     pn: Dict[str, str] = game.setdefault("player_names", {p: "" for p in ALL_SEATS})
     pt: Dict[str, str] = game.setdefault("player_tags", {p: "" for p in ALL_SEATS})
@@ -11204,7 +11418,7 @@ async def post_lobby_chat_message(req: ChatRequest, request: Request = None):
         "seat": "W",
         "sender": name or "ゲスト",
         "sender_name": name or "ゲスト",
-        "tag": _sanitize_player_tag(req.tag),
+        "tag": _sanitize_player_tag(req.tag, request.cookies.get(MEMBER_COOKIE, "")),
         "sender_icon": _sanitize_player_icon(req.icon),
         "message": message,
         "ts": _next_chat_timestamp(),
@@ -11258,7 +11472,7 @@ async def ask_lobby_chat_ai(req: ChatAiRequest, request: Request):
         {
             "seat": "W",
             "sender": name or "ゲスト",
-            "tag": _sanitize_player_tag(req.tag),
+            "tag": _sanitize_player_tag(req.tag, request.cookies.get(MEMBER_COOKIE, "")),
             "message": question,
             "ts": ts,
             "origin": "lobby",
@@ -11354,12 +11568,12 @@ async def ask_chat_ai(game_id: str, req: ChatAiRequest, request: Request):
 
 
 @app.post("/games/{game_id}/step")
-async def step(game_id: str, req: StepRequest):
+async def step(game_id: str, req: StepRequest, request: Request = None):
     async with _game_turn_lock(game_id):
-        return await _step_unlocked(game_id, req)
+        return await _step_unlocked(game_id, req, request.cookies.get(MEMBER_COOKIE, "") if request else "")
 
 
-async def _step_unlocked(game_id: str, req: StepRequest):
+async def _step_unlocked(game_id: str, req: StepRequest, member_token: str = ""):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     player = _validate_seat(req.player, name="player")
@@ -11457,6 +11671,7 @@ async def _step_unlocked(game_id: str, req: StepRequest):
             viewer=player,
             game_obj=game,
             client_id=req.client_id,
+            member_token=member_token,
         ),
     }
 
@@ -11549,7 +11764,7 @@ async def _auto_step_unlocked(game_id: str, player: str = "A", client_id: str = 
 # =========================================================
 
 @app.get("/games/{game_id}/state")
-def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands: int = 0):
+def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands: int = 0, request: Request = None):
     if _is_main_game_id(game_id):
         _ensure_main_game(game_id)
     viewer = viewer if viewer in ALL_SEATS else "W"
@@ -11563,6 +11778,7 @@ def get_state(game_id: str, viewer: str = "W", client_id: str = "", reveal_hands
         viewer=viewer,
         game_obj=game,
         client_id=client_id,
+        member_token=request.cookies.get(MEMBER_COOKIE, "") if request else "",
     )
 
 
@@ -11619,6 +11835,7 @@ def get_beginner_recommendation(game_id: str, player: str = "A", client_id: str 
             "explanation": "チュートリアルの案内に沿って、この駒を選んでみましょう。",
         }
 
+    game.setdefault("achievement_beginner", set()).add((player, client_id))
     support_agents = game.get("beginner_support_agents")
     if not isinstance(support_agents, dict):
         support_agents = _create_agents("current")
@@ -11721,6 +11938,9 @@ async def share_member_kifu(
         "payload": payload,
     }
     game["shared_kifu"] = shared_kifu
+    share_member_id = _achievement_member_id(request.cookies.get(MEMBER_COOKIE, ""))
+    if share_member_id:
+        _grant_room_achievement(game, data.client_id, ["share_kifu"], member_id=share_member_id)
     await manager.broadcast_update(game_id)
     return {
         "ok": True,

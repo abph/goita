@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
+from backend.member_achievements import CATALOG, GROUPS, TARGETS
 
 MEMBER_DB_FILENAME = "goita-members.sqlite3"
 SESSION_SECONDS = 30 * 24 * 60 * 60
@@ -181,6 +182,21 @@ class MemberStore:
                         note TEXT NOT NULL,
                         changed_at REAL NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS member_achievements (
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        achievement_id TEXT NOT NULL, reached_at REAL NOT NULL,
+                        PRIMARY KEY(member_id, achievement_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS member_achievement_progress (
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        achievement_id TEXT NOT NULL, value INTEGER NOT NULL,
+                        PRIMARY KEY(member_id, achievement_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS member_achievement_marks (
+                        member_id TEXT NOT NULL REFERENCES members(member_id) ON DELETE CASCADE,
+                        achievement_id TEXT NOT NULL, reference TEXT NOT NULL, mark TEXT NOT NULL,
+                        PRIMARY KEY(member_id, achievement_id, reference, mark)
+                    );
                 """)
                 db.execute("BEGIN IMMEDIATE")
                 columns = {row[1] for row in db.execute("PRAGMA table_info(members)")}
@@ -200,6 +216,8 @@ class MemberStore:
                     db.execute("ALTER TABLE members ADD COLUMN admin_kifu_bonus INTEGER NOT NULL DEFAULT 0")
                 if "daily_kifu_bonus" not in columns:
                     db.execute("ALTER TABLE members ADD COLUMN daily_kifu_bonus INTEGER NOT NULL DEFAULT 0")
+                if "achievement_kifu_bonus" not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN achievement_kifu_bonus INTEGER NOT NULL DEFAULT 0")
                 kifu_columns = {row[1] for row in db.execute("PRAGMA table_info(member_kifu)")}
                 if "favorite" not in kifu_columns:
                     db.execute("ALTER TABLE member_kifu ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
@@ -248,6 +266,7 @@ class MemberStore:
             "reward_kifu_bonus": int(row["reward_kifu_bonus"]) if "reward_kifu_bonus" in keys else 0,
             "admin_kifu_bonus": int(row["admin_kifu_bonus"]) if "admin_kifu_bonus" in keys else 0,
             "daily_kifu_bonus": int(row["daily_kifu_bonus"]) if "daily_kifu_bonus" in keys else 0,
+            "achievement_kifu_bonus": int(row["achievement_kifu_bonus"]) if "achievement_kifu_bonus" in keys else 0,
         }
 
     @staticmethod
@@ -308,7 +327,95 @@ class MemberStore:
             return 0
         return (base + max(0, int(member.get("reward_kifu_bonus", 0)))
                 + max(0, int(member.get("daily_kifu_bonus", 0)))
+                + max(0, int(member.get("achievement_kifu_bonus", 0)))
                 + max(0, int(member.get("admin_kifu_bonus", 0))))
+
+    def _record_achievements(self, db, member_id, items=(), *, progress=None, marks=()):
+        completed = set(items)
+        values = dict(progress or {})
+        for key, reference, mark in marks:
+            if db.execute("SELECT 1 FROM member_achievements WHERE member_id=? AND achievement_id=?",
+                          (member_id, key)).fetchone():
+                continue
+            db.execute("INSERT OR IGNORE INTO member_achievement_marks VALUES (?,?,?,?)",
+                       (member_id, key, reference, mark))
+            if key == "compare_scene":
+                count = db.execute("""SELECT COUNT(*) FROM member_achievement_marks
+                        WHERE member_id=? AND achievement_id=? AND reference=?""",
+                                   (member_id, key, reference)).fetchone()[0]
+            else:
+                count = db.execute("""SELECT COUNT(*) FROM member_achievement_marks
+                        WHERE member_id=? AND achievement_id=?""", (member_id, key)).fetchone()[0]
+            values[key] = max(count, values.get(key, 0))
+        for key, value in values.items():
+            goal = TARGETS.get(key, 1)
+            if value >= goal:
+                completed.add(key)
+            elif value > 0:
+                db.execute("""INSERT INTO member_achievement_progress VALUES (?,?,?)
+                    ON CONFLICT(member_id, achievement_id) DO UPDATE SET value=MAX(value,excluded.value)""",
+                           (member_id, key, value))
+        now = self.clock()
+        granted = []
+        for key in sorted(completed):
+            item = CATALOG[key]
+            if db.execute("INSERT OR IGNORE INTO member_achievements VALUES (?,?,?)",
+                          (member_id, key, now)).rowcount:
+                granted.append({**item, "reached_at": now})
+                db.execute("DELETE FROM member_achievement_progress WHERE member_id=? AND achievement_id=?",
+                           (member_id, key))
+                db.execute("DELETE FROM member_achievement_marks WHERE member_id=? AND achievement_id=?",
+                           (member_id, key))
+        bonus = sum(item["bonus"] for item in granted)
+        if bonus:
+            db.execute("UPDATE members SET achievement_kifu_bonus=achievement_kifu_bonus+? WHERE member_id=?",
+                       (bonus, member_id))
+        return granted
+
+    def record_achievements(self, member_id, items=(), *, progress=None, marks=()):
+        with self._db(write=True) as db:
+            row = db.execute("SELECT enabled, must_change_password FROM members WHERE member_id=?",
+                             (member_id,)).fetchone()
+            if not row or not row["enabled"] or row["must_change_password"]:
+                return []
+            return self._record_achievements(db, member_id, items, progress=progress, marks=marks)
+
+    def achievement_titles(self, member_id):
+        with self._db() as db:
+            return {key: CATALOG[key]["title"] for key, in db.execute(
+                "SELECT achievement_id FROM member_achievements WHERE member_id=?", (member_id,))
+                if key in CATALOG and CATALOG[key]["title"]}
+
+    def achievement_list(self, member_id):
+        with self._db() as db:
+            earned = dict(db.execute("SELECT achievement_id,reached_at FROM member_achievements WHERE member_id=?",
+                                     (member_id,)))
+            progress = dict(db.execute("SELECT achievement_id,value FROM member_achievement_progress WHERE member_id=?",
+                                        (member_id,)))
+        return {"completed": len(earned), "total": len(CATALOG), "groups": [
+            {"label": label, "items": [dict(CATALOG[key], reached_at=earned.get(key),
+                target=TARGETS.get(key, 1), progress=TARGETS.get(key, 1) if key in earned else progress.get(key, 0))
+                for key, _ in rows]}
+            for label, rows in GROUPS]}
+
+    def retained_achievement_items(self, member_id):
+        """Recognize verified records from before achievement tracking."""
+        with self._db() as db:
+            items = set()
+            if db.execute("SELECT 1 FROM member_kifu WHERE member_id=? LIMIT 1", (member_id,)).fetchone():
+                items.add("save_kifu")
+            if db.execute("SELECT 1 FROM member_kifu WHERE member_id=? AND favorite=1 LIMIT 1", (member_id,)).fetchone():
+                items.add("favorite_kifu")
+            if db.execute("SELECT 1 FROM member_kifu_auto_saves WHERE member_id=? LIMIT 1", (member_id,)).fetchone():
+                items.add("auto_save_kifu")
+            if db.execute("SELECT 1 FROM member_score_daily_awards WHERE member_id=? LIMIT 1", (member_id,)).fetchone():
+                items.update(("score_daily_first", "score_daily_top3"))
+            rank = db.execute("SELECT MIN(rank) FROM member_score_awards WHERE member_id=?", (member_id,)).fetchone()[0]
+            if rank in (1, 2, 3):
+                items.add("score_weekly_top3")
+            if rank == 1:
+                items.add("score_weekly_first")
+            return items
 
     def can_save_kifu(self, member):
         return bool(member.get("paid_active") or not member.get("paid_enabled"))

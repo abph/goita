@@ -126,6 +126,7 @@ function syncTraceResult(state) {
 }
 
 async function openTraceResult(attemptId = '') {
+  const achievementViewer = globalThis.goitaMembers?.achievementViewer();
   if (!isScoreAttackRoom()) return;
   closeTraceOriginal();
   closeTraceHistory();
@@ -134,6 +135,8 @@ async function openTraceResult(attemptId = '') {
   modal.style.display = 'flex';
   modal.querySelector('.settings-modal-close').focus();
   traceElement('traceResultContent').hidden = true;
+  const achievementNotice = traceElement('traceAchievementNotice');
+  if (achievementNotice) achievementNotice.hidden = true;
   traceElement('traceComparison').hidden = true;
   traceElement('traceRankingContribution').hidden = true;
   traceElement('traceResultStatus').textContent = '結果を読み込んでいます。';
@@ -182,6 +185,7 @@ async function openTraceResult(attemptId = '') {
       rows.append(row);
     }
     traceElement('traceResultContent').hidden = false;
+    globalThis.goitaMembers?.achievementNotice({member_id:achievementViewer, items:data.achievement_updates}, 'traceAchievementNotice');
     traceElement('traceResultStatus').textContent = '';
   } catch (error) {
     if (generation === traceResultRequest) traceElement('traceResultStatus').textContent = error.message;

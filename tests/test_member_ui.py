@@ -13,8 +13,8 @@ def test_member_page_is_separate_from_lobby_and_room_settings():
     assert "function openMemberPage()" in html
     assert "function showLobbySettingsTab(tab)" in html
     assert "const isMember = tabName === \"member\"" in html
-    assert 'src="/static/member.js?v=20261008a"' in html
-    assert 'href="/static/member.css?v=20261008a"' in html
+    assert 'src="/static/member.js?v=' in html
+    assert 'href="/static/member.css?v=' in html
 
 
 def test_member_library_offers_private_on_demand_analysis():

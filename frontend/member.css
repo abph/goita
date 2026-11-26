@@ -45,6 +45,19 @@
 .member-panel .member-tabs button[aria-selected="true"] { border-bottom-color: #176b57; color: #176b57; font-weight: 700; }
 .member-panel .member-tabs.has-room-tab [data-action="library"] { flex: 1.4; }
 .member-panel .member-tabs button:focus-visible { outline: 2px solid #176b57; outline-offset: -2px; }
+.member-panel .achievement-total { display: flex; justify-content: space-between; gap: 12px; margin: 0; }
+.member-panel .achievement-group { border-top: 1px solid #d7c2a4; }
+.member-panel .achievement-group summary { padding: 11px 2px; cursor: pointer; font-weight: 700; }
+.member-panel .achievement-group summary span { float: right; font-size: .85em; color: #425d53; }
+.member-panel .achievement-group ul { padding: 0; margin: 0 0 9px; list-style: none; }
+.member-panel .achievement-group li {
+  display: grid; grid-template-columns: 1em minmax(0, 1fr) auto; gap: 8px;
+  padding: 8px 2px; border-top: 1px solid #e4d9ca; font-size: 13px;
+}
+.member-panel .achievement-group small { display: block; margin-top: 4px; color: #56616b; }
+.member-panel .achievement-group .achieved .achievement-check { color: #176b57; font-weight: 700; }
+.member-panel .achievement-progress { white-space: nowrap; font-size: 11px; color: #56616b; }
+#memberAchievementNotice, #traceAchievementNotice { background: #eaf4ed; color: #175745; }
 .member-panel .member-status:empty { display: none; }
 .member-panel .member-auto-kifu { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; margin: 12px 0 18px; }
 .member-panel .member-auto-kifu input { flex: 0 0 auto; width: auto; margin: 2px 0 0; }

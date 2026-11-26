@@ -14,6 +14,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from backend.member_achievements import score_progress
 from backend.member_api import MEMBER_COOKIE
 from backend.member_store import MemberError
 from backend.private_kifu_archive import archive_path
@@ -121,6 +122,11 @@ class TraceStore:
                 # Old results have no verified move comparison. Never infer a
                 # reproduction bonus merely from their zero score difference.
                 db.execute("ALTER TABLE trace_attempts ADD COLUMN exact_match_bonus INTEGER NOT NULL DEFAULT 0")
+            if "winner_seat" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN winner_seat TEXT NOT NULL DEFAULT ''")
+            if "practice" not in columns:
+                db.execute("ALTER TABLE trace_attempts ADD COLUMN practice INTEGER NOT NULL DEFAULT 0")
+            db.execute("CREATE INDEX IF NOT EXISTS trace_owner_finished ON trace_attempts(owner,finished)")
             db.execute("DELETE FROM trace_attempts WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_sessions WHERE expires <= ?", (self.clock(),))
             db.execute("DELETE FROM trace_people WHERE guest=1 AND owner NOT IN (SELECT owner FROM trace_attempts)")
@@ -183,10 +189,10 @@ class TraceStore:
             db.execute("INSERT OR IGNORE INTO trace_challenges VALUES (?,?)", (challenge, json.dumps(payload)))
             db.execute("INSERT INTO trace_challenge_labels(challenge) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM trace_challenge_labels WHERE challenge=?)", (challenge, challenge))
             db.execute("""INSERT INTO trace_attempts(
-                id,owner,challenge,started,expires,ranked,attempt_no,audit_candidate_id,selection_mode
-            ) VALUES (?,?,?,?,?,?,?,?,?)""",
+                id,owner,challenge,started,expires,ranked,attempt_no,audit_candidate_id,selection_mode,practice
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
                        (attempt_id, owner, challenge, now, now + RETENTION if guest else None,
-                        int(first and not practice), attempt_no, str(audit_candidate_id or ""), selection_mode))
+                        int(first and not practice), attempt_no, str(audit_candidate_id or ""), selection_mode, int(practice)))
         return attempt_id
 
     def challenge_selection(self):
@@ -223,11 +229,14 @@ class TraceStore:
                 )
             return {"candidate_id": candidate, "already_reported": already}
 
-    def finish(self, attempt_id, actual, *, exact_sequence=False):
+    def finish(self, attempt_id, actual, *, exact_sequence=False, winner_seat=""):
         with self.db() as db:
             row = db.execute("SELECT a.*, c.payload FROM trace_attempts a JOIN trace_challenges c ON c.id=a.challenge WHERE a.id=?", (attempt_id,)).fetchone()
-            if row is None or row["finished"] is not None:
+            if row is None:
                 return
+            member_id = row["owner"][7:] if row["owner"].startswith("member:") and not row["practice"] else None
+            if row["finished"] is not None:
+                return member_id
             payload = json.loads(row["payload"])
             before, after = payload["score_before"], payload["score_after"]
             ac, bd = int(actual["AC"]) - before["AC"], int(actual["BD"]) - before["BD"]
@@ -236,9 +245,18 @@ class TraceStore:
                            and ac == after["AC"] - before["AC"]
                            and bd == after["BD"] - before["BD"]) else 0
             now = self.clock()
-            db.execute("UPDATE trace_attempts SET finished=?, expires=?, actual_ac=?, actual_bd=?, improvement=?, exact_match_bonus=? WHERE id=? AND finished IS NULL",
+            db.execute("UPDATE trace_attempts SET finished=?, expires=?, actual_ac=?, actual_bd=?, improvement=?, exact_match_bonus=?, winner_seat=? WHERE id=? AND finished IS NULL",
                        (now, now + RETENTION if row["expires"] is not None else None,
-                        ac, bd, ac - bd - original_margin, bonus, attempt_id))
+                        ac, bd, ac - bd - original_margin, bonus, winner_seat or "", attempt_id))
+            return member_id
+
+    def member_achievement_progress(self, member_id):
+        with self.db() as db:
+            rows = db.execute("""SELECT challenge, improvement, exact_match_bonus, winner_seat, selection_mode,
+                       date(finished,'unixepoch','+9 hours') AS day
+                FROM trace_attempts WHERE owner=? AND finished IS NOT NULL AND practice=0
+                ORDER BY finished,started,id""", ("member:" + member_id,)).fetchall()
+        return score_progress(rows)
 
     def read(self, owner, attempt_id, *, original=False, mode="best"):
         if mode not in ("all", "best", "first"):
@@ -368,7 +386,7 @@ class TraceStore:
             for row in rows if row["owner"].startswith("member:") and int(row["position"]) <= 3
         ]}
 
-    def daily_award_candidates(self, award_date=None):
+    def daily_award_candidates(self, award_date=None, *, include_top_three=False):
         """Return yesterday's first-place members without exposing owner IDs publicly."""
         now = self.clock()
         today = datetime.fromtimestamp(now, timezone(timedelta(hours=9)))
@@ -390,11 +408,15 @@ class TraceStore:
             FROM totals JOIN trace_people USING(owner)
             ORDER BY points DESC, name, owner""",
                 (start.timestamp(), end.timestamp(), now)).fetchall()
-        return {"award_date": start.date().isoformat(), "candidates": [
+        result = {"award_date": start.date().isoformat(), "candidates": [
             {"member_id": row["owner"][7:], "rank": 1}
             for row in rows
             if row["owner"].startswith("member:") and int(row["position"]) == 1
         ]}
+        if include_top_three:
+            result["top_three"] = [{"member_id": row["owner"][7:], "rank": int(row["position"])}
+                                   for row in rows if row["owner"].startswith("member:") and row["position"] <= 3]
+        return result
 
     def latest(self, owner):
         with self.db() as db:

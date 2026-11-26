@@ -152,15 +152,15 @@ def test_bulk_delete_is_atomic_owner_scoped_and_protects_favorites(library):
     assert store.access(other, other_record["id"])["title"] == "other"
 
 
-def test_free_member_can_save_twenty_records(library):
+def test_free_member_gains_a_slot_for_the_first_saved_kifu(library):
     store, members, token, other, client, game = library
     _, free_token, _ = members.register("free-player", "free-password-2026", "testclient")
-    for index in range(20):
+    for index in range(21):
         store.save(free_token, title=f"Free {index}", memo="", tags=[], payload={})
     with pytest.raises(MemberError) as error:
         store.save(free_token, title="Overflow", memo="", tags=[], payload={})
     assert error.value.status == 409
-    assert "20件" in str(error.value)
+    assert "21件" in str(error.value)
 
 
 @pytest.mark.parametrize("suffix,body", [("", {}), ("/edit", {"title": "stolen"}), ("/delete", {})])
@@ -241,7 +241,7 @@ def test_limit_is_atomic_and_deletion_frees_space(library):
     assert attempt(0)
 
 
-def test_default_limit_accepts_1000_records_and_rejects_1001(library):
+def test_paid_limit_includes_the_first_save_and_tag_rewards(library):
     store, members, token, other, client, game = library
     assert store.LIMIT == 1000
     with members._db(write=True) as db:
@@ -253,9 +253,11 @@ def test_default_limit_accepts_1000_records_and_rejects_1001(library):
     record = save(client)
     assert record.status_code == 200
     assert len(store.list(token)) == 1000
+    assert save(client).status_code == 200
+    assert save(client).status_code == 200
     overflow = save(client)
     assert overflow.status_code == 409
-    assert "1000件" in overflow.json()["detail"]
+    assert "1002件" in overflow.json()["detail"]
     store.access(token, record.json()["record"]["id"], action="delete")
     assert save(client).status_code == 200
 

@@ -6,6 +6,9 @@
   let revision = 0;
   let libraryRoot = null;
   let roomRoot = null;
+  let achievementRoot = null;
+  const notifiedAchievements = new Set();
+  const achievementNoticeTimers = new Map();
   let sessionResolved = false;
   let registrationRequested = false;
   let libraryRequested = false;
@@ -105,12 +108,14 @@
       const tabs = hasTabs ? `<div class="member-tabs${member.research_enabled ? " has-room-tab" : ""}" role="tablist" aria-label="${label("マイページ")}">
         <button type="button" role="tab" id="${prefix}-account-tab" aria-controls="${prefix}-account" aria-selected="true" data-action="account">${label("アカウント")}</button>
         <button type="button" role="tab" id="${prefix}-library-tab" aria-controls="${prefix}-library" aria-selected="false" tabindex="-1" data-action="library">${label("棋譜ライブラリ")}</button>
+        <button type="button" role="tab" id="${prefix}-achievements-tab" aria-controls="${prefix}-achievements" aria-selected="false" tabindex="-1" data-action="achievements">${label("達成リスト")}</button>
         ${member.research_enabled ? `<button type="button" role="tab" id="${prefix}-room-tab" aria-controls="${prefix}-room" aria-selected="false" tabindex="-1" data-action="room">${label("ルーム管理")}</button>` : ""}
       </div>` : "";
       root.innerHTML = `${tabs}<div data-member-account id="${prefix}-account" ${hasTabs ? `role="tabpanel" aria-labelledby="${prefix}-account-tab"` : ""}>${body}</div><div class="member-status" role="status" aria-live="polite"></div>
         <div data-member-library id="${prefix}-library" role="tabpanel" aria-labelledby="${prefix}-library-tab" hidden>
         ${member && !member.can_save_kifu ? `<p class="member-help">${label("新規保存には有効な有料権限が必要です。")}</p>` : ""}
         <div data-member-library-slot></div></div>
+        ${hasTabs ? `<div data-member-achievements id="${prefix}-achievements" role="tabpanel" aria-labelledby="${prefix}-achievements-tab" hidden></div>` : ""}
         ${hasTabs && member.research_enabled ? `<div data-member-room id="${prefix}-room" role="tabpanel" aria-labelledby="${prefix}-room-tab" hidden></div>` : ""}`;
     });
     if (registrationRequested) {
@@ -144,11 +149,14 @@
     if (libraryRoot && member && !member.must_change_password) showLibrary(libraryRoot, false);
     if (roomRoot && member?.research_enabled && !member.must_change_password) showRoom(roomRoot);
     else if (roomRoot) { roomRoot = null; window.goitaMemberRoom?.reset(); }
+    if (achievementRoot && hasMemberAccess()) showAchievements(achievementRoot);
+    window.syncAchievementTagOptions?.(member?.achievement_titles || {});
   }
 
   function resetLibrary() {
     libraryRoot = null;
     roomRoot = null;
+    achievementRoot = null;
     window.goitaMemberRoom?.reset();
     resetMemberKifuLibrary();
     const notice = document.getElementById("memberAutoKifuNotice");
@@ -158,6 +166,7 @@
   function showLibrary(root, load = true) {
     if (!member || member.must_change_password) return;
     roomRoot = null;
+    achievementRoot = null;
     window.goitaMemberRoom?.reset();
     if (libraryRoot && libraryRoot !== root) selectTab(libraryRoot, "account");
     libraryRoot = root;
@@ -175,6 +184,8 @@
     root.querySelector("[data-member-library]").hidden = action !== "library";
     const room = root.querySelector("[data-member-room]");
     if (room) room.hidden = action !== "room";
+    const achievements = root.querySelector("[data-member-achievements]");
+    if (achievements) achievements.hidden = action !== "achievements";
     root.querySelectorAll('[role="tab"]').forEach(tab => {
       const selected = tab.dataset.action === action;
       tab.setAttribute("aria-selected", String(selected));
@@ -190,10 +201,90 @@
     if (!member?.research_enabled || member.must_change_password) return;
     if (roomRoot && roomRoot !== root) selectTab(roomRoot, "account");
     libraryRoot = null;
+    achievementRoot = null;
     roomRoot = root;
     stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
     selectTab(root, "room");
     window.goitaMemberRoom?.mount(root.querySelector("[data-member-room]"), member);
+  }
+
+  const hasMemberAccess = () => member && !member.must_change_password;
+
+  function rememberTitles(items) {
+    if (!hasMemberAccess()) return;
+    for (const item of items) {
+      if (item.title) (member.achievement_titles ||= {})[item.id] = item.title;
+    }
+    window.syncAchievementTagOptions?.(member.achievement_titles || {});
+  }
+
+  async function showAchievements(root) {
+    if (!hasMemberAccess()) return;
+    const panel = root.querySelector("[data-member-achievements]");
+    if (!panel) return;
+    const owner = member.member_id;
+    libraryRoot = null;
+    roomRoot = null;
+    achievementRoot = root;
+    window.goitaMemberRoom?.reset();
+    stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
+    selectTab(root, "achievements");
+    panel.innerHTML = `<p role="status">${label("達成リストを読み込んでいます。")}</p>`;
+    try {
+      const data = await request("achievements");
+      if (member?.member_id !== owner || achievementRoot !== root || !panel.isConnected) return;
+      member.kifu_limit = data.kifu_limit;
+      rememberTitles(data.groups.flatMap(group => group.items.filter(item => item.reached_at !== null)));
+      const groups = data.groups.map(group => {
+        const completed = group.items.filter(item => item.reached_at !== null).length;
+        return `<details class="achievement-group"><summary>${label(group.label)} <span>${completed} / ${group.items.length}</span></summary>
+          <ul>${group.items.map(item => {
+            const done = item.reached_at !== null;
+            const reward = [item.bonus ? `${t("棋譜保存枠")} ＋${Number(item.bonus)}${t("局")}` : "",
+              item.title ? `${t("称号")}「${t(item.title)}」` : ""].filter(Boolean).join("　");
+            return `<li class="${done ? "achieved" : ""}"><span class="achievement-check" aria-label="${label(done ? "達成済み" : "未達成")}">${done ? "✓" : "○"}</span>
+              <div>${label(item.label)}<small>${escape(reward)}</small></div>
+              <span class="achievement-progress">${done ? escape(memberStartDate(item.reached_at)) :
+                (item.target > 1 ? `${Number(item.progress)} / ${Number(item.target)}` : "")}</span></li>`;
+          }).join("")}</ul></details>`;
+      }).join("");
+      panel.innerHTML = `<p class="achievement-total"><strong>${label("達成リスト")}</strong> ${Number(data.completed)} / ${Number(data.total)}</p>
+        <p class="member-help">${label("初めて達成した項目の報酬を獲得できます。")}</p>${groups}`;
+      panel.querySelector("details")?.setAttribute("open", "");
+    } catch (_error) {
+      panel.textContent = t("達成リストを読み込めませんでした。");
+    }
+  }
+
+  function achievementNotice(update, target = "memberAchievementNotice") {
+    if (!hasMemberAccess() || update?.member_id !== member.member_id) return;
+    const items = (update.items || []).filter(item => {
+      const key = `${member.member_id}:${item.id}`;
+      if (notifiedAchievements.has(key)) return false;
+      notifiedAchievements.add(key);
+      return true;
+    });
+    if (!items.length) return;
+    rememberTitles(items);
+    const notice = document.getElementById(target);
+    if (!notice) return;
+    const bonus = items.reduce((sum, item) => sum + Number(item.bonus), 0);
+    const titles = items.filter(item => item.title).map(item => `「${t(item.title)}」`).join("、");
+    notice.textContent = [t("新しい達成！"), bonus ? `${t("棋譜保存枠")}＋${bonus}${t("局")}` : "", titles].filter(Boolean).join(" ");
+    notice.hidden = false;
+    clearTimeout(achievementNoticeTimers.get(target));
+    achievementNoticeTimers.set(target, setTimeout(() => { notice.hidden = true; }, 6500));
+  }
+
+  async function recordBrowserAchievement(action) {
+    if (!hasMemberAccess()) return;
+    const owner = member.member_id;
+    try {
+      const data = await request(`achievements/${action}`, {});
+      if (member?.member_id !== owner) return;
+      member.kifu_limit = data.kifu_limit;
+      achievementNotice({member_id: owner, items: data.granted});
+    } catch (_error) { /* Viewing and downloading remain available. */ }
   }
 
   async function refresh(options = {}) {
@@ -250,7 +341,7 @@
       render();
       sessionResolved = true;
       window.onMemberSessionReady?.();
-      if (["login", "logout", "password"].includes(action) && typeof currentWsGid !== "undefined" && currentWsGid) connectWS(currentWsGid);
+      if (["login", "logout", "password", "register"].includes(action) && typeof currentWsGid !== "undefined" && currentWsGid) connectWS(currentWsGid);
       if (action === "password") status(t("パスワードを変更しました。"));
       if (action === "kifu-auto-save") status(t(member.auto_save_kifu ? "棋譜の自動保存をオンにしました。" : "棋譜の自動保存をオフにしました。"));
     } catch (error) {
@@ -290,9 +381,11 @@
       if (event.target.closest('[data-action="logout"]')) perform("logout");
       if (event.target.closest('[data-action="library"]') && libraryRoot !== root) showLibrary(root);
       if (event.target.closest('[data-action="room"]') && roomRoot !== root) showRoom(root);
+      if (event.target.closest('[data-action="achievements"]')) showAchievements(root);
       if (event.target.closest('[data-action="account"]')) {
         libraryRoot = null;
         roomRoot = null;
+        achievementRoot = null;
         window.goitaMemberRoom?.reset();
         stopResearchKifuReplay({restoreFinal: true, clearStatus: true});
         selectTab(root, "account");
@@ -372,7 +465,7 @@
     notice.textContent = data.status === "saved" ? "" : t(messages[data.status]);
   }
   const shouldRecordAnalytics = () => sessionResolved && !member?.is_operator;
-  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canUseChampionStamp, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, isMember, requestRegistration, requestLibrary};
+  window.goitaMembers = {refresh, clearSecrets, canUseAllStamps, canUseChampionStamp, canSaveKifu, kifuStatus, automaticKifuResult, shouldRecordAnalytics, isGuest, isMember, requestRegistration, requestLibrary, achievementNotice, recordBrowserAchievement, achievementViewer: () => member?.member_id};
   render();
   refresh();
 })();
