@@ -1058,6 +1058,8 @@ class DecisionMixin:
                     f"{round_route['search_best_attack']}_"
                     f"gap_{round_route['followup_value_gap']}"
                 )
+            if len(chosen_route) == 1 and round_route.get("rejected_royal_followup"):
+                round_route_detail = "pass_kyosha_unproven_royal_followup"
             self._set_score_fallback_detail(round_route_detail)
             self._remember_conditional_response_plan(
                 state, player, actions, baseline_action, chosen_response,

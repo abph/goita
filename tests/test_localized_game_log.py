@@ -126,6 +126,16 @@ def test_japanese_game_log_explains_ai_reason_and_performance_fields():
         assert expected in HTML
 
 
+def test_game_log_explains_lance_pass_and_last_royal_reserve():
+    for expected in (
+        'detail === "pass_kyosha_unproven_royal_followup"',
+        '残りの攻めと比べ、パスを選択。',
+        'match(/^attack_preserve_last_royal_without_continuation_',
+        '受けに使えるよう温存。',
+    ):
+        assert expected in HTML
+
+
 def test_game_log_explains_estimated_enemy_finish_risk_in_each_language():
     for localized_reason in (
         "相方が止められずに敵が上がるおそれが高いため受ける",

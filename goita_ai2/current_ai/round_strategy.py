@@ -244,9 +244,15 @@ class RoundStrategyMixin:
         followup_override_blocked = False
         royal_preservation_followup_kept = False
         followup_value_gap = 0.0
+        rejected_royal_followup = None
         if followup_rule is not None:
             rule_route = (receive_action, followup_rule["action"])
-            if rule_route in values and rule_route != search_best_receive:
+            if (
+                getattr(self, "ENFORCE_EARLY_ROYAL_ROUTE_ELIGIBILITY", False)
+                and rule_route[1][2] in blocked_early_royals
+            ):
+                rejected_royal_followup = rule_route[1][2]
+            elif rule_route in values and rule_route != search_best_receive:
                 followup_value_gap = (
                     values[search_best_receive] - values[rule_route]
                 )
@@ -300,6 +306,7 @@ class RoundStrategyMixin:
             "raw_search_best_attack": str(raw_search_best_receive[1][2]),
             "early_royal_proof_statuses": dict(early_royal_proofs),
             "blocked_early_royal_attacks": list(blocked_early_royals),
+            "rejected_royal_followup": rejected_royal_followup,
             "followup_rule_action": (
                 list(followup_rule["action"])
                 if followup_rule is not None else None

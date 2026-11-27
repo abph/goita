@@ -11,6 +11,8 @@ from collections import Counter
 
 
 class KyoshaContinuationMixin:
+    ENFORCE_EARLY_ROYAL_ROUTE_ELIGIBILITY = True
+
     def _kyosha_own_attack_outlines(self, hand, pool, tracker, *, first_attack,
                                     attack_number, king_used, had_both_kings,
                                     receive_block=None):
@@ -191,8 +193,9 @@ class KyoshaContinuationMixin:
         piece = comparison["best_receive_attack"]
         if not comparison["followup_override_blocked"]:
             piece = max(sorted(eligible), key=lambda candidate: values[candidate])
-        # Preserve a publicly proved continuation regardless of this heuristic.
-        protected = comparison["followup_rule_authority"] == "proven"
+        # Preserve a publicly proved continuation that is still eligible.
+        protected = (comparison["followup_rule_authority"] == "proven"
+                     and not comparison["rejected_royal_followup"])
         if protected:
             return comparison
         comparison["attack_values"] = {p: round(v, 2) for p, v in values.items()}

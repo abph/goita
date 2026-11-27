@@ -454,6 +454,42 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         finally:
             self._live_plan_review_state_id = previous_state_id
 
+    def _second_attack_preserving_royal(self, state, player, actions, tracker):
+        """Keep a receiving piece when the early royal pair has no proven finish."""
+        history = tracker.get("my_attack_history", ())
+        if (
+            state.phase != "attack"
+            or self.final_shi_risk
+            or not self.KING_GYOKU_FORCE_ORDER
+            or not tracker.get("kg_plan_active")
+            or len(history) != 1
+            or history[0] not in ("8", "9")
+        ):
+            return actions, None
+
+        remaining_royal = "9" if history[0] == "8" else "8"
+        reserve_actions = [action for action in actions if remaining_royal not in action[1:]]
+        if not reserve_actions or not any(action[2] == remaining_royal for action in actions):
+            return actions, None
+
+        # The proof accounts for the next hidden block, the third attack, and
+        # the finish beyond it. A full lap on this royal alone is insufficient.
+        proven_royal_actions = {
+            action for action in actions
+            if remaining_royal in action[1:]
+            and self._forced_win_result_after_attack_action(state, player, action).status
+            == ForcedWinStatus.PROVEN
+        }
+        if proven_royal_actions:
+            # Keep proven royal routes and the regular alternatives available
+            # to the existing high-score comparison.
+            eligible_actions = [
+                action for action in actions
+                if action in proven_royal_actions or action in reserve_actions
+            ]
+            return eligible_actions, None
+        return reserve_actions, remaining_royal
+
     def _select_action_with_neural_tiebreak(self, state, player: str, actions: List[Action]) -> Action:
         # The current AI still evaluates the position so proven wins and other
         # exact guards remain available. Keep a clean tracker snapshot because
@@ -461,6 +497,9 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         self._ensure_trackers(state)
         tracker = self._track.get(id(state))
         tracker_before = copy.deepcopy(tracker) if tracker is not None else None
+        actions, reserved_royal = self._second_attack_preserving_royal(
+            state, player, actions, tracker or {},
+        )
         rule_action = super().select_action(state, player, actions)
         active_plan = (
             self._track.get(id(state), {}).get("active_forced_win_plan")
@@ -481,6 +520,14 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         rule_reason = str(self.last_decision_reason or "")
         rule_detail = str(self.last_score_fallback_detail or "")
         rule_authority = str(self.last_rule_search_authority or "ordinary")
+        if reserved_royal is not None and rule_authority != "proven":
+            rule_reason = "score_fallback"
+            rule_detail = f"attack_preserve_last_royal_without_continuation_{reserved_royal}"
+            rule_authority = "strong"
+            self._set_decision_reason(rule_reason)
+            self._set_score_fallback_detail(rule_detail)
+            self.last_rule_search_authority = rule_authority
+            self._finalize_attack_candidate_snapshot(actions, rule_action)
         royal_fallback = self._opening_royal_without_continuation_fallback(
             state,
             player,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from goita_ai2.decision_check import apply_action, replay
 from goita_ai2.experimental_ai2 import RuleBasedAgent
 from goita_ai2.state import GoitaState
 
@@ -114,3 +115,71 @@ def test_kyosha_route_preserves_unproven_early_royals_and_uses_hisha() -> None:
     assert agent.last_score_fallback_detail == (
         "kyosha_round_route_followup_7_royal_preserved_unproven"
     )
+
+
+def test_rejected_early_royal_cannot_return_as_lance_followup() -> None:
+    state, agent = _royal_attack_review_position()
+
+    assert agent.select_action(state, "B", state.legal_actions("B")) == (
+        "pass", None, None,
+    )
+
+    tracker = agent._track[id(state)]
+    comparison = tracker["last_round_route_comparison"]
+    assert comparison["early_royal_proof_statuses"] == {
+        "8": "counterexample", "9": "counterexample",
+    }
+    assert comparison["rejected_royal_followup"] == "8"
+    assert comparison["best_receive_attack"] == "1"
+    assert comparison["pass_value"] > comparison["receive_value"]
+    assert tracker["pending_kyosha_receive_attack_piece"] is None
+    assert agent.last_score_fallback_detail == "pass_kyosha_unproven_royal_followup"
+
+
+def test_second_attack_keeps_last_royal_when_third_cannot_secure_finish() -> None:
+    state, agent = _royal_attack_review_position(second_attack=True)
+    agent.TIME_SEARCH_ENABLED = False
+
+    chosen = agent.select_action(state, "B", state.legal_actions("B"))
+
+    assert chosen[0] == "attack_after_block"
+    assert "9" not in chosen[1:]
+    assert agent.last_score_fallback_detail == (
+        "attack_preserve_last_royal_without_continuation_9"
+    )
+    assert agent._track[id(state)]["my_attack_count"] == 2
+
+
+def test_second_royal_attack_remains_available_with_unreceivable_third_attack() -> None:
+    state, agent = _royal_attack_review_position(second_attack=True, two_kaku=True)
+    actions = state.legal_actions("B")
+    viable = ("attack_after_block", "1", "9")
+
+    eligible, reserved = agent._second_attack_preserving_royal(
+        state, "B", actions, agent._track[id(state)],
+    )
+
+    assert viable in eligible
+    assert reserved is None
+
+
+def _royal_attack_review_position(*, second_attack=False, two_kaku=False):
+    # Round 1, B turn 2 of the 2026-11-27 review. Swap three middle
+    # pieces for both kaku and a hisha in the positive proof control.
+    hands = {"A": "36127273", "B": "49853112", "C": "41114156", "D": "21115543"}
+    if two_kaku:
+        hands.update(A="35123273", B="69867112", C="41114154")
+    position = {
+        "initial_hands": {seat: list(hand) for seat, hand in hands.items()},
+        "dealer": "A", "player": "B",
+        "history": [{"player": "A", "action": ["attack_after_block", "3", "2"]}],
+    }
+    agent = RuleBasedAgent()
+    agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+    state = replay(position, agent)
+    if second_attack:
+        apply_action(state, "B", ("receive", "2", None), agent)
+        apply_action(state, "B", ("attack", None, "8"), agent)
+        for seat in "CDA":
+            apply_action(state, seat, ("pass", None, None), agent)
+    return state, agent

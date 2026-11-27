@@ -7856,6 +7856,18 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return `评估${attacks}的后续路线后跳过香。连续进攻及被接住后重新接牌的前景不足以支持接香（不确定性调整${kyoshaPlan[2]}）。该路线以条件成立为前提。`;
         return `香を受けた後の${attacks}を検討したが、攻めの継続・受けられた後の立て直しの見通しが弱いためパス（不確実性の補正${kyoshaPlan[2]}）。攻め順は条件付きの見通し。`;
     }
+    if(detail === "pass_kyosha_unproven_royal_followup") {
+        if(language === "en") return "After receiving the lance, an early King attack does not guarantee a finish. Compared the remaining attacks with passing and chose to pass.";
+        if(language === "zh") return "接香后提早打出王或玉无法确定获胜。比较其余进攻与跳过后，选择跳过。";
+        return "香を受けてすぐに王か玉を出しても上がりが確定しないため、その攻めを候補から外した。残りの攻めと比べ、パスを選択。";
+    }
+    const lastRoyal = String(detail || "").match(/^attack_preserve_last_royal_without_continuation_([89])$/);
+    if(lastRoyal) {
+        const piece = gameLogCandidatePieceLabel(lastRoyal[1], language);
+        if(language === "en") return `Keep ${piece} to receive later. Spending both Kings on the first two attacks leaves no confirmed route to a finish.`;
+        if(language === "zh") return `前两次进攻用掉王和玉后，无法确认获胜路线，因此保留${piece}用于接牌。`;
+        return `最初の2回で王と玉を使うと、その先の上がり筋を確認できないため、残った${piece}を受けに使えるよう温存。`;
+    }
     const limitedShiReceive = String(detail || "").match(/^receive_limited_shi_support_([01])_followup_([2-7])$/);
     if(limitedShiReceive) {
         const piece = gameLogCandidatePieceLabel(limitedShiReceive[2], language);
