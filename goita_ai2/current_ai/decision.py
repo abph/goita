@@ -156,6 +156,7 @@ class DecisionMixin:
             detail.startswith("attack_sequence_")
             or detail.startswith("attack_avoid_false_sequence_signal")
             or detail.startswith("attack_truthful_first_pair_signal_")
+            or detail == "attack_opening_lance_royal_signal"
             or detail.startswith("pass_ally_kyosha_continuation")
             or detail.startswith("pass_preserve_public_unstoppable_finish_piece_")
             or detail.startswith("pass_ally_reach_royal_")
@@ -2319,6 +2320,9 @@ class DecisionMixin:
                 self._set_decision_reason("score_fallback")
                 stage = plan["attack_and_block_plan"]["stage"]
                 self._set_score_fallback_detail(f"attack_and_block_plan_{stage}")
+            elif plan.get("opening_lance_signal"):
+                self._set_decision_reason("score_fallback")
+                self._set_score_fallback_detail("attack_opening_lance_royal_signal")
             else:
                 self._set_decision_reason("score_fallback")
                 self._set_score_fallback_detail(

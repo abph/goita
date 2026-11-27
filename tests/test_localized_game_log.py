@@ -136,6 +136,12 @@ def test_game_log_explains_lance_pass_and_last_royal_reserve():
         assert expected in HTML
 
 
+def test_game_log_explains_opening_lance_signal_and_return_risk():
+    assert 'detail === "attack_opening_lance_royal_signal"' in HTML
+    assert 'だまし香で、相方に王と玉を両方持つ可能性を伝える' in HTML
+    assert '香を返されるリスクも見込み、し・王・玉を受けに残す' in HTML
+
+
 def test_game_log_explains_estimated_enemy_finish_risk_in_each_language():
     for localized_reason in (
         "相方が止められずに敵が上がるおそれが高いため受ける",

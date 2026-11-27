@@ -7760,6 +7760,11 @@ function localizeGameLogAiDetail(detail, language) {
         if(language === "zh") return "同时规划进攻和伏牌，保留可用于接牌的棋子。";
         return "攻めの予定と伏せ候補を組み、受けに使える駒を残す。";
     }
+    if(detail === "attack_opening_lance_royal_signal") {
+        if(language === "en") return "Open with a single lance to signal a possible King pair to the partner. Keep both Kings and shi in reserve, accounting for the risk of a returned lance.";
+        if(language === "zh") return "用仅有的一枚香开局，向搭档提示可能同时持有王和玉。保留王、玉与し，并考虑对手用香反攻的风险。";
+        return "だまし香で、相方に王と玉を両方持つ可能性を伝える。香を返されるリスクも見込み、し・王・玉を受けに残す。";
+    }
     const lanceReserve = String(detail || "").match(/^pass_preserve_last_team_lance_enemy_([ABCD])$/);
     if(lanceReserve) {
         const enemy = lanceReserve[1];

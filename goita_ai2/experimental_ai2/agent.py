@@ -149,6 +149,10 @@ class RuleBasedAgent(GuaranteedReceiveComparisonMixin, PublicReceiveProofMixin, 
         baseline = self._opening_continuation_plan(
             state, player, actions, has_non_king_attack_option=has_non_king_attack_option,
         )
+        baseline = self._opening_lance_signal_plan(
+            state, player, actions, baseline,
+            has_non_king_attack_option=has_non_king_attack_option,
+        )
         return self._apply_attack_and_block_plan(state, player, actions, baseline)
 
     def _opening_continuation_plan(

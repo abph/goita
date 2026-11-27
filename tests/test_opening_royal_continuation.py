@@ -79,3 +79,49 @@ def test_proven_opening_royal_route_is_not_replaced() -> None:
         rule_authority="proven",
         attack_count_before=0,
     ) is None
+
+
+def _lance_signal_opening(agent_class, *, silver_pair=False, risk=False):
+    hands = {"A": "12233677", "B": "11234589", "C": "11114456", "D": "11123455"}
+    if silver_pair:
+        hands.update(B="11234489", D="11123555")
+    state = GoitaState({seat: list(hand) for seat, hand in hands.items()}, dealer="B")
+    agent = agent_class()
+    agent.bind_player("B")
+    agent.TIME_SEARCH_ENABLED = False
+    agent.TIME_SEARCH_BACKGROUND_ENABLED = False
+    agent.final_shi_risk = risk
+    return state, agent
+
+
+def test_reported_dealer_uses_lance_to_signal_royals_over_singleton_silver() -> None:
+    state, agent = _lance_signal_opening(ExperimentalAI2RuleBasedAgent)
+
+    assert agent.select_action(state, "B", state.legal_actions("B")) == (
+        "attack_after_block", "1", "2",
+    )
+    assert agent.last_score_fallback_detail == "attack_opening_lance_royal_signal"
+    assert agent.last_rule_search_authority == "strong"
+    signal = agent.last_attack_candidate_snapshot["opening_lance_signal"]
+    assert signal["compared_action"] == ["attack_after_block", "1", "4"]
+    assert signal["return_coverage"]["uncovered_returns"] == {"2": 2}
+    assert signal["selected_value"] > signal["compared_value"]
+    plan = agent._track[id(state)]["shallow_eight_card_plan"]
+    assert plan["steps"][0] == ("1", "2")
+    assert set(plan["final_pair"]) == {"8", "9"}
+
+
+def test_lance_signal_does_not_replace_a_real_silver_pair() -> None:
+    state, agent = _lance_signal_opening(ExperimentalAI2RuleBasedAgent, silver_pair=True)
+
+    assert agent.select_action(state, "B", state.legal_actions("B"))[2] == "4"
+    assert "opening_lance_signal" not in agent.last_attack_candidate_snapshot
+
+
+def test_lance_signal_is_scoped_to_the_ai2_safe_profile() -> None:
+    for agent_class, risk in (
+        (CurrentRuleBasedAgent, False),
+        (ExperimentalAI2RuleBasedAgent, True),
+    ):
+        state, agent = _lance_signal_opening(agent_class, risk=risk)
+        assert agent.select_action(state, "B", state.legal_actions("B"))[2] == "4"

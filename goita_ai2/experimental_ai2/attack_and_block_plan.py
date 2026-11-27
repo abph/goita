@@ -7,6 +7,73 @@ from goita_ai2.constants import POINTS
 
 class AttackAndBlockPlanMixin:
     _RECEIVE_RESERVES = ("1", "6", "7")
+    LANCE_ROYAL_SIGNAL_BONUS = 60.0
+    LANCE_SIGNAL_UNCOVERED_RETURN_WEIGHT = 80.0
+
+    def _opening_counterattack_coverage(self, state, player, action, pool):
+        _, block, attack = action
+        remaining = self._remaining_hand_after_attack_action(state, player, block, attack)
+        # The two royals are in our own deal. An opposing player needs a
+        # matching piece to take the lead, and a second copy to return it.
+        return_pool = pool.copy()
+        return_pool[attack] = max(0, return_pool[attack] - 1)
+        uncovered = {
+            piece: count for piece, count in return_pool.items()
+            if count > 0 and not self._forced_win_receive_options(tuple(remaining), piece)
+        }
+        return {
+            "uncovered_returns": uncovered,
+            "uncovered_share_by_stock": sum(uncovered.values()) / max(1, return_pool.total()),
+        }
+
+    def _opening_lance_signal_plan(
+        self, state, player, actions, baseline, *, has_non_king_attack_option,
+    ):
+        """Compare a one-lance signal with an unsupported singleton opening."""
+        if baseline is None or self.final_shi_risk:
+            return baseline
+        original, original_plan = baseline
+        hand = Counter(state.hands[player])
+        if (
+            original_plan.get("opening_continuation_proof")
+            or original[2] not in ("3", "4", "5")
+            or hand["2"] != 1 or not (hand["8"] and hand["9"] and hand["1"])
+            or not self._singleton_first_attack_signal_penalty(state, player, *original)
+        ):
+            return baseline
+
+        lance_actions = [action for action in actions if action[2] == "2"
+                         and action[1] not in ("8", "9")
+                         and (action[1] != "1" or hand["1"] >= 2)]
+        tracker = self._track[id(state)]
+        pool = self._public_unknown_piece_pool(state, player, tracker)
+        if not lance_actions or pool is None:
+            return baseline
+        candidate = super()._eight_card_shallow_plan_action(
+            state, player, lance_actions, has_non_king_attack_option=has_non_king_attack_option,
+        )
+        if candidate is None:
+            return baseline
+        action, plan = candidate
+        original_coverage = self._opening_counterattack_coverage(state, player, original, pool)
+        lance_coverage = self._opening_counterattack_coverage(state, player, action, pool)
+        weight = self.LANCE_SIGNAL_UNCOVERED_RETURN_WEIGHT
+        original_value = original_plan["projected_score"] - weight * original_coverage["uncovered_share_by_stock"]
+        lance_value = (plan["projected_score"] + self.LANCE_ROYAL_SIGNAL_BONUS
+                       - weight * lance_coverage["uncovered_share_by_stock"])
+        if lance_value <= original_value or plan["finish_score"] < original_plan["finish_score"]:
+            tracker["shallow_eight_card_plan"] = original_plan
+            return baseline
+
+        plan["opening_lance_signal"] = {
+            "comparison_basis": "own_hand_and_public_piece_stock",
+            "compared_action": list(original),
+            "compared_value": round(original_value, 2),
+            "selected_value": round(lance_value, 2),
+            "partner_signal_bonus": self.LANCE_ROYAL_SIGNAL_BONUS,
+            "return_coverage": lance_coverage,
+        }
+        return action, plan
 
     def _attack_and_block_steps(self, hand, attacks):
         """Allocate the planned attacks first, then choose from spare blocks."""
@@ -174,6 +241,13 @@ class AttackAndBlockPlanMixin:
     def _finalize_attack_candidate_snapshot(self, actions, chosen):
         super()._finalize_attack_candidate_snapshot(actions, chosen)
         detail = self.last_score_fallback_detail or ""
+        if detail == "attack_opening_lance_royal_signal":
+            tracker = self._track.get(getattr(self, "_live_plan_review_state_id", None), {})
+            plan = tracker.get("shallow_eight_card_plan") or {}
+            signal = plan.get("opening_lance_signal")
+            if signal is not None:
+                self.last_attack_candidate_snapshot["opening_lance_signal"] = signal
+            return
         if detail not in ("attack_and_block_plan_opening", "attack_and_block_plan_review"):
             return
         tracker = self._track.get(getattr(self, "_live_plan_review_state_id", None), {})
