@@ -2646,11 +2646,6 @@ class ChatAiRequest(ChatRequest):
     language: str = "ja"
 
 
-class BoardStampRequest(BaseModel):
-    seat: Literal["A", "B", "C", "D"]
-    client_id: str
-    size: Literal["seat", "large"] = "seat"
-
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
@@ -11347,33 +11342,17 @@ def _live_board_stamps(game: Dict[str, Any]) -> List[Dict[str, Any]]:
             if expires > now and event_round == round_id]
 
 
-@app.post("/games/{game_id}/board-stamp")
-async def post_board_stamp(game_id: str, req: BoardStampRequest, request: Request):
-    require_member_origin(request)
-    game = GAMES.get(game_id)
-    if not game:
-        raise HTTPException(404, "対局ルームが見つかりません。")
-    state = game.get("state")
-    if not state or not game.get("is_started") or state.finished or game.get("tutorial_mode"):
-        raise HTTPException(409, "寒ブリは対局中に使えます。")
-    _require_human_seat_owner(game, req.seat, req.client_id)
-    if req.seat in _ai_seat_set(game):
-        raise HTTPException(403, "着席中に使えます。")
-    if req.size == "large":
-        try:
-            member = MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, ""))
-            if not member.get("is_operator") and not member.get("paid_active"):
-                raise MemberError(403, "有料プランのスタンプです。")
-        except MemberError as error:
-            raise HTTPException(error.status, "大きな寒ブリは有料プランで使えます。") from None
-
-    event = {"id": _next_chat_timestamp(), "seat": req.seat, "size": req.size}
-    slot = "large" if req.size == "large" else req.seat
-    game.setdefault("board_stamps", {})[slot] = (
+def _remember_chat_board_stamp(game: Dict[str, Any], chat_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    stamp_id = chat_item.get("stamp_id")
+    seat = chat_item["seat"]
+    if (not stamp_id or seat not in ALL_SEATS
+            or seat in _ai_seat_set(game) or not game.get("is_started") or game.get("tutorial_mode")):
+        return None
+    event = {"id": chat_item["ts"], "seat": seat, "stamp_id": stamp_id}
+    game.setdefault("board_stamps", {})[seat] = (
         event, time.monotonic() + 5, game.get("member_kifu_round_id"),
     )
-    await manager._broadcast_payload(game_id, {"type": "board_stamp", "board_stamp": event})
-    return {"board_stamps": [event]}
+    return event
 
 
 @app.post("/games/{game_id}/chat")
@@ -11433,15 +11412,22 @@ async def post_chat_message(game_id: str, req: ChatRequest, request: Request = N
         EVERYONE_CHAT_MESSAGES.append(chat_item)
         if len(EVERYONE_CHAT_MESSAGES) > 100:
             del EVERYONE_CHAT_MESSAGES[:-100]
-        await _broadcast_everyone_chat_update()
     else:
         chat_messages.append(chat_item)
         if len(chat_messages) > 100:
             del chat_messages[:-100]
+
+    board_stamp = _remember_chat_board_stamp(game, chat_item)
+    if board_stamp:
+        await manager._broadcast_payload(game_id, {"type": "board_stamp", "board_stamp": board_stamp})
+    if mention_scope == "everyone":
+        await _broadcast_everyone_chat_update()
+    else:
         await manager.broadcast_update(game_id)
     return {
         "ok": True,
         "chat_messages": _chat_messages_for_game(game_id, game),
+        "board_stamps": [board_stamp] if board_stamp else [],
     }
 
 

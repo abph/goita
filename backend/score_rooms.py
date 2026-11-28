@@ -29,7 +29,7 @@ def score_room_http_action_allowed(method, action):
     if method == "POST":
         return action in {
             "step", "cpu_step", "set_name", "trace_random_start", "score_reset",
-            "score_activity", "chat", "chat/ask_ai", "board-stamp",
+            "score_activity", "chat", "chat/ask_ai",
         } or bool(re.fullmatch(r"trace_results/[^/]+/report", action))
     return False
 

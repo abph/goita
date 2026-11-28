@@ -20,7 +20,7 @@ let standardBoardFurniture = null;
 let pieceLayer = null;
 let labelLayer = null;
 let passLayer = null;
-let boardStampTexture = null;
+const boardStampTextures = new Map();
 let scoreLayer = null;
 let resizeObserver = null;
 let available = null;
@@ -1332,26 +1332,17 @@ function showPass(phys, cells) {
   return true;
 }
 
-function showBoardStamp(phys, cells, asset, size, duration) {
+function showBoardStamp(phys, cells, asset, duration) {
   if (!ensureRenderer() || !passLayer) return false;
-  if (!boardStampTexture) {
-    boardStampTexture = new THREE.TextureLoader().load(asset, renderFrame);
-    boardStampTexture.colorSpace = THREE.SRGBColorSpace;
-    boardStampTexture.magFilter = THREE.NearestFilter;
-  }
-  if (size === "large") {
-    const marker = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: boardStampTexture, transparent: true, opacity: 0.82, depthTest: false, depthWrite: false,
-    }));
-    marker.position.set(0, 0.65, 0);
-    marker.scale.set(4.5, 4.5, 1);
-    marker.renderOrder = 11;
-    addBoardFeedback(marker, "stamp-center", duration);
-    return true;
+  let texture = boardStampTextures.get(asset);
+  if (!texture) {
+    texture = new THREE.TextureLoader().load(asset, renderFrame);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    boardStampTextures.set(asset, texture);
   }
   const group = new THREE.Group();
   for (const [col, row] of cells) {
-    const marker = boardFeedbackPlane(boardStampTexture, col, row, phys, 0.93, 0.93);
+    const marker = boardFeedbackPlane(texture, col, row, phys, 0.93, 0.93);
     marker.renderOrder = 41;
     group.add(marker);
   }

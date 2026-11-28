@@ -472,27 +472,12 @@
       height: 94%;
       object-fit: contain;
       place-self: center;
-      image-rendering: pixelated;
       background: rgba(255, 255, 255, .86);
       border-radius: 20%;
       transform: rotate(var(--feedback-rotation));
     }
-    .live-board-center-stamp {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      z-index: 1;
-      width: min(54%, 300px);
-      aspect-ratio: 1;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      image-rendering: pixelated;
-    }
     body.board-view-3d .live-board-slot-effects,
-    body.board-view-3d .live-board-center-stamp,
-    body.board-view-pixel .live-board-center-stamp,
-    body.shared-kifu-board-active .live-board-slot-effects,
-    body.shared-kifu-board-active .live-board-center-stamp { display: none; }
+    body.shared-kifu-board-active .live-board-slot-effects { display: none; }
 
     /* 必殺技・上がり演出テキスト */
     .special-anim-wrapper {
@@ -7457,8 +7442,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261126a"></script>
 <script src="/static/trace-results.js?v=20261126a"></script>
-<script src="/static/i18n-en.js?v=20261129board-stamps"></script>
-<script src="/static/i18n.js?v=20261129board-stamps"></script>
+<script src="/static/i18n-en.js?v=20261129chat-board"></script>
+<script src="/static/i18n.js?v=20261129chat-board"></script>
 <script src="/static/tutorialAnimals.js?v=20261120piecenames"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
@@ -7466,12 +7451,12 @@
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20261129board-stamps").catch((error) => {
+  import("/static/board3d.js?v=20261129chat-board").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20261129board-stamps").catch((error) => {
+  import("/static/boardPixel.js?v=20261129chat-board").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -9971,8 +9956,7 @@ let chatComposeMode = "chat";
 let chatMentionScope = "";
 let chatToastTimer = null;
 const liveBoardStampIds = new Map();
-let boardStampSending = false;
-let centerStampTimer = 0;
+const BOARD_STAMP_DISPLAY_MS = 2000;
 const CHAT_STAMP_SCROLL_FOLLOW_MS = 5000;
 const chatLatestScrollUntil = { room: 0, lobby: 0 };
 const CHAT_STAMP_DEFINITIONS = Object.freeze([
@@ -16180,6 +16164,10 @@ function chatStampDefinition(stampId){
   return CHAT_STAMP_DEFINITIONS.find((stamp) => stamp.id === normalized) || null;
 }
 
+function chatStampImageSrc(definition){
+  return `/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
+}
+
 function buildChatStampVisual(definition, owner, decorative = false){
   const visual = document.createElement("span");
   visual.className = "chat-stamp-visual";
@@ -16211,7 +16199,7 @@ function buildChatStampVisual(definition, owner, decorative = false){
     fallback.hidden = false;
     owner?.classList.remove("has-image");
   }, { once: true });
-  image.src = definition.assetUrl || `/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
+  image.src = chatStampImageSrc(definition);
 
   visual.append(image, fallback);
   return visual;
@@ -16567,15 +16555,6 @@ function initializeChatStampPickers(){
     for(const definition of availableStamps){
       appendChatStampChoice(picker, definition, () => sendChatStamp(kind, definition.id));
     }
-    if(kind === "room" && canSendBoardStamp()){
-      const assetUrl = playerIconSrc("special_yellowtail");
-      appendChatStampChoice(picker, {id: "yellowtail", label: "寒ブリ", assetUrl, emoji: "🐟"},
-        () => sendBoardStamp("seat"));
-      if(window.goitaMembers?.canUseAllStamps()){
-        appendChatStampChoice(picker, {id: "yellowtail-large", label: "大きな寒ブリ", assetUrl, emoji: "🐟"},
-          () => sendBoardStamp("large"));
-      }
-    }
   }
 }
 
@@ -16591,38 +16570,6 @@ function appendChatStampChoice(picker, definition, send){
   button.append(buildChatStampVisual(definition, button, true), label);
   button.addEventListener("click", send);
   picker.appendChild(button);
-}
-
-function canSendBoardStamp(){
-  return SEAT_ORDER.includes(mySeat) && latestState?.is_started && !latestState.finished
-    && !latestState.tutorial_mode && !seatIsAi(latestState, mySeat);
-}
-
-async function sendBoardStamp(size){
-  if(boardStampSending || !canSendBoardStamp()) return;
-  const room = gid;
-  const seat = mySeat;
-  boardStampSending = true;
-  closeChatStampPickers();
-  try{
-    const response = await fetch(`${API}/games/${room}/board-stamp`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
-      body: JSON.stringify({seat, client_id: clientId, size}),
-    });
-    const data = await response.json();
-    if(gid !== room || mySeat !== seat) return;
-    if(response.ok) syncLiveBoardStamps(data.board_stamps);
-    else {
-      setHint(uiText(data.detail || "スタンプを送信できませんでした。"));
-      if(size === "large" && (response.status === 401 || response.status === 403)) window.goitaMembers?.refresh();
-    }
-  }catch{
-    if(gid === room) setHint(uiText("スタンプを送信できませんでした。"));
-  }finally{
-    boardStampSending = false;
-  }
 }
 
 function sendChatStamp(kind, stampId){
@@ -16765,10 +16712,11 @@ async function sendRoomChatPayload(event, stampId = ""){
   const message = applyChatMentionScope(sourceMessage, chatMentionScope);
   if(!message) return;
 
+  const room = gid;
   chatSending = true;
   setChatComposerDisabled(true);
   try{
-    const res = await fetch(`${API}/games/${gid}/chat`, {
+    const res = await fetch(`${API}/games/${room}/chat`, {
       method: "POST",
       credentials: "same-origin",
       headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
@@ -16787,6 +16735,11 @@ async function sendRoomChatPayload(event, stampId = ""){
       setHint(uiText(error.detail || "チャットの送信に失敗しました。"));
       if(stamp && (res.status === 401 || res.status === 403)) window.goitaMembers?.refresh();
     } else {
+      if(stamp){
+        const data = await res.json().catch(() => ({}));
+        if(gid !== room) return;
+        syncLiveBoardStamps(data.board_stamps);
+      }
       input.value = "";
       closeChatStampPickers();
       chatMentionScope = "";
@@ -18672,68 +18625,47 @@ function showPassAnimation(phys) {
   setTimeout(() => wrapper.remove(), 2000);
 }
 
-function showBoardStamp(seat, size) {
+function showBoardStamp(seat, definition) {
   const phys = getSeatToPhys()[seat];
   const slots = SLOTS[phys];
   if(!slots || document.body.classList.contains("shared-kifu-board-active")) return;
   const cells = [...slots.receive.slice(1, 3), ...slots.attack.slice(1, 3)];
-  const asset = playerIconSrc("special_yellowtail");
-  const duration = size === "large" ? 2000 : 1000;
+  const asset = chatStampImageSrc(definition);
   if(document.body.classList.contains("board-view-3d")
-      && window.goitaBoard3D?.showBoardStamp?.(phys, cells, asset, size, duration)) return;
+      && window.goitaBoard3D?.showBoardStamp?.(phys, cells, asset, BOARD_STAMP_DISPLAY_MS)) return;
 
   const effects = activeBoardSlotEffects();
   if(!effects) return;
-  const stamp = new Image();
-  stamp.alt = "";
-  stamp.src = asset;
-  if(size === "large"){
-    const wrap = effects.closest(".board-wrap");
-    wrap.querySelector(".live-board-center-stamp")?.remove();
-    stamp.className = "live-board-center-stamp";
-    stamp.setAttribute("aria-hidden", "true");
-    wrap.appendChild(stamp);
-    window.goitaBoardPixel?.setCenterStamp?.(stamp);
-    clearTimeout(centerStampTimer);
-    centerStampTimer = setTimeout(() => {
-      stamp.remove();
-      window.goitaBoardPixel?.setCenterStamp?.(null);
-    }, duration);
-    return;
-  }
-
   const group = document.createElement("div");
   group.className = "live-board-seat-stamp";
   group.dataset.stampSeat = phys;
   group.style.setProperty("--feedback-rotation", COMBO_POS[phys].rotate);
   for(const cell of cells){
-    const icon = stamp.cloneNode();
+    const icon = new Image();
+    icon.alt = "";
+    icon.src = asset;
     setGridSlotSpan(icon, [cell]);
     group.appendChild(icon);
   }
   effects.querySelector(`.live-board-seat-stamp[data-stamp-seat="${phys}"]`)?.remove();
   effects.appendChild(group);
-  setTimeout(() => group.remove(), duration);
+  setTimeout(() => group.remove(), BOARD_STAMP_DISPLAY_MS);
 }
 
 function syncLiveBoardStamps(events) {
   if(!Array.isArray(events)) return;
   for(const event of events){
-    if(!Number.isSafeInteger(event?.id)
-        || !SEAT_ORDER.includes(event.seat) || !["seat", "large"].includes(event.size)) continue;
-    const slot = event.size === "large" ? "large" : event.seat;
-    if(event.id <= (liveBoardStampIds.get(slot) || 0)) continue;
-    liveBoardStampIds.set(slot, event.id);
-    showBoardStamp(event.seat, event.size);
+    if(!Number.isSafeInteger(event?.id) || !SEAT_ORDER.includes(event.seat)) continue;
+    const definition = chatStampDefinition(event.stamp_id);
+    if(!definition || event.id <= (liveBoardStampIds.get(event.seat) || 0)) continue;
+    liveBoardStampIds.set(event.seat, event.id);
+    showBoardStamp(event.seat, definition);
   }
 }
 
 function resetLiveBoardFeedback() {
   liveBoardStampIds.clear();
-  clearTimeout(centerStampTimer);
   document.getElementById("liveBoardSlotEffects")?.replaceChildren();
-  document.querySelector(".live-board-center-stamp")?.remove();
-  window.goitaBoardPixel?.setCenterStamp?.(null);
   window.goitaBoard3D?.clearBoardFeedback?.();
 }
 
