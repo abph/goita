@@ -76,6 +76,16 @@ def test_stamp_catalog_matches_available_stamps() -> None:
     assert 'asset: "king"' in HTML
 
 
+def test_live_stamp_spans_the_second_and_third_receive_and_attack_slots() -> None:
+    renderer = HTML.split("function showBoardStamp(seat, definition) {", 1)[1].split(
+        "function syncLiveBoardStamps", 1
+    )[0]
+    assert "[...slots.receive.slice(1, 3), ...slots.attack.slice(1, 3)]" in renderer
+    assert "setGridSlotSpan(stamp, cells);" in renderer
+    assert "effects.appendChild(stamp);" in renderer
+    assert "const BOARD_STAMP_DISPLAY_MS = 2000;" in HTML
+
+
 async def _test_stamp_delivery() -> None:
     app_module.setup_main_rooms()
     main_id = next(iter(app_module.MAIN_ROOM_NAMES))

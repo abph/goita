@@ -466,8 +466,7 @@
       transform: rotate(var(--feedback-rotation));
     }
     body.board-view-pixel-mono .pass-anim-text { color: #000; }
-    .live-board-seat-stamp { display: contents; }
-    .live-board-seat-stamp > img {
+    .live-board-seat-stamp {
       width: 94%;
       height: 94%;
       object-fit: contain;
@@ -7451,7 +7450,7 @@
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20261129chat-board").catch((error) => {
+  import("/static/board3d.js?v=20261129chat-board-span").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
@@ -18636,20 +18635,16 @@ function showBoardStamp(seat, definition) {
 
   const effects = activeBoardSlotEffects();
   if(!effects) return;
-  const group = document.createElement("div");
-  group.className = "live-board-seat-stamp";
-  group.dataset.stampSeat = phys;
-  group.style.setProperty("--feedback-rotation", COMBO_POS[phys].rotate);
-  for(const cell of cells){
-    const icon = new Image();
-    icon.alt = "";
-    icon.src = asset;
-    setGridSlotSpan(icon, [cell]);
-    group.appendChild(icon);
-  }
+  const stamp = new Image();
+  stamp.alt = "";
+  stamp.src = asset;
+  stamp.className = "live-board-seat-stamp";
+  stamp.dataset.stampSeat = phys;
+  stamp.style.setProperty("--feedback-rotation", COMBO_POS[phys].rotate);
+  setGridSlotSpan(stamp, cells);
   effects.querySelector(`.live-board-seat-stamp[data-stamp-seat="${phys}"]`)?.remove();
-  effects.appendChild(group);
-  setTimeout(() => group.remove(), BOARD_STAMP_DISPLAY_MS);
+  effects.appendChild(stamp);
+  setTimeout(() => stamp.remove(), BOARD_STAMP_DISPLAY_MS);
 }
 
 function syncLiveBoardStamps(events) {

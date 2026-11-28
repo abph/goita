@@ -1340,13 +1340,11 @@ function showBoardStamp(phys, cells, asset, duration) {
     texture.colorSpace = THREE.SRGBColorSpace;
     boardStampTextures.set(asset, texture);
   }
-  const group = new THREE.Group();
-  for (const [col, row] of cells) {
-    const marker = boardFeedbackPlane(texture, col, row, phys, 0.93, 0.93);
-    marker.renderOrder = 41;
-    group.add(marker);
-  }
-  addBoardFeedback(group, `stamp-${phys}`, duration);
+  const col = cells.reduce((sum, cell) => sum + cell[0], 0) / cells.length;
+  const row = cells.reduce((sum, cell) => sum + cell[1], 0) / cells.length;
+  const marker = boardFeedbackPlane(texture, col, row, phys, 1.94, 1.94);
+  marker.renderOrder = 41;
+  addBoardFeedback(marker, `stamp-${phys}`, duration);
   return true;
 }
 
