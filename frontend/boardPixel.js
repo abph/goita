@@ -20,6 +20,7 @@ function tr(text) {
 
 let visible = false;
 let latestSnapshot = null;
+let centerStamp = null;
 
 const palettes = {
   color: {
@@ -212,6 +213,12 @@ function drawCenterPanel(snapshot) {
   context.lineWidth = 2;
   context.strokeRect(103, 123, 112, 72);
 
+  if (centerStamp?.complete && centerStamp.naturalWidth) {
+    context.save();
+    context.globalAlpha = 0.47;
+    context.drawImage(centerStamp, 74, 74, 172, 172);
+    context.restore();
+  }
   drawPixelText(tr(`第${snapshot.round}局`), 159, 139, {size: 12});
   drawPixelText(tr(`AC ${snapshot.scores.AC}点`), 159, 159, {size: 12, color: palette.acText});
   drawPixelText(tr(`BD ${snapshot.scores.BD}点`), 159, 178, {size: 12, color: palette.bdText});
@@ -283,6 +290,16 @@ function render(snapshot) {
   drawScene();
 }
 
+function setCenterStamp(image) {
+  centerStamp = image;
+  if (image && !image.complete) {
+    image.addEventListener("load", () => {
+      if (visible && centerStamp === image) drawScene();
+    }, {once: true});
+  }
+  if (visible) drawScene();
+}
+
 function renderToCanvas(snapshot, targetCanvas, theme = "color") {
   if (!context || !canvas || !snapshot || !targetCanvas) return false;
   const targetContext = targetCanvas.getContext?.("2d");
@@ -352,6 +369,7 @@ window.goitaBoardPixel = {
   setTheme,
   render,
   renderToCanvas,
+  setCenterStamp,
   getCanvas: () => canvas,
 };
 

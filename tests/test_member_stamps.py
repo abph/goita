@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -31,6 +32,7 @@ def stamp_env(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module.manager, "broadcast_update", no_broadcast)
     app = FastAPI()
     app.post("/games/{game_id}/chat")(app_module.post_chat_message)
+    app.post("/games/{game_id}/board-stamp")(app_module.post_board_stamp)
     app.post("/lobby/chat")(app_module.post_lobby_chat_message)
     with TestClient(app, base_url="https://testserver", headers={
         "Origin": "https://testserver", "X-Goita-Member": "1",
@@ -57,6 +59,62 @@ def login_operator(client, store):
     _, token, _ = store.login("operator", issued["temporary_password"])
     _, token, _ = store.change_password(token, issued["temporary_password"], "abcd1234")
     client.cookies.set(MEMBER_COOKIE, token)
+
+
+def test_board_stamp_is_transient_and_delivered_only_to_the_table(stamp_env, monkeypatch):
+    client, _ = stamp_env
+    game = app_module.GAMES["main"]
+    game.update(state=SimpleNamespace(finished=False), is_started=True,
+                human_seats={"C": "owner"}, member_kifu_round_id="first")
+    broadcasts = []
+
+    async def send_event(channel, payload):
+        broadcasts.append((channel, payload))
+
+    monkeypatch.setattr(app_module.manager, "_broadcast_payload", send_event)
+    url = "/games/main/board-stamp"
+    assert client.post(url, json={"seat": "A", "client_id": "owner"}).status_code == 403
+    assert client.post(url, json={"seat": "C", "client_id": "other"}).status_code == 403
+    response = client.post(url, json={"seat": "C", "client_id": "owner"})
+    assert response.status_code == 200
+    event, = response.json()["board_stamps"]
+    assert set(event) == {"seat", "size", "id"}
+    assert event["seat"] == "C" and event["size"] == "seat" and event["id"] > 0
+    assert broadcasts == [("main", {"type": "board_stamp", "board_stamp": event})]
+    assert app_module._live_board_stamps(game) == [event]
+    assert not game["chat_messages"]
+    assert not app_module._live_board_stamps(app_module.GAMES[app_module.PRIVATE_A_GID])
+
+    game["member_kifu_round_id"] = "second"
+    assert not app_module._live_board_stamps(game)
+    game["board_stamps"]["C"] = (event, app_module.time.monotonic() - 1, "second")
+    assert not app_module._live_board_stamps(game)
+    game["state"].finished = True
+    assert client.post(url, json={"seat": "C", "client_id": "owner"}).status_code == 409
+
+
+def test_large_board_stamp_requires_paid_access_in_private_rooms(stamp_env, monkeypatch):
+    client, store = stamp_env
+    room = app_module.PRIVATE_A_GID
+    game = app_module.GAMES[room]
+    game.update(state=SimpleNamespace(finished=False), is_started=True, human_seats={"A": "owner"})
+
+    async def no_broadcast(*_args):
+        pass
+
+    monkeypatch.setattr(app_module.manager, "_broadcast_payload", no_broadcast)
+    url = f"/games/{room}/board-stamp"
+    stamp = {"seat": "A", "client_id": "owner", "size": "large"}
+    assert client.post(url, json=stamp).status_code == 401
+    login_paid(client, store)
+    store.update("tester", enabled=True, paid_enabled=False, paid_until=None)
+    assert client.post(url, json=stamp).status_code == 403
+    store.update("tester", enabled=True, paid_enabled=True, paid_until=None)
+    assert client.post(url, json=stamp).json()["board_stamps"][0]["size"] == "large"
+    store.update("tester", enabled=True, paid_enabled=True, paid_until="2026-09-03")
+    assert client.post(url, json=stamp).status_code == 403
+    login_operator(client, store)
+    assert client.post(url, json=stamp).status_code == 200
 
 
 @pytest.mark.parametrize("room", ["main", "lobby"])

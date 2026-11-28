@@ -428,68 +428,71 @@
     }
 
     /* ===== アニメーション群 ===== */
-    .pass-anim-wrapper {
-      z-index: 100;
+    #board { position: relative; }
+    .live-board-slot-effects {
+      position: absolute;
+      inset: 0;
+      grid-column: 1 / 9;
+      grid-row: 1 / 9;
+      display: grid;
+      grid-template: repeat(8, var(--cell)) / repeat(8, var(--cell));
+      gap: var(--gap);
+      z-index: 25;
       pointer-events: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    }
+    #boardPixel .live-board-slot-effects {
+      inset: 3.75%;
+      grid-template: repeat(8, minmax(0, 1fr)) / repeat(8, minmax(0, 1fr));
+      gap: 0;
+    }
+    .pass-anim-wrapper {
+      display: grid;
+      place-items: center;
+      z-index: 2;
     }
     .pass-anim-text {
-      font-size: clamp(24px, 5vw, 36px);
-      font-weight: 900;
-      color: #b00000;
-      background: rgba(255, 250, 250, 0.95);
-      border: 4px double #b00000;
-      border-radius: 8px;
-      padding: 6px 16px;
-      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-    }
-    .pass-anim-wrapper.pass-anim-mobile .pass-anim-text {
-      font-size: clamp(18px, 5vw, 26px);
-      padding: 4px 14px;
+      box-sizing: border-box;
+      width: calc(var(--cell) * 1.78);
+      padding: 1px 2px;
+      text-align: center;
       white-space: nowrap;
+      font-size: calc(var(--cell) * 0.65);
+      font-weight: 900;
+      line-height: 1.08;
+      letter-spacing: -0.09em;
+      color: #a00000;
+      background: #fff;
+      border: 1px solid currentColor;
+      transform: rotate(var(--feedback-rotation));
     }
-    .pass-anim-wrapper.pass-anim-overlay {
+    body.board-view-pixel-mono .pass-anim-text { color: #000; }
+    .live-board-seat-stamp { display: contents; }
+    .live-board-seat-stamp > img {
+      width: 94%;
+      height: 94%;
+      object-fit: contain;
+      place-self: center;
+      image-rendering: pixelated;
+      background: rgba(255, 255, 255, .86);
+      border-radius: 20%;
+      transform: rotate(var(--feedback-rotation));
+    }
+    .live-board-center-stamp {
       position: absolute;
-      z-index: 100;
-    }
-    .pass-anim-overlay.pass-position-a {
-      left: 50%;
-      bottom: 8%;
-      transform: translateX(-50%);
-    }
-    .pass-anim-overlay.pass-position-b {
-      right: 8%;
       top: 50%;
-      transform: translateY(-50%);
-    }
-    .pass-anim-overlay.pass-position-c {
       left: 50%;
-      top: 8%;
-      transform: translateX(-50%);
+      z-index: 1;
+      width: min(54%, 300px);
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      image-rendering: pixelated;
     }
-    .pass-anim-overlay.pass-position-d {
-      left: 8%;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    .pass-anim-overlay > [class^="phys-"] {
-      transform: none;
-    }
-    body.board-view-pixel .pass-anim-overlay .pass-anim-text {
-      border: 3px solid #9b2226;
-      border-radius: 0;
-      background: #fff7d6;
-      box-shadow: none;
-      font-family: "MS Gothic", "Yu Gothic", sans-serif;
-      letter-spacing: 0;
-    }
-    body.board-view-pixel-mono .pass-anim-overlay .pass-anim-text {
-      border-color: #000000;
-      background: #ffffff;
-      color: #000000;
-    }
+    body.board-view-3d .live-board-slot-effects,
+    body.board-view-3d .live-board-center-stamp,
+    body.board-view-pixel .live-board-center-stamp,
+    body.shared-kifu-board-active .live-board-slot-effects,
+    body.shared-kifu-board-active .live-board-center-stamp { display: none; }
 
     /* 必殺技・上がり演出テキスト */
     .special-anim-wrapper {
@@ -6029,7 +6032,9 @@
               <div id="roundStartDealer" class="round-start-dealer"></div>
             </div>
             <button id="practiceExitButton" class="practice-exit-button" type="button" onclick="returnFromPracticeReplay()" aria-label="元のゲームに戻る" title="元のゲームに戻る">×</button>
-            <div id="board" class="board"></div>
+            <div id="board" class="board">
+              <div id="liveBoardSlotEffects" class="live-board-slot-effects" aria-hidden="true"></div>
+            </div>
             <div id="board3d" class="board-3d" aria-hidden="true">
               <canvas id="board3dCanvas" aria-label="3D盤面"></canvas>
               <div class="board-3d-pan-controls" aria-label="3D盤面の視点移動">
@@ -7452,8 +7457,8 @@
 <script src="/static/score-rooms.js?v=20260911a"></script>
 <script src="/static/kifu-files.js?v=20261126a"></script>
 <script src="/static/trace-results.js?v=20261126a"></script>
-<script src="/static/i18n-en.js?v=20261127achievements"></script>
-<script src="/static/i18n.js?v=20261127achievements"></script>
+<script src="/static/i18n-en.js?v=20261129board-stamps"></script>
+<script src="/static/i18n.js?v=20261129board-stamps"></script>
 <script src="/static/tutorialAnimals.js?v=20261120piecenames"></script>
 <script src="/static/dailyMove.js?v=20260731b"></script>
 <script src="/static/lobbyWhisper.js?v=20260905g"></script>
@@ -7461,12 +7466,12 @@
 <script src="/static/soloDiscord.js?v=20261020a"></script>
 <script src="/static/survey.js?v=20260919a"></script>
 <script type="module">
-  import("/static/board3d.js?v=20261118c").catch((error) => {
+  import("/static/board3d.js?v=20261129board-stamps").catch((error) => {
     window.goitaBoard3DLoadError = String(error?.message || error || "3D盤面を読み込めませんでした。");
     console.warn("3D board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board3d-ready"));
   });
-  import("/static/boardPixel.js?v=20261118c").catch((error) => {
+  import("/static/boardPixel.js?v=20261129board-stamps").catch((error) => {
     window.goitaBoardPixelLoadError = String(error?.message || error || "ピクセル盤面を読み込めませんでした。");
     console.warn("Pixel board module failed to load:", error);
     window.dispatchEvent(new CustomEvent("goita-board-pixel-ready"));
@@ -9434,6 +9439,7 @@ function applyBoardViewMode() {
         board3d.classList.toggle("is-unavailable", requested3d && window.goitaBoard3D?.isAvailable?.() === false);
     }
     if (boardPixel) boardPixel.setAttribute("aria-hidden", usePixel ? "false" : "true");
+    activeBoardSlotEffects();
     window.goitaBoard3D?.setEnvironment?.(requestedMeetingRoom ? "meeting-room" : "board");
     window.goitaBoard3D?.setVisible?.(use3d);
     window.goitaBoardPixel?.setTheme?.(pixelTheme);
@@ -9964,6 +9970,9 @@ let chatAiAsking = false;
 let chatComposeMode = "chat";
 let chatMentionScope = "";
 let chatToastTimer = null;
+const liveBoardStampIds = new Map();
+let boardStampSending = false;
+let centerStampTimer = 0;
 const CHAT_STAMP_SCROLL_FOLLOW_MS = 5000;
 const chatLatestScrollUntil = { room: 0, lobby: 0 };
 const CHAT_STAMP_DEFINITIONS = Object.freeze([
@@ -10299,6 +10308,8 @@ function connectWS(targetGid) {
             const data = JSON.parse(event.data);
             if (data.type === "member_kifu_auto") {
                 window.goitaMembers?.automaticKifuResult(data);
+            } else if (data.type === "board_stamp" && targetGid === gid) {
+                syncLiveBoardStamps([data.board_stamp]);
             } else if (data.type === "update") {
                 if(data.action_token && data.action_token !== latestState?.action_token) cancelAutomaticPass(true);
                 if (currentWsGid === "lobby") {
@@ -10622,6 +10633,7 @@ async function enterRoom(targetGid, roomName) {
     toggleChatPanel(false);
     hideChatToast();
     renderChat.roomId = null;
+    resetLiveBoardFeedback();
     lastChatToastCount = 0;
     localChatNotices = [];
     localAiThoughtMessages = [];
@@ -10735,6 +10747,7 @@ async function returnToLobby() {
     toggleChatPanel(false);
     hideChatToast();
     renderChat.roomId = null;
+    resetLiveBoardFeedback();
     lastChatToastCount = 0;
     localChatNotices = [];
     localAiThoughtMessages = [];
@@ -13518,11 +13531,7 @@ function createResearchKifuPiece(piece, seat, options = {}) {
 function createResearchKifuPassMarker(seat) {
     const marker = document.createElement("span");
     marker.className = "research-kifu-pass-overlay";
-    const positions = RESEARCH_KIFU_SLOTS[seat].attack.slice(1, 3);
-    const columns = positions.map(position => position[0]);
-    const rows = positions.map(position => position[1]);
-    marker.style.gridColumn = `${Math.min(...columns)} / ${Math.max(...columns) + 1}`;
-    marker.style.gridRow = `${Math.min(...rows)} / ${Math.max(...rows) + 1}`;
+    setGridSlotSpan(marker, RESEARCH_KIFU_SLOTS[seat].attack.slice(1, 3));
     marker.dataset.seat = seat;
     marker.setAttribute("aria-label", `${seat}: ${uiText("パス")}`);
     const badge = document.createElement("span");
@@ -16202,7 +16211,7 @@ function buildChatStampVisual(definition, owner, decorative = false){
     fallback.hidden = false;
     owner?.classList.remove("has-image");
   }, { once: true });
-  image.src = `/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
+  image.src = definition.assetUrl || `/static/stamps/${encodeURIComponent(definition.asset || definition.id)}.png?v=${CHAT_STAMP_ASSET_VERSION}`;
 
   visual.append(image, fallback);
   return visual;
@@ -16556,19 +16565,63 @@ function initializeChatStampPickers(){
       ? window.goitaMembers?.canUseChampionStamp()
       : showAllStamps || PUBLIC_CHAT_STAMP_IDS.has(definition.id));
     for(const definition of availableStamps){
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "chat-stamp-choice";
-      button.setAttribute("data-stamp-id", definition.id);
-      button.setAttribute("aria-label", definition.label);
-
-      const label = document.createElement("span");
-      label.className = "chat-stamp-label";
-      label.textContent = uiText(definition.pickerLabel || definition.label);
-      button.append(buildChatStampVisual(definition, button, true), label);
-      button.addEventListener("click", () => sendChatStamp(kind, definition.id));
-      picker.appendChild(button);
+      appendChatStampChoice(picker, definition, () => sendChatStamp(kind, definition.id));
     }
+    if(kind === "room" && canSendBoardStamp()){
+      const assetUrl = playerIconSrc("special_yellowtail");
+      appendChatStampChoice(picker, {id: "yellowtail", label: "寒ブリ", assetUrl, emoji: "🐟"},
+        () => sendBoardStamp("seat"));
+      if(window.goitaMembers?.canUseAllStamps()){
+        appendChatStampChoice(picker, {id: "yellowtail-large", label: "大きな寒ブリ", assetUrl, emoji: "🐟"},
+          () => sendBoardStamp("large"));
+      }
+    }
+  }
+}
+
+function appendChatStampChoice(picker, definition, send){
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chat-stamp-choice";
+  button.setAttribute("data-stamp-id", definition.id);
+  button.setAttribute("aria-label", uiText(definition.label));
+  const label = document.createElement("span");
+  label.className = "chat-stamp-label";
+  label.textContent = uiText(definition.pickerLabel || definition.label);
+  button.append(buildChatStampVisual(definition, button, true), label);
+  button.addEventListener("click", send);
+  picker.appendChild(button);
+}
+
+function canSendBoardStamp(){
+  return SEAT_ORDER.includes(mySeat) && latestState?.is_started && !latestState.finished
+    && !latestState.tutorial_mode && !seatIsAi(latestState, mySeat);
+}
+
+async function sendBoardStamp(size){
+  if(boardStampSending || !canSendBoardStamp()) return;
+  const room = gid;
+  const seat = mySeat;
+  boardStampSending = true;
+  closeChatStampPickers();
+  try{
+    const response = await fetch(`${API}/games/${room}/board-stamp`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "X-Goita-Member": "1"},
+      body: JSON.stringify({seat, client_id: clientId, size}),
+    });
+    const data = await response.json();
+    if(gid !== room || mySeat !== seat) return;
+    if(response.ok) syncLiveBoardStamps(data.board_stamps);
+    else {
+      setHint(uiText(data.detail || "スタンプを送信できませんでした。"));
+      if(size === "large" && (response.status === 401 || response.status === 403)) window.goitaMembers?.refresh();
+    }
+  }catch{
+    if(gid === room) setHint(uiText("スタンプを送信できませんでした。"));
+  }finally{
+    boardStampSending = false;
   }
 }
 
@@ -18215,7 +18268,9 @@ function renderBoard(state){
     "tutorial-round-board",
     state.tutorial_mode === true,
   );
-  board.innerHTML="";
+  const effects = document.getElementById("liveBoardSlotEffects");
+  if(effects?.parentElement === board) board.replaceChildren(effects);
+  else board.replaceChildren();
 
   const nameZoneBackground = document.createElement("div");
   nameZoneBackground.className = "name-zone-background";
@@ -18580,50 +18635,106 @@ async function renderActions(){
   });
 }
 
-function activePassAnimationTarget() {
-  return {element: document.querySelector(".board-wrap"), overlay: true};
+function setGridSlotSpan(element, positions) {
+  const columns = positions.map(([col]) => col);
+  const rows = positions.map(([, row]) => row);
+  element.style.gridColumn = `${Math.min(...columns)} / ${Math.max(...columns) + 1}`;
+  element.style.gridRow = `${Math.min(...rows)} / ${Math.max(...rows) + 1}`;
+}
+
+function activeBoardSlotEffects() {
+  const effects = document.getElementById("liveBoardSlotEffects");
+  const mode = document.body.classList.contains("board-view-pixel") ? "boardPixel" : "board";
+  const board = document.getElementById(mode);
+  if(effects && board && effects.parentElement !== board) board.appendChild(effects);
+  return effects;
 }
 
 function showPassAnimation(phys) {
+  if(!SLOTS[phys] || document.body.classList.contains("shared-kifu-board-active")) return;
+  const cells = SLOTS[phys].attack.slice(1, 3);
   if(document.body.classList.contains("board-view-3d")
-      && window.goitaBoard3D?.showPass?.(phys)){
-    return;
-  }
-  const target = activePassAnimationTarget();
-  const board = target.element;
-  if (!board) return;
-  
+      && window.goitaBoard3D?.showPass?.(phys, cells)) return;
+  const effects = activeBoardSlotEffects();
+  if(!effects) return;
+
   const wrapper = document.createElement("div");
   wrapper.className = "pass-anim-wrapper";
-  wrapper.dataset.passSeat = String(phys);
-  const isMobilePass = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
-  if(isMobilePass) wrapper.classList.add("pass-anim-mobile");
-  
-  if(target.overlay){
-    wrapper.classList.add("pass-anim-overlay", `pass-position-${String(phys).toLowerCase()}`);
-  }else{
-    /* 8x8盤面に合わせてアニメーション出現位置をずらす */
-    if (phys === "A") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "7 / 9"; }
-    else if (phys === "B") { wrapper.style.gridColumn = "7 / 9"; wrapper.style.gridRow = "4 / 6"; }
-    else if (phys === "C") { wrapper.style.gridColumn = "4 / 6"; wrapper.style.gridRow = "1 / 3"; }
-    else if (phys === "D") { wrapper.style.gridColumn = "1 / 3"; wrapper.style.gridRow = "4 / 6"; }
+  wrapper.dataset.passSeat = phys;
+  wrapper.style.setProperty("--feedback-rotation", COMBO_POS[phys].rotate);
+  setGridSlotSpan(wrapper, cells);
+  const label = document.createElement("span");
+  label.className = "pass-anim-text";
+  label.textContent = uiText("パス");
+  wrapper.appendChild(label);
+  effects.querySelector(`.pass-anim-wrapper[data-pass-seat="${phys}"]`)?.remove();
+  effects.appendChild(wrapper);
+  setTimeout(() => wrapper.remove(), 2000);
+}
+
+function showBoardStamp(seat, size) {
+  const phys = getSeatToPhys()[seat];
+  const slots = SLOTS[phys];
+  if(!slots || document.body.classList.contains("shared-kifu-board-active")) return;
+  const cells = [...slots.receive.slice(1, 3), ...slots.attack.slice(1, 3)];
+  const asset = playerIconSrc("special_yellowtail");
+  const duration = size === "large" ? 2000 : 1000;
+  if(document.body.classList.contains("board-view-3d")
+      && window.goitaBoard3D?.showBoardStamp?.(phys, cells, asset, size, duration)) return;
+
+  const effects = activeBoardSlotEffects();
+  if(!effects) return;
+  const stamp = new Image();
+  stamp.alt = "";
+  stamp.src = asset;
+  if(size === "large"){
+    const wrap = effects.closest(".board-wrap");
+    wrap.querySelector(".live-board-center-stamp")?.remove();
+    stamp.className = "live-board-center-stamp";
+    stamp.setAttribute("aria-hidden", "true");
+    wrap.appendChild(stamp);
+    window.goitaBoardPixel?.setCenterStamp?.(stamp);
+    clearTimeout(centerStampTimer);
+    centerStampTimer = setTimeout(() => {
+      stamp.remove();
+      window.goitaBoardPixel?.setCenterStamp?.(null);
+    }, duration);
+    return;
   }
-  
-  const inner = document.createElement("div");
-  inner.className = "phys-" + phys;
-  
-  const textDiv = document.createElement("div");
-  textDiv.className = "pass-anim-text";
-  textDiv.textContent = "パス";
-  
-  inner.appendChild(textDiv);
-  wrapper.appendChild(inner);
-  board.querySelector(`.pass-anim-wrapper[data-pass-seat="${String(phys)}"]`)?.remove();
-  board.appendChild(wrapper);
-  
-  setTimeout(() => {
-    if(wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
-  }, 2000);
+
+  const group = document.createElement("div");
+  group.className = "live-board-seat-stamp";
+  group.dataset.stampSeat = phys;
+  group.style.setProperty("--feedback-rotation", COMBO_POS[phys].rotate);
+  for(const cell of cells){
+    const icon = stamp.cloneNode();
+    setGridSlotSpan(icon, [cell]);
+    group.appendChild(icon);
+  }
+  effects.querySelector(`.live-board-seat-stamp[data-stamp-seat="${phys}"]`)?.remove();
+  effects.appendChild(group);
+  setTimeout(() => group.remove(), duration);
+}
+
+function syncLiveBoardStamps(events) {
+  if(!Array.isArray(events)) return;
+  for(const event of events){
+    if(!Number.isSafeInteger(event?.id)
+        || !SEAT_ORDER.includes(event.seat) || !["seat", "large"].includes(event.size)) continue;
+    const slot = event.size === "large" ? "large" : event.seat;
+    if(event.id <= (liveBoardStampIds.get(slot) || 0)) continue;
+    liveBoardStampIds.set(slot, event.id);
+    showBoardStamp(event.seat, event.size);
+  }
+}
+
+function resetLiveBoardFeedback() {
+  liveBoardStampIds.clear();
+  clearTimeout(centerStampTimer);
+  document.getElementById("liveBoardSlotEffects")?.replaceChildren();
+  document.querySelector(".live-board-center-stamp")?.remove();
+  window.goitaBoardPixel?.setCenterStamp?.(null);
+  window.goitaBoard3D?.clearBoardFeedback?.();
 }
 
 function showSpecialAnimation(text, typeClass, options = {}) {
@@ -19186,12 +19297,14 @@ async function refreshFromState(confirmedState = null){
   if (currentLogCount < lastLogCount) {
     isGameStarted = false;
     resetLogAudioSync(currentLogCount);
+    resetLiveBoardFeedback();
     fixedHandMemory = {};
     autoRevealHandsRoundKey = "";
   }
   isGameStarted = state.is_started === true;
 
   renderBoard(state);
+  syncLiveBoardStamps(state.board_stamps);
   playNewPieceSoundsAfterBoardRender(state, currentLogCount);
   syncRoundStartBanner(state);
 

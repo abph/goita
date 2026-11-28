@@ -11,7 +11,7 @@ def test_pixel_board_is_available_in_private_and_debug_rooms() -> None:
 
     assert 'id="boardPixel"' in html
     assert 'id="boardPixelCanvas"' in html
-    assert 'import("/static/boardPixel.js?v=20261118c")' in html
+    assert 'import("/static/boardPixel.js?v=20261129board-stamps")' in html
     assert "setBoardViewControl('pixel-color')" in html
     assert "setBoardViewControl('pixel-mono')" in html
     assert 'if (mode === "pixel") return "pixel-color"' in html
@@ -68,10 +68,10 @@ def test_pixel_board_uses_low_resolution_canvas_and_public_snapshot() -> None:
     assert "animation: pixelMonoSpecial 1.5s steps(1, end) forwards" in html
     assert "background: rgba(255, 255, 255, var(--mobile-chat-opacity, 1))" in html
     assert "border-radius: 0" in html
-    assert 'document.querySelector(".board-wrap"), overlay: true' in html
-    assert "wrapper.dataset.passSeat = String(phys);" in html
-    assert "body.board-view-pixel .pass-anim-overlay .pass-anim-text" in html
-    assert "body.board-view-pixel-mono .pass-anim-overlay .pass-anim-text" in html
+    assert 'document.getElementById("liveBoardSlotEffects")' in html
+    assert "wrapper.dataset.passSeat = phys;" in html
+    assert "#boardPixel .live-board-slot-effects" in html
+    assert "body.board-view-pixel-mono .pass-anim-text" in html
 
 
 if __name__ == "__main__":

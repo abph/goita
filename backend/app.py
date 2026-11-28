@@ -2645,6 +2645,12 @@ class ChatRequest(BaseModel):
 class ChatAiRequest(ChatRequest):
     language: str = "ja"
 
+
+class BoardStampRequest(BaseModel):
+    seat: Literal["A", "B", "C", "D"]
+    client_id: str
+    size: Literal["seat", "large"] = "seat"
+
 class ResetConfigBody(BaseModel):
     dealer: str = Field(default="A")
     preset_counts: Dict[str, Dict[str, int]] = Field(default_factory=dict)
@@ -3917,6 +3923,7 @@ def _state_public_view(
         "owner_name": owner_name,
         "total_team_score": game_obj.get("total_team_score", {"AC": 0, "BD": 0}),
         "round_count": game_obj.get("round_count", 1),
+        "board_stamps": _live_board_stamps(game_obj),
         "match_finished": game_obj.get("match_finished", False),
         "match_winner": game_obj.get("match_winner"),
         "last_round_score": game_obj.get("last_round_score", 0),
@@ -11331,6 +11338,42 @@ def _require_chat_stamp_access(game_id: str, stamp_id: str, request: Request):
             raise MemberError(403, "有効な有料権限が必要です。")
     except MemberError as error:
         raise HTTPException(error.status, "全スタンプを使うには、有効な有料会員でログインしてください。") from None
+
+
+def _live_board_stamps(game: Dict[str, Any]) -> List[Dict[str, Any]]:
+    now = time.monotonic()
+    round_id = game.get("member_kifu_round_id")
+    return [event for event, expires, event_round in game.get("board_stamps", {}).values()
+            if expires > now and event_round == round_id]
+
+
+@app.post("/games/{game_id}/board-stamp")
+async def post_board_stamp(game_id: str, req: BoardStampRequest, request: Request):
+    require_member_origin(request)
+    game = GAMES.get(game_id)
+    if not game:
+        raise HTTPException(404, "対局ルームが見つかりません。")
+    state = game.get("state")
+    if not state or not game.get("is_started") or state.finished or game.get("tutorial_mode"):
+        raise HTTPException(409, "寒ブリは対局中に使えます。")
+    _require_human_seat_owner(game, req.seat, req.client_id)
+    if req.seat in _ai_seat_set(game):
+        raise HTTPException(403, "着席中に使えます。")
+    if req.size == "large":
+        try:
+            member = MEMBER_STORE.authenticate(request.cookies.get(MEMBER_COOKIE, ""))
+            if not member.get("is_operator") and not member.get("paid_active"):
+                raise MemberError(403, "有料プランのスタンプです。")
+        except MemberError as error:
+            raise HTTPException(error.status, "大きな寒ブリは有料プランで使えます。") from None
+
+    event = {"id": _next_chat_timestamp(), "seat": req.seat, "size": req.size}
+    slot = "large" if req.size == "large" else req.seat
+    game.setdefault("board_stamps", {})[slot] = (
+        event, time.monotonic() + 5, game.get("member_kifu_round_id"),
+    )
+    await manager._broadcast_payload(game_id, {"type": "board_stamp", "board_stamp": event})
+    return {"board_stamps": [event]}
 
 
 @app.post("/games/{game_id}/chat")

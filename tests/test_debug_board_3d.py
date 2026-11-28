@@ -19,7 +19,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert 'id="board3dPanDown"' in html
     assert 'id="board3dPanLeft"' in html
     assert 'id="board3dPanRight"' in html
-    assert 'import("/static/board3d.js?v=20261118c")' in html
+    assert 'import("/static/board3d.js?v=20261129board-stamps")' in html
     assert 'id="boardViewSettingRow"' in html
     assert 'id="boardViewMode" type="hidden" value="2d"' in html
     assert "const PRIVATE_ROOM_IDS = new Set([" in html
@@ -34,7 +34,7 @@ def test_3d_board_is_available_in_private_and_debug_rooms() -> None:
     assert '? (personalSettings.boardViewMode === "meeting-room" ? "2d" : personalSettings.boardViewMode)' in html
     assert ': "meeting-room";' in html
     assert 'supportsAlternateBoardViews(targetGid) && targetGid !== MEETING_ROOM_GID ? "block" : "none"' in html
-    assert "const boardViewsEnabled = supportsAlternateBoardViews(gid);" in html
+    assert 'const boardViewsEnabled = supportsAlternateBoardViews(gid) && !document.body.classList.contains("tutorial-animals");' in html
     assert 'id="boardViewMeetingRoomButton"' in html
     assert 'id="lobbyBoardViewMeetingRoomButton"' in html
     assert html.count(">どこかの集会室</button>") == 2
@@ -148,16 +148,18 @@ def test_3d_board_uses_local_threejs_and_public_board_state() -> None:
     assert "buildBoard3DSnapshot(state)" in html
     assert "piece.ownHidden ? 0.32" in board_module
     assert 'document.body.classList.contains("board-view-3d")' in html
-    assert 'window.goitaBoard3D?.showPass?.(phys)' in html
+    assert 'window.goitaBoard3D?.showPass?.(phys, cells)' in html
     assert "const PASS_WORLD_POSITIONS" in board_module
     assert "A: [0, 1.12, 3.12]" in board_module
     assert "B: [3.12, 1.12, 0]" in board_module
     assert "C: [0, 1.12, -3.12]" in board_module
     assert "D: [-3.12, 1.12, 0]" in board_module
-    assert "function showPass(phys)" in board_module
+    assert "function showPass(phys, cells)" in board_module
+    assert "(first[0] + second[0]) / 2" in board_module
+    assert "PHYS_ROTATION[phys] || 0" in board_module
     assert "passLayer.add(marker)" in board_module
     assert "showPass," in board_module
-    assert 'wrapper.classList.add("pass-anim-overlay"' in html
+    assert "setGridSlotSpan(wrapper, cells);" in html
 
 
 if __name__ == "__main__":

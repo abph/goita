@@ -20,6 +20,7 @@ let standardBoardFurniture = null;
 let pieceLayer = null;
 let labelLayer = null;
 let passLayer = null;
+let boardStampTexture = null;
 let scoreLayer = null;
 let resizeObserver = null;
 let available = null;
@@ -1222,7 +1223,7 @@ function clearLayer(layer, disposeMaterials) {
   }
 }
 
-function createTextSprite(text, options = {}) {
+function createBoardTextTexture(text, options) {
   const width = options.width || 512;
   const height = options.height || 144;
   const textureCanvas = document.createElement("canvas");
@@ -1257,8 +1258,12 @@ function createTextSprite(text, options = {}) {
 
   const texture = new THREE.CanvasTexture(textureCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createTextSprite(text, options = {}) {
   const material = new THREE.SpriteMaterial({
-    map: texture,
+    map: createBoardTextTexture(text, options),
     transparent: true,
     depthTest: options.depthTest === true,
   });
@@ -1268,43 +1273,89 @@ function createTextSprite(text, options = {}) {
   return sprite;
 }
 
-function removePassMarker(marker) {
+function removeBoardFeedback(marker) {
   if (!marker || !passLayer || marker.parent !== passLayer) return;
   passLayer.remove(marker);
-  if (marker.material?.map) marker.material.map.dispose();
-  if (marker.material) marker.material.dispose();
+  marker.traverse((object) => {
+    if (object.isMesh) object.geometry.dispose();
+    object.material?.dispose();
+  });
+  marker.userData.ownedTexture?.dispose();
   renderFrame();
+}
+
+function clearBoardFeedback(key = null) {
+  if (!passLayer) return;
+  [...passLayer.children]
+    .filter(marker => key === null || marker.userData.feedbackKey === key)
+    .forEach(removeBoardFeedback);
 }
 
 function clearPass(phys) {
-  if (!passLayer) return;
-  [...passLayer.children].filter(marker => marker.userData.passSeat === phys).forEach(removePassMarker);
+  clearBoardFeedback(`pass-${phys}`);
 }
 
-function showPass(phys) {
-  if (!ensureRenderer() || !passLayer) return false;
-  const position = PASS_WORLD_POSITIONS[phys];
-  if (!position) return false;
-  clearPass(phys);
+function boardFeedbackPlane(texture, col, row, phys, width, height) {
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, depthTest: false, depthWrite: false,
+  }));
+  plane.position.set((col - 4.5) * 1.04, 0.72, (row - 4.5) * 1.04);
+  plane.rotation.set(-Math.PI / 2, PHYS_ROTATION[phys] || 0, 0, "YXZ");
+  return plane;
+}
 
-  const marker = createTextSprite(tr("パス"), {
-    width: 384,
-    height: 168,
-    background: "rgba(255, 250, 236, 0.96)",
-    borderColor: "#9b2226",
-    borderWidth: 10,
-    color: "#9b2226",
-    fontSize: 76,
-    trackLabel: false,
-  });
-  marker.position.set(...position);
-  marker.scale.set(1.55, 0.68, 1);
-  marker.renderOrder = 40;
-  marker.userData.passSeat = phys;
+function addBoardFeedback(marker, key, duration) {
+  clearBoardFeedback(key);
+  marker.userData.feedbackKey = key;
   passLayer.add(marker);
   renderFrame();
+  window.setTimeout(() => removeBoardFeedback(marker), duration);
+}
 
-  window.setTimeout(() => removePassMarker(marker), 2000);
+function showPass(phys, cells) {
+  if (!ensureRenderer() || !passLayer || cells.length !== 2) return false;
+  const [first, second] = cells;
+  const texture = createBoardTextTexture(tr("パス"), {
+    width: 384,
+    height: 152,
+    background: "#fff",
+    borderColor: "#9b2226",
+    borderWidth: 5,
+    color: "#9b2226",
+    fontSize: 118,
+  });
+  const marker = boardFeedbackPlane(texture, (first[0] + second[0]) / 2,
+    (first[1] + second[1]) / 2, phys, 1.9, 0.75);
+  marker.renderOrder = 42;
+  marker.userData.ownedTexture = texture;
+  addBoardFeedback(marker, `pass-${phys}`, 2000);
+  return true;
+}
+
+function showBoardStamp(phys, cells, asset, size, duration) {
+  if (!ensureRenderer() || !passLayer) return false;
+  if (!boardStampTexture) {
+    boardStampTexture = new THREE.TextureLoader().load(asset, renderFrame);
+    boardStampTexture.colorSpace = THREE.SRGBColorSpace;
+    boardStampTexture.magFilter = THREE.NearestFilter;
+  }
+  if (size === "large") {
+    const marker = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: boardStampTexture, transparent: true, opacity: 0.82, depthTest: false, depthWrite: false,
+    }));
+    marker.position.set(0, 0.65, 0);
+    marker.scale.set(4.5, 4.5, 1);
+    marker.renderOrder = 11;
+    addBoardFeedback(marker, "stamp-center", duration);
+    return true;
+  }
+  const group = new THREE.Group();
+  for (const [col, row] of cells) {
+    const marker = boardFeedbackPlane(boardStampTexture, col, row, phys, 0.93, 0.93);
+    marker.renderOrder = 41;
+    group.add(marker);
+  }
+  addBoardFeedback(group, `stamp-${phys}`, duration);
   return true;
 }
 
@@ -1463,6 +1514,8 @@ window.goitaBoard3D = {
   setVisible,
   showPass,
   clearPass,
+  showBoardStamp,
+  clearBoardFeedback,
   getCanvas: () => canvas,
 };
 
